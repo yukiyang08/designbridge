@@ -400,6 +400,8 @@ async function handleSubmit3D() {
   submitKey.value++
   error.value = ''
   result.value = null
+  pendingPlan.value = null
+  editedPlacements.value = null
   loading.value = true
   try {
     let style_reference_image_path
@@ -879,6 +881,71 @@ onMounted(fetchStyleOptions)
   animation: spin 0.8s linear infinite;
 }
 @keyframes spin { to { transform: rotate(360deg); } }
+
+/* 佈局規劃中 / 確認 */
+.plan-loading {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1rem;
+  color: #8B5E3C;
+  font-size: 0.95rem;
+  font-weight: 600;
+}
+.plan-confirm {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 1.5rem;
+  overflow-y: auto;
+}
+.plan-confirm h2 {
+  font-size: 1.2rem;
+  font-weight: 800;
+  color: #5c3d24;
+  margin: 0;
+}
+.plan-confirm-hint {
+  font-size: 0.85rem;
+  color: #a07850;
+  margin: 0 0 0.5rem;
+}
+.plan-confirm > :deep(.layout-3d-wrap) {
+  width: 100%;
+  max-width: 640px;
+}
+.plan-confirm-actions {
+  display: flex;
+  gap: 0.75rem;
+  margin-top: 0.5rem;
+}
+.plan-reject-btn {
+  padding: 0.6rem 1.2rem;
+  border: 1.5px solid #999;
+  border-radius: 8px;
+  background: transparent;
+  color: #444;
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+.plan-reject-btn:hover { background: #f0f0f0; border-color: #666; }
+.plan-confirm-btn {
+  padding: 0.6rem 1.4rem;
+  border: none;
+  border-radius: 8px;
+  background: #8B5E3C;
+  color: white;
+  font-size: 0.85rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+.plan-confirm-btn:hover { background: #6d4a2f; }
+.plan-confirm-btn:disabled { background: #b0977f; cursor: not-allowed; }
 
 /* 生成結果 */
 .refine-result {

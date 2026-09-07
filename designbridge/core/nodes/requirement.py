@@ -113,14 +113,26 @@ def requirement_analyzer(state: DesignBridgeState) -> dict[str, Any]:
     Parse user_input into structured_requirement (JSON) using Gemini API.
     Falls back to rule-based if API key not set or API fails.
     """
+    task_id = state.get("task_id") or str(uuid.uuid4())
+    iteration = state.get("iteration", 0)
+
+    # 已經有 structured_requirement 了（例如 /api/plan-layout 先跑過一次、使用者確認佈局後
+    # 才呼叫 /api/generate 帶著這份結果進來）——不要重跑 Gemini，直接沿用，省一次 LLM 呼叫。
+    if state.get("structured_requirement"):
+        result: dict[str, Any] = {
+            "task_id": task_id,
+            "iteration": iteration,
+            "structured_requirement": state["structured_requirement"],
+        }
+        if state.get("routing_decision"):
+            result["routing_decision"] = state["routing_decision"]
+        return result
+
     user = state.get("user_input") or {}
     text_prompt = (user.get("text_prompt") or "").strip()
     edit_scope = float(user.get("edit_scope", 0.5))
     initial_image = user.get("initial_image", "無")
     style_reference_image = user.get("style_reference_image", "")
-
-    task_id = state.get("task_id") or str(uuid.uuid4())
-    iteration = state.get("iteration", 0)
 
     # Try LLM (Gemini) first, fall back to passing prompt directly on failure
     try:

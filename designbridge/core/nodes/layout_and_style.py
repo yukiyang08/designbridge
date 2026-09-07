@@ -17,6 +17,28 @@ def layout_and_style_agent_stub(state: DesignBridgeState) -> dict[str, Any]:
     (hint_layout=True from LLM semantic analysis). Otherwise only style params are built,
     and spatial structure is left to the depth map (if available).
     """
+    # 已經跑過一次了（/api/plan-layout 先規劃、使用者確認後才呼叫 /api/generate）——
+    # 不重新搜尋風格、更不重新呼叫 layout_agent 的 Gemini。但 scene_graph 裡的
+    # furniture_placements 可能在 3D 預覽裡被使用者拖動過，projected_depth_path
+    # 是純 NumPy 運算出來的（不是 LLM 呼叫，重算很便宜），必須依當下座標重新投影一次，
+    # 不然 ControlNet 吃到的還是使用者編輯前的舊位置。
+    if state.get("scene_graph"):
+        from designbridge.layout.layout_agent import reproject_scene_graph
+        from designbridge.render.render_prompt import _resolve_output_size
+
+        req = state.get("structured_requirement") or {}
+        user_input = state.get("user_input") or {}
+        task_id = state.get("task_id") or str(uuid.uuid4())
+        output_size = _resolve_output_size(
+            str(user_input.get("output_aspect") or "auto"), user_input.get("initial_image")
+        )
+        updated_scene_graph = reproject_scene_graph(
+            state["scene_graph"], req.get("space_info") or {}, task_id, output_size,
+        )
+        return {"scene_graph": updated_scene_graph}
+    if state.get("style_params"):
+        return {}
+
     req = state.get("structured_requirement") or {}
     user_input = state.get("user_input") or {}
     hint_layout = bool(req.get("hint_layout", False))

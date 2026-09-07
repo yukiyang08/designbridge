@@ -1,12 +1,16 @@
 <script setup>
-import { computed, ref, reactive, watch } from 'vue'
+import { computed, ref, reactive, watch, defineAsyncComponent } from 'vue'
 import { apiUrl } from '@/config/api'
 import { useFurnitureSelection } from '@/composables/useFurnitureSelection'
 import PanoramaViewer from './PanoramaViewer.vue'
 import PointCloudViewer from './PointCloudViewer.vue'
 
+// three.js 是重依賴（~700KB），非同步載入，只有使用者真的展開 3D 預覽時才下載
+const LayoutPreview3D = defineAsyncComponent(() => import('./LayoutPreview3D.vue'))
+
 const refExpanded = ref(true)
 const rawExpanded = ref(false)
+const layout3dExpanded = ref(false)
 const {
   selectedFurniture,
   selectedCount: furnitureSelectedCount,
@@ -324,6 +328,20 @@ const styleReferenceImageUrl = computed(() => {
             <div class="raw-json-label">generation_params</div>
             <pre class="raw-json">{{ JSON.stringify(result.render_result.generation_params, null, 2) }}</pre>
           </div>
+        </div>
+      </div>
+
+      <!-- 3D 佈局預覽（唯讀，只有這次有規劃 layout 時才有 scene_graph） -->
+      <div v-if="result.scene_graph?.furniture_placements?.length" class="card">
+        <button class="raw-toggle" @click="layout3dExpanded = !layout3dExpanded">
+          {{ layout3dExpanded ? '收合 3D 佈局預覽 ▲' : '顯示 3D 佈局預覽 ▼' }}
+        </button>
+        <div v-if="layout3dExpanded" style="margin-top: 0.75rem;">
+          <LayoutPreview3D
+            :scene-graph="result.scene_graph"
+            :render-config="result.layout_render_config"
+            :space-info="result.structured_requirement?.space_info"
+          />
         </div>
       </div>
 

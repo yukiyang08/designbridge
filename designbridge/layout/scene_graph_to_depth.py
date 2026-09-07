@@ -56,6 +56,9 @@ FURNITURE_HEIGHTS: dict[str, float] = {
     "cabinet": 0.90,
     "dresser": 0.85,
     "shelf": 1.60,
+    "cat_tree": 1.40,
+    "dog_bed": 0.20,
+    "litter_box": 0.30,
     "default": 0.80,
 }
 
