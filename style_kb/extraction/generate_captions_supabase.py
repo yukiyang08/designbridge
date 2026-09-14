@@ -31,7 +31,7 @@ from dotenv import load_dotenv
 load_dotenv(_root / ".env")
 load_dotenv()
 
-from designbridge.config import Config
+from designbridge.core.config import Config
 from style_kb.styles import STYLES
 
 STYLE_NAME_MAP = {sid: sname for sid, sname in STYLES}
@@ -98,34 +98,33 @@ def update_caption(row_id: str, caption: str) -> None:
     get_supabase().table("style_images").update({"caption_en2": caption}).eq("id", row_id).execute()
 
 
-# ── Gemini（多 Key 輪替，共用 designbridge.llm）───────────────────────────────
+# ── Gemini（多 Key 輪替，共用 designbridge.render.llm）───────────────────────────────
 
 class QuotaExceeded(Exception):
     pass
 
 
 def generate_caption(image_bytes: bytes, mime_type: str) -> str:
-    """依序嘗試所有 Gemini key；全部 quota 耗盡才 raise QuotaExceeded。"""
-    import google.generativeai as genai
-    from designbridge.llm import call_with_gemini_key_rotation
+    """依序嘗試所有 Gemini key；全部失敗才 raise QuotaExceeded。
 
-    def _do(api_key: str) -> str:
-        genai.configure(api_key=api_key)
-        model = genai.GenerativeModel(Config.GEMINI_MODEL)
-        response = model.generate_content(
-            [{"mime_type": mime_type, "data": image_bytes}, CAPTION_PROMPT],
-            generation_config=genai.GenerationConfig(temperature=0.3),
-        )
-        caption = (getattr(response, "text", "") or "").strip()
-        # 去除可能的引號包裹
-        if caption.startswith('"') and caption.endswith('"'):
-            caption = caption[1:-1].strip()
-        return caption
+    Key 輪替現在由 ``call_llm`` 內建處理（它會依序試 GEMINI_API_KEY 與
+    GEMINI_API_KEYS 的每一把，全部失敗才拋 RuntimeError）。
+    """
+    from designbridge.render.llm import call_llm
 
     try:
-        return call_with_gemini_key_rotation(_do)
+        caption = call_llm(
+            CAPTION_PROMPT,
+            images=[{"mime_type": mime_type, "data": image_bytes}],
+            temperature=0.3,
+        ).strip()
     except RuntimeError as e:
         raise QuotaExceeded(str(e)) from e
+
+    # 去除可能的引號包裹
+    if caption.startswith('"') and caption.endswith('"'):
+        caption = caption[1:-1].strip()
+    return caption
 
 
 # ── 下載 ─────────────────────────────────────────────────────────────────────

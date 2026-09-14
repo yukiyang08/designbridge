@@ -1,14 +1,13 @@
 # Layout 混合架構（Scene Graph → 投影深度圖 → FLUX ControlNet）
 
-> 本文件說明 DesignBridge Layout Agent 目前採用的混合架構、完整資料流，以及相較於
-> session 起始版本（commit `d97b3f90`）的逐檔改動。
+> Layout Agent 採用的混合架構、完整資料流，以及相較於 session 起始版本（commit `d97b3f90`）的改動。
 
 ---
 
-## 1. 要解決的根本問題
+## 1. 所解決的問題
 
 精準布局控制需要 Scene Graph 輸出**座標**；但 Renderer（FLUX.1）只能吃自然語言或影像條件，
-**無法直接解析座標數值**。結果是 Layout Agent 算出來的精確座標對最終生成沒有控制力——
+**無法直接解析座標數值**。原先是 Layout Agent 算出來的精確座標對最終生成沒有控制力——
 座標和成圖之間缺一座橋。
 
 更具體的斷點（在程式碼層面）：
@@ -16,14 +15,14 @@
 - Renderer 其實**早就能吃深度圖**（`_render_hf_kontext` / `_render_flux_kontext_fal` 接受 depth PNG）。
 - 但那張深度來自 Depth-Anything 對**輸入照片**的估計（`vision.get("depth")`）。
 - Layout Agent 的座標只被畫成**俯視平面圖**（`_generate_floor_plan`），從未進到 Renderer。
-- 一旦家具被重新擺放，輸入照片的深度就跟新佈局對不上 → 座標失去控制力。
+- 只要家具被重新擺放，輸入照片的深度就跟新佈局對不上 → 座標失去控制力。
 
-## 2. 採用的混合架構（老師建議）
+## 2. 混合架構（前移建議）
 
 > **不做完整 3D。** 不用 Blender / TripoSR（風險高、家具生成品質不穩）。
 > 每件家具用一個**長方體**代表，由 Scene Graph 座標直接在 3D 房間中擺位，
 > 投影成 2D **透視深度圖**，當作 FLUX ControlNet 的精確空間條件。
-> **純 NumPy** 即可，先只做深度圖，需要時再加 segmentation。
+> **NumPy** 即可，先只做深度圖，需要時再加 segmentation。
 
 ```
 Scene Graph 座標 (俯視 bbox)
@@ -38,7 +37,7 @@ Scene Graph 座標 (俯視 bbox)
 FLUX ControlNet / Kontext 風格化渲染
 ```
 
-關鍵理念：座標**不再翻譯成自然語言讓 FLUX 猜**，而是直接在幾何上產生深度條件。
+理念：座標**不再翻譯成自然語言讓 FLUX 猜**，而是直接在幾何上產生深度條件。
 
 ## 3. 完整資料流（接進 LangGraph 後）
 
@@ -145,19 +144,100 @@ DEPTH_CONTROLNET_MODEL          = "Shakker-Labs/FLUX.1-dev-ControlNet-Depth"
 `pitch=-16` 是用 `calibrate_layout_depth.py --render` 校準出來的：俯角大、看到較多地板，
 成圖構圖最完整、家具分佈最貼合深度圖（對照 `pitch=-8` 偏平視、家具貼牆）。
 
-## 7. 現況與後續
+---
+
+# 第二輪：照片錨定（成圖與原始照片空間配置對不上的修正）
+
+## 8. 上面那版為什麼還是對不上原始照片
+
+使用者回報「render 生出來的圖跟原始照片的空間配置差很多」。根因不是深度圖沒接上，
+而是**那張深度圖本身跟原始照片毫無關係**：
+
+| # | 問題 | 位置 |
+|---|---|---|
+| 1 | 相機是憑空捏造的固定值（hfov=65 / pitch=−16 / setback=0.8），從沒看過使用者的照片 | `scene_graph_to_depth._build_camera` |
+| 2 | 房間是個空長方體盒子，尺寸取自 LLM 猜測（fallback 直接寫死 5×4×3）；原照片的窗、門、牆角、樑柱全部消失 | `_add_room_shell` + `_room_dims` |
+| 3 | 投影圖固定 1024×1024，但 renderer 的 `output_size` 依原圖比例決定 → ControlNet 收到的條件圖被**拉伸變形** | `nodes.renderer` |
+| 4 | 深度極性反了：`load_depth` 註解寫 0=近，但 Depth-Anything 存的是 255=近，於是 `layout_from_depth` 的 foreground/background 整組顛倒，餵給 LLM 的「現有佈局」是錯的 | `depth_to_layout.load_depth` |
+| 5 | 光柵化在螢幕空間**仿射內插距離**，不是透視正確的；且輸出編碼成線性距離而非 disparity，與 Depth-Anything／ControlNet 的訓練慣例不符 | `_raster_triangle` / `project_scene_graph_to_depth` |
+| 6 | 預設後端 `kontext` 只是「鬆散參考深度」，不做逐格對齊 | `Config.LAYOUT_DEPTH_CONTROL_BACKEND` |
+
+## 9. 修法：把家具投影回**原始照片自己的地板**
+
+不要合成假房間。地板是一個平面 → **俯視平面圖到影像是一個 homography**，
+由地板在影像中的四個角完全決定，不需要 metric 3D 重建、不需要估焦距。
+
+```
+原始照片 depth.png + segmentation.png
+        │  擬合地板：牆腳線 → 四角 → homography；消失線 → 家具高度
+        ▼
+俯視 (x,y) ─ H ─▶ 影像 (u,v)      家具 footprint 落在照片裡真實的地板位置
+        │  舊家具清空（保留窗/門/牆），新家具長方體 z-buffer 疊上
+        ▼
+與原照片同視角、同比例的深度圖 → FLUX depth ControlNet
+```
+
+相機視角、房間比例、建築結構全部自動與原圖一致 —— 因為底圖就是原圖的深度。
+
+### 9.1 三段式求解（`photo_geometry.resolve_floor_geometry`）
+
+| 層級 | `projection_mode` | 條件 | 作法 |
+|---|---|---|---|
+| A | `photo_anchored` | 牆腳線（floor/wall 交線）看得到 | 對每列/欄取地板邊界像素擬合左/右/遠三條牆腳線 → 四角 → homography。**只採用外側緊鄰牆面的樣本**；被家具擋出來的假邊界會把線拉歪，必須剔除。單側缺失時用消失線把已知那條側牆線平移出去 |
+| B | `photo_camera` | 牆腳線看不到（真實照片的常態） | 消失線由**地板/天花板兩片平行平面**的 disparity 解出封閉解；看不見的遠牆腳線用**遠牆的 disparity 代回地板平面**反求。無 roll/yaw 時往深處的平行線交會於主消失點 `(cx, v_h)`，梯形即完全確定 |
+| C | `synthetic` | 沒上傳照片、或連地板都看不到 | 退回原本的合成相機 + 空盒子 |
+
+實測 `artifacts/vision/` 既有的 11 組真實照片：6 組走 B（A 幾乎不會成立 —— 居家照片
+的地板總是被家具團團圍住），4 組是完全沒有地板的特寫（正確退回 C）。
+合成 ground-truth 測試中 A 的四角與消失線誤差 < 0.5 px。
+
+### 9.2 關鍵細節
+
+- **消失線**是家具高度換算的樞紐（`v' = v_h + (v − v_h)(1 − h/eye_height)`）。
+  三個估計器依可信度排序：兩側牆腳線都在 → `H⁻¹` 第三列（直線變換是 `l' = H^{-T} l`，
+  無窮遠線對應 **H 的反矩陣**第三列，不是 H 第三列）；否則地板+天花板平面法；
+  再不行假設相機水平。估出來若落在可見地板下方就夾回合理區間。
+- **量遠牆距離不能含 `windowpane` / `door`**：窗外門外是室外，深度遠超本房間，
+  會把遠牆估到天邊（實測 disparity 從 93 掉到 16，遠牆腳線整整跑掉 160 px）。
+- **俯視矩形要取「能完整入鏡的最大矩形」**：俯視看去，可見範圍是離相機越遠越寬的
+  扇形，所以矩形寬度由**最近**那一邊決定。若改用遠邊的畫面寬度，近處家具會被推出畫面。
+- **舊家具清空**：分割標成地板的像素換成解析地板平面（抹掉深度凹凸），其餘被清掉的
+  像素用最近的建築表面補值。曾試過以消失線當地板/牆分界，會把整片中景誤判成地板、
+  外插出比整張照片最遠處還遠的黑洞 —— 因此 disparity 一律夾在照片實際出現的範圍內。
+
+## 10. 第二輪的逐檔改動
+
+| 檔案 | 類型 | 改動 |
+|---|---|---|
+| `designbridge/photo_geometry.py` | **新檔** | 地板 homography / 消失線 / 清空舊家具，純 NumPy（scipy 選用） |
+| `designbridge/scene_graph_to_depth.py` | 修改 | 新增 `project_layout_onto_photo()`；z-buffer 改為 **inverse-depth 語意**（平面的 1/深度在螢幕空間才是仿射的 → 透視正確），輸出改為 disparity 編碼以對齊 Depth-Anything |
+| `designbridge/layout_agent.py` | 修改 | `run_layout_agent` 收 `vision_features` / `output_size`；`_generate_projected_depth` 改為三段式並回傳 `projection_mode` |
+| `designbridge/nodes.py` | 修改 | 佈局節點傳入 vision + 輸出尺寸；新增 `_fit_condition_image()` 把條件圖**置中裁切**到輸出尺寸（原本會被後端拉伸剪切幾何）；深度後端支援 `auto` |
+| `designbridge/depth_to_layout.py` | 修改 | 修正深度極性（`load_depth` 反相），foreground/background 不再顛倒 |
+| `designbridge/config.py` | 修改 | 新增 `LAYOUT_PHOTO_ANCHORED_DEPTH` / `LAYOUT_CAMERA_EYE_HEIGHT`；`LAYOUT_DEPTH_CONTROL_BACKEND` 預設改 `auto` |
+
+新增設定：
+
+```python
+LAYOUT_PHOTO_ANCHORED_DEPTH  = true   # DESIGNBRIDGE_LAYOUT_PHOTO_ANCHORED_DEPTH
+LAYOUT_CAMERA_EYE_HEIGHT     = 1.5    # DESIGNBRIDGE_LAYOUT_CAMERA_EYE_HEIGHT（只影響家具高度）
+LAYOUT_DEPTH_CONTROL_BACKEND = "auto" # 有 FAL_KEY → controlnet，否則 kontext
+```
+
+## 11. 現況與後續
 
 | 元件 | 狀態 |
 |---|---|
-| 投影模組 + 校準工具 | ✅ 完成、單元測試過 |
-| `run_layout_agent` → 投影深度 | ✅ 已接、真實 LLM 與離線 fallback 皆驗證通過 |
-| live graph 端到端 | ✅ 佈局節點已非 stub，完整流程會產生並使用投影深度 |
-| Kontext depth LoRA 後端 | ✅ 既有；校準確認可用（但屬「鬆散參考深度」，非逐格對齊） |
-| 真正 FLUX depth ControlNet 後端 | ⚠️ 程式碼已備、預設關閉；尚未端到端實測（需 `FAL_KEY`，HF 額度已用罄） |
+| 照片錨定投影（A/B/C 三段） | ✅ 合成 ground-truth 誤差 < 0.5 px；11 組真實照片 7 組可錨定 |
+| 條件圖尺寸對齊 | ✅ 置中裁切到 `output_size`，不再拉伸 |
+| 深度極性 / 透視正確性 | ✅ 已修 |
+| live graph 端到端 | ✅ 佈局節點會傳 vision_features，renderer 會覆蓋深度並記錄 `layout_projection_mode` |
+| 真正 FLUX depth ControlNet 後端 | ⚠️ 程式碼已備、`auto` 下有 `FAL_KEY` 就會走；仍未實際出圖驗證（本機 HF/fal 額度已用罄，402/410） |
 
 **建議下一步：**
 
-1. 設 `FAL_KEY` + `LAYOUT_DEPTH_CONTROL_BACKEND=controlnet`，實測真正 ControlNet 後端，
-   微調 `conditioning_scale`（通常 0.5〜0.8）與 fal `controlnets` 參數名。
-2. 若需更高家具辨識度，再把 segmentation mask 也接成第二條 ControlNet 條件（目前已產出、尚未餵入）。
-3. 補跑 HFOV 上限的校準（65 vs 80 因額度用罄未比完）。
+1. 設 `FAL_KEY` 實際出圖，比對成圖與原照片的構圖；微調 `depth_conditioning_scale`（0.5〜0.8）。
+2. 家具高度目前靠 `LAYOUT_CAMERA_EYE_HEIGHT` 假設，若成圖家具偏高/偏矮就調這個值。
+3. 舊家具清空目前是最近鄰補值，邊界會有 Voronoi 塊狀感；若 ControlNet 對此敏感可改成
+   沿牆面/地板平面外插。
+4. segmentation mask 已產出但尚未接成第二條 ControlNet 條件。

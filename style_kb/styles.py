@@ -11,6 +11,5 @@ STYLES = [
     ("japanese", "日式"),
     ("american", "美式"),
     ("luxury", "奢華"),
-    ("neoclassic", "新古典"),
     ("other", "其他"),
 ]

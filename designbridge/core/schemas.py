@@ -39,6 +39,11 @@ class LayoutConstraints(TypedDict):
     must_keep: NotRequired[list[str]]  # Furniture to keep
     must_add: NotRequired[list[str]]  # Furniture to add
     must_remove: NotRequired[list[str]]  # Furniture to remove
+    # Furniture to relocate. Each entry: {"target": type, "qualifier": which one
+    # ("left" / "by the window" / ""), "to": where it should end up}.
+    # Anything not named in add/remove/move keeps its original photo depth verbatim,
+    # so this list is what decides which pixels are allowed to change.
+    must_move: NotRequired[list[dict[str, str]]]
     immutable_regions: NotRequired[list[dict[str, Any]]]  # No-change regions
     functional_zones: NotRequired[list[dict[str, Any]]]  # Work/rest zones
 

@@ -5,7 +5,8 @@ Controlled by ``DESIGNBRIDGE_STARTUP_WARMUP``:
 
 - ``off`` / ``0`` / ``false``: skip warmup
 - ``min`` (default): local Chroma + MiniLM if the vector store exists,
-  pipeline CLIP (transformers), and the text-to-text style embedder (e.g. bge-m3)
+  pipeline CLIP (transformers), the text-to-text style embedder (e.g. bge-m3),
+  SAM 2, and the depth + segmentation models
 
 Each step is isolated: a failure in one step does not block the others.
 """
@@ -50,9 +51,26 @@ def run_startup_warmup() -> None:
 
         _get_sam2_predictor()
 
+    def _warm_vision() -> None:
+        """Depth + segmentation checkpoints.
+
+        By far the largest cold cost in the pipeline — constructing these two took ~155s
+        on the CPU-only ARM box this was measured on, all of it charged to whoever
+        uploaded the first photo. Loading them here moves it to boot, where nobody is
+        waiting on a spinner.
+        """
+        from designbridge.core.config import Config
+        from designbridge.layout.vision import _load_depth_model, _load_upernet
+
+        if Config.ENABLE_DEPTH:
+            _load_depth_model(Config.DEPTH_MODEL)
+        if Config.ENABLE_SEGMENTATION:
+            _load_upernet(Config.SEGMENTATION_MODEL)
+
     _step("Local Chroma vector store (if ready)", _warm_chroma)
     _step("Pipeline CLIP evaluator (transformers)", _warm_clip_eval)
     _step("Text-to-text style embedder (sentence-transformers)", _warm_text_embedder)
     _step("SAM 2 instance segmentation predictor", _warm_sam2)
+    _step("Depth + segmentation models (transformers)", _warm_vision)
 
     print("DesignBridge startup warmup done.", flush=True)

@@ -32,10 +32,16 @@ def load_depth(path: str) -> np.ndarray:
     """
     讀取深度圖，回傳 float32 陣列，數值已正規化到 [0, 1]。
     0 = 最近（前景）, 1 = 最遠（背景 / 牆壁）
+
+    注意：vision.run_depth_estimation 存的是 Depth-Anything 的 disparity 視覺化，
+    慣例是「近=亮(255)、遠=暗(0)」，與本模組（及下游 ZONE_THRESHOLDS、
+    _guess_furniture、compute_spatial_metrics）採用的 0=近 慣例相反，
+    因此在此反相。少了這一步，foreground/background 會整組顛倒，
+    萃取出的 furniture_candidates 位置語意也會全錯。
     """
     img = Image.open(path).convert("L")          # 轉灰階
     arr = np.array(img, dtype=np.float32) / 255.0
-    return arr
+    return 1.0 - arr
 
 
 # ──────────────────────────────────────────────

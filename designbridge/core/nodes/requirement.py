@@ -10,6 +10,104 @@ from designbridge.core.prompts import REQUIREMENT_ANALYZER_PROMPT
 from designbridge.core.state import DesignBridgeState
 
 
+# Openings are modelled as a thin band on the wall they belong to, in the top-down
+# normalized frame the layout agent uses (x: 0=left→1=right, y: 0=far wall→1=viewer).
+_WALL_BAND = 0.06
+
+_WALL_ALIASES: dict[str, str] = {
+    "far": "far", "back": "far", "north": "far", "top": "far", "rear": "far",
+    "near": "near", "front": "near", "south": "near", "bottom": "near",
+    "left": "left", "west": "left",
+    "right": "right", "east": "right",
+}
+
+
+def _opening_to_box(opening: Any) -> dict[str, Any] | None:
+    """`{wall, start, end}` → top-down `{x, y, w, h, wall}`.
+
+    The requirement analyzer is asked for wall + span because an LLM gets that right far
+    more often than four raw coordinates, but every downstream enforcer
+    (`_enforce_bed_not_near_window`, the special-constraint verifiers) reads x/y/w/h — so
+    the conversion happens here, once. Entries that already carry x/y/w/h are passed
+    through with only the `wall` label inferred, keeping older payloads working.
+    """
+    if not isinstance(opening, dict):
+        return None
+
+    wall = _WALL_ALIASES.get(str(opening.get("wall", "")).strip().lower(), "")
+
+    if "x" in opening or "y" in opening:
+        try:
+            box = {
+                "x": float(opening.get("x", 0.0)),
+                "y": float(opening.get("y", 0.0)),
+                "w": float(opening.get("w", 0.15)),
+                "h": float(opening.get("h", 0.15)),
+            }
+        except (TypeError, ValueError):
+            return None
+        if not wall:
+            # Infer from which edge the box hugs; ties go to the horizontal walls.
+            edges = {"far": box["y"], "near": 1.0 - box["y"] - box["h"],
+                     "left": box["x"], "right": 1.0 - box["x"] - box["w"]}
+            wall = min(edges, key=lambda k: edges[k])
+        box["wall"] = wall
+        return box
+
+    try:
+        start = float(opening.get("start", 0.0))
+        end = float(opening.get("end", 0.0))
+    except (TypeError, ValueError):
+        return None
+    start, end = max(0.0, min(1.0, min(start, end))), max(0.0, min(1.0, max(start, end)))
+    if end - start < 0.01 or not wall:
+        return None
+
+    span = end - start
+    if wall == "far":
+        return {"x": start, "y": 0.0, "w": span, "h": _WALL_BAND, "wall": wall}
+    if wall == "near":
+        return {"x": start, "y": 1.0 - _WALL_BAND, "w": span, "h": _WALL_BAND, "wall": wall}
+    if wall == "left":
+        return {"x": 0.0, "y": start, "w": _WALL_BAND, "h": span, "wall": wall}
+    return {"x": 1.0 - _WALL_BAND, "y": start, "w": _WALL_BAND, "h": span, "wall": wall}
+
+
+def _normalize_space_info(req: dict[str, Any]) -> None:
+    """Guarantee `structured_requirement["space_info"]` exists and is in top-down boxes.
+
+    Without this the key is simply absent on the LLM path (the analyzer prompt only
+    started emitting it alongside this change), so the layout agent was planning every
+    room as a 5.0×4.0 box with no windows and no doors — which makes any "move it to the
+    window" instruction unresolvable.
+    """
+    def _positive(value: Any, default: float) -> float:
+        try:
+            f = float(value)
+        except (TypeError, ValueError):
+            return default
+        return f if f > 0 else default
+
+    space_info = req.get("space_info")
+    if not isinstance(space_info, dict):
+        space_info = {}
+
+    size = space_info.get("estimated_size")
+    size = size if isinstance(size, dict) else {}
+    space_info["estimated_size"] = {
+        "width": _positive(size.get("width"), 5.0),
+        "height": _positive(size.get("height"), 2.8),
+        "depth": _positive(size.get("depth"), 4.0),
+    }
+
+    for key in ("windows", "doors"):
+        raw = space_info.get(key)
+        boxes = [b for b in (_opening_to_box(o) for o in raw) if b] if isinstance(raw, list) else []
+        space_info[key] = boxes
+
+    req["space_info"] = space_info
+
+
 def requirement_analyzer(state: DesignBridgeState) -> dict[str, Any]:
     """
     Parse user_input into structured_requirement (JSON) using Gemini API.
@@ -44,6 +142,16 @@ def requirement_analyzer(state: DesignBridgeState) -> dict[str, Any]:
         }
 
     # Merge family needs and feng shui rules into structured_requirement
+    # Must run before the layout agent reads windows/doors, and before the special
+    # constraints (wheelchair clearance, child safety) look for door positions.
+    _normalize_space_info(structured_requirement)
+    _si = structured_requirement["space_info"]
+    print(
+        f"[requirement_analyzer] space_info: "
+        f"{_si['estimated_size']['width']}×{_si['estimated_size']['depth']}m, "
+        f"windows={len(_si['windows'])}, doors={len(_si['doors'])}"
+    )
+
     family_needs   = user.get("family_needs")   or []
     fengshui_rules = user.get("fengshui_rules") or []
     if family_needs or fengshui_rules:

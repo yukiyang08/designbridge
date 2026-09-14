@@ -24,6 +24,28 @@ def layout_and_style_agent_stub(state: DesignBridgeState) -> dict[str, Any]:
 
     style_params = timed_call("layout_and_style.style_search", task_id, build_style_params, req, user_input)
 
+    # Step 1 (the /layout API endpoint) may already have planned the room and seeded its
+    # scene_graph into state. Re-running the layout agent here would discard that plan and
+    # hand back a different arrangement than the one the user just reviewed and accepted,
+    # so reuse it and only build the style params.
+    existing_scene_graph = state.get("scene_graph") or {}
+    if existing_scene_graph.get("floor_plan_path"):
+        print(
+            "[layout_and_style] Reusing Step-1 floor plan: "
+            f"{existing_scene_graph['floor_plan_path']}"
+        )
+        return {
+            **({"style_params": style_params} if style_params else {}),
+            "intermediate_outputs": {
+                **(state.get("intermediate_outputs") or {}),
+                "layout_and_style_agent": {
+                    "layout": "reused_from_step1",
+                    "hint_layout": hint_layout,
+                    "style_profile_id": style_params.get("style_profile_id") if style_params else None,
+                },
+            },
+        }
+
     scene_graph: dict[str, Any] | None = None
     layout_intermediate: dict[str, Any] = {}
     if hint_layout:

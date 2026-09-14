@@ -26,7 +26,6 @@ _STYLE_PROMPTS: dict[str, dict[str, str]] = {
     "classic":    {"positive": "classical traditional interior, symmetry, rich fabrics, crown molding, warm lighting, photorealistic, high quality", "negative": "minimalist, industrial, raw"},
     "country":    {"positive": "country rustic farmhouse interior, warm wood, linen, natural materials, cozy, photorealistic, high quality", "negative": "minimalist, industrial, cold, sterile"},
     "luxury":     {"positive": "luxury high-end interior, marble, gold accents, velvet, opulent, photorealistic, high quality", "negative": "minimalist, rustic, budget"},
-    "neoclassic": {"positive": "neoclassical interior, elegant columns, symmetry, refined details, warm tones, photorealistic, high quality", "negative": "minimalist, industrial, rustic"},
 }
 
 
@@ -93,10 +92,22 @@ def _get_supabase():
 @dataclass
 class SupabaseStyleResult:
     style_id: str
-    image_url: str
+    image_url: str          # DB identity key (R2 mirror) — used for re-lookup/joins, never shown
     style_name: str
     similarity: float
     style_kb: dict[str, Any] | None = None
+    display_url: str = ""   # actually-reachable URL for showing/downloading; falls back to image_url
+
+    def __post_init__(self):
+        if not self.display_url:
+            self.display_url = self.image_url
+
+
+def _resolve_display_url(row: dict[str, Any]) -> str:
+    """R2-mirrored image_url is dead for a large chunk of rows (e.g. ~99% of `american`
+    is 404) while source_meta.url (the original scrape source) is reliably alive — prefer
+    it for anything the browser has to render or that gets downloaded for generation."""
+    return (row.get("source_meta") or {}).get("url") or row["image_url"]
 
 
 def _batch_load_style_kb(
@@ -130,15 +141,16 @@ def _batch_load_style_kb(
 def query_style_image_by_url(image_url: str) -> list[SupabaseStyleResult]:
     """Look up the exact row for a specific image (e.g. one the user picked from the
     AI-suggested candidates) instead of re-running a fresh text search that might
-    silently return a different image — see RECORD.md 「兩張圖都套用」."""
+    silently return a different image — see RECORD.md 「兩張圖都套用」.
+
+    `image_url` here is whatever the frontend echoes back, which is display_url
+    (source_meta.url when alive, else the R2 image_url) — so match either column.
+    """
     client = _get_supabase()
+    cols = "style_id,image_url,source_meta,style_kb"
     rows = (
-        client.table("style_images")
-        .select("style_id,image_url,source_meta,style_kb")
-        .eq("image_url", image_url)
-        .limit(1)
-        .execute()
-        .data
+        client.table("style_images").select(cols).eq("image_url", image_url).limit(1).execute().data
+        or client.table("style_images").select(cols).eq("source_meta->>url", image_url).limit(1).execute().data
         or []
     )
     if not rows:
@@ -149,6 +161,7 @@ def query_style_image_by_url(image_url: str) -> list[SupabaseStyleResult]:
         SupabaseStyleResult(
             style_id=row["style_id"],
             image_url=row["image_url"],
+            display_url=_resolve_display_url(row),
             style_name=style_name,
             similarity=1.0,  # 使用者明確選定，不是排序出來的分數
             style_kb=_pick_style_kb(row) or None,
@@ -169,6 +182,18 @@ def query_style_images_supabase(
         style_id=style_id,
         top_k=top_k,
     )
+
+
+def query_style_images_diverse(text_query: str, per_style: int = 1) -> list[SupabaseStyleResult]:
+    """One result per style instead of a single global top-k — used when the user hasn't
+    written a style description, so the generic fallback query (room type label / "interior
+    design") would otherwise cluster on whichever 1-2 styles embed closest to it instead of
+    giving the user a candidate from every style to pick from."""
+    results: list[SupabaseStyleResult] = []
+    for sid in _STYLE_PROMPTS:
+        results.extend(_query_style_text_to_text(text_query=text_query, style_id=sid, top_k=per_style))
+    results.sort(key=lambda r: r.similarity, reverse=True)
+    return results
 
 
 def _pick_style_kb(row: dict[str, Any]) -> dict[str, Any]:
@@ -227,6 +252,7 @@ def _query_style_text_to_text(
                     SupabaseStyleResult(
                         style_id=row["style_id"],
                         image_url=row["image_url"],
+                        display_url=_resolve_display_url(row),
                         style_name=style_name,
                         similarity=round(float(row["similarity"]), 4),
                     )
@@ -273,6 +299,7 @@ def _query_style_text_to_text(
             SupabaseStyleResult(
                 style_id=row["style_id"],
                 image_url=row["image_url"],
+                display_url=_resolve_display_url(row),
                 style_name=style_name,
                 similarity=round(float(score), 4),
                 style_kb=kb if isinstance(kb, dict) else None,
@@ -393,8 +420,9 @@ def blend_style_params_supabase(results: list[SupabaseStyleResult]) -> dict[str,
     top = results[0]
     style_id = top.style_id
 
-    # Download the top matched image
-    ref_path = download_style_image(top.image_url)
+    # Download the top matched image (display_url is the reachable one — image_url
+    # is the DB join key and is dead for a large chunk of rows, e.g. `american`)
+    ref_path = download_style_image(top.display_url)
 
     style_kb = top.style_kb
     ai_params = style_kb.get("ai_params") if isinstance(style_kb, dict) else {}
@@ -433,7 +461,7 @@ def blend_style_params_supabase(results: list[SupabaseStyleResult]) -> dict[str,
         "controlnet_type": "depth",
         "style_summary": summary,
         "material_recommendations": _extract_material_recommendations(style_kb or {}),
-        "reference_image_url": top.image_url,
+        "reference_image_url": top.display_url,
         "reference_image_path": str(ref_path) if ref_path else None,
         "top_similarity": top.similarity,
         "source": "supabase_style_kb" if style_kb else "supabase_vector",

@@ -24,6 +24,10 @@ OUT_DIR    = Path(__file__).resolve().parent / "artifacts" / "test_masks"
 
 # 自動選第一個有 segmentation 的 task
 def _pick_task() -> Path | None:
+    # 還沒跑過生圖流程時 artifacts/vision/ 根本不存在，iterdir() 會直接拋
+    # FileNotFoundError，蓋掉底下那句本來就寫好的友善提示。
+    if not VISION_DIR.is_dir():
+        return None
     for d in sorted(VISION_DIR.iterdir()):
         if (d / "segmentation.png").exists() and (d / "segmentation_meta.json").exists():
             return d

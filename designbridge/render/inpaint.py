@@ -314,6 +314,36 @@ def expand_mask_by_segmentation(
     return mask, selected_labels, per_object
 
 
+def sam2_mask_from_box(
+    image_path: str,
+    box_xyxy: tuple[int, int, int, int],
+) -> Any:
+    """以 bounding box 為 prompt 取得單一實例的精確遮罩（bool ndarray），失敗回傳 None。
+
+    佈局路徑用這個把「語意類別的連通區域」精修成乾淨的實例輪廓：UPerNet 只給類別，
+    連通區域只給粗略團塊，SAM 2 才切得出物件真正的邊界。
+    """
+    import numpy as np
+    from PIL import Image
+
+    predictor = _get_sam2_predictor()
+    if predictor is None:
+        return None
+    try:
+        import torch
+
+        img_rgb = np.array(Image.open(image_path).convert("RGB"))
+        with torch.inference_mode():
+            predictor.set_image(img_rgb)
+            masks, scores, _ = predictor.predict(
+                box=np.asarray(box_xyxy), multimask_output=False
+            )
+        return masks[int(scores.argmax())].astype(bool)
+    except Exception as e:
+        print(f"[SAM2] box-prompt inference failed: {e}")
+        return None
+
+
 def generate_mask_with_sam2(
     image_path: str,
     drawn_mask: Any,

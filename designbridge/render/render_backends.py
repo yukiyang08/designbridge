@@ -458,6 +458,7 @@ def _render_flux_controlnet_depth_fal(
     num_steps: int = 28,
     guidance_scale: float = 3.5,
     output_size: tuple[int, int] = (1024, 1024),
+    extra_controls: list[dict] | None = None,
 ) -> bool:
     """Generate image via fal.ai FLUX-general + a true depth ControlNet.
 
@@ -466,6 +467,12 @@ def _render_flux_controlnet_depth_fal(
     scene-graph projected depth actually constrains furniture placement in the render.
 
     conditioning_scale: 0.0 = ignore depth, ~1.0 = strongly follow depth geometry.
+
+    extra_controls: further ControlNets stacked on the same call, each
+    `{"path", "image_path", "scale", "mode"}` (`mode` only for union-style models).
+    Used to add the segmentation-derived boundary condition, which supplies the hard
+    edges depth cannot. A failure to upload one of these is not fatal — the render
+    proceeds on whatever conditions did upload.
     """
     fal_key = Config.FAL_KEY
     if not fal_key:
@@ -498,18 +505,42 @@ def _render_flux_controlnet_depth_fal(
 
         print(f"[controlnet] model: {Config.DEPTH_CONTROLNET_MODEL}  scale: {conditioning_scale}")
 
+        controlnets: list[dict] = [
+            {
+                "path": Config.DEPTH_CONTROLNET_MODEL,
+                "control_image_url": depth_url,
+                "conditioning_scale": conditioning_scale,
+            }
+        ]
+
+        for control in extra_controls or []:
+            image_path = str(control.get("image_path") or "")
+            path = str(control.get("path") or "")
+            if not image_path or not path or not Path(image_path).is_file():
+                continue
+            try:
+                with open(image_path, "rb") as f:
+                    control_url = fal_client.upload(f.read(), content_type="image/png")
+            except Exception as e:
+                print(f"⚠️  條件圖上傳失敗（{Path(image_path).name}: {e}），略過該 ControlNet")
+                continue
+            entry: dict = {
+                "path": path,
+                "control_image_url": control_url,
+                "conditioning_scale": float(control.get("scale", 0.5)),
+            }
+            mode = control.get("mode")
+            if mode not in (None, ""):
+                entry["control_mode"] = int(mode)
+            controlnets.append(entry)
+            print(f"[controlnet] + {path}  scale: {entry['conditioning_scale']}")
+
         arguments: dict = {
             "prompt": prompt.strip(),
             "num_inference_steps": num_steps,
             "guidance_scale": guidance_scale,
             "image_size": image_size,
-            "controlnets": [
-                {
-                    "path": Config.DEPTH_CONTROLNET_MODEL,
-                    "control_image_url": depth_url,
-                    "conditioning_scale": conditioning_scale,
-                }
-            ],
+            "controlnets": controlnets,
         }
 
         result = fal_client.subscribe(
@@ -616,6 +647,207 @@ def _render_flux_ipadapter_fal(
         return False
     except Exception as e:
         print(f"⚠️  fal.ai FLUX IP-Adapter 失敗：{e}")
+        return False
+
+
+def _render_flux_depth_controlnet_fal(
+    prompt: str,
+    depth_path: str,
+    out_path: Path,
+    *,
+    edge_path: str | None = None,
+    edge_conditioning_scale: float = 0.55,
+    negative_prompt: str = "",
+    conditioning_scale: float = 0.7,
+    depth_control_end: float = 1.0,
+    edge_control_end: float = 1.0,
+    num_steps: int = 28,
+    guidance_scale: float = 3.5,
+    output_size: tuple[int, int] = (1024, 1024),
+) -> bool:
+    """Generate via fal.ai FLUX-general + a FLUX ControlNet Union.
+
+    Feeds an eye-level depth map (from ``layout_projection.render_layout_depth_map``)
+    so the render honors the 2D floor-plan furniture layout. ``conditioning_scale``
+    controls how strictly the geometry is followed (0 = ignore, ~1 = strict).
+
+    ``depth_control_end`` / ``edge_control_end`` (0..1) end each control partway
+    through denoising — the structure is fixed in the early steps, then the model
+    freely resolves materials and realistic detail. 1.0 = control the whole run.
+
+    When ``edge_path`` is given, a Canny edge map is added as a SECOND control on the
+    same Union model. Edges don't fade with distance, so this locks the position of
+    far/back-wall furniture that the depth map alone renders as near-black (invisible).
+    """
+    fal_key = Config.FAL_KEY
+    if not fal_key:
+        return False
+    try:
+        import os
+
+        import fal_client
+        import requests
+
+        os.environ["FAL_KEY"] = fal_key
+
+        print("☁️  fal.ai FLUX-general + ControlNet Union 推理中...")
+
+        with open(depth_path, "rb") as f:
+            depth_url = fal_client.upload(f.read(), content_type="image/png")
+
+        width, height = output_size
+        size_map = {
+            (1024, 1024): "square_hd",
+            (512, 512): "square",
+            (1024, 768): "landscape_4_3",
+            (768, 1024): "portrait_4_3",
+            (1280, 720): "landscape_16_9",
+            (720, 1280): "portrait_16_9",
+        }
+        image_size = size_map.get((width, height), {"width": width, "height": height})
+
+        # FLUX ControlNet Union on fal uses the `controlnet_unions` schema; each entry
+        # in `controls` selects a modality via a string `control_mode`. We can stack a
+        # Canny edge control (distance-independent placement) + a depth control
+        # (3D structure) on the SAME Union model.
+        controls: list[dict] = []
+        if edge_path and os.path.isfile(edge_path):
+            with open(edge_path, "rb") as f:
+                edge_url = fal_client.upload(f.read(), content_type="image/png")
+            controls.append({
+                "control_image_url": edge_url,
+                "control_mode": "canny",
+                "conditioning_scale": edge_conditioning_scale,
+                "start_percentage": 0.0,
+                "end_percentage": edge_control_end,
+            })
+        controls.append({
+            "control_image_url": depth_url,
+            "control_mode": Config.FAL_DEPTH_CONTROL_MODE,
+            "conditioning_scale": conditioning_scale,
+            "start_percentage": 0.0,
+            "end_percentage": depth_control_end,
+        })
+
+        controlnet_union: dict = {
+            "path": Config.FAL_DEPTH_CONTROLNET_MODEL,
+            "controls": controls,
+        }
+
+        arguments: dict = {
+            "prompt": prompt,
+            "num_inference_steps": num_steps,
+            "guidance_scale": guidance_scale,
+            "image_size": image_size,
+            "controlnet_unions": [controlnet_union],
+        }
+        # NOTE: negative_prompt is intentionally NOT sent. On fal, a ControlNet-Union
+        # pipeline fails to load with a negative prompt via either NAG (default) or
+        # real-CFG ("Could not load pipeline", HTTP 422). Undesired content is steered
+        # out via positive phrasing in the prompt instead.
+        if negative_prompt.strip():
+            print("[controlnet] negative_prompt ignored (incompatible with ControlNet-Union on fal)")
+        _modes = "+".join(c["control_mode"] for c in controls)
+        print(f"[controlnet] model={Config.FAL_DEPTH_CONTROLNET_MODEL} "
+              f"controls={_modes} depth_scale={conditioning_scale} edge_scale={edge_conditioning_scale} "
+              f"depth_end={depth_control_end} edge_end={edge_control_end}")
+
+        result = fal_client.subscribe(
+            "fal-ai/flux-general",
+            arguments=arguments,
+            with_logs=True,
+        )
+        for log in (result.get("logs") or []):
+            print(f"[fal log] {log.get('message', '')}")
+
+        img_url = result["images"][0]["url"]
+        resp = requests.get(img_url, timeout=60)
+        resp.raise_for_status()
+
+        out_path.parent.mkdir(parents=True, exist_ok=True)
+        out_path.write_bytes(resp.content)
+        print(f"✅ fal.ai FLUX depth-ControlNet 完成：{out_path.name}")
+        return True
+
+    except ImportError:
+        print("⚠️  fal_client 未安裝，請執行：pip install fal-client")
+        return False
+    except Exception as e:
+        import traceback
+
+        print(f"⚠️  fal.ai FLUX depth-ControlNet 失敗：{e}")
+        traceback.print_exc()
+        return False
+
+
+def _render_flux_img2img_fal(
+    prompt: str,
+    init_path: str,
+    out_path: Path,
+    *,
+    strength: float = 0.65,
+    num_steps: int = 40,
+    guidance_scale: float = 3.5,
+    output_size: tuple[int, int] = (1024, 1024),
+) -> bool:
+    """Refine a material block-out into a photorealistic render via fal FLUX img2img.
+
+    ``strength`` is the denoise amount: LOW (~0.5) keeps furniture positions almost
+    exactly (precise coords, less texture); HIGH (~0.85) adds realism but drifts. This
+    is the precision↔realism slider — the block-out fixes WHERE things are, img2img
+    fills in materials/lighting.
+    """
+    fal_key = Config.FAL_KEY
+    if not fal_key:
+        return False
+    try:
+        import os
+
+        import fal_client
+        import requests
+
+        os.environ["FAL_KEY"] = fal_key
+
+        with open(init_path, "rb") as f:
+            init_url = fal_client.upload(f.read(), content_type="image/png")
+
+        width, height = output_size
+        size_map = {
+            (1024, 1024): "square_hd", (512, 512): "square",
+            (1024, 768): "landscape_4_3", (768, 1024): "portrait_4_3",
+            (1280, 720): "landscape_16_9", (720, 1280): "portrait_16_9",
+        }
+        image_size = size_map.get((width, height), {"width": width, "height": height})
+
+        print(f"☁️  fal.ai FLUX img2img 推理中... (strength={strength})")
+        result = fal_client.subscribe(
+            "fal-ai/flux/dev/image-to-image",
+            arguments={
+                "prompt": prompt,
+                "image_url": init_url,
+                "strength": strength,
+                "num_inference_steps": num_steps,
+                "guidance_scale": guidance_scale,
+                "image_size": image_size,
+            },
+            with_logs=True,
+        )
+        img_url = result["images"][0]["url"]
+        resp = requests.get(img_url, timeout=60)
+        resp.raise_for_status()
+        out_path.parent.mkdir(parents=True, exist_ok=True)
+        out_path.write_bytes(resp.content)
+        print(f"✅ fal.ai FLUX img2img 完成：{out_path.name}")
+        return True
+
+    except ImportError:
+        print("⚠️  fal_client 未安裝，請執行：pip install fal-client")
+        return False
+    except Exception as e:
+        import traceback
+
+        print(f"⚠️  fal.ai FLUX img2img 失敗：{e}")
+        traceback.print_exc()
         return False
 
 

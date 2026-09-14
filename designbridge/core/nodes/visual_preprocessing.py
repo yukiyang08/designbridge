@@ -28,6 +28,9 @@ def visual_preprocessing_local(state: DesignBridgeState) -> dict[str, Any]:
                 depth_model=Config.DEPTH_MODEL,
                 segmentation_model=Config.SEGMENTATION_MODEL,
                 artifacts_root=Path(Config.ARTIFACTS_DIR),
+                max_edge=Config.VISION_MAX_EDGE,
+                parallel=Config.VISION_PARALLEL,
+                use_cache=Config.VISION_CACHE,
             )
             if artifacts.depth_path:
                 vision_features["depth"] = artifacts.depth_path

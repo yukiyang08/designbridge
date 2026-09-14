@@ -64,10 +64,16 @@ def _resolve_gemini_api_keys() -> list[str | None]:
     return keys
 
 
-def _image_to_gemini_blob(image: str | bytes | Path) -> dict:
+def _image_to_gemini_blob(image: str | bytes | Path | dict) -> dict:
     """Convert image to a Gemini inline blob dict {mime_type, data}."""
     mime_map = {".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".png": "image/png",
                 ".webp": "image/webp", ".gif": "image/gif"}
+
+    # Already a blob: the caller knows the real mime type (e.g. it came from a
+    # response's Content-Type). Trust it — there is no filename left to guess from,
+    # and raw bytes would otherwise be labelled image/jpeg whatever they are.
+    if isinstance(image, dict) and "data" in image:
+        return {"mime_type": image.get("mime_type") or "image/jpeg", "data": image["data"]}
 
     if isinstance(image, str) and image.startswith(("http://", "https://")):
         import httpx
@@ -102,7 +108,7 @@ def _history_to_gemini(history: list[dict]) -> list[dict]:
 
 def _build_gemini_parts(
     prompt: str,
-    images: list[str | bytes | Path] | None,
+    images: list[str | bytes | Path | dict] | None,
 ) -> list:
     """Build a list of google.genai Part objects from images + text."""
     from google.genai import types
@@ -114,17 +120,32 @@ def _build_gemini_parts(
     return parts
 
 
-def _gemini_client_and_config(
-    api_key: str | None,
-    system: str | None,
-    temperature: float | None,
-    max_tokens: int | None,
-):
-    try:
-        from google import genai
-        from google.genai import types
-    except ImportError as exc:
-        raise RuntimeError("google-genai 未安裝。請先執行: pip install google-genai") from exc
+def _thinking_config(types):
+    """ThinkingConfig for the configured model, or None to leave it to the model.
+
+    ``thinking_budget=0`` means "don't think at all". Only the Gemini 2.x models
+    accept that: sending 0 to a 3.x model is rejected outright with
+    ``400 INVALID_ARGUMENT``, which reads as a broken API key rather than an
+    unsupported parameter. Since 3.x cannot disable thinking, the honest
+    translation of "0" there is to send no thinking_config and let the model pick
+    its own budget. A positive budget is a real request and is always passed on.
+    """
+    budget = Config.GEMINI_THINKING_BUDGET
+    if budget == 0 and not Config.GEMINI_MODEL.startswith(("gemini-1.", "gemini-2.")):
+        return None
+    return types.ThinkingConfig(thinking_budget=budget)
+
+
+_clients: dict[str | None, object] = {}  # api_key (None = Vertex) -> cached genai.Client
+
+
+def _get_client(api_key: str | None):
+    """Cached genai.Client per api_key — constructing one re-authenticates (Vertex: a
+    fresh ADC token fetch), measured at ~1-1.5s extra per call versus reusing one."""
+    if api_key in _clients:
+        return _clients[api_key]
+
+    from google import genai
 
     if api_key is None:  # Vertex AI mode
         sa = _find_service_account()
@@ -138,12 +159,30 @@ def _gemini_client_and_config(
         client = genai.Client(vertexai=True, project=project, location=Config.GOOGLE_CLOUD_LOCATION)
     else:
         client = genai.Client(api_key=api_key)
+    _clients[api_key] = client
+    return client
+
+
+def _gemini_client_and_config(
+    api_key: str | None,
+    system: str | None,
+    temperature: float | None,
+    max_tokens: int | None,
+):
+    try:
+        from google.genai import types
+    except ImportError as exc:
+        raise RuntimeError("google-genai 未安裝。請先執行: pip install google-genai") from exc
+
+    client = _get_client(api_key)
     cfg = types.GenerateContentConfig(
         temperature=temperature if temperature is not None else Config.GEMINI_TEMPERATURE,
-        thinking_config=types.ThinkingConfig(thinking_budget=Config.GEMINI_THINKING_BUDGET),
         **({"max_output_tokens": max_tokens} if max_tokens is not None else {}),
         **({"system_instruction": system} if system else {}),
     )
+    thinking = _thinking_config(types)
+    if thinking is not None:
+        cfg.thinking_config = thinking
     return client, cfg
 
 
@@ -160,7 +199,7 @@ def _no_key_error() -> RuntimeError:
 def call_llm(
     prompt: str,
     *,
-    images: list[str | bytes | Path] | None = None,
+    images: list[str | bytes | Path | dict] | None = None,
     system: str | None = None,
     history: list[dict] | None = None,
     temperature: float | None = None,
@@ -195,7 +234,7 @@ def call_llm(
 def call_llm_stream(
     prompt: str,
     *,
-    images: list[str | bytes | Path] | None = None,
+    images: list[str | bytes | Path | dict] | None = None,
     system: str | None = None,
     history: list[dict] | None = None,
     temperature: float | None = None,

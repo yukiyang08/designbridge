@@ -32,8 +32,17 @@ def _analyze_style_image_with_gemini(image_path: str) -> str:
 def _build_imagen_prompt_from_requirement(
     req: dict[str, Any],
     style_params: dict[str, Any] | None = None,
+    user_text_prompt: str | None = None,
 ) -> str:
-    """Build an English text prompt for image generation from structured_requirement and style params."""
+    """Build an English text prompt for image generation from structured_requirement and style params.
+
+    ``user_text_prompt`` is the raw prompt the user typed. When it is empty, the LLM
+    requirement analyzer tends to fill ``design_description`` with a meta-narrative of
+    the *edit operation* ("a complete interior redesign allowing comprehensive
+    changes…") rather than an actual room description — which starves the renderer of
+    positive room content and lets the ControlNet structure dominate. In that case we
+    ignore ``design_description`` and fall back to a concrete room/style prompt.
+    """
     _STYLE_ID_TO_EN = {
         "modern": "modern contemporary",
         "country": "country rustic farmhouse",
@@ -43,10 +52,13 @@ def _build_imagen_prompt_from_requirement(
         "japanese": "Japanese minimalist Japandi",
         "american": "American style",
         "luxury": "luxury high-end glamour",
-        "neoclassic": "neoclassical",
     }
     design_description = (req.get("design_description") or "").strip()
-    if design_description:
+    # Only trust design_description when the user actually described something. With an
+    # empty user prompt it is an LLM meta-narrative, not a room — fall through to the
+    # room_type + style fallback below instead.
+    _user_described = user_text_prompt is None or bool(user_text_prompt.strip())
+    if design_description and _user_described:
         base_prompt = design_description
     else:
         meta = req.get("meta") or {}
@@ -61,7 +73,7 @@ def _build_imagen_prompt_from_requirement(
         color_palette = style_prefs.get("color_palette") or []
         colors = ", ".join(str(c) for c in color_palette[:3]) if color_palette else "neutral tones"
         base_prompt = (
-            f"Interior design visualization: a {room_type} room, {primary_style} style, "
+            f"Interior design visualization: a {room_type}, {primary_style} style, "
             f"colors {colors}. Photorealistic, well-lit, high quality."
         )
 

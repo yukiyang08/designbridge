@@ -676,6 +676,21 @@ const styleReferenceImageUrl = computed(() => {
   margin: 0;
 }
 
+.json-details { margin-top: 0.5rem; }
+.json-details summary { cursor: pointer; font-size: 0.78rem; color: var(--primary); font-weight: 600; user-select: none; padding: 0.25rem 0; }
+.json-details summary:hover { color: var(--primary-hover); }
+
+pre {
+  background: var(--primary-subtle);
+  padding: 0.9rem 1rem;
+  border-radius: var(--radius-md);
+  overflow-x: auto;
+  font-size: 0.78rem;
+  line-height: 1.6;
+  color: var(--text-2);
+  margin-top: 0.5rem;
+}
+
 /* ── Quotation ── */
 .quotation-section { display: flex; flex-direction: column; gap: 1.1rem; }
 .quotation-header-row {
