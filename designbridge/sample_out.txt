@@ -1,0 +1,11 @@
+{
+  "name": "BÅRSLÖV 三人座沙發床附躺椅，Tibbleby 米色/灰色",
+  "category": "sofa",
+  "price": 17990,
+  "currency": "TWD",
+  "url": "https://www.ikea.com.tw/zh/products/sofas/sofa-beds/barslov-art-50541595",
+  "image_url": "https://www.ikea.com.tw/dairyfarm/tw/images/136/1213693_PE911220_S4.webp",
+  "style_tags": []
+}
+---keys---
+{'image_url', 'style_tags', 'url', 'category', 'currency', 'price', 'name'}
