@@ -58,5 +58,9 @@ class DesignBridgeState(TypedDict):
     evaluation_result: NotRequired[EvalFeedbackJSON]
     # Quotation Agent output
     quotation_result: NotRequired[QuotationResultJSON]
+    # 3D 場景重建輸出
+    depth_cloud_path: NotRequired[str]      # point_cloud.ply（舊版點雲）
+    room_glb_path: NotRequired[str]         # room_mesh.glb（帶 UV 貼圖）
+    room_panorama_path: NotRequired[str]    # panorama.png（Text2Room 環景圖）
     # Legacy / intermediate outputs (can be refactored later)
     intermediate_outputs: NotRequired[dict[str, Any]]

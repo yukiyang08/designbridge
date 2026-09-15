@@ -1,0 +1,193 @@
+/* ══════════════════════════════════════════════════════════════
+   Figma design tokens — 取自 Figma basics / node 1669-162202
+   顏色值直接對應設計稿，不要就地微調；要調就改這裡一處。
+   ══════════════════════════════════════════════════════════════ */
+:root {
+  /* 主色：所有主要行動按鈕、進行中步驟 */
+  --db-accent:        #cdc5ac;
+  --db-accent-deep:   #b7ad8c;   /* hover，設計稿沒給，取 accent 壓暗 12% */
+  --db-accent-soft:   #e4dfd0;   /* 淡底，設計稿沒給，取 accent 提亮 */
+
+  /* 壓在主色上的文字。設計稿用白色，但 #fff on #cdc5ac 只有 1.66:1，
+     遠低於 WCAG AA 對大字的 3:1，所以改用設計稿自己的 ink 色：7.9:1，
+     底色仍是設計稿的米色，品牌感不變。要回到設計稿原樣就改回 #fff。 */
+  --db-on-accent:     #313131;
+
+  /* 底層 */
+  --db-ink:           #313131;   /* 首頁 hero 底 */
+  --db-fog:           #bebbbb;   /* 流程頁底 */
+  --db-card:          #ffffff;
+
+  /* 互動元件 */
+  --db-chip:          #d9d9d9;   /* 空間類型 chip */
+  --db-chip-soft:     #efefef;   /* 家具 chip */
+  --db-secondary:     #757575;   /* 次要按鈕（更新平面圖） */
+  --db-secondary-2:   #878181;   /* 面板標題列 */
+
+  /* 文字 */
+  --db-text:          #1a1a1a;
+  --db-text-soft:     #5a5a5a;
+  --db-muted:         #c2c1c1;   /* 停用文字 */
+  --db-placeholder:   #b2b2b2;
+
+  /* 狀態（設計稿沒畫，補齊才有辦法顯示 loading / error） */
+  --db-danger:        #b4443a;
+  --db-danger-soft:   #fbeeec;
+  --db-ok:            #4a7c59;
+
+  --db-radius-card:   20px;
+  --db-radius-chip:   10px;
+  --db-radius-pill:   999px;
+
+  --db-shadow-card:   0 18px 48px rgba(28, 24, 18, 0.18);
+  --db-shadow-soft:   0 6px 20px rgba(28, 24, 18, 0.12);
+
+  /* 中文在 Iosevka Charon 底下本來就是靠 fallback + 合成斜體，
+     所以這裡直接用襯線 stack + font-style: italic，視覺結果等價。 */
+  --db-font-display: 'Noto Serif TC', 'Songti TC', 'PingFang TC', 'Microsoft JhengHei', serif;
+  --db-font-body:    'Noto Sans TC', 'PingFang TC', 'Microsoft JhengHei', -apple-system,
+                     BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --db-font-num:     'Jeju Gothic', 'Helvetica Neue', Arial, sans-serif;
+}
+
+/* ── 共用基礎元件 ───────────────────────────────────────────── */
+
+/* 流程頁的滿版背景：室內照 opacity 40% 疊在 --db-fog 上（Figma frame 9/10/11） */
+.db-scene {
+  position: relative;
+  min-height: 100vh;
+  background: var(--db-fog);
+  font-family: var(--db-font-body);
+  color: var(--db-text);
+}
+.db-scene::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  background: var(--db-scene-image, none) center / cover no-repeat;
+  opacity: 0.4;
+  pointer-events: none;
+}
+.db-scene > * { position: relative; }
+
+/* 置中白卡 —— Figma 是固定 1192×620，這裡改成上限 + 自適應高度 */
+.db-card {
+  width: min(1192px, calc(100vw - 5rem));
+  margin: 0 auto;
+  background: var(--db-card);
+  border-radius: var(--db-radius-card);
+  box-shadow: var(--db-shadow-card);
+}
+
+/* 主行動按鈕（生成平面圖 / 生成渲染圖 / 下一步…） */
+.db-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  min-height: 58px;
+  padding: 0.75rem 2rem;
+  border: none;
+  border-radius: 4px;
+  background: var(--db-accent);
+  color: var(--db-on-accent);
+  font-family: var(--db-font-display);
+  font-style: italic;
+  font-weight: 500;
+  font-size: 1.35rem;
+  line-height: 1.2;
+  cursor: pointer;
+  transition: background 0.18s, transform 0.12s, box-shadow 0.18s;
+}
+.db-btn:hover:not(:disabled) {
+  background: var(--db-accent-deep);
+  box-shadow: var(--db-shadow-soft);
+}
+.db-btn:active:not(:disabled) { transform: translateY(1px); }
+.db-btn:disabled { opacity: 0.45; cursor: not-allowed; }
+
+.db-btn--ghost {
+  background: var(--db-secondary);
+  color: #fff;                     /* 底色是灰的，不吃 --db-on-accent */
+}
+.db-btn--ghost:hover:not(:disabled) { background: #646464; }
+
+.db-btn--sm {
+  min-height: 42px;
+  padding: 0.4rem 1.1rem;
+  font-size: 1rem;
+}
+
+/* chip：空間類型（大、#d9d9d9）與家具（小、#efefef） */
+.db-chip {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.5rem 1.4rem;
+  border: 2px solid transparent;
+  border-radius: var(--db-radius-chip);
+  background: var(--db-chip-soft);
+  color: var(--db-text);
+  font-family: var(--db-font-display);
+  font-style: italic;
+  font-weight: 500;
+  font-size: 1.05rem;
+  cursor: pointer;
+  transition: background 0.16s, border-color 0.16s, color 0.16s;
+}
+.db-chip:hover:not(:disabled):not(.is-active) { background: #e4e4e4; }
+.db-chip.is-active {
+  background: var(--db-accent);
+  border-color: var(--db-accent-deep);
+  color: var(--db-on-accent);
+}
+.db-chip--lg {
+  background: var(--db-chip);
+  font-size: 1.25rem;
+  padding: 0.65rem 1.6rem;
+}
+.db-chip--lg:hover:not(:disabled):not(.is-active) { background: #cfcfcf; }
+
+/* 標題（空間類型 / 預計擺放家具 / 空間大小） */
+.db-col-title {
+  margin: 0 0 1.25rem;
+  font-family: var(--db-font-display);
+  font-style: italic;
+  font-weight: 500;
+  font-size: 1.5rem;
+  color: var(--db-text);
+  text-align: center;
+}
+
+/* 文字輸入 —— Figma 是無框灰底方塊 */
+.db-input,
+.db-textarea {
+  width: 100%;
+  padding: 0.7rem 1rem;
+  border: 2px solid transparent;
+  border-radius: 6px;
+  background: var(--db-chip);
+  color: var(--db-text);
+  font-family: var(--db-font-body);
+  font-size: 1rem;
+  transition: border-color 0.16s, background 0.16s;
+}
+.db-input::placeholder,
+.db-textarea::placeholder { color: var(--db-placeholder); }
+.db-input:focus,
+.db-textarea:focus {
+  outline: none;
+  border-color: var(--db-accent);
+  background: #e6e6e6;
+}
+.db-textarea { resize: vertical; min-height: 88px; line-height: 1.6; }
+
+/* 錯誤訊息（設計稿沒有，但流程一定會用到） */
+.db-error {
+  margin: 0.75rem 0 0;
+  padding: 0.6rem 0.9rem;
+  border-radius: 8px;
+  background: var(--db-danger-soft);
+  color: var(--db-danger);
+  font-size: 0.9rem;
+}

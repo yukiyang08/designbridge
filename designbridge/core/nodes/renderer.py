@@ -27,6 +27,7 @@ from designbridge.render.render_backends import (
     _render_flux_fal,
     _render_flux,
 )
+from designbridge.style.style_apply import resolve_style_loras
 
 _BASE_NEGATIVE_PROMPT = (
     "people, person, human, man, woman, child, hands, face, "
@@ -272,10 +273,14 @@ def renderer(state: DesignBridgeState) -> dict[str, Any]:
     }
     backend = "placeholder"
 
+    style_loras = resolve_style_loras(style_params.get("style_profile_id"))
+
     if style_params:
         generation_params["style_profile_id"] = style_params.get("style_profile_id")
         generation_params["style_profile_name"] = style_params.get("style_profile_name")
         generation_params["style_strength"] = style_params.get("style_strength")
+    if style_loras:
+        generation_params["style_lora"] = style_loras[0]["path"]
 
     # Get vision features for ControlNet (if available)
     depth_path = vision.get("depth")
@@ -407,6 +412,7 @@ def renderer(state: DesignBridgeState) -> dict[str, Any]:
             num_steps=Config.FAL_IP_ADAPTER_STEPS,
             guidance_scale=Config.FAL_IP_ADAPTER_GUIDANCE,
             output_size=(Config.FAL_IP_ADAPTER_SIZE, Config.FAL_IP_ADAPTER_SIZE),
+            loras=style_loras,
         ):
             backend = "flux_ipadapter_fal"
             generation_params["model"] = "fal-ai/flux-general + XLabs IP-Adapter"
@@ -476,6 +482,7 @@ def renderer(state: DesignBridgeState) -> dict[str, Any]:
             guidance_scale=Config.FAL_CONTROLNET_GUIDANCE,
             output_size=output_size,
             extra_controls=_extra_controls,
+            loras=style_loras,
         ):
             backend = "flux_controlnet_depth_fal"
             generation_params["model"] = f"fal-ai/flux-general + {Config.DEPTH_CONTROLNET_MODEL}"
@@ -574,6 +581,7 @@ def renderer(state: DesignBridgeState) -> dict[str, Any]:
                 num_steps=Config.FAL_DEPTH_STEPS,
                 guidance_scale=Config.FAL_DEPTH_GUIDANCE,
                 output_size=output_size,
+                loras=style_loras,
             ):
                 backend = "flux_depth_controlnet_fal"
                 generation_params["model"] = Config.FAL_DEPTH_CONTROLNET_MODEL

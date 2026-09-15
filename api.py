@@ -341,6 +341,30 @@ def delete_history(task_ids: List[str] = Query(...)):
     return {"deleted": original - len(records)}
 
 
+class FavoriteRequest(BaseModel):
+    favorited: bool = True
+
+
+@app.patch("/api/history/{task_id}/favorite")
+def set_history_favorite(task_id: str, request: FavoriteRequest):
+    """收藏／取消收藏一筆歷史紀錄。設計流程走完（預算估計那一步）之後，
+    使用者按「收藏這個設計」就是呼叫這支，直接在既有的 history.json 上標記，
+    不另外開一份收藏清單——歷史紀錄本來就是每次生成自動存的那份。"""
+    if not _history_file.exists():
+        raise HTTPException(status_code=404, detail="尚無歷史紀錄")
+    with _history_lock:
+        try:
+            records = json.loads(_history_file.read_text(encoding="utf-8"))
+        except Exception:
+            raise HTTPException(status_code=500, detail="歷史紀錄讀取失敗")
+        target = next((r for r in records if r.get("task_id") == task_id), None)
+        if target is None:
+            raise HTTPException(status_code=404, detail="找不到這筆設計紀錄")
+        target["favorited"] = request.favorited
+        _history_file.write_text(json.dumps(records, ensure_ascii=False, indent=2), encoding="utf-8")
+    return {"task_id": task_id, "favorited": request.favorited}
+
+
 # ── 家具查詢 ──────────────────────────────────────────────────────────────────
 
 @app.get("/api/furniture/categories")
@@ -737,6 +761,17 @@ async def generate_design(request: DesignRequest):
             if normalized_fp.startswith("artifacts/"):
                 floor_plan_url = f"http://localhost:8000/{normalized_fp}"
 
+        def _artifact_url(p):
+            """artifacts/ 底下的相對路徑 → 可供前端存取的絕對 URL。"""
+            if not isinstance(p, str):
+                return None
+            normalized = p.replace("\\", "/")
+            return f"http://localhost:8000/{normalized}" if normalized.startswith("artifacts/") else None
+
+        depth_cloud_url = _artifact_url(result.get("depth_cloud_path"))
+        room_glb_url = _artifact_url(result.get("room_glb_path"))
+        room_panorama_url = _artifact_url(result.get("room_panorama_path"))
+
         response = {
             "status": "success",
             "elapsed_time": f"{elapsed:.2f}s",
@@ -745,6 +780,9 @@ async def generate_design(request: DesignRequest):
             "generated_image_url": generated_image_url,
             "floor_plan_path": floor_plan_path,
             "floor_plan_url": floor_plan_url,
+            "depth_cloud_url": depth_cloud_url,
+            "room_glb_url": room_glb_url,
+            "room_panorama_url": room_panorama_url,
             "structured_requirement": result.get("structured_requirement"),
             "task_id": result.get("task_id"),
             "iteration": result.get("iteration"),
@@ -827,3 +865,80 @@ async def get_quotation(req: QuotationRequest):
         import traceback
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))
+
+
+# ── 獨立的全景生成端點 ──────────────────────────────────────────────────────────
+
+class PanoramaRequest(BaseModel):
+    task_id: str
+    image_path: str   # 設計渲染圖路徑（artifacts/render/...png）
+    prompt: str = ""
+    depth_path: Optional[str] = None   # 前端可從 vision_features.depth 帶入
+
+
+def _resolve_depth_for_panorama(request: PanoramaRequest, out_dir: Path) -> Path:
+    """找出可用的深度圖。
+
+    視覺預處理的輸出目錄是「內容定址」的（以照片雜湊命名，見
+    designbridge/layout/vision.py），所以不能用 task_id 去猜路徑。優先用前端從
+    vision_features.depth 帶回來的實際路徑；沒有的話（例如純文字生成、沒有上傳
+    空間照）就直接對設計圖本身跑一次深度估計。
+    """
+    if request.depth_path:
+        candidate = Path(request.depth_path)
+        if candidate.is_file():
+            return candidate
+
+    # 舊版路徑（DESIGNBRIDGE_VISION_CACHE=false 時仍以 task_id 命名）
+    legacy = Path("artifacts/vision") / request.task_id / "depth.png"
+    if legacy.is_file():
+        return legacy
+
+    from designbridge.layout.vision import run_depth_estimation
+    from designbridge.core.config import Config
+    depth_out, _ = run_depth_estimation(
+        request.image_path,
+        model_name=Config.DEPTH_MODEL,
+        out_dir=out_dir,
+    )
+    return Path(depth_out)
+
+
+@app.post("/api/generate-panorama")
+async def generate_panorama(request: PanoramaRequest):
+    """按需生成 Text2Room 全景圖，獨立於主要生成流程。"""
+    out_dir = Path("artifacts/room_mesh") / request.task_id
+    image_path = Path(request.image_path)
+
+    if not image_path.is_file():
+        raise HTTPException(status_code=404, detail=f"找不到設計圖：{request.image_path}")
+
+    try:
+        depth_path = _resolve_depth_for_panorama(request, out_dir)
+    except Exception as e:
+        import traceback; traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"深度圖準備失敗：{e}")
+
+    if not depth_path.is_file():
+        raise HTTPException(status_code=404, detail="找不到深度圖，也無法對設計圖產生深度圖")
+
+    try:
+        from designbridge.render.text2room import run_text2room_loop
+        from designbridge.core.config import Config
+        t2r = run_text2room_loop(
+            image_path=str(image_path),
+            depth_path=str(depth_path),
+            out_dir=str(out_dir),
+            prompt=request.prompt,
+            steps_per_side=Config.TEXT2ROOM_STEPS_PER_SIDE,
+        )
+    except Exception as e:
+        import traceback; traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"全景生成失敗：{e}")
+
+    if not t2r or not t2r.get("panorama"):
+        raise HTTPException(status_code=500, detail="全景圖生成失敗")
+
+    pano_path = t2r["panorama"].replace("\\", "/")
+    pano_url = f"http://localhost:8000/{pano_path}" if pano_path.startswith("artifacts/") else None
+    return {"room_panorama_url": pano_url}

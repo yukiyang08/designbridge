@@ -10,6 +10,11 @@ export const FURNITURE_LABEL_ZH = {
   cabinet: '櫃子', dresser: '梳妝台',
   lamp: '立燈', plant: '盆栽', rug: '地毯',
   cat_tree: '貓跳台', dog_bed: '狗窩', litter_box: '貓砂盆',
+  // 浴室／兒童房（Figma 有這兩個房型）。後端 FURNITURE_SIZES 沒收錄這些 type，
+  // 會落到 default 尺寸，但名稱仍會進 prompt，渲染時看得出來。
+  bathtub: '浴缸', shower: '淋浴間', toilet: '馬桶', sink: '洗手台',
+  vanity: '浴櫃', towel_rack: '毛巾架',
+  toy_storage: '玩具收納', study_chair: '兒童椅', bean_bag: '懶骨頭',
   default: '家具',
 }
 
@@ -30,6 +35,10 @@ export const FURNITURE_ICON_MAP = {
   cabinet: 'mdi:cupboard', dresser: 'mdi:dresser',
   lamp: 'mdi:floor-lamp', plant: 'mdi:flower', rug: 'mdi:rug',
   cat_tree: 'mdi:cat', dog_bed: 'mdi:dog', litter_box: 'mdi:tray-full',
+  bathtub: 'mdi:bathtub-outline', shower: 'mdi:shower', toilet: 'mdi:toilet',
+  sink: 'mdi:sink', vanity: 'mdi:cupboard-outline', towel_rack: 'mdi:hanger',
+  toy_storage: 'mdi:toy-brick-outline', study_chair: 'mdi:seat-outline',
+  bean_bag: 'mdi:sofa-single-outline',
   default: 'mdi:cube-outline',
 }
 
@@ -39,11 +48,13 @@ export function furnitureIcon(type) {
 
 // 房間類型 + 各房型常見家具——SidebarForm（Step 1 選家具）跟 LayoutEditor（2D 編輯器的
 // 家具面板）共用同一份，兩邊選單才不會慢慢長歪。
+// 只留佈局引擎有完整家具尺寸支援的四個房型（見 layout_agent.py 的 FURNITURE_SIZES）。
+// 浴室／兒童房／餐廳的家具清單留在下面的 FURNITURE_BY_ROOM，要放回選單只要
+// 把對應項目加回這個陣列；使用者也隨時可以用「＋ 自訂」打任意房型。
 export const ROOM_OPTIONS = [
   { value: 'living_room', label: '客廳' },
   { value: 'bedroom',     label: '臥室' },
   { value: 'kitchen',     label: '廚房' },
-  { value: 'dining_room', label: '餐廳' },
   { value: 'study',       label: '書房' },
 ]
 
@@ -85,6 +96,26 @@ export const FURNITURE_BY_ROOM = {
     { value: 'side_table',    label: '邊桌' },
     { value: 'lamp',          label: '燈' },
   ],
+  bathroom: [
+    { value: 'bathtub',       label: '浴缸' },
+    { value: 'shower',        label: '淋浴間' },
+    { value: 'toilet',        label: '馬桶' },
+    { value: 'sink',          label: '洗手台' },
+    { value: 'vanity',        label: '浴櫃' },
+    { value: 'towel_rack',    label: '毛巾架' },
+    { value: 'shelf',         label: '層架' },
+  ],
+  kids_room: [
+    { value: 'bed',           label: '兒童床' },
+    { value: 'bunk_bed',      label: '上下舖' },
+    { value: 'desk',          label: '書桌' },
+    { value: 'study_chair',   label: '兒童椅' },
+    { value: 'wardrobe',      label: '衣櫃' },
+    { value: 'bookshelf',     label: '書架' },
+    { value: 'toy_storage',   label: '玩具收納' },
+    { value: 'bean_bag',      label: '懶骨頭' },
+    { value: 'rug',           label: '地毯' },
+  ],
 }
 
 // FURNITURE_BY_ROOM 條目沒有預設尺寸，LayoutEditor 的「新增家具」要落地一個正規化 w/h——
@@ -96,6 +127,9 @@ export const FURNITURE_DEFAULT_SIZE = {
   nightstand: [0.08, 0.08], wardrobe: [0.20, 0.10], bookshelf: [0.18, 0.08],
   cabinet: [0.15, 0.08], dresser: [0.16, 0.08], shelf: [0.16, 0.06],
   plant: [0.06, 0.06], lamp: [0.05, 0.05], rug: [0.38, 0.24],
+  bathtub: [0.30, 0.14], shower: [0.16, 0.16], toilet: [0.09, 0.12],
+  sink: [0.10, 0.08], vanity: [0.14, 0.08], towel_rack: [0.08, 0.03],
+  toy_storage: [0.14, 0.08], study_chair: [0.07, 0.07], bean_bag: [0.11, 0.11],
   default: [0.12, 0.10],
 }
 

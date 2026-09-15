@@ -6,6 +6,7 @@ from designbridge.core.nodes.design_director import design_director
 from designbridge.core.nodes.adjuster import adjuster_agent_stub
 from designbridge.core.nodes.layout_and_style import layout_and_style_agent_stub
 from designbridge.core.nodes.renderer import renderer
+from designbridge.core.nodes.depth_cloud import depth_cloud_node
 from designbridge.core.nodes.evaluator import clip_evaluator_node
 from designbridge.core.nodes.quotation import quotation_agent
 
@@ -16,6 +17,7 @@ __all__ = [
     "adjuster_agent_stub",
     "layout_and_style_agent_stub",
     "renderer",
+    "depth_cloud_node",
     "clip_evaluator_node",
     "quotation_agent",
 ]

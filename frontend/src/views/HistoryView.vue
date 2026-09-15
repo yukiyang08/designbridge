@@ -14,10 +14,35 @@ const batchMode = ref(false)
 const checkedIds = ref(new Set())
 const deleting = ref(false)
 
+// 只看收藏——收藏是在預算估計那一步標記的，這裡只是把它們濾出來看
+const favoritesOnly = ref(false)
+const favoritingIds = ref(new Set())
+const visibleRecords = computed(
+  () => favoritesOnly.value ? records.value.filter(r => r.favorited) : records.value
+)
+
 const checkedCount = computed(() => checkedIds.value.size)
 const allChecked = computed(() =>
-  records.value.length > 0 && records.value.every(r => checkedIds.value.has(r.task_id))
+  visibleRecords.value.length > 0 && visibleRecords.value.every(r => checkedIds.value.has(r.task_id))
 )
+
+async function toggleFavorite(r) {
+  const next = !r.favorited
+  const ids = new Set(favoritingIds.value); ids.add(r.task_id); favoritingIds.value = ids
+  try {
+    const res = await fetch(`${API_BASE}/api/history/${encodeURIComponent(r.task_id)}/favorite`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ favorited: next }),
+    })
+    if (!res.ok) throw new Error(res.status)
+    r.favorited = next
+  } catch {
+    alert('收藏失敗，請稍後再試')
+  } finally {
+    const s = new Set(favoritingIds.value); s.delete(r.task_id); favoritingIds.value = s
+  }
+}
 
 function toggleBatchMode() {
   batchMode.value = !batchMode.value
@@ -34,7 +59,7 @@ function toggleAll() {
   if (allChecked.value) {
     checkedIds.value = new Set()
   } else {
-    checkedIds.value = new Set(records.value.map(r => r.task_id))
+    checkedIds.value = new Set(visibleRecords.value.map(r => r.task_id))
   }
 }
 
@@ -150,18 +175,25 @@ function modelBadge(r) {
           </button>
           <button class="action-btn cancel-btn" @click="toggleBatchMode">取消</button>
         </template>
-        <button v-else class="action-btn batch-btn" @click="toggleBatchMode">批量管理</button>
+        <template v-else>
+          <button
+            :class="['action-btn', 'fav-filter-btn', { active: favoritesOnly }]"
+            @click="favoritesOnly = !favoritesOnly"
+          >★ 只看收藏</button>
+          <button class="action-btn batch-btn" @click="toggleBatchMode">批量管理</button>
+        </template>
       </div>
     </header>
 
     <div v-if="loading" class="state-msg">載入中…</div>
     <div v-else-if="error" class="state-msg error">{{ error }}</div>
     <div v-else-if="records.length === 0" class="state-msg">尚無歷史紀錄</div>
+    <div v-else-if="visibleRecords.length === 0" class="state-msg">還沒有收藏任何設計</div>
 
     <!-- 縮圖格狀 -->
     <div v-else class="grid">
       <div
-        v-for="r in records"
+        v-for="r in visibleRecords"
         :key="r.task_id"
         :class="['tile', { 'tile-checked': checkedIds.has(r.task_id), 'batch-mode': batchMode }]"
         @click="handleTileClick(r)"
@@ -176,6 +208,16 @@ function modelBadge(r) {
             @error="$event.target.style.display='none'"
           />
           <div v-else class="tile-no-img">無圖</div>
+
+          <!-- 收藏星標：批量模式下不能點，避免跟勾選手勢打架 -->
+          <button
+            v-if="!batchMode"
+            type="button"
+            :class="['tile-fav', { active: r.favorited }]"
+            :disabled="favoritingIds.has(r.task_id)"
+            :title="r.favorited ? '取消收藏' : '收藏這個設計'"
+            @click.stop="toggleFavorite(r)"
+          >{{ r.favorited ? '★' : '☆' }}</button>
 
           <!-- 風格參考圖（右下角小圖） -->
           <div v-if="styleRefUrl(r) || styleKbUrl(r)" class="tile-ref-group">
@@ -318,6 +360,9 @@ function modelBadge(r) {
 .delete-btn:not(:disabled):hover { background: #a93226; }
 .cancel-btn { background: none; color: #555; border-color: #aaa; font-weight: 600; }
 .cancel-btn:hover { background: #f0f0f0; color: #333; }
+.fav-filter-btn { background: none; color: #a08050; border-color: #d4b89a; }
+.fav-filter-btn:hover { background: #f7f0e8; }
+.fav-filter-btn.active { background: #8B5E3C; color: #fff; border-color: #8B5E3C; }
 
 .state-msg { text-align: center; color: #888; padding: 3rem; }
 .state-msg.error { color: #c00; }
@@ -352,6 +397,16 @@ function modelBadge(r) {
 .tbadge.provider    { background: rgba(255,255,255,0.88); color: #666; }
 
 .tile-clip { position: absolute; bottom: 6px; left: 6px; font-size: 0.62rem; font-weight: 700; background: rgba(255,255,255,0.88); border-radius: 3px; padding: 0.06rem 0.35rem; }
+.tile-fav {
+  position: absolute; top: 6px; right: 6px; z-index: 2;
+  width: 26px; height: 26px; display: flex; align-items: center; justify-content: center;
+  border: none; border-radius: 50%; cursor: pointer;
+  background: rgba(255,255,255,0.85); color: #b8a888; font-size: 1.05rem; line-height: 1;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.2);
+}
+.tile-fav:hover { background: #fff; }
+.tile-fav.active { color: #d4a017; }
+.tile-fav:disabled { opacity: 0.5; cursor: not-allowed; }
 .tile-checkbox { position: absolute; top: 6px; right: 6px; z-index: 2; }
 .checkbox-icon { display: flex; align-items: center; justify-content: center; width: 20px; height: 20px; border-radius: 50%; border: 2px solid #fff; background: rgba(255,255,255,0.7); font-size: 0.7rem; font-weight: 700; color: #fff; box-shadow: 0 1px 4px rgba(0,0,0,0.2); }
 .checkbox-icon.checked { background: #8B5E3C; border-color: #8B5E3C; }

@@ -396,10 +396,13 @@ function toggleInfo(c, evt) {
 .tags {
   display: flex;
   flex-wrap: wrap;
+  align-content: flex-start;  /* 卡片變高、標籤只有一行時，不要把那一行往垂直方向撐開 */
+  justify-content: flex-start;
   gap: 0.35rem;
-  flex: 1;
+  flex: 1 1 auto;
 }
 .tag {
+  flex: 0 0 auto;   /* 固定不隨卡片變寬而被拉伸，寬度只吃自己的文字+padding */
   font-size: 0.72rem;
   font-weight: 600;
   color: #8B5E3C;

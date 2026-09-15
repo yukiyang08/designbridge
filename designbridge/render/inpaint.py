@@ -11,6 +11,7 @@ Responsibilities:
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
 from typing import Any
 
@@ -819,6 +820,233 @@ def run_fal_inpainting(
         print(f"⚠️  fal.ai inpainting failed ({type(e).__name__}: {e})")
         traceback.print_exc()
         return False
+
+
+# ---------------------------------------------------------------------------
+# Outpainting helpers
+# ---------------------------------------------------------------------------
+
+# FLUX has no visual referent for these words, so when they appear in an
+# outpaint prompt its highest-probability output is a banner or sign spelling
+# them out — the source of the "CONTINUATION'S ROOM EXTENSION" artefact.
+# Keep outpaint prompts to concrete nouns only.
+_NON_VISUAL_TERMS = re.compile(
+    r"\b(continuation|continu(?:e|es|ed|ing)|extension|extend(?:s|ed|ing)?|"
+    r"seamless(?:ly)?|outpaint\w*|inpaint\w*|consistent(?:ly)?|matching|"
+    r"blend(?:s|ed|ing)?|stitch(?:es|ed|ing)?|panorama|panoramic|"
+    r"same\s+(?:lighting|style|materials|colou?rs?))\b",
+    re.IGNORECASE,
+)
+
+# Describes the *periphery* of a room, not a room.  "interior photograph of a
+# room" makes FLUX fill the strip with its prior for a furnished room — another
+# TV wall, another sideboard — which reads as duplicated furniture once the
+# panorama is stitched.  What actually continues at the edge of a view is wall.
+_OUTPAINT_BASE = (
+    "photorealistic interior photograph, empty corner of a room, "
+    "plain painted wall, bare floor, plain ceiling, soft natural daylight"
+)
+
+
+def build_outpaint_prompt(design_prompt: str = "") -> str:
+    """Build a purely descriptive outpaint prompt.
+
+    Instruction words aimed at a human ("seamless extension", "same lighting")
+    get rendered by FLUX as literal typography, so they are stripped from both
+    the base prompt and the caller's design prompt.
+    """
+    # drop whole comma-segments: "continuation of the space" is an instruction
+    # end to end, so stripping just the keyword would leave "of the space"
+    parts = [seg.strip() for seg in (design_prompt or "").split(",")]
+    parts = [seg for seg in parts if seg and not _NON_VISUAL_TERMS.search(seg)]
+    tail = ", ".join(parts)
+    return f"{_OUTPAINT_BASE}, {tail}" if tail else _OUTPAINT_BASE
+
+
+def make_context_fill(
+    image: "Image.Image",
+    left: int = 0,
+    right: int = 0,
+    top: int = 0,
+    bottom: int = 0,
+) -> "Image.Image":
+    """Expand a canvas by mirroring + heavily blurring the image edges.
+
+    A flat grey fill is out of distribution and leaves FLUX with the prompt as
+    its only signal.  Mirrored edges carry the room's colour and lighting into
+    the region to be painted; the blur destroys object structure so FLUX does
+    not simply duplicate the furniture it sees reflected.
+    """
+    import numpy as np
+    from PIL import Image, ImageFilter
+
+    arr = np.asarray(image.convert("RGB"))
+    # np.pad "reflect" reflects repeatedly, so pads wider than the image are fine
+    padded = np.pad(arr, ((top, bottom), (left, right), (0, 0)), mode="reflect")
+    ctx = Image.fromarray(padded)
+
+    # 0.25 keeps the large-scale floor/wall/ceiling banding as a horizon cue while
+    # still dissolving furniture, so FLUX does not paint mirrored duplicates
+    radius = max(8, int(max(left, right, top, bottom) * 0.25))
+    ctx = ctx.filter(ImageFilter.GaussianBlur(radius))
+    # restore the untouched original in the centre
+    ctx.paste(image, (left, top))
+    return ctx
+
+
+def run_fal_outpainting(
+    canvas: "Image.Image",
+    mask: "Image.Image",
+    prompt: str,
+    out_dir: "Path | None" = None,
+    tag: str = "outpaint",
+) -> "Image.Image | None":
+    """Paint the masked region of `canvas` with a text-suppressing negative prompt.
+
+    Uses Config.FAL_OUTPAINT_MODEL rather than the flux-pro fill endpoint used
+    for edits: flux-pro/v1/fill accepts only 9 parameters and has no
+    negative_prompt, so there is no way to suppress the watermarks and studio
+    logos FLUX picked up from architectural-render training data.
+    flux-general/inpainting takes a negative_prompt and applies it via NAG.
+
+    The unmasked region is composited back from the original afterwards, so the
+    already-rendered part of the room is preserved exactly.
+    """
+    from designbridge.core.config import Config
+
+    if not Config.FAL_KEY:
+        print("[outpaint] No FAL_KEY configured, skipping outpainting")
+        return None
+    try:
+        import io
+        import os
+        import numpy as np
+        import requests
+        import fal_client
+        from PIL import Image
+
+        os.environ.setdefault("FAL_KEY", Config.FAL_KEY)
+        W, H = canvas.size
+
+        def _b64(img: "Image.Image") -> str:
+            import base64
+            buf = io.BytesIO()
+            img.save(buf, format="PNG")
+            return f"data:image/png;base64,{base64.b64encode(buf.getvalue()).decode()}"
+
+        print(f"[outpaint] {tag}: {W}x{H} via {Config.FAL_OUTPAINT_MODEL}")
+        print(f"[outpaint] prompt: {prompt[:90]}")
+
+        # flux-pro/v1/fill takes a genuinely different, smaller parameter set than
+        # flux-general/inpainting (see docstring above) — no negative_prompt/
+        # guidance_scale/steps/nag_scale/image_size, and enable_safety_checker
+        # becomes an enum instead of a bool. This is here purely to A/B the two
+        # models; the negative_prompt watermark suppression is lost on this path.
+        if Config.FAL_OUTPAINT_MODEL == "fal-ai/flux-pro/v1/fill":
+            arguments = {
+                "prompt": prompt,
+                "image_url": _b64(canvas),
+                "mask_url": _b64(mask),
+                "num_images": 1,
+                "output_format": "png",
+                "safety_tolerance": "5",  # most permissive — closest match to enable_safety_checker=False
+            }
+        else:
+            arguments = {
+                "prompt": prompt,
+                "negative_prompt": Config.outpaint_negative_prompt(),
+                "image_url": _b64(canvas),
+                "mask_url": _b64(mask),
+                "image_size": {"width": W, "height": H},
+                "strength": 1.0,          # fully repaint the masked strip
+                "guidance_scale": Config.OUTPAINT_GUIDANCE,
+                "num_inference_steps": Config.OUTPAINT_STEPS,
+                "nag_scale": Config.OUTPAINT_NAG_SCALE,
+                "num_images": 1,
+                "output_format": "png",
+                "enable_safety_checker": False,
+            }
+
+        result = fal_client.subscribe(Config.FAL_OUTPAINT_MODEL, arguments=arguments)
+
+        images = result.get("images") or []
+        if not images:
+            print("[outpaint] fal.ai returned no images")
+            return None
+
+        resp = requests.get(images[0]["url"], timeout=120)
+        resp.raise_for_status()
+        painted = Image.open(io.BytesIO(resp.content)).convert("RGB")
+        if painted.size != (W, H):
+            painted = painted.resize((W, H), Image.LANCZOS)
+
+        # Composite: keep the original pixels wherever the mask is black.  This
+        # endpoint round-trips the whole canvas through a VAE, which would
+        # otherwise soften the part of the room that was already rendered.
+        from PIL import ImageFilter
+        soft = mask.convert("L").filter(ImageFilter.GaussianBlur(3))
+        merged = Image.composite(painted, canvas, soft)
+
+        if out_dir is not None:
+            d = Path(out_dir)
+            d.mkdir(parents=True, exist_ok=True)
+            painted.save(str(d / f"{tag}_raw.png"))
+            merged.save(str(d / f"{tag}_merged.png"))
+
+        return merged
+
+    except ImportError:
+        print("[outpaint] fal_client not installed (pip install fal-client)")
+        return None
+    except Exception as e:
+        import traceback
+        print(f"[outpaint] failed: {e}")
+        traceback.print_exc()
+        return None
+
+
+def outpaint_for_depth_mesh(
+    image: "Image.Image",
+    border_fraction: float = 0.2,
+    prompt: str | None = None,
+    out_dir: "Path | None" = None,
+) -> "Image.Image | None":
+    """Expand image canvas using AI outpainting to fill rotation holes in depth mesh.
+
+    Returns the expanded PIL Image, or None if outpainting fails (caller should
+    fall back to the original image).
+    """
+    from PIL import Image
+
+    prompt = build_outpaint_prompt() if prompt is None else prompt
+
+    W, H = image.size
+    bx = int(W * border_fraction)
+    by = int(H * border_fraction)
+    new_W, new_H = W + 2 * bx, H + 2 * by
+
+    # Expanded canvas seeded with blurred mirrored edges (see make_context_fill)
+    expanded = make_context_fill(image, left=bx, right=bx, top=by, bottom=by)
+
+    # Mask: white=fill (outpaint area), black=keep (original)
+    mask = Image.new("L", (new_W, new_H), 255)
+    mask.paste(Image.new("L", (W, H), 0), (bx, by))
+
+    print(f"[outpaint] {W}x{H} \u2192 {new_W}x{new_H} (border {border_fraction:.0%} each side)")
+    outpainted = run_fal_outpainting(
+        canvas=expanded, mask=mask, prompt=prompt, out_dir=out_dir, tag="mesh_outpaint"
+    )
+    if outpainted is None:
+        return None
+
+    if out_dir is not None:
+        Path(out_dir).mkdir(parents=True, exist_ok=True)
+        outpainted.save(str(Path(out_dir) / "outpainted.png"))
+        mask.save(str(Path(out_dir) / "outpaint_mask.png"))
+        print(f"[outpaint] saved \u2192 {Path(out_dir) / 'outpainted.png'}")
+
+    print(f"[outpaint] \u2705 done: {outpainted.size}")
+    return outpainted
 
 
 def run_hf_inpainting(

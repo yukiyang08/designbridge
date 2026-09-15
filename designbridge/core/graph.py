@@ -11,6 +11,7 @@ from langgraph.graph import StateGraph
 from designbridge.core.nodes import (
     adjuster_agent_stub,
     clip_evaluator_node,
+    depth_cloud_node,
     design_director,
     layout_and_style_agent_stub,
     requirement_analyzer,
@@ -51,7 +52,7 @@ def build_graph() -> StateGraph:
     Build DesignBridge workflow:
     START -> requirement_analyzer -> visual_preprocessing -> design_director
       -> (adjuster_agent | layout_and_style_agent) -> renderer
-      -> clip_evaluator -> END
+      -> depth_cloud -> clip_evaluator -> END
 
     注意：quotation_agent（家具估價/報價推薦）不在這個自動流程裡執行。
     它耗時較長（觀測約 30-40 秒），且不影響生成圖片本身，因此改成
@@ -66,6 +67,7 @@ def build_graph() -> StateGraph:
     graph.add_node("adjuster_agent", _timed_node("adjuster_agent", adjuster_agent_stub))
     graph.add_node("layout_and_style_agent", _timed_node("layout_and_style_agent", layout_and_style_agent_stub))
     graph.add_node("renderer", _timed_node("renderer", renderer))
+    graph.add_node("depth_cloud", _timed_node("depth_cloud", depth_cloud_node))
     graph.add_node("clip_evaluator", _timed_node("clip_evaluator", clip_evaluator_node))
 
     graph.add_edge(START, "requirement_analyzer")
@@ -81,7 +83,8 @@ def build_graph() -> StateGraph:
     )
     graph.add_edge("adjuster_agent", "renderer")
     graph.add_edge("layout_and_style_agent", "renderer")
-    graph.add_edge("renderer", "clip_evaluator")
+    graph.add_edge("renderer", "depth_cloud")
+    graph.add_edge("depth_cloud", "clip_evaluator")
     graph.add_edge("clip_evaluator", END)
 
     return graph

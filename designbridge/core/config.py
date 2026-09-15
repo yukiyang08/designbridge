@@ -58,6 +58,47 @@ class Config:
     FAL_KEY: str | None = os.getenv("FAL_KEY")
     FAL_INPAINT_MODEL: str = os.getenv("DESIGNBRIDGE_FAL_INPAINT_MODEL", "fal-ai/flux-pro/v1/fill")
 
+    # 3D 場景重建：算圖前先 outpaint 擴圖，填補深度網格旋轉時的破洞
+    ENABLE_MESH_OUTPAINT: bool = os.getenv("DESIGNBRIDGE_ENABLE_MESH_OUTPAINT", "false").lower() in ("1", "true", "yes")
+    MESH_OUTPAINT_BORDER: float = float(os.getenv("DESIGNBRIDGE_MESH_OUTPAINT_BORDER", "0.2"))
+    # Outpaint 專用 endpoint。fal-ai/flux-pro/v1/fill 只吃 9 個參數，沒有 negative_prompt
+    # （guidance_scale / num_inference_steps 傳了也會被忽略），無法壓掉 FLUX 從訓練資料
+    # 學來的浮水印與招牌文字。flux-general/inpainting 有 negative_prompt，預設走 NAG 生效。
+    FAL_OUTPAINT_MODEL: str = os.getenv(
+        "DESIGNBRIDGE_FAL_OUTPAINT_MODEL", "fal-ai/flux-general/inpainting"
+    )
+    OUTPAINT_GUIDANCE: float = float(os.getenv("DESIGNBRIDGE_OUTPAINT_GUIDANCE", "2.2"))
+    OUTPAINT_STEPS: int = int(os.getenv("DESIGNBRIDGE_OUTPAINT_STEPS", "28"))
+    # NAG scale：越高越遠離 negative prompt（fal 預設 3）
+    OUTPAINT_NAG_SCALE: float = float(os.getenv("DESIGNBRIDGE_OUTPAINT_NAG_SCALE", "5.0"))
+    # 兩組 negative：文字浮水印，以及會被重複生成的家具
+    OUTPAINT_NEGATIVE_TEXT: str = os.getenv(
+        "DESIGNBRIDGE_OUTPAINT_NEGATIVE_TEXT",
+        "text, letters, words, lettering, typography, font, caption, subtitle, "
+        "watermark, logo, brand mark, signature, copyright notice, stamp, "
+        "sign, signage, banner, poster, label, nameplate, writing, "
+        "collage, photo grid, contact sheet, catalogue page",
+    )
+    OUTPAINT_NEGATIVE_DUPES: str = os.getenv(
+        "DESIGNBRIDGE_OUTPAINT_NEGATIVE_DUPES",
+        "television, tv screen, monitor, fireplace, media cabinet, sideboard, "
+        "sofa, potted plant, duplicated furniture, repeated furniture, "
+        "mirrored room, cluttered",
+    )
+
+    @classmethod
+    def outpaint_negative_prompt(cls) -> str:
+        return f"{cls.OUTPAINT_NEGATIVE_TEXT}, {cls.OUTPAINT_NEGATIVE_DUPES}"
+
+    # Text2Room 逐步 outpaint 環景（預設關閉 → 只產單視角 GLB）
+    ENABLE_TEXT2ROOM: bool = os.getenv("DESIGNBRIDGE_ENABLE_TEXT2ROOM", "false").lower() in ("1", "true", "yes")
+    TEXT2ROOM_AZIMUTHS: str = os.getenv("DESIGNBRIDGE_TEXT2ROOM_AZIMUTHS", "-30,30")
+    # 每側 outpaint 幾次。單一 typical FOV ~75° 的原圖，每次向外補約半張寬度
+    # （約 +37°），steps_per_side=1 只覆蓋 ~150°，其餘角度在球面環景上會是
+    # 大片鏡射填色而非 AI 想像的內容。3 次/側覆蓋約 300°，缺口縮小到 ~60°；
+    # 4 次/側可覆蓋滿 360° 但每次都是一次額外的 fal.ai 呼叫（+30~60 秒)。
+    TEXT2ROOM_STEPS_PER_SIDE: int = int(os.getenv("DESIGNBRIDGE_TEXT2ROOM_STEPS_PER_SIDE", "3"))
+
     # Hugging Face Inference API (cloud Flux; no local download). Tried first when HF_TOKEN set.
     ENABLE_HF_INFERENCE: bool = os.getenv("DESIGNBRIDGE_ENABLE_HF_INFERENCE", "true").lower() in ("1", "true", "yes")
     HF_TOKEN: str | None = os.getenv("HF_TOKEN")

@@ -204,6 +204,47 @@ designbridge/
 
 ---
 
+## 3D 場景重建與環景圖
+
+把渲染完成的設計圖 + 深度圖反投影成可互動的 3D 內容。分兩條路，用環境變數切換。
+
+### 深度網格（預設）
+
+`renderer` 之後的 `depth_cloud` node 會把設計圖與深度圖反投影成帶貼圖的三角網格，輸出到
+`artifacts/room_mesh/{task_id}/room_mesh.glb`。深度落差超過門檻的相鄰像素不連面，
+藉此保留物件邊界。無需額外設定，也不需 API key。
+
+### 環景圖（Text2Room，按需生成）
+
+用 FLUX Fill 逐側 outpaint 把畫面向左右延伸，拼成環景圖。因為單次約需 30–60 秒，
+**不放在自動流程裡**：使用者在結果頁按「生成 3D全景模擬」才呼叫 `POST /api/generate-panorama`。
+需要 `FAL_KEY`。
+
+### 環境變數
+
+```env
+# 反投影前先用 AI 擴圖，填補網格旋轉時邊緣的破洞（需 FAL_KEY）
+DESIGNBRIDGE_ENABLE_MESH_OUTPAINT=false
+DESIGNBRIDGE_MESH_OUTPAINT_BORDER=0.2      # 四邊各擴張的比例
+
+# 讓自動流程直接跑 Text2Room 環景（預設 false → 只產單視角 GLB）
+DESIGNBRIDGE_ENABLE_TEXT2ROOM=false
+DESIGNBRIDGE_TEXT2ROOM_AZIMUTHS=-30,30
+
+# 環景每側 outpaint 幾次。預設 1 只覆蓋約 150°，其餘角度在球面上會是鏡射
+# 填色而非 AI 補的內容；3 次覆蓋約 300°，4 次可補滿 360°，但每加一次
+# 就是多一次 fal.ai 呼叫（+30~60 秒／次）
+DESIGNBRIDGE_TEXT2ROOM_STEPS_PER_SIDE=3
+```
+
+### 前端
+
+`ResultPanel.vue` 內嵌 `PanoramaViewer`（three.js 球面貼圖 + OrbitControls）與
+`PointCloudViewer`（PLY 點雲）。`/api/generate` 回傳 `room_glb_url`、
+`room_panorama_url`、`depth_cloud_url` 三個欄位。
+
+---
+
 ## 常見問題
 
 **Q：Windows 執行報 UnicodeEncodeError**

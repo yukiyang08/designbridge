@@ -2,6 +2,8 @@
 import { computed, ref, reactive, watch } from 'vue'
 import { apiUrl } from '@/config/api'
 import { useFurnitureSelection } from '@/composables/useFurnitureSelection'
+import PanoramaViewer from './PanoramaViewer.vue'
+import PointCloudViewer from './PointCloudViewer.vue'
 
 const refExpanded = ref(true)
 const rawExpanded = ref(false)
@@ -30,6 +32,52 @@ const props = defineProps({
 })
 
 const emit = defineEmits(['refine', 'quotation-loaded'])
+
+// 3D 全景圖：按需生成（耗時約 30-60 秒，不放進自動流程）
+const show3d = ref(false)
+const panoLoading = ref(false)
+const panoUrl = ref(null)
+const panoError = ref(null)
+
+// 切換到新結果時重置全景狀態
+watch(() => props.result?.task_id, () => {
+  panoLoading.value = false
+  panoUrl.value = null
+  panoError.value = null
+  show3d.value = false
+})
+
+async function generatePanorama() {
+  const result = props.result
+  if (!result?.task_id || !result?.generated_image_path) return
+
+  panoLoading.value = true
+  panoError.value = null
+
+  try {
+    const res = await fetch(apiUrl('/api/generate-panorama'), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        task_id: result.task_id,
+        image_path: result.generated_image_path,
+        depth_path: result.vision_features?.depth || null,
+        prompt: result.structured_requirement?.meta?.design_goal || '',
+      }),
+    })
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}))
+      throw new Error(err.detail || `HTTP ${res.status}`)
+    }
+    const data = await res.json()
+    panoUrl.value = data.room_panorama_url
+    show3d.value = true
+  } catch (e) {
+    panoError.value = e.message
+  } finally {
+    panoLoading.value = false
+  }
+}
 
 // 家具估價／報價推薦改成使用者按按鈕才觸發（避免每次生圖都額外等 30-40 秒）
 const quotationLoading = ref(false)
@@ -202,6 +250,43 @@ const styleReferenceImageUrl = computed(() => {
           </div>
         </div>
 
+      </div>
+
+      <!-- 3D全景模擬（按需生成） -->
+      <div v-if="result.generated_image_path && result.task_id" class="card room3d-card">
+        <div class="room3d-header">
+          <h3 class="card-title">
+            3D全景模擬
+            <span class="badge-3d">互動式</span>
+          </h3>
+          <!-- 未生成：顯示生成按鈕 -->
+          <button v-if="!panoUrl && !panoLoading" class="btn-view3d btn-pano" @click="generatePanorama">
+            ✦ 生成 3D全景模擬
+          </button>
+          <!-- 生成中 -->
+          <span v-else-if="panoLoading" class="pano-status">
+            <span class="pano-dot"></span> 生成中，約 30–60 秒…
+          </span>
+          <!-- 已生成：收合 / 展開 -->
+          <button v-else-if="panoUrl" class="btn-view3d" @click="show3d = !show3d">
+            {{ show3d ? '收合' : '查看 3D全景模擬' }}
+          </button>
+        </div>
+
+        <!-- 錯誤提示 -->
+        <div v-if="panoError" class="pano-error">⚠ {{ panoError }}</div>
+
+        <!-- 全景 Viewer -->
+        <PanoramaViewer v-if="panoUrl && show3d" :image-url="panoUrl" />
+      </div>
+
+      <!-- 3D 點雲檢視器 -->
+      <div v-if="result.depth_cloud_url" class="card splat-card">
+        <h3 class="card-title">
+          3D 點雲
+          <span class="badge-3d">互動式</span>
+        </h3>
+        <PointCloudViewer :ply-url="result.depth_cloud_url" />
       </div>
 
       <!-- 結構化需求 -->
@@ -614,7 +699,47 @@ const styleReferenceImageUrl = computed(() => {
 .card-style { border-color: var(--primary-border); }
 .card-muted { opacity: 0.6; }
 
-.card-title { font-size: 0.85rem; font-weight: 700; color: var(--text-2); margin-bottom: 0.9rem; letter-spacing: 0.01em; }
+.card-title { font-size: 0.85rem; font-weight: 700; color: var(--text-2); margin-bottom: 0.9rem; letter-spacing: 0.01em; display: flex; align-items: center; gap: 0.5rem; }
+
+/* 3D 全景 / 點雲卡片 */
+.splat-card { padding-bottom: 0; overflow: hidden; }
+.room3d-card { padding-bottom: 0; overflow: hidden; }
+.room3d-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.75rem; }
+.room3d-header .card-title { margin: 0; }
+.btn-view3d {
+  padding: 0.35rem 1rem;
+  background: #1a1a2e;
+  color: #c8a97e;
+  border: 1.5px solid #c8a97e;
+  border-radius: 8px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.btn-view3d:hover { background: #2a2a3e; }
+.btn-pano { background: linear-gradient(135deg, #6366f1, #8b5cf6); border-color: #818cf8; }
+.btn-pano:hover { background: linear-gradient(135deg, #4f46e5, #7c3aed); }
+
+.pano-status {
+  display: flex; align-items: center; gap: 0.5rem;
+  font-size: 0.8rem; color: #c8a97e;
+}
+.pano-dot {
+  width: 8px; height: 8px; border-radius: 50%;
+  background: #c8a97e;
+  animation: pano-pulse 1.2s ease-in-out infinite;
+}
+@keyframes pano-pulse { 0%,100%{opacity:1} 50%{opacity:0.3} }
+
+.pano-error {
+  font-size: 0.8rem; color: #f87171;
+  padding: 0.5rem 0.75rem;
+  background: rgba(248,113,113,0.1);
+  border-radius: 6px;
+  margin-top: 0.5rem;
+}
+.badge-3d { font-size: 0.65rem; font-weight: 600; padding: 0.15rem 0.5rem; border-radius: 999px; background: linear-gradient(135deg, #6366f1, #8b5cf6); color: #fff; letter-spacing: 0.02em; }
 
 /* Requirement grid */
 .req-grid {
