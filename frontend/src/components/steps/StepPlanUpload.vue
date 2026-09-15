@@ -20,7 +20,7 @@ const {
     <label v-if="!floorPlanUpload.preview" class="drop">
       <input type="file" accept="image/*" hidden @change="floorPlanUpload.onChange" />
       <span class="drop-icon">📐</span>
-      <span class="drop-label">上傳 2D 平面配置圖</span>
+      <span class="drop-label">上傳 CAD 平面配置圖</span>
       <small class="drop-hint">AI 會辨識圖上的家具位置，之後可繼續拖曳微調</small>
     </label>
 

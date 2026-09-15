@@ -11,6 +11,7 @@ import LoadingState from '@/components/shell/LoadingState.vue'
 import StepSpaceSetup from '@/components/steps/StepSpaceSetup.vue'
 import StepPhotoUpload from '@/components/steps/StepPhotoUpload.vue'
 import StepPlanUpload from '@/components/steps/StepPlanUpload.vue'
+import StepRoomPick from '@/components/steps/StepRoomPick.vue'
 import StepFloorPlan from '@/components/steps/StepFloorPlan.vue'
 import StepRender from '@/components/steps/StepRender.vue'
 import StepRefine from '@/components/steps/StepRefine.vue'
@@ -24,6 +25,7 @@ const {
   steps, stepIndex, currentStep, goStep,
   loading, loadingMsg, error,
   editPlacements, floorPlanUrl, spacePhotoPath, lastGeneratedImage, planSource,
+  detectedRooms,
   fetchStyleOptions, resetFlow,
 } = flow
 
@@ -38,6 +40,7 @@ const STEP_COMPONENTS = {
   space:      StepSpaceSetup,
   photo:      StepPhotoUpload,
   planUpload: StepPlanUpload,
+  roomPick:   StepRoomPick,
   plan:       StepFloorPlan,
   render:     StepRender,
   refine:     StepRefine,
@@ -54,10 +57,13 @@ const maxReached = computed(() => {
   const hasBase   = planSource.value === 'skip' || hasPlan || !!spacePhotoPath.value
   const hasRender = !!lastGeneratedImage.value
 
+  const hasRooms = detectedRooms.value.length > 0
+
   let reachable = 0
   keys.forEach((k, i) => {
     const ok =
       i === 0 ? true :
+      k === 'roomPick' ? hasRooms :
       k === 'plan'   ? hasPlan :
       k === 'render' ? hasBase :
       k === 'refine' ? hasRender :

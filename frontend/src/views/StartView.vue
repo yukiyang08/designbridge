@@ -11,14 +11,21 @@ import thumbScratch from '@/assets/figma/entry-scratch.png'
 const router = useRouter()
 const { startFlow } = useDesignFlow()
 
-// 設計稿只畫三張卡。第四條路（上傳 2D 平面配置圖）後端與 useDesignFlow 都還在，
-// 要重新開放時在這裡補一筆 { source: 'upload', ... } 就會接回流程。
+// 第四條路（上傳 2D 平面配置圖，含多房間自動分割 + 選房間）已經重新開放。
+// 縮圖先借用「繪製平面圖」那張圖當 placeholder（entry-upload.png 還沒有設計稿），
+// 之後有正式設計圖再換掉 thumb。
 const ENTRIES = [
   {
     source: 'generate',
     thumb: thumbPlan,
     title: ['從繪製平面設計圖開始'],
     desc: '選房型與家具，AI 先排出 2D 平面配置，可自己拖曳微調',
+  },
+  {
+    source: 'upload',
+    thumb: thumbPlan,
+    title: ['上傳CAD平面配置圖'],
+    desc: '已有設計師的平面圖？直接上傳，AI 幫你辨識房間與家具',
   },
   {
     source: 'photo',
@@ -86,9 +93,9 @@ function pick(source) {
 
 .cards {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: clamp(1rem, 2.4vw, 2rem);
-  width: min(1186px, calc(100vw - 3rem));
+  width: min(1440px, calc(100vw - 3rem));
   margin: 0 auto;
 }
 
@@ -151,6 +158,10 @@ function pick(source) {
   color: var(--db-text-soft);
 }
 
+/* 4 張卡在筆電寬度以下會太擠，先降成 2x2，太窄（手機）再收成單欄 */
+@media (max-width: 1180px) {
+  .cards { grid-template-columns: repeat(2, minmax(0, 1fr)); width: min(720px, calc(100vw - 3rem)); }
+}
 @media (max-width: 900px) {
   .cards { grid-template-columns: 1fr; width: min(560px, calc(100vw - 2rem)); }
   .thumb-wrap { min-height: 0; }
