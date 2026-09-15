@@ -274,10 +274,17 @@ def run_text2room_loop(
     W, H = rgb.size
 
     # ── Build initial GLB (for 3D model viewer, unaffected by this change) ──
-    depth_arr = np.array(Image.open(depth_path).convert("L"), dtype=np.float32) / 255.0
-    from designbridge.render.depth_cloud import depth_to_mesh_glb
-    init_glb = str(out_path / "room_mesh.glb")
-    depth_to_mesh_glb(rgb, depth_arr, init_glb, side_wing=0.0)
+    # 非致命：GLB 是給 3D 模型檢視器用的附加產物，全景本身不需要它。之前這步沒有保護，
+    # 少一個 trimesh 就會讓整個 360° 全景生成失敗（呼叫端只讀 panorama，根本沒碰 glb）。
+    init_glb: str | None = str(out_path / "room_mesh.glb")
+    try:
+        depth_arr = np.array(Image.open(depth_path).convert("L"), dtype=np.float32) / 255.0
+        from designbridge.render.depth_cloud import depth_to_mesh_glb
+
+        depth_to_mesh_glb(rgb, depth_arr, init_glb, side_wing=0.0)
+    except Exception as e:
+        print(f"⚠️  [text2room] GLB 匯出失敗（{e}），繼續產生全景圖")
+        init_glb = None
 
     # Target the standard equirectangular aspect (2:1) rather than an angular
     # guess, and split the shortfall evenly between the two sides.
