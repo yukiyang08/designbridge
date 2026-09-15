@@ -897,7 +897,7 @@ _LAYOUT_ENFORCERS: dict[str, Callable] = {
 
 # ─────────────────────────── LLM Interface ───────────────────────────
 
-def _parse_llm_layout(text: str) -> list[dict] | None:
+def _parse_llm_layout(text: str) -> dict | None:
     text = text.strip()
     for prefix in ("```json", "```"):
         if text.startswith(prefix):
@@ -914,8 +914,7 @@ def _parse_llm_layout(text: str) -> list[dict] | None:
         if end != -1:
             text = text[: end + 1]
     try:
-        data = json.loads(text)
-        return data.get("furniture") or []
+        return json.loads(text)
     except Exception:
         return None
 
@@ -924,7 +923,8 @@ def _call_llm_layout(prompt: str) -> list[FurnitureItem]:
     from designbridge.render.llm import call_llm
 
     text = call_llm(prompt)
-    furniture_list = _parse_llm_layout(text)
+    data = _parse_llm_layout(text)
+    furniture_list = (data or {}).get("furniture") or []
     if not furniture_list:
         return []
 
@@ -992,7 +992,8 @@ def parse_floor_plan_image(
         print(f"⚠️  Gemini floor-plan parse failed: {e}")
         return None
 
-    raw = _parse_llm_layout(text)
+    data = _parse_llm_layout(text)
+    raw = (data or {}).get("furniture") or []
     if not raw:
         print("⚠️  Gemini floor-plan parse returned no furniture")
         return None
@@ -1039,6 +1040,76 @@ def parse_floor_plan_image(
         "room_d": room_d,
         "source": "uploaded_plan_parsed",
     }
+
+
+# Room types DesignBridge actually knows how to furnish/render (kept in sync with
+# _ROOM_LABEL_MAP below and frontend/src/config/furniture.js ROOM_OPTIONS).
+_KNOWN_ROOM_TYPES = ("living_room", "bedroom", "kitchen", "dining_room", "study")
+
+
+def detect_rooms_in_floor_plan(image_path: str) -> list[dict] | None:
+    """Find every distinct room/space in a (possibly whole-unit) floor-plan image via
+    Gemini vision, so the caller can let the user pick one room before running it
+    through :func:`parse_floor_plan_image`.
+
+    Returns a list of ``{id, room_type, x, y, w, h}`` (same normalized, top-left-origin
+    coordinate system as furniture bounding boxes). Rooms that don't match a type
+    DesignBridge supports (bathroom, corridor, balcony, ...) come back as
+    ``room_type: "other"``. Returns ``None`` on failure (caller should then treat the
+    whole image as a single room, matching prior behavior).
+    """
+    from designbridge.render.llm import call_llm
+
+    types_csv = ", ".join(_KNOWN_ROOM_TYPES)
+    prompt = (
+        "You are given a 2D top-down FLOOR PLAN image, which may show a single room or "
+        "a whole multi-room unit (apartment/house). Identify every distinct enclosed "
+        "room or space and return each one's bounding box.\n"
+        "Coordinate system: origin at the TOP-LEFT of the whole image. x = 0 is the "
+        "left edge → 1 is the right edge; y = 0 is the top edge → 1 is the bottom edge. "
+        "(x, y) is the TOP-LEFT corner of the room's bounding box; (w, h) are its width "
+        "and height. All four values are floats in [0, 1].\n"
+        f"For `room_type`, use ONLY one of: {types_csv}. If a space clearly doesn't "
+        "match any of these (e.g. bathroom, closet, corridor, balcony, entrance), use "
+        '"other".\n'
+        "Return STRICT JSON only, no prose, no markdown fences:\n"
+        '{"rooms":[{"room_type":"bedroom","x":0.05,"y":0.05,"w":0.35,"h":0.4}]}'
+    )
+
+    try:
+        text = call_llm(prompt, images=[image_path])
+    except Exception as e:  # noqa: BLE001
+        print(f"⚠️  Gemini room detection failed: {e}")
+        return None
+
+    data = _parse_llm_layout(text)
+    raw = (data or {}).get("rooms") or []
+    if not raw:
+        print("⚠️  Gemini room detection returned no rooms")
+        return None
+
+    rooms: list[dict] = []
+    for i, r in enumerate(raw):
+        try:
+            x = float(r.get("x", 0.0))
+            y = float(r.get("y", 0.0))
+            w = float(r.get("w", 0.1))
+            h = float(r.get("h", 0.1))
+        except (TypeError, ValueError):
+            continue
+        room_type = str(r.get("room_type", "other")).lower().replace(" ", "_")
+        if room_type not in _KNOWN_ROOM_TYPES:
+            room_type = "other"
+        rooms.append({
+            "id": f"room_{i + 1}",
+            "room_type": room_type,
+            "x": max(0.0, min(0.98, x)),
+            "y": max(0.0, min(0.98, y)),
+            "w": max(0.02, min(1.0, w)),
+            "h": max(0.02, min(1.0, h)),
+        })
+
+    return rooms or None
 
 
 # ───────────────────────── Default Fallback Layouts ───────────────────────────

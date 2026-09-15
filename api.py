@@ -574,6 +574,65 @@ async def parse_floor_plan(request: ParseFloorPlanRequest):
         raise HTTPException(status_code=500, detail=str(e))
 
 
+class DetectRoomsRequest(BaseModel):
+    image_path: str
+
+
+@app.post("/api/detect-rooms")
+async def detect_rooms(request: DetectRoomsRequest):
+    """整戶平面圖上傳後，先抓出每個房間的邊界框，讓使用者選要看哪一間。"""
+    if not Path(request.image_path).is_file():
+        raise HTTPException(status_code=400, detail=f"找不到圖片：{request.image_path}")
+
+    try:
+        from designbridge.layout.layout_agent import detect_rooms_in_floor_plan
+
+        rooms = detect_rooms_in_floor_plan(request.image_path)
+        return {"rooms": rooms or []}
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+class CropFloorPlanRequest(BaseModel):
+    image_path: str
+    x: float
+    y: float
+    w: float
+    h: float
+
+
+@app.post("/api/crop-floor-plan")
+async def crop_floor_plan(request: CropFloorPlanRequest):
+    """依使用者選定的房間邊界框，從整戶平面圖裁出單一房間的子圖。"""
+    if not Path(request.image_path).is_file():
+        raise HTTPException(status_code=400, detail=f"找不到圖片：{request.image_path}")
+
+    try:
+        from PIL import Image
+
+        img = Image.open(request.image_path)
+        img_w, img_h = img.size
+        pad = 0.03  # 留一點邊界，避免牆線剛好被切到
+        x0 = max(0.0, request.x - pad)
+        y0 = max(0.0, request.y - pad)
+        x1 = min(1.0, request.x + request.w + pad)
+        y1 = min(1.0, request.y + request.h + pad)
+        box = (int(x0 * img_w), int(y0 * img_h), int(x1 * img_w), int(y1 * img_h))
+        cropped = img.crop(box)
+
+        upload_dir = Path("artifacts/uploads")
+        upload_dir.mkdir(parents=True, exist_ok=True)
+        dest = upload_dir / f"{uuid.uuid4()}_room.png"
+        cropped.save(dest)
+        return {"path": str(dest)}
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 class FloorPlanRenderRequest(BaseModel):
     furniture_placements: List[dict]
     room_w: float = 5.0
