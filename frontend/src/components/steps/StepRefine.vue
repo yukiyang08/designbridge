@@ -2,21 +2,27 @@
 /**
  * Step 微調編輯 — Figma MacBook Air - 19 / 21
  *
- * 左邊需求輸入 + 畫筆工具，右邊在渲染圖上塗抹遮罩。設計稿在畫筆與橡皮擦旁各畫了
- * 一條滑桿：上面那條對應筆刷大小，下面那條接到既有但先前沒有 UI 的 edit_scope
- * （改動幅度），讓這個實際會送進 API 的參數第一次可以被調整。
+ * 左邊需求輸入 + 畫筆工具，右邊在渲染圖上塗抹遮罩。畫筆跟橡皮擦各有自己獨立的
+ * px 大小（RefineCanvas 塗跟擦共用同一個圓形筆刷，只是切換 mode 決定畫上去還是
+ * 擦掉，所以兩個工具的「大小」是分開的兩個數字，不能共用一個 brushSize）。
+ *
+ * editScope（改動幅度）是另一件事——它是送進 /api/generate 的 edit_scope，控制
+ * AI 可以偏離原圖多少，跟筆刷大小無關，拆成自己獨立一排，不要跟橡皮擦的大小混在
+ * 一起（之前掛在橡皮擦那排、用百分比顯示，看起來像是橡皮擦的大小，是誤導）。
  */
 import { computed } from 'vue'
 import RefineCanvas from '@/components/RefineCanvas.vue'
 import { useDesignFlow } from '@/composables/useDesignFlow'
 
 const {
-  textPrompt, brushSize, drawMode, editScope,
+  textPrompt, brushSize, eraserSize, drawMode, editScope,
   spaceImage, baseImagePreview, refineCanvasRef,
   loading, submitRefine, nextStep, prevStep,
 } = useDesignFlow()
 
 const hasBase = computed(() => !!baseImagePreview.value)
+// RefineCanvas 只吃一個 brush-size：畫筆模式用 brushSize，橡皮擦模式用 eraserSize
+const activeBrushSize = computed(() => drawMode === 'erase' ? eraserSize.value : brushSize.value)
 </script>
 
 <template>
@@ -57,16 +63,30 @@ const hasBase = computed(() => !!baseImagePreview.value)
             @click="drawMode = 'erase'"
           >橡皮擦</button>
           <input
-            v-model.number="editScope"
-            type="range" min="0.1" max="1" step="0.05"
-            class="slider" aria-label="改動幅度"
+            v-model.number="eraserSize"
+            type="range" min="5" max="120" step="5"
+            class="slider" aria-label="橡皮擦大小"
           />
-          <span class="slider-val">改動 {{ Math.round(editScope * 100) }}%</span>
+          <span class="slider-val">{{ eraserSize }}px</span>
         </div>
 
         <p class="tool-hint">
-          不塗抹就整張重繪；塗抹後只重繪塗到的區域。改動幅度越高，AI 越敢偏離原圖。
+          不塗抹就整張重繪；塗抹後只重繪塗到的區域。
         </p>
+
+        <div class="scope-row">
+          <label class="field-label" for="edit-scope">改動幅度</label>
+          <div class="scope-control">
+            <input
+              id="edit-scope"
+              v-model.number="editScope"
+              type="range" min="0.1" max="1" step="0.05"
+              class="slider"
+            />
+            <span class="slider-val">{{ Math.round(editScope * 100) }}%</span>
+          </div>
+          <p class="tool-hint">跟筆刷大小無關——這個控制 AI 可以偏離原圖多少，越高越敢改。</p>
+        </div>
 
         <!-- 沒有基底圖時（例如直接從網址進到這一步）給一個上傳入口 -->
         <div v-if="!hasBase" class="fallback">
@@ -84,7 +104,7 @@ const hasBase = computed(() => !!baseImagePreview.value)
           v-if="hasBase"
           ref="refineCanvasRef"
           :image-url="baseImagePreview"
-          :brush-size="brushSize"
+          :brush-size="activeBrushSize"
           :draw-mode="drawMode"
         />
         <div v-else class="canvas-empty">
@@ -177,6 +197,28 @@ const hasBase = computed(() => !!baseImagePreview.value)
   font-size: 0.8rem;
   line-height: 1.65;
   color: var(--db-placeholder);
+}
+
+/* 改動幅度：獨立一排，不跟畫筆／橡皮擦的按鈕並排，視覺上才不會被誤認成
+   某個工具的大小設定 */
+.scope-row {
+  margin-top: 1.25rem;
+  padding-top: 1.1rem;
+  border-top: 1px solid #ececec;
+}
+.scope-control {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin-top: 0.5rem;
+}
+.scope-control .slider { flex: 1; min-width: 0; accent-color: var(--db-accent); }
+.scope-control .slider-val {
+  flex-shrink: 0;
+  min-width: 3.5em;
+  font-size: 0.8rem;
+  color: var(--db-text-soft);
+  font-variant-numeric: tabular-nums;
 }
 
 .fallback { margin-top: 1.5rem; }

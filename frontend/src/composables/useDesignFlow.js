@@ -141,7 +141,8 @@ let currentRequestId = 0
 const spaceImage         = useImageField()
 const lastGeneratedImage = ref(null)
 const manualMaskPath     = ref('')
-const brushSize          = ref(32)
+const brushSize          = ref(32)   // 畫筆直徑（px）
+const eraserSize         = ref(32)   // 橡皮擦直徑（px）——獨立於畫筆，兩個工具可以各自調大小
 const drawMode           = ref('draw')
 const editScope          = ref(0.6)
 const textPrompt         = ref('')
@@ -743,7 +744,7 @@ export function useDesignFlow() {
     // 結果
     result, loading, loadingMsg, error, submitKey,
     // 微調
-    spaceImage, lastGeneratedImage, manualMaskPath, brushSize, drawMode, editScope,
+    spaceImage, lastGeneratedImage, manualMaskPath, brushSize, eraserSize, drawMode, editScope,
     textPrompt, refineCanvasRef, baseImagePreview, handleMaskReady,
     // 環景
     panoLoading, panoUrl, panoError, generatePanorama,

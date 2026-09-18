@@ -31,7 +31,9 @@ from designbridge.render.render_backends import (
 _BASE_NEGATIVE_PROMPT = (
     "people, person, human, man, woman, child, hands, face, "
     "animal, pet, cat, dog, bird, "
-    "text, watermark, signature, logo"
+    "text, watermark, signature, logo, "
+    "embossed texture, relief carving, engraved pattern, corrugated surface, "
+    "bumpy wall texture, mosaic screen, pixelated glitch"
 )
 
 
@@ -84,6 +86,39 @@ def _fit_condition_image(
         return image_path
 
 
+def _denoise_labels(labels: "np.ndarray", min_region_px: int = 40) -> "np.ndarray":
+    """Merge label blobs smaller than ``min_region_px`` into a neighbouring blob.
+
+    The segmentation model sometimes can't decide on one label for a patch of
+    clutter, fabric folds, or a reflective surface, and splits it into many tiny
+    flickering regions instead of one clean surface. Left alone, every one of
+    those micro-regions becomes a permanent "boundary" in the edge condition,
+    and the ControlNet then treats each one as a real seam to paint — this is
+    what turns a plain wall into a field of small embossed-looking patches.
+    Small blobs are dissolved into whichever surviving region is nearest.
+    """
+    import numpy as np
+    from scipy import ndimage
+
+    keep = np.ones(labels.shape, dtype=bool)
+    for val in np.unique(labels):
+        comp, n = ndimage.label(labels == val)
+        if n == 0:
+            continue
+        sizes = ndimage.sum(np.ones_like(comp), comp, index=np.arange(1, n + 1))
+        small_ids = np.where(sizes < min_region_px)[0] + 1
+        if len(small_ids):
+            keep &= ~np.isin(comp, small_ids)
+
+    if keep.all():
+        return labels
+
+    # Grow the surviving labels into the dissolved pixels: each removed pixel
+    # takes the label of the nearest pixel that survived.
+    _, (iy, ix) = ndimage.distance_transform_edt(~keep, return_indices=True)
+    return np.where(keep, labels, labels[iy, ix])
+
+
 def _seg_to_edge_condition(
     seg_path: str, output_size: tuple[int, int], out_dir: Path, tag: str
 ) -> str | None:
@@ -111,6 +146,8 @@ def _seg_to_edge_condition(
 
         if labels.ndim != 2 or min(labels.shape) < 2:
             return None
+
+        labels = _denoise_labels(labels)
 
         edge = np.zeros(labels.shape, dtype=bool)
         edge[:, :-1] |= labels[:, :-1] != labels[:, 1:]
@@ -439,7 +476,16 @@ def renderer(state: DesignBridgeState) -> dict[str, Any]:
     # Kontext LoRA：有 depth map 時優先，保留空間結構
     # depth_conditioning_scale: 1.0=完全保留結構, 0.0=忽略深度圖
     # lora scale 直接對應 depth_conditioning_scale，不需轉換
-    depth_conditioning_scale = float(req.get("depth_conditioning_scale") or 0.85)
+    # Fallback when the LLM didn't set this (including when the LLM call itself
+    # failed, e.g. Gemini quota/model errors — this is the value every such
+    # failure silently lands on). 0.85 was near-max rigidity with zero
+    # information about how big a material change was requested; when the
+    # target style is very different from the source photo, locking geometry
+    # that hard leaves the model no room to actually repaint materials, so it
+    # paints a decorative overlay on top of the untouched geometry instead
+    # (the "engraved/embossed" artifact). 0.6 keeps real photos recognisable
+    # without forcing every surface to stay pixel-locked.
+    depth_conditioning_scale = float(req.get("depth_conditioning_scale") or 0.6)
     depth_conditioning_scale = max(0.0, min(1.0, depth_conditioning_scale))
     # The LLM's depth_conditioning_scale is calibrated for real photo depth ("how much to
     # preserve an existing room's structure"). Projected/synthetic depth is geometrically

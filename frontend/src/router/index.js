@@ -32,6 +32,9 @@ const router = createRouter({
     // 舊版側欄工作台。新版精靈涵蓋了同樣的功能，這條路留著是為了改版期間可以
     // 兩邊對照、確認沒有漏掉行為；確認無虞之後可以連同 HomeView.vue 一起移除。
     { path: '/classic', name: 'classic', component: () => import('../views/HomeView.vue') },
+
+    // 獨立的房型配置 CAD 平面圖工具（輸入幾房幾廳生成牆／門／窗配置圖），跟主精靈流程無關。
+    { path: '/room-plan', name: 'room-plan', component: () => import('../views/RoomPlanView.vue') },
   ],
 })
 

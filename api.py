@@ -132,6 +132,16 @@ class LayoutRequest(BaseModel):
     family_needs: List[str] = []
     fengshui_rules: List[str] = []
 
+
+class RoomProgramRequest(BaseModel):
+    """輸入：整層樓的房間需求（幾房幾廳…）+ 總坪數，獨立於既有單房家具佈局流程。"""
+    bedroom_count: int = 2
+    living_count: int = 1
+    bathroom_count: int = 1
+    kitchen_count: int = 1
+    balcony_count: int = 1
+    total_ping: float = 25.0
+
 # 2. 延遲編譯 Graph（避免 uvicorn 啟動前長時間阻塞，導致前端連不上）
 _compiled_graph = None
 
@@ -525,6 +535,51 @@ async def generate_layout(request: LayoutRequest):
         import traceback
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/generate-room-plan")
+async def generate_room_plan_endpoint(request: RoomProgramRequest):
+    """獨立功能：根據房間數量需求（幾房幾廳幾衛幾廚幾陽台）+ 總坪數，
+    生成整層樓的房間配置 CAD 平面圖（牆、門、窗、尺寸標註），與既有單房家具佈局流程無關。"""
+    import uuid as _uuid
+
+    from designbridge.roomplan import RoomProgramError, generate_room_plan
+
+    if not any([
+        request.bedroom_count, request.living_count, request.bathroom_count,
+        request.kitchen_count, request.balcony_count,
+    ]):
+        raise HTTPException(status_code=400, detail="至少需要一個房間")
+
+    try:
+        task_id = str(_uuid.uuid4())
+        result = generate_room_plan(request.dict(), task_id)
+    except RoomProgramError as e:
+        raise HTTPException(status_code=422, detail=str(e))
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=str(e))
+
+    normalized = result.svg_path.replace("\\", "/")
+    svg_url = f"http://localhost:8000/{normalized}" if normalized.startswith("artifacts/") else None
+
+    return {
+        "status": "success",
+        "task_id": task_id,
+        "total_ping": request.total_ping,
+        "total_m2": result.total_m2,
+        "bounding_w_m": result.bounding_w_m,
+        "bounding_d_m": result.bounding_d_m,
+        "rooms": [r.to_dict() for r in result.rooms],
+        "walls": [w.to_dict() for w in result.walls],
+        "doors": [d.to_dict() for d in result.doors],
+        "windows": [w.to_dict() for w in result.windows],
+        "svg_path": result.svg_path,
+        "svg_url": svg_url,
+        "svg_markup": result.svg_markup,
+        "warnings": result.warnings,
+    }
 
 
 class ParseFloorPlanRequest(BaseModel):
