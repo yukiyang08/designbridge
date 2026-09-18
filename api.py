@@ -120,6 +120,9 @@ class DesignRequest(BaseModel):
     style_method: str = "ai_analysis"
     floor_plan_path: Optional[str] = None   # 由 Step 1 產生的 2D 平面圖路徑
     scene_graph: Optional[dict] = None     # 由 Step 1 產生的完整 scene_graph（含家具座標）
+    # /api/plan-layout 回傳的結果，原樣回傳給 /api/generate 就能跳過重跑 RA/vision/layout_agent，
+    # 直接進 renderer——使用者在前端確認過 3D 佈局預覽後才會帶著這個欄位呼叫
+    plan: Optional[dict] = None
 
 
 class LayoutRequest(BaseModel):
@@ -131,6 +134,35 @@ class LayoutRequest(BaseModel):
     text_prompt: str = ""
     family_needs: List[str] = []
     fengshui_rules: List[str] = []
+
+
+def _build_user_input(request: DesignRequest) -> dict:
+    """Assemble the `user_input` LangGraph state dict from a request — shared by
+    /api/generate and /api/plan-layout so the two stay in sync."""
+    user_input = {
+        "text_prompt": request.text_prompt,
+        "edit_scope": request.edit_scope,
+        "output_aspect": request.output_aspect,
+    }
+    if request.style_profile_id and request.style_profile_id != "auto":
+        user_input["style_profile_id"] = request.style_profile_id
+    if request.initial_image_path:
+        user_input["initial_image"] = request.initial_image_path
+    if request.style_reference_image_path:
+        user_input["style_reference_image"] = request.style_reference_image_path
+    if request.no_style_reference:
+        user_input["no_style_reference"] = True
+    if request.refine_mode:
+        user_input["refine_mode"] = True
+    if request.mask_image_path:
+        user_input["mask_image"] = request.mask_image_path
+    if request.family_needs:
+        user_input["family_needs"] = request.family_needs
+    if request.fengshui_rules:
+        user_input["fengshui_rules"] = request.fengshui_rules
+    if request.style_method:
+        user_input["style_method"] = request.style_method
+    return user_input
 
 # 2. 延遲編譯 Graph（避免 uvicorn 啟動前長時間阻塞，導致前端連不上）
 _compiled_graph = None
@@ -706,41 +738,63 @@ async def render_floor_plan(request: FloorPlanRenderRequest):
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@app.post("/api/plan-layout")
+async def plan_layout(request: DesignRequest):
+    """只跑 RA + 視覺前處理 + layout_agent，不生圖——給前端 3D 佈局預覽用，讓使用者能在
+    真正花時間/花錢生圖之前先確認佈局。回傳的 dict 可以原樣塞進 /api/generate 的 `plan`
+    欄位，跳過這裡已經做過的事，直接進 renderer。"""
+    try:
+        from designbridge.core.nodes import (
+            requirement_analyzer, visual_preprocessing_local,
+            design_director, layout_and_style_agent_stub,
+        )
+
+        state: dict = {"user_input": _build_user_input(request)}
+        state.update(requirement_analyzer(state))
+        state.update(visual_preprocessing_local(state))
+        state.update(design_director(state))
+        state.update(layout_and_style_agent_stub(state))
+
+        scene_graph = state.get("scene_graph")
+        return {
+            "status": "success",
+            "task_id": state.get("task_id"),
+            "routing_decision": state.get("routing_decision"),
+            "structured_requirement": state.get("structured_requirement"),
+            "vision_features": state.get("vision_features"),
+            "scene_graph": scene_graph,
+            "style_params": state.get("style_params"),
+            "layout_render_config": _layout_render_config() if scene_graph else None,
+        }
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 # 3. 建立 POST 路由
 @app.post("/api/generate")
 async def generate_design(request: DesignRequest):
     try:
         # 準備 LangGraph 初始狀態
-        user_input = {
-            "text_prompt": request.text_prompt,
-            "edit_scope": request.edit_scope,
-            "output_aspect": request.output_aspect,
-        }
-        if request.style_profile_id and request.style_profile_id != "auto":
-            user_input["style_profile_id"] = request.style_profile_id
-        if request.initial_image_path:
-            user_input["initial_image"] = request.initial_image_path
-        if request.style_reference_image_path:
-            user_input["style_reference_image"] = request.style_reference_image_path
-        if request.no_style_reference:
-            user_input["no_style_reference"] = True
-        if request.refine_mode:
-            user_input["refine_mode"] = True
-        if request.mask_image_path:
-            user_input["mask_image"] = request.mask_image_path
-        if request.family_needs:
-            user_input["family_needs"] = request.family_needs
-        if request.fengshui_rules:
-            user_input["fengshui_rules"] = request.fengshui_rules
-        if request.style_method:
-            user_input["style_method"] = request.style_method
-
+        user_input = _build_user_input(request)
         initial_state: dict = {"user_input": user_input}
         # 若 Step 1 已產生平面圖，預填入完整 scene_graph（含家具座標）讓 layout agent 跳過重複生成
         if request.scene_graph:
             initial_state["scene_graph"] = request.scene_graph
         elif request.floor_plan_path and Path(request.floor_plan_path).is_file():
             initial_state["scene_graph"] = {"floor_plan_path": request.floor_plan_path}
+
+        # 如果前端帶著 /api/plan-layout 的結果回來（使用者已經確認過 3D 佈局預覽），
+        # 把這些欄位預先塞進 state，requirement_analyzer/visual_preprocessing/
+        # layout_and_style_agent 三個節點都會偵測到已經有值而跳過重跑。
+        if request.plan:
+            for key in (
+                "task_id", "structured_requirement", "routing_decision",
+                "vision_features", "scene_graph", "style_params",
+            ):
+                if request.plan.get(key) is not None:
+                    initial_state[key] = request.plan[key]
 
         # 執行工作流
         t0 = time.perf_counter()
@@ -784,6 +838,8 @@ async def generate_design(request: DesignRequest):
             "room_glb_url": room_glb_url,
             "room_panorama_url": room_panorama_url,
             "structured_requirement": result.get("structured_requirement"),
+            "scene_graph": result.get("scene_graph"),
+            "layout_render_config": _layout_render_config() if result.get("scene_graph") else None,
             "task_id": result.get("task_id"),
             "iteration": result.get("iteration"),
             "render_result": result.get("render_result"),

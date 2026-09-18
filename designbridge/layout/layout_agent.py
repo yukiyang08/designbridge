@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import json
+import re
 from dataclasses import dataclass
 from functools import lru_cache
 from pathlib import Path
@@ -36,8 +37,47 @@ FURNITURE_SIZES: dict[str, tuple[float, float]] = {
     "cabinet": (0.14, 0.07),
     "dresser": (0.14, 0.09),
     "shelf": (0.10, 0.05),
+    "cat_tree": (0.06, 0.06),
+    "dog_bed": (0.10, 0.08),
+    "litter_box": (0.07, 0.06),
     "default": (0.12, 0.10),
 }
+
+# The layout LLM freely names furniture ("dog_bed_in_a_corner", "tv_stand", "couch").
+# Collapse everything to the controlled vocabulary above so we don't get duplicate pieces
+# and unknown types rendering as identical mystery boxes.
+_FTYPE_ALIASES: dict[str, str] = {
+    "couch": "sofa", "settee": "sofa", "sectional": "sofa", "sectional_sofa": "sofa",
+    "tv_stand": "tv_unit", "tv_console": "tv_unit", "media_console": "tv_unit",
+    "media_unit": "tv_unit", "television": "tv", "tv_cabinet": "tv_unit",
+    "centre_table": "coffee_table", "center_table": "coffee_table", "cocktail_table": "coffee_table",
+    "end_table": "side_table", "accent_table": "side_table",
+    "book_shelf": "bookshelf", "bookcase": "bookshelf", "shelving": "shelf", "shelves": "shelf",
+    "closet": "wardrobe", "armoire": "wardrobe",
+    "chest_of_drawers": "dresser", "drawers": "dresser", "chest": "dresser",
+    "potted_plant": "plant", "houseplant": "plant", "indoor_plant": "plant",
+    "floor_lamp": "lamp", "standing_lamp": "lamp", "table_lamp": "lamp",
+    "area_rug": "rug", "carpet": "rug",
+    "cat_tower": "cat_tree", "cat_condo": "cat_tree", "scratching_post": "cat_tree", "cat_climber": "cat_tree",
+    "dog_crate": "dog_bed", "pet_bed": "dog_bed", "dog_house": "dog_bed", "dog_kennel": "dog_bed",
+    "litter_tray": "litter_box", "cat_litter": "litter_box", "litter_pan": "litter_box",
+}
+
+
+def _normalize_ftype(raw: str) -> str:
+    """Map a free-form furniture label to a known type, or 'default' if nothing matches."""
+    t = re.sub(r"[^a-z_]", "", str(raw).lower().strip().replace(" ", "_").replace("-", "_"))
+    t = re.sub(r"_+", "_", t).strip("_")
+    if t in FURNITURE_SIZES:
+        return t
+    if t in _FTYPE_ALIASES:
+        return _FTYPE_ALIASES[t]
+    # positional suffixes etc: "dog_bed_in_a_corner" contains "dog_bed".
+    # Longest key first so "dog_bed" wins over "bed", "coffee_table" over "table".
+    for known in sorted((*FURNITURE_SIZES, *_FTYPE_ALIASES), key=len, reverse=True):
+        if known != "default" and known in t:
+            return _FTYPE_ALIASES.get(known, known)
+    return "default"
 
 FURNITURE_COLORS: dict[str, tuple[int, int, int]] = {
     "sofa": (100, 149, 237),
@@ -62,6 +102,9 @@ FURNITURE_COLORS: dict[str, tuple[int, int, int]] = {
     "cabinet": (130, 100, 70),
     "lamp": (255, 220, 100),
     "plant": (80, 160, 80),
+    "cat_tree": (170, 140, 110),
+    "dog_bed": (200, 170, 140),
+    "litter_box": (190, 190, 200),
     "default": (150, 200, 150),
 }
 
@@ -72,6 +115,14 @@ SOFT_WEIGHTS = {
     "natural_light": 0.10,
     "ergonomics": 0.10,
 }
+
+# What gets left OUT of the ControlNet depth map. The original rule kept only big
+# wall-anchored pieces, because every item was extruded as a solid cuboid and the small
+# ones just became box-noise on the floor. Semantic silhouettes removed that reason — a
+# coffee table now projects as a floating top on four legs, which is a useful signal, not
+# noise — so only genuinely flat floor coverings stay out: at 2cm tall they carry no
+# depth information and render as a stray rectangle outline.
+_DEPTH_SKIP_TYPES = {"rug", "carpet", "mat", "doormat"}
 
 
 
@@ -930,14 +981,22 @@ def _call_llm_layout(prompt: str) -> list[FurnitureItem]:
 
     items: list[FurnitureItem] = []
     for f in furniture_list:
-        ftype = str(f.get("type", "default")).lower().replace(" ", "_")
+        ftype = _normalize_ftype(f.get("type", "default"))
+        if ftype == "default":
+            print(f"[layout_agent] skip unknown furniture type: {f.get('type')!r}")
+            continue
+        x = max(0.0, min(0.95, float(f.get("x", 0.1))))
+        y = max(0.0, min(0.95, float(f.get("y", 0.1))))
+        # LLM 常把同一件家具用不同名字列兩次（"sofa" + "sofa_against_wall"）— 同型別、位置相近就去重
+        if any(d.type == ftype and abs(d.x - x) < 0.06 and abs(d.y - y) < 0.06 for d in items):
+            continue
         dw, dh = FURNITURE_SIZES.get(ftype, FURNITURE_SIZES["default"])
         items.append(
             FurnitureItem(
                 id=str(f.get("id", f"{ftype}_{len(items)+1}")),
                 type=ftype,
-                x=max(0.0, min(0.95, float(f.get("x", 0.1)))),
-                y=max(0.0, min(0.95, float(f.get("y", 0.1)))),
+                x=x,
+                y=y,
                 w=float(f.get("w", dw)),
                 h=float(f.get("h", dh)),
                 rotation=float(f.get("rotation", 0)),
@@ -1691,6 +1750,26 @@ def _generate_floor_plan(
         return None
 
 
+def _write_projection_meta(res: dict, task_id: str) -> None:
+    """把投影後每件家具在影像上的實際位置寫到深度圖旁邊。
+
+    深度圖本身是灰階、不帶身分；renderer 靠這份 JSON 才能讓 prompt 裡的「沙發在左邊」
+    對準深度圖上真正屬於沙發的那一塊，並剔除投影後根本不在畫面內的家具。
+    """
+    instances = (res.get("meta") or {}).get("instances")
+    if not instances:
+        return
+    out = Path(Config.ARTIFACTS_DIR) / "layout" / f"{task_id}_projection.json"
+    try:
+        out.parent.mkdir(parents=True, exist_ok=True)
+        out.write_text(
+            json.dumps({"instances": instances}, ensure_ascii=False, indent=2),
+            encoding="utf-8",
+        )
+    except OSError as e:
+        print(f"⚠️ 投影 meta 寫入失敗（{e}）")
+
+
 def _generate_projected_depth(
     items: list[FurnitureItem],
     space_info: dict,
@@ -1751,16 +1830,26 @@ def _generate_projected_depth(
                 mode = "photo_anchored"
                 if str((res.get("meta") or {}).get("horizon_source", "")).startswith("camera:"):
                     mode = "photo_camera"
+                _write_projection_meta(res, task_id)
                 return res.get("depth_path"), res.get("seg_path"), mode
             print("[layout_agent] 照片地板幾何無法求解，退回合成相機投影")
         except Exception as e:
             print(f"⚠️ Photo-anchored depth projection failed ({e}), falling back to synthetic camera")
 
     try:
-        from designbridge.layout.scene_graph_to_depth import project_scene_graph_to_depth
+        from designbridge.layout.scene_graph_to_depth import (
+            normalize_furniture_type,
+            project_scene_graph_to_depth,
+        )
 
+        # 用正規化後的 type 比對——原本直接比 i.type，"platform_bed"/"floor_lamp" 這類
+        # LLM 自由文字標籤永遠對不上短鍵，會被整件排除在深度圖之外。
+        anchor_items = [
+            i for i in items
+            if normalize_furniture_type(i.type) not in _DEPTH_SKIP_TYPES
+        ] or items
         res = project_scene_graph_to_depth(
-            placements,
+            [item.to_dict() for item in anchor_items],
             space_info,
             depth_out,
             image_size=output_size or (1024, 1024),
@@ -1771,10 +1860,62 @@ def _generate_projected_depth(
                 "setback": Config.LAYOUT_PROJECTION_SETBACK,
             },
         )
+        _write_projection_meta(res, task_id)
         return res.get("depth_path"), res.get("seg_path"), "synthetic"
     except Exception as e:
         print(f"⚠️ Projected depth generation failed: {e}")
         return None, None, "failed"
+
+
+def reproject_scene_graph(
+    scene_graph: dict[str, Any],
+    space_info: dict[str, Any],
+    task_id: str,
+    output_size: tuple[int, int] | None = None,
+) -> dict[str, Any]:
+    """Re-run the floor-plan/depth-projection step against `furniture_placements` that
+    may have been hand-edited by the user in the 3D preview (drag to reposition).
+
+    This is pure NumPy rasterization, not an LLM call — cheap to redo. It has to be
+    redone whenever we resume from a pre-seeded scene_graph, because `projected_depth_path`
+    is what actually reaches ControlNet; skipping this would silently render the
+    original AI-planned positions even after the user dragged furniture around.
+    """
+    placements = scene_graph.get("furniture_placements") or []
+    items = [
+        FurnitureItem(
+            id=str(p.get("id", "")),
+            type=str(p.get("type", "default")),
+            x=float(p.get("x", 0)), y=float(p.get("y", 0)),
+            w=float(p.get("w", 0.1)), h=float(p.get("h", 0.1)),
+            rotation=float(p.get("rotation", 0.0)),
+        )
+        for p in placements
+    ]
+    items = _clip_to_room(items)
+
+    # 房間尺寸沿用 Step 1 畫平面圖時用的那組；缺了就退回 space_info。用預設 4x4 會讓
+    # 重新投影的長寬比與使用者當初看到的 3D 預覽對不上，家具位置整體偏移。
+    _size = (space_info or {}).get("estimated_size") or {}
+    room_w = float(scene_graph.get("room_w") or _size.get("width", 4.0) or 4.0)
+    room_d = float(scene_graph.get("room_d") or _size.get("depth", 4.0) or 4.0)
+    room_type = str(scene_graph.get("room_type") or "living_room")
+
+    floor_plan_path = _generate_floor_plan(
+        items, task_id, room_type=room_type, room_w=room_w, room_d=room_d
+    )
+    projected_depth_path, projected_seg_path, projection_mode = _generate_projected_depth(
+        items, space_info, task_id, output_size=output_size or (1024, 1024)
+    )
+
+    return {
+        **scene_graph,
+        "furniture_placements": [item.to_dict() for item in items],
+        "floor_plan_path": floor_plan_path,
+        "projected_depth_path": projected_depth_path,
+        "projected_seg_path": projected_seg_path,
+        "projection_mode": projection_mode,
+    }
 
 
 # ─────────────────────────── Main Entry Point ───────────────────────────

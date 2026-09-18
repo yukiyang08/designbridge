@@ -12,6 +12,11 @@ from designbridge.layout.vision import run_visual_preprocessing
 
 def visual_preprocessing_local(state: DesignBridgeState) -> dict[str, Any]:
     """Local Visual Preprocessing: run depth + segmentation on the initial image (if provided)."""
+    # 已經有 vision_features 了（/api/plan-layout 先跑過一次）——depth/segmentation 是真的要跑
+    # 本地模型推論的步驟，不是免費的，沿用結果、不要重算。
+    if state.get("vision_features"):
+        return {}
+
     user = state.get("user_input") or {}
     image_path = user.get("initial_image")
     task_id = state.get("task_id") or "no_task_id"

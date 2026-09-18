@@ -244,6 +244,12 @@ LAYOUT_AGENT_PROMPT = """你是一位專業的室內空間佈局規劃師。請�
 - 靠牆家具（如衣櫃、電視櫃、書架、床）應貼近牆面。
 - 主要焦點家具（沙發、床）建議擺在視覺重心，留出足夠動線。
 
+## 家具 type 只能用以下英文代號（不得自創，不得加位置後綴如 _in_corner）
+sofa, loveseat, armchair, chair, coffee_table, side_table, tv_unit, tv,
+dining_table, bed, bunk_bed, wardrobe, dresser, cabinet, desk, bookshelf, shelf,
+nightstand, rug, lamp, plant, cat_tree, dog_bed, litter_box
+（找不到對應的物件就選最接近的一個；同一件家具只列一次）
+
 ## 規劃原則
 1. 滿足所有硬性限制（must_keep / must_add / must_remove / immutable_regions）。
 2. **以現有佈局為基準**：若上方提供了現有佈局，只移動使用者需求明確要求變更的家具，
