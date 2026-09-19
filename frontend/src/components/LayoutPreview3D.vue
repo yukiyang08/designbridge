@@ -103,25 +103,25 @@ function buildFurnitureMesh(type, w, height, d, colorHex) {
   const material = new THREE.MeshStandardMaterial({ color: colorHex, ...FURNITURE_MATERIAL[category] })
   const group = new THREE.Group()
 
-  // 有對應真模型的類型，非同步載入（載完才出現），其餘維持程序化箱型
-  const modelUrl = FURNITURE_MODEL_URL[type]
-  if (modelUrl) {
-    loadGltfCached(modelUrl).then((gltf) => {
-      const model = gltf.scene.clone(true)   // clone：同一個模型會被多件家具共用
-      const size = new THREE.Box3().setFromObject(model).getSize(new THREE.Vector3())
-      // 非等比例縮放去對齊佈局要求的 w/height/d——尺寸差太多時會拉伸變形，
-      // 這就是「模型尺寸沒法對齊任意坪數」那個限制的實際樣子
-      model.scale.set(w / size.x, height / size.y, d / size.z)
-      const box = new THREE.Box3().setFromObject(model)
-      const center = box.getCenter(new THREE.Vector3())
-      model.position.set(-center.x, -box.min.y, -center.z)
-      model.traverse((child) => {
-        if (child.isMesh) { child.castShadow = true; child.receiveShadow = true; child.userData.dragRoot = group }
-      })
-      group.add(model)
-    }).catch((err) => console.warn(`[LayoutPreview3D] ${type} 模型載入失敗:`, err))
-    return group
-  }
+  //  GLTF 真模型暫時停用，先都用程序化箱型；要恢復就把下面這段取消註解
+  // const modelUrl = FURNITURE_MODEL_URL[type]
+  // if (modelUrl) {
+  //   loadGltfCached(modelUrl).then((gltf) => {
+  //     const model = gltf.scene.clone(true)   // clone：同一個模型會被多件家具共用
+  //     const size = new THREE.Box3().setFromObject(model).getSize(new THREE.Vector3())
+  //     // 非等比例縮放去對齊佈局要求的 w/height/d——尺寸差太多時會拉伸變形，
+  //     // 這就是「模型尺寸沒法對齊任意坪數」那個限制的實際樣子
+  //     model.scale.set(w / size.x, height / size.y, d / size.z)
+  //     const box = new THREE.Box3().setFromObject(model)
+  //     const center = box.getCenter(new THREE.Vector3())
+  //     model.position.set(-center.x, -box.min.y, -center.z)
+  //     model.traverse((child) => {
+  //       if (child.isMesh) { child.castShadow = true; child.receiveShadow = true; child.userData.dragRoot = group }
+  //     })
+  //     group.add(model)
+  //   }).catch((err) => console.warn(`[LayoutPreview3D] ${type} 模型載入失敗:`, err))
+  //   return group
+  // }
 
   if (category === 'seating') {
     const seatH = height * 0.45
