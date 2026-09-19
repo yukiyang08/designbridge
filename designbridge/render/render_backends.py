@@ -459,6 +459,7 @@ def _render_flux_controlnet_depth_fal(
     guidance_scale: float = 3.5,
     output_size: tuple[int, int] = (1024, 1024),
     extra_controls: list[dict] | None = None,
+    loras: list[dict] | None = None,
 ) -> bool:
     """Generate image via fal.ai FLUX-general + a true depth ControlNet.
 
@@ -542,6 +543,9 @@ def _render_flux_controlnet_depth_fal(
             "image_size": image_size,
             "controlnets": controlnets,
         }
+        if loras:
+            arguments["loras"] = loras
+            print(f"[lora] {', '.join(l['path'].rsplit('/', 1)[-1] for l in loras)}")
 
         result = fal_client.subscribe(
             "fal-ai/flux-general",
@@ -576,6 +580,7 @@ def _render_flux_ipadapter_fal(
     num_steps: int = 28,
     guidance_scale: float = 3.5,
     output_size: tuple[int, int] = (1024, 1024),
+    loras: list[dict] | None = None,
 ) -> bool:
     """Generate image via fal.ai FLUX-general + XLabs IP-Adapter.
 
@@ -626,6 +631,9 @@ def _render_flux_ipadapter_fal(
                 }
             ],
         }
+        if loras:
+            arguments["loras"] = loras
+            print(f"[lora] {', '.join(l['path'].rsplit('/', 1)[-1] for l in loras)}")
 
         result = fal_client.subscribe(
             "fal-ai/flux-general",
@@ -664,6 +672,7 @@ def _render_flux_depth_controlnet_fal(
     num_steps: int = 28,
     guidance_scale: float = 3.5,
     output_size: tuple[int, int] = (1024, 1024),
+    loras: list[dict] | None = None,
 ) -> bool:
     """Generate via fal.ai FLUX-general + a FLUX ControlNet Union.
 
@@ -741,6 +750,9 @@ def _render_flux_depth_controlnet_fal(
             "image_size": image_size,
             "controlnet_unions": [controlnet_union],
         }
+        if loras:
+            arguments["loras"] = loras
+            print(f"[lora] {', '.join(l['path'].rsplit('/', 1)[-1] for l in loras)}")
         # NOTE: negative_prompt is intentionally NOT sent. On fal, a ControlNet-Union
         # pipeline fails to load with a negative prompt via either NAG (default) or
         # real-CFG ("Could not load pipeline", HTTP 422). Undesired content is steered

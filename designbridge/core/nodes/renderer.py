@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
@@ -27,6 +28,7 @@ from designbridge.render.render_backends import (
     _render_flux_fal,
     _render_flux,
 )
+from designbridge.style.style_apply import resolve_style_loras
 
 _BASE_NEGATIVE_PROMPT = (
     "people, person, human, man, woman, child, hands, face, "
@@ -199,6 +201,43 @@ _FURNITURE_DESC: dict[str, str] = {
 }
 
 
+def _projection_instances(depth_path: str) -> list[dict]:
+    """讀取深度圖旁的投影 meta（每件家具在影像上的實際 bbox）。沒有就回空 list。"""
+    meta = Path(str(depth_path)).with_name(
+        Path(str(depth_path)).name.replace("_projected_depth", "_projection").rsplit(".", 1)[0] + ".json"
+    )
+    if not meta.is_file():
+        return []
+    try:
+        return json.loads(meta.read_text(encoding="utf-8")).get("instances") or []
+    except (OSError, ValueError) as e:
+        print(f"⚠️ 讀取投影 meta 失敗（{e}）")
+        return []
+
+
+def _instances_to_spatial_text(instances: list[dict]) -> str:
+    """用家具在**投影影像上的實際落點**描述位置，而不是平面圖座標。
+
+    深度圖是灰階的，沒有任何東西告訴模型「畫面左下那塊是沙發」。平面圖座標經過透視
+    投影後未必落在畫面同一側，貼牆的家具甚至整件出框——那時 prompt 仍要求模型在一片
+    空白處畫出沙發，模型只能自由發揮。改用投影後的 bbox，文字就與深度圖上的方塊對齊，
+    出框的家具也直接不提。
+    """
+    parts: list[str] = []
+    for inst in instances:
+        if not inst.get("visible"):
+            continue
+        raw = inst.get("type", "")
+        desc = _FURNITURE_DESC.get(raw, "a " + str(raw).replace("_", " "))
+        cx, cy = float(inst.get("cx", 0.5)), float(inst.get("cy", 0.5))
+        h_zone = "left" if cx < 0.38 else ("right" if cx > 0.62 else "center")
+        # 畫面越下方離相機越近
+        v_zone = "foreground" if cy > 0.66 else ("background" if cy < 0.42 else "mid-ground")
+        where = "in the center" if h_zone == "center" else f"on the {h_zone}"
+        parts.append(f"{desc} {where} of the frame, in the {v_zone}")
+    return "; ".join(parts[:12])
+
+
 def _furniture_to_spatial_text(placements: list[dict]) -> str:
     """Convert normalized furniture positions to precise spatial description for prompt injection.
 
@@ -309,10 +348,14 @@ def renderer(state: DesignBridgeState) -> dict[str, Any]:
     }
     backend = "placeholder"
 
+    style_loras = resolve_style_loras(style_params.get("style_profile_id"))
+
     if style_params:
         generation_params["style_profile_id"] = style_params.get("style_profile_id")
         generation_params["style_profile_name"] = style_params.get("style_profile_name")
         generation_params["style_strength"] = style_params.get("style_strength")
+    if style_loras:
+        generation_params["style_lora"] = style_loras[0]["path"]
 
     # Get vision features for ControlNet (if available)
     depth_path = vision.get("depth")
@@ -367,7 +410,20 @@ def renderer(state: DesignBridgeState) -> dict[str, Any]:
     # Inject furniture positions from scene_graph into prompt
     furniture_placements = scene_graph_data.get("furniture_placements") or []
     if furniture_placements:
-        spatial_desc = _furniture_to_spatial_text(furniture_placements)
+        # 走投影深度時，優先用家具在深度圖上的實際落點來描述——這樣「沙發在左邊」指的
+        # 就是深度圖左邊那塊輪廓，而不是平面圖上的左邊（透視後未必是同一處）。
+        spatial_desc = ""
+        if using_projected_depth and depth_path:
+            _instances = _projection_instances(str(scene_graph_data.get("projected_depth_path") or ""))
+            if _instances:
+                spatial_desc = _instances_to_spatial_text(_instances)
+                _dropped = [i["type"] for i in _instances if not i.get("visible")]
+                if _dropped:
+                    print(f"[renderer] 投影後不在畫面內，已從 prompt 移除：{', '.join(_dropped)}")
+                if spatial_desc:
+                    generation_params["layout_prompt_source"] = "projected_image_space"
+        if not spatial_desc:
+            spatial_desc = _furniture_to_spatial_text(furniture_placements)
         if spatial_desc:
             layout_prefix = (
                 f"Strictly follow this furniture arrangement: {spatial_desc}. "
@@ -444,6 +500,7 @@ def renderer(state: DesignBridgeState) -> dict[str, Any]:
             num_steps=Config.FAL_IP_ADAPTER_STEPS,
             guidance_scale=Config.FAL_IP_ADAPTER_GUIDANCE,
             output_size=(Config.FAL_IP_ADAPTER_SIZE, Config.FAL_IP_ADAPTER_SIZE),
+            loras=style_loras,
         ):
             backend = "flux_ipadapter_fal"
             generation_params["model"] = "fal-ai/flux-general + XLabs IP-Adapter"
@@ -522,6 +579,7 @@ def renderer(state: DesignBridgeState) -> dict[str, Any]:
             guidance_scale=Config.FAL_CONTROLNET_GUIDANCE,
             output_size=output_size,
             extra_controls=_extra_controls,
+            loras=style_loras,
         ):
             backend = "flux_controlnet_depth_fal"
             generation_params["model"] = f"fal-ai/flux-general + {Config.DEPTH_CONTROLNET_MODEL}"
@@ -620,6 +678,7 @@ def renderer(state: DesignBridgeState) -> dict[str, Any]:
                 num_steps=Config.FAL_DEPTH_STEPS,
                 guidance_scale=Config.FAL_DEPTH_GUIDANCE,
                 output_size=output_size,
+                loras=style_loras,
             ):
                 backend = "flux_depth_controlnet_fal"
                 generation_params["model"] = Config.FAL_DEPTH_CONTROLNET_MODEL

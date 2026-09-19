@@ -20,8 +20,10 @@ cd ..
 在專案根目錄執行：
 
 ```bash
-uvicorn api:app --reload --host 0.0.0.0 --port 8000
+uvicorn api:app --reload --reload-exclude "*/artifacts/*" --host 0.0.0.0 --port 8000
 ```
+
+`--reload-exclude` 是必要的：`artifacts/` 底下每次生成都會不斷寫入新的圖片／glb 檔，若不排除，`--reload` 會偵測到這些檔案變動而重啟整個後端 process（打斷正在進行的生成、清空已載入的模型）。
 
 後端啟動後可用：
 - `http://localhost:8000`
@@ -114,7 +116,7 @@ start_app.bat
 **手動啟動：**
 ```bash
 # 視窗 1：後端
-uvicorn api:app --reload --host 0.0.0.0 --port 8000
+uvicorn api:app --reload --reload-exclude "*/artifacts/*" --host 0.0.0.0 --port 8000
 
 # 視窗 2：前端
 cd frontend && npm run dev

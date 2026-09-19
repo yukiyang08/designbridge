@@ -7,6 +7,7 @@ import ResultPanel from '@/components/ResultPanel.vue'
 import StyleSuggestions from '@/components/StyleSuggestions.vue'
 import LayoutEditor from '@/components/LayoutEditor.vue'
 import RefineCanvas from '@/components/RefineCanvas.vue'
+import RoomPicker from '@/components/RoomPicker.vue'
 import { API_BASE, apiUrl, mediaUrl } from '@/config/api'
 import { useFurnitureSelection } from '@/composables/useFurnitureSelection'
 
@@ -24,6 +25,9 @@ const sceneGraph    = ref(null)
 const planSource     = ref('generate')
 const floorPlanUpload = useImageField()
 const uploadedPlanUrl = ref('')   // original uploaded plan, kept for side-by-side reference
+const uploadedPlanPath = ref('')  // local path of the original (uncropped) uploaded plan
+const detectedRooms = ref([])     // rooms found by /api/detect-rooms in the uploaded plan
+const showRoomPicker = ref(false) // true while waiting for the user to pick which room
 
 // ── Layout editor state ───────────────────────────────────────
 const editPlacements = ref([])   // editable copy of furniture_placements
@@ -296,15 +300,74 @@ async function handleUseUploadedPlan() {
     const path = await uploadFile(floorPlanUpload.file)
     if (requestId !== currentRequestId) return
     uploadedPlanUrl.value = mediaUrl(path)
+    uploadedPlanPath.value = path
 
-    // Parse the plan with Gemini vision → structured furniture coords, so the upload
-    // drives the SAME accurate layout-projection pipeline (and becomes editable).
+    // 先看看這張圖是不是含多個房間（整戶圖）——是的話讓使用者先選一間，
+    // 免得所有房間的家具被混進同一個矩形房間框裡。
+    let rooms = []
+    try {
+      const roomsRes = await fetch(apiUrl('/api/detect-rooms'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ image_path: path }),
+      })
+      if (roomsRes.ok) rooms = (await roomsRes.json()).rooms || []
+    } catch {
+      rooms = [] // 偵測失敗就當單一房間處理，不擋住原本的流程
+    }
+    if (requestId !== currentRequestId) return
+
+    if (rooms.length > 1) {
+      detectedRooms.value = rooms
+      showRoomPicker.value = true
+      loading.value = false
+      return
+    }
+
+    await parseFloorPlanAndProceed(path, requestId, rooms[0]?.room_type)
+  } catch (e) {
+    if (requestId === currentRequestId) error.value = `解析平面圖失敗：${e.message}`
+    if (requestId === currentRequestId) loading.value = false
+  }
+}
+
+// ── Step 1 (alt, 續): 使用者從 RoomPicker 選定房間後裁切 + 解析 ──
+async function handleRoomSelected(room) {
+  const requestId = ++currentRequestId
+  error.value = ''
+  loading.value = true
+  showRoomPicker.value = false
+  try {
+    const res = await fetch(apiUrl('/api/crop-floor-plan'), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        image_path: uploadedPlanPath.value,
+        x: room.x, y: room.y, w: room.w, h: room.h,
+      }),
+    })
+    if (!res.ok) throw new Error(`${res.status}`)
+    const { path: croppedPath } = await res.json()
+    if (requestId !== currentRequestId) return
+    uploadedPlanUrl.value = mediaUrl(croppedPath)
+
+    await parseFloorPlanAndProceed(croppedPath, requestId, room.room_type)
+  } catch (e) {
+    if (requestId === currentRequestId) error.value = `裁切房間失敗：${e.message}`
+    if (requestId === currentRequestId) loading.value = false
+  }
+}
+
+// Parse the plan with Gemini vision → structured furniture coords, so the upload
+// drives the SAME accurate layout-projection pipeline (and becomes editable).
+async function parseFloorPlanAndProceed(path, requestId, roomTypeOverride) {
+  try {
     const res = await fetch(apiUrl('/api/parse-floor-plan'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         image_path: path,
-        room_type: roomType.value,
+        room_type: roomTypeOverride || roomType.value,
         space_size_ping: spaceSizePing.value,
         room_w: customRoomW.value || undefined,
         room_d: customRoomD.value || undefined,
@@ -333,7 +396,7 @@ async function handleUseUploadedPlan() {
     }
     roomW.value = data.room_w || 5.0
     roomD.value = data.room_d || 4.0
-    roomTypeForPlan.value = data.room_type || roomType.value
+    roomTypeForPlan.value = data.room_type || roomTypeOverride || roomType.value
     designStep.value = 2
     if (extraPrompt.value.trim()) scheduleSearch()
   } catch (e) {
@@ -400,6 +463,8 @@ async function handleSubmit3D() {
   submitKey.value++
   error.value = ''
   result.value = null
+  pendingPlan.value = null
+  editedPlacements.value = null
   loading.value = true
   try {
     let style_reference_image_path
@@ -470,6 +535,9 @@ function resetToStep1() {
   layoutRenderConfig.value = null
   floorPlanUpload.remove()
   uploadedPlanUrl.value = ''
+  uploadedPlanPath.value = ''
+  detectedRooms.value = []
+  showRoomPicker.value = false
   result.value = null
   error.value = ''
   styleCandidates.value = []
@@ -669,9 +737,16 @@ onMounted(fetchStyleOptions)
         />
       </template>
 
-      <!-- Step 1: empty / loading -->
+      <!-- Step 1: empty / loading / 選房間 -->
       <template v-else-if="designStep === 1">
-        <div v-if="loading" class="center-state">
+        <div v-if="showRoomPicker" class="room-picker-wrap">
+          <RoomPicker
+            :imageUrl="uploadedPlanUrl"
+            :rooms="detectedRooms"
+            @select-room="handleRoomSelected"
+          />
+        </div>
+        <div v-else-if="loading" class="center-state">
           <div class="loading-ring"><div class="loading-spinner"></div><div class="loading-mark">✦</div></div>
           <p class="loading-title">{{ planSource === 'upload' ? '上傳平面圖中' : '生成 2D 平面圖中' }}</p>
           <p class="loading-sub">{{ planSource === 'upload' ? '處理你的平面配置圖' : 'AI 計算家具配置，通常約 10 秒' }}</p>
@@ -880,6 +955,71 @@ onMounted(fetchStyleOptions)
 }
 @keyframes spin { to { transform: rotate(360deg); } }
 
+/* 佈局規劃中 / 確認 */
+.plan-loading {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1rem;
+  color: #8B5E3C;
+  font-size: 0.95rem;
+  font-weight: 600;
+}
+.plan-confirm {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 1.5rem;
+  overflow-y: auto;
+}
+.plan-confirm h2 {
+  font-size: 1.2rem;
+  font-weight: 800;
+  color: #5c3d24;
+  margin: 0;
+}
+.plan-confirm-hint {
+  font-size: 0.85rem;
+  color: #a07850;
+  margin: 0 0 0.5rem;
+}
+.plan-confirm > :deep(.layout-3d-wrap) {
+  width: 100%;
+  max-width: 640px;
+}
+.plan-confirm-actions {
+  display: flex;
+  gap: 0.75rem;
+  margin-top: 0.5rem;
+}
+.plan-reject-btn {
+  padding: 0.6rem 1.2rem;
+  border: 1.5px solid #999;
+  border-radius: 8px;
+  background: transparent;
+  color: #444;
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+.plan-reject-btn:hover { background: #f0f0f0; border-color: #666; }
+.plan-confirm-btn {
+  padding: 0.6rem 1.4rem;
+  border: none;
+  border-radius: 8px;
+  background: #8B5E3C;
+  color: white;
+  font-size: 0.85rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+.plan-confirm-btn:hover { background: #6d4a2f; }
+.plan-confirm-btn:disabled { background: #b0977f; cursor: not-allowed; }
+
 /* 生成結果 */
 .refine-result {
   flex: 1;
@@ -952,10 +1092,11 @@ onMounted(fetchStyleOptions)
 }
 
 /* ── Center states ── */
-.center-state, .placeholder {
+.center-state, .placeholder, .room-picker-wrap {
   flex: 1; display: flex; flex-direction: column;
   align-items: center; justify-content: center; gap: 1rem;
 }
+.room-picker-wrap { width: 100%; max-width: 640px; margin: 0 auto; align-self: center; }
 .placeholder-inner { text-align: center; max-width: 480px; }
 .placeholder-icon {
   width: 64px; height: 64px;

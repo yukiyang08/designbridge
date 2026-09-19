@@ -5,9 +5,21 @@ from __future__ import annotations
 from typing import Any
 
 from style_kb.styles import STYLES
+from style_kb.style_loras import STYLE_ID_TO_LORA
 
 STYLE_NAME_TO_ID = {name: style_id for style_id, name in STYLES}
 STYLE_ID_SET = {style_id for style_id, _ in STYLES}
+
+
+def resolve_style_loras(style_profile_id: str | None) -> list[dict[str, Any]]:
+    """依風格 ID 查表回傳 fal `loras` 參數用的清單；未設定該風格的 LoRA 就回空清單。"""
+    if not style_profile_id:
+        return []
+    entry = STYLE_ID_TO_LORA.get(style_profile_id.lower()) or {}
+    path = (entry.get("path") or "").strip()
+    if not path:
+        return []
+    return [{"path": path, "scale": entry.get("scale", 1.0)}]
 
 
 # ── 工具函式 ──────────────────────────────────────────────────────────────────

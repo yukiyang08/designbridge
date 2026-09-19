@@ -44,10 +44,11 @@ export const STEP_FLOWS = {
     { key: 'refine', label: '微調編輯' },
     { key: 'budget', label: '預算估計' },
   ],
-  // 上傳 2D 平面配置圖。後端（/api/parse-floor-plan）與底下的 useUploadedPlan
-  // 都還在，只是目前沒有入口卡片指向它；要重新開放時把 StartView 加一張卡即可。
+  // 上傳 2D 平面配置圖。整戶圖會先用 Gemini 視覺分割房間，偵測到多間才會經過
+  // 「選擇房間」這一步；只有一間就直接跳過，行為等同單純上傳一張房間圖。
   upload: [
     { key: 'planUpload', label: '上傳平面圖' },
+    { key: 'roomPick',   label: '選擇房間' },
     { key: 'plan',       label: '繪製平面圖' },
     { key: 'render',     label: '3D渲染圖' },
     { key: 'refine',     label: '微調編輯' },
@@ -89,6 +90,8 @@ const floorPlanPath     = ref('')
 const sceneGraph        = ref(null)
 const floorPlanUpload   = useImageField()
 const uploadedPlanUrl   = ref('')
+const uploadedPlanPath  = ref('')   // 原始（未裁切）上傳圖的本機路徑，選房間裁切時要用
+const detectedRooms     = ref([])   // /api/detect-rooms 偵測到的房間清單，多間時才會用到
 
 // ── 佈局編輯 ──
 const editPlacements     = ref([])
@@ -210,6 +213,8 @@ function resetFlow() {
   layoutRenderConfig.value = null
   floorPlanUpload.remove()
   uploadedPlanUrl.value = ''
+  uploadedPlanPath.value = ''
+  detectedRooms.value = []
   spacePhoto.remove()
   spacePhotoPath.value = ''
   spaceImage.remove()
@@ -390,7 +395,9 @@ async function submitLayout() {
   }
 }
 
-/* ══ Step: 上傳 2D 平面配置圖（保留，目前無入口） ══════════ */
+/* ══ Step: 上傳 2D 平面配置圖 ═══════════════════════════════
+   整戶圖（多房間）會先經過「選擇房間」再解析；單一房間圖直接跳過那一步，
+   行為等同直接解析整張圖——沿用舊 HomeView.vue 驗證過的三段式寫法。 */
 
 async function useUploadedPlan() {
   if (!floorPlanUpload.file) {
@@ -400,18 +407,83 @@ async function useUploadedPlan() {
   const requestId = ++currentRequestId
   error.value = ''
   loading.value = true
-  loadingMsg.value = { title: '解析平面圖中', sub: 'AI 辨識平面圖上的家具配置' }
+  loadingMsg.value = { title: '上傳平面圖中', sub: '處理你的平面配置圖' }
   result.value = null
   try {
     const path = await uploadFile(floorPlanUpload.file)
     if (requestId !== currentRequestId) return
     uploadedPlanUrl.value = mediaUrl(path)
+    uploadedPlanPath.value = path
+
+    // 先看看這張圖是不是含多個房間（整戶圖）——是的話讓使用者先選一間，
+    // 免得所有房間的家具被混進同一個矩形房間框裡。
+    let rooms = []
+    try {
+      const roomsRes = await fetch(apiUrl('/api/detect-rooms'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ image_path: path }),
+      })
+      if (roomsRes.ok) rooms = (await roomsRes.json()).rooms || []
+    } catch {
+      rooms = [] // 偵測失敗就當單一房間處理，不擋住原本的流程
+    }
+    if (requestId !== currentRequestId) return
+
+    if (rooms.length > 1) {
+      detectedRooms.value = rooms
+      loading.value = false
+      nextStep() // → 'roomPick'
+      return
+    }
+
+    await parseFloorPlanAndProceed(path, requestId, rooms[0]?.room_type)
+  } catch (e) {
+    if (requestId === currentRequestId) error.value = `解析平面圖失敗：${e.message}`
+    if (requestId === currentRequestId) loading.value = false
+  }
+}
+
+// ── 使用者從「選擇房間」步驟選定房間後裁切 + 解析 ──
+async function handleRoomSelected(room) {
+  const requestId = ++currentRequestId
+  error.value = ''
+  loading.value = true
+  loadingMsg.value = { title: '裁切房間中', sub: '準備該房間的平面圖' }
+  try {
+    const res = await fetch(apiUrl('/api/crop-floor-plan'), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        image_path: uploadedPlanPath.value,
+        x: room.x, y: room.y, w: room.w, h: room.h,
+      }),
+    })
+    if (!res.ok) throw new Error(`${res.status}`)
+    const { path: croppedPath } = await res.json()
+    if (requestId !== currentRequestId) return
+    uploadedPlanUrl.value = mediaUrl(croppedPath)
+
+    await parseFloorPlanAndProceed(croppedPath, requestId, room.room_type)
+  } catch (e) {
+    if (requestId === currentRequestId) error.value = `裁切房間失敗：${e.message}`
+    if (requestId === currentRequestId) loading.value = false
+  }
+}
+
+// 呼叫 /api/parse-floor-plan → 塞進可編輯的 scene_graph → 進「繪製平面圖」步驟。
+// 用 goStep(絕對 index) 而不是 nextStep()，因為這個函式在「有無先經過選房間」
+// 兩種路徑下都會被呼叫，呼叫當下的 stepIndex 不一樣。
+async function parseFloorPlanAndProceed(path, requestId, roomTypeOverride) {
+  loading.value = true
+  loadingMsg.value = { title: '解析平面圖中', sub: 'AI 辨識平面圖上的家具配置' }
+  try {
     const res = await fetch(apiUrl('/api/parse-floor-plan'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         image_path: path,
-        room_type: roomType.value,
+        room_type: roomTypeOverride || roomType.value,
         space_size_ping: spaceSizePing.value,
         room_w: customRoomW.value || undefined,
         room_d: customRoomD.value || undefined,
@@ -438,8 +510,8 @@ async function useUploadedPlan() {
     }
     roomW.value = data.room_w || 5.0
     roomD.value = data.room_d || 4.0
-    roomTypeForPlan.value = data.room_type || roomType.value
-    nextStep()
+    roomTypeForPlan.value = data.room_type || roomTypeOverride || roomType.value
+    goStep(steps.value.findIndex(s => s.key === 'plan'))
     if (extraPrompt.value.trim()) scheduleSearch()
   } catch (e) {
     if (requestId === currentRequestId) error.value = `解析平面圖失敗：${e.message}`
@@ -727,6 +799,7 @@ export function useDesignFlow() {
     goStep, nextStep, prevStep, startFlow, resetFlow,
     // 平面圖
     floorPlanUrl, floorPlanPath, sceneGraph, floorPlanUpload, uploadedPlanUrl,
+    detectedRooms, handleRoomSelected,
     // 佈局
     editPlacements, roomW, roomD, roomTypeForPlan, layoutViewMode, layoutRenderConfig,
     onEditorChange, updateFloorPlan,

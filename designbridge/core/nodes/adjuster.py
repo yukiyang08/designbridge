@@ -40,7 +40,7 @@ If the object is not visible in the image, return: {{"not_found": true}}"""
 
     try:
         from designbridge.render.llm import call_llm
-        raw = call_llm(prompt, images=[image_path], max_tokens=60, temperature=0.0)
+        raw = call_llm(prompt, images=[image_path], max_tokens=300, temperature=0.0)
         raw = raw.strip()
         if "```" in raw:
             raw = raw.split("```")[1]
@@ -120,7 +120,7 @@ replace_with: describe the new object only if action=replace, else null."""
     try:
         from designbridge.render.llm import call_llm
         images = [image_path] if image_path and Path(image_path).is_file() else None
-        raw = call_llm(prompt, images=images, max_tokens=150, temperature=0.0)
+        raw = call_llm(prompt, images=images, max_tokens=500, temperature=0.0)
         raw = raw.strip()
         # 去掉 LLM 可能包的 markdown fence
         if "```" in raw:
@@ -358,24 +358,42 @@ def adjuster_agent_stub(state: DesignBridgeState) -> dict[str, Any]:
                 obj_hint = f" The selected object is: {seg_labels[0]}." if seg_labels else ""
                 translated = call_llm(
                     f"Translate this interior design modification request to English in one sentence.{obj_hint} "
-                    f"Return ONLY the translation, no extra words.\n\n{user_text}",
-                    max_tokens=120,
+                    "Output ONLY the translated sentence itself — a single line, no markdown, no bullet points, "
+                    "no quotes, no explanation of how you translated it, no meta-commentary.\n\n"
+                    f"{user_text}",
+                    max_tokens=500,
+                    temperature=0.0,
                 )
                 t = translated.strip()
-                # 至少 2 個英文字，且不以虛詞結尾（避免截斷的不完整翻譯）
+                # 有效翻譯的判斷：
+                #  - 至少 2 個英文字，且不以虛詞結尾（避免截斷的不完整翻譯）
+                #  - 單行（多行代表可能混入推理草稿而非乾淨的翻譯）
+                #  - 不含中文字（代表翻譯沒做完，或把推理過程/原文片段混進來了）
                 _incomplete_endings = {"a", "an", "the", "to", "of", "with", "and", "from", "in", "on", "at", "by", "for", "into", "onto"}
                 last_word = t.rstrip(".").split()[-1].lower() if t else ""
-                if t and len(t.split()) >= 2 and last_word not in _incomplete_endings:
+                is_multiline = "\n" in t
+                has_cjk = any("一" <= ch <= "鿿" for ch in t)
+                if t and len(t.split()) >= 2 and last_word not in _incomplete_endings and not is_multiline and not has_cjk:
                     en_text = t
                     print(f"[adjuster] translated prompt: {en_text}")
                 else:
-                    print(f"[adjuster] translation rejected ('{t}'), using original: {user_text}")
+                    reason = "contains Chinese" if has_cjk else "multiline" if is_multiline else "incomplete"
+                    print(f"[adjuster] translation rejected ({reason}: '{t[:80]}'), using original: {user_text}")
             except Exception:
                 pass
 
-        prompt = f"{en_text}. Photorealistic, high quality, seamless integration, well-lit interior."
+        prompt = (
+            f"{en_text}. Photorealistic, high quality, seamless integration, "
+            "lit consistently with the room's ambient lighting direction and color temperature, "
+            "with edges that blend naturally into the surrounding scene. "
+            "No text, no writing, no letters, no words, no typography, no signage or wall decals anywhere in the image."
+        )
     else:
-        prompt = auto_prompt
+        prompt = (
+            f"{auto_prompt} Lit consistently with the room's ambient lighting direction and color temperature, "
+            "with edges that blend naturally into the surrounding scene. "
+            "No text, no writing, no letters, no words, no typography, no signage or wall decals anywhere in the image."
+        )
 
     # Debug：印出送出的 prompt 與 mask 狀況
     mask_white = sum(1 for p in mask.getdata() if p > 128) if hasattr(mask, 'getdata') else -1

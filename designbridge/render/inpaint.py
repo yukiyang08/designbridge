@@ -295,10 +295,25 @@ def expand_mask_by_segmentation(
 
     selected_labels = [label for _, _, label, _ in dedup_selected]
 
-    # 聯集遮罩：所有選中 class 的完整像素塗白
+    def _instance_pixels_touched_by(cid: int, comp_mask: np.ndarray) -> np.ndarray:
+        """同一個 class 在整張圖裡可能有好幾個不相鄰的實例（例如兩層分開的
+        層板、或床頭櫃兩側各一小塊都被標成 "shelf"）。只取使用者這筆塗鴉
+        實際碰到的那個/那些連通元件，不要把整個 class 在全圖的像素都聯集
+        進來——否則會把使用者根本沒碰到的另一個實例（連同中間的牆面、電視
+        等背景）一起框進遮罩，導致遮罩範圍暴衝到不相關的區域。"""
+        class_mask = seg_array == cid
+        labeled_instances, n_instances = ndimage.label(class_mask)
+        touched_ids = set(labeled_instances[comp_mask & class_mask].tolist()) - {0}
+        if not touched_ids:
+            # 保底：塗鴉沒有直接壓到這個 class 的像素（例如塗在物件邊緣），
+            # 退回整個 class，維持原本行為
+            return class_mask
+        return np.isin(labeled_instances, list(touched_ids))
+
+    # 聯集遮罩：所有選中 class「使用者實際塗到的那個實例」的完整像素塗白
     mask_array = np.zeros(seg_array.shape, dtype=np.uint8)
-    for _, cid, _, _ in dedup_selected:
-        mask_array[seg_array == cid] = 255
+    for _, cid, _, comp_mask in dedup_selected:
+        mask_array[_instance_pixels_touched_by(cid, comp_mask)] = 255
     mask = Image.fromarray(mask_array).resize(image_size, Image.NEAREST)
     mask = mask.filter(ImageFilter.MaxFilter(7))
 
@@ -306,8 +321,7 @@ def expand_mask_by_segmentation(
     per_object: list[tuple[Any, Any, str]] = []
     for _, cid, label, comp_mask in dedup_selected:
         comp_drawn = Image.fromarray((comp_mask * 255).astype(np.uint8), mode="L")
-        class_array = np.zeros(seg_array.shape, dtype=np.uint8)
-        class_array[seg_array == cid] = 255
+        class_array = (_instance_pixels_touched_by(cid, comp_mask) * 255).astype(np.uint8)
         class_full = Image.fromarray(class_array).resize(image_size, Image.NEAREST)
         class_full = class_full.filter(ImageFilter.MaxFilter(7))
         per_object.append((comp_drawn, class_full, label))
