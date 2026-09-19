@@ -1,4 +1,4 @@
-# finetune後的參數放這
+# finetune後的參數檔案放這
 """Style ID → fine-tuned LoRA weights for fal.ai FLUX-general (`loras` param).
 
 `path` must be a direct file URL (HuggingFace: .../resolve/main/xxx.safetensors),
@@ -13,6 +13,6 @@ STYLE_ID_TO_LORA: dict[str, dict] = {
     "industrial": {"path": "https://huggingface.co/MovingForward/designbridge-flux-lora/resolve/main/designbridge_v5_flux1dev_industrial.safetensors", "scale": 1.0},
     "japanese": {"path": "", "scale": 1.0},
     "american": {"path": "", "scale": 1.0},
-    "luxury": {"path": "", "scale": 1.0},
+    "luxury": {"path": "https://huggingface.co/MovingForward/designbridge-flux-lora/resolve/main/designbridge_v5_flux1dev_luxury.safetensors", "scale": 1.0},
     "other": {"path": "", "scale": 1.0},
 }
