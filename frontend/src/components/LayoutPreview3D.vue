@@ -2,7 +2,41 @@
 import { ref, onMounted, onBeforeUnmount, watch } from 'vue'
 import * as THREE from 'three'
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js'
+import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js'
+import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js'
 import { furnitureLabel } from '@/config/furniture'
+
+const _gltfLoader = new GLTFLoader()
+
+const FURNITURE_MODEL_URL = {
+  sofa: '/models/Sofa_01/Sofa_01_1k.gltf',
+  loveseat: '/models/Sofa_01/Sofa_01_1k.gltf',
+  armchair: '/models/ArmChair_01/ArmChair_01_1k.gltf',
+  chair: '/models/ArmChair_01/ArmChair_01_1k.gltf',
+  coffee_table: '/models/CoffeeTable_01/CoffeeTable_01_1k.gltf',
+  dining_table: '/models/CoffeeTable_01/CoffeeTable_01_1k.gltf',
+  desk: '/models/CoffeeTable_01/CoffeeTable_01_1k.gltf',
+  side_table: '/models/CoffeeTable_01/CoffeeTable_01_1k.gltf',
+  nightstand: '/models/CoffeeTable_01/CoffeeTable_01_1k.gltf',
+  bed: '/models/old_bed_frame/old_bed_frame_1k.gltf',
+  bunk_bed: '/models/old_bed_frame/old_bed_frame_1k.gltf',
+  wardrobe: '/models/Shelf_01/Shelf_01_1k.gltf',
+  bookshelf: '/models/Shelf_01/Shelf_01_1k.gltf',
+  shelf: '/models/Shelf_01/Shelf_01_1k.gltf',
+  cabinet: '/models/Shelf_01/Shelf_01_1k.gltf',
+  dresser: '/models/Shelf_01/Shelf_01_1k.gltf',
+  plant: '/models/potted_plant_01/potted_plant_01_1k.gltf',
+}
+// 同一個模型 URL 只下載/解析一次，跨家具重複使用（clone 場景圖，不是重新 load）
+const _gltfCache = new Map()   // url -> Promise<GLTF>
+function loadGltfCached(url) {
+  if (!_gltfCache.has(url)) {
+    _gltfCache.set(url, new Promise((resolve, reject) => {
+      _gltfLoader.load(url, resolve, undefined, reject)
+    }))
+  }
+  return _gltfCache.get(url)
+}
 
 // props 對應後端 /api/generate 回傳的 scene_graph + layout_render_config——
 // 跟 scene_graph_to_depth.py 產生 ControlNet 深度圖用的是同一份家具高度/顏色/相機參數，
@@ -52,10 +86,42 @@ const FURNITURE_CATEGORY = {
   cabinet: 'storage', dresser: 'storage',
 }
 
+// 材質質感依家具類別調整（粗糙度/金屬度），同樣的箱型幾何在光線下才不會全部長得
+// 像同一種塑膠——布沙發偏粗糙無反光，桌面/收納偏木質微光澤，燈具立柱偏金屬。
+const FURNITURE_MATERIAL = {
+  seating: { roughness: 0.85, metalness: 0.0 },
+  table:   { roughness: 0.45, metalness: 0.05 },
+  bed:     { roughness: 0.8,  metalness: 0.0 },
+  lamp:    { roughness: 0.35, metalness: 0.6 },
+  plant:   { roughness: 0.7,  metalness: 0.0 },
+  storage: { roughness: 0.5,  metalness: 0.05 },
+  box:     { roughness: 0.75, metalness: 0.0 },
+}
+
 function buildFurnitureMesh(type, w, height, d, colorHex) {
-  const material = new THREE.MeshStandardMaterial({ color: colorHex })
-  const group = new THREE.Group()
   const category = FURNITURE_CATEGORY[type] || 'box'
+  const material = new THREE.MeshStandardMaterial({ color: colorHex, ...FURNITURE_MATERIAL[category] })
+  const group = new THREE.Group()
+
+  // 有對應真模型的類型，非同步載入（載完才出現），其餘維持程序化箱型
+  const modelUrl = FURNITURE_MODEL_URL[type]
+  if (modelUrl) {
+    loadGltfCached(modelUrl).then((gltf) => {
+      const model = gltf.scene.clone(true)   // clone：同一個模型會被多件家具共用
+      const size = new THREE.Box3().setFromObject(model).getSize(new THREE.Vector3())
+      // 非等比例縮放去對齊佈局要求的 w/height/d——尺寸差太多時會拉伸變形，
+      // 這就是「模型尺寸沒法對齊任意坪數」那個限制的實際樣子
+      model.scale.set(w / size.x, height / size.y, d / size.z)
+      const box = new THREE.Box3().setFromObject(model)
+      const center = box.getCenter(new THREE.Vector3())
+      model.position.set(-center.x, -box.min.y, -center.z)
+      model.traverse((child) => {
+        if (child.isMesh) { child.castShadow = true; child.receiveShadow = true; child.userData.dragRoot = group }
+      })
+      group.add(model)
+    }).catch((err) => console.warn(`[LayoutPreview3D] ${type} 模型載入失敗:`, err))
+    return group
+  }
 
   if (category === 'seating') {
     const seatH = height * 0.45
@@ -147,8 +213,12 @@ function buildFurnitureMesh(type, w, height, d, colorHex) {
     group.add(box)
   }
 
-  // 拖曳時 raycast 打到的是子網格，統一標記回這個 group，方便找到對應的 furniture item
-  group.traverse((child) => { child.userData.dragRoot = group })
+  // 拖曳時 raycast 打到的是子網格，統一標記回這個 group，方便找到對應的 furniture item；
+  // 順便開陰影，家具彼此才會有接觸陰影，不會像浮在地板上的色塊
+  group.traverse((child) => {
+    child.userData.dragRoot = group
+    if (child.isMesh) { child.castShadow = true; child.receiveShadow = true }
+  })
   return group
 }
 
@@ -177,6 +247,9 @@ function disposeScene() {
     window.removeEventListener('pointermove', onPointerMove)
     window.removeEventListener('pointerup', onPointerUp)
   }
+  // PMREM 環境貼圖是獨立的 GPU 資源，rebuild 時（拖曳家具就會觸發）不會跟著
+  // renderer.dispose() 一起被清掉，這裡不主動 dispose 每次重建就會多留一張
+  scene?.environment?.dispose()
   controls?.dispose()
   renderer?.dispose()
   if (canvasWrap.value) canvasWrap.value.innerHTML = ''
@@ -208,10 +281,11 @@ function buildScene() {
   // 地板
   const floor = new THREE.Mesh(
     new THREE.PlaneGeometry(roomWidth, roomDepth),
-    new THREE.MeshStandardMaterial({ color: 0xe0d4c0, side: THREE.DoubleSide }),
+    new THREE.MeshStandardMaterial({ color: 0xe0d4c0, side: THREE.DoubleSide, roughness: 0.85 }),
   )
   floor.rotation.x = -Math.PI / 2
   floor.position.set(0, 0, roomDepth / 2)
+  floor.receiveShadow = true
   scene.add(floor)
 
   // 簡易牆面（純視覺參考，不是精確幾何）
@@ -229,9 +303,21 @@ function buildScene() {
   rightWall.position.set(roomWidth / 2, wallHeight / 2, roomDepth / 2)
   scene.add(rightWall)
 
-  scene.add(new THREE.AmbientLight(0xffffff, 0.75))
-  const dirLight = new THREE.DirectionalLight(0xffffff, 0.55)
+  // Hemisphere（暖色天光/冷色地面反光）取代純白 ambient，物件在不同角度才有自然的
+  // 色溫差異，不是整個場景被同一種死白光打平
+  scene.add(new THREE.HemisphereLight(0xfff3e0, 0x6b5a45, 0.85))
+  const dirLight = new THREE.DirectionalLight(0xfff8ef, 0.9)
   dirLight.position.set(2, 4, -2)
+  dirLight.castShadow = true
+  dirLight.shadow.mapSize.set(1024, 1024)
+  const shadowSpan = Math.max(roomWidth, roomDepth)
+  dirLight.shadow.camera.left = -shadowSpan
+  dirLight.shadow.camera.right = shadowSpan
+  dirLight.shadow.camera.top = shadowSpan
+  dirLight.shadow.camera.bottom = -shadowSpan
+  dirLight.shadow.camera.near = 0.5
+  dirLight.shadow.camera.far = 20
+  dirLight.shadow.bias = -0.001
   scene.add(dirLight)
 
   // 家具：座標慣例跟 scene_graph_to_depth.py 一致——
@@ -275,10 +361,23 @@ function buildScene() {
   renderer = new THREE.WebGLRenderer({ antialias: true })
   renderer.setSize(width, height2)
   renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2))
+  renderer.shadowMap.enabled = true
+  renderer.shadowMap.type = THREE.PCFSoftShadowMap
+  // ACES 色調映射 + sRGB 輸出：預設的線性輸出偏灰偏平，這兩行是最低成本換到「像張照片」
+  // 對比與飽和度的做法，不用調任何家具顏色本身
+  renderer.toneMapping = THREE.ACESFilmicToneMapping
+  renderer.toneMappingExposure = 1.1
+  renderer.outputColorSpace = THREE.SRGBColorSpace
   container.innerHTML = ''
   container.appendChild(renderer.domElement)
   renderer.domElement.style.touchAction = 'none'
   if (props.editable) renderer.domElement.style.cursor = 'grab'
+
+  // PMREM 環境反射（three 內建的 RoomEnvironment，不用外部 HDR 檔）：家具材質的
+  // roughness/metalness 才有東西可以反射，不然低粗糙度的表面在純方向光下看起來很乾
+  const pmrem = new THREE.PMREMGenerator(renderer)
+  scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture
+  pmrem.dispose()
 
   // 初始朝向對齊 scene_graph_to_depth.py 的投影相機（同一個俯角），這樣使用者看到的
   // 就是生圖實際會用的取景角度。沿著相機視線（+Z、下傾 pitchRad）取一個落在房間中段

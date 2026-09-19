@@ -695,6 +695,8 @@ const styleReferenceImageUrl = computed(() => {
   border: 1px solid #ddd0c0;
   border-radius: var(--radius-lg);
   padding: 1.25rem 1.5rem;
+  min-width: 0;
+  box-sizing: border-box;
 }
 .card-style { border-color: var(--primary-border); }
 .card-muted { opacity: 0.6; }
@@ -760,7 +762,7 @@ const styleReferenceImageUrl = computed(() => {
   padding: 0.2rem 0; text-align: left;
 }
 .raw-toggle:hover { text-decoration: underline; }
-.raw-json-group { display: flex; flex-direction: column; gap: 0.6rem; margin-top: 0.5rem; }
+.raw-json-group { display: flex; flex-direction: column; gap: 0.6rem; margin-top: 0.5rem; min-width: 0; }
 .raw-json-label { font-size: 0.68rem; font-weight: 700; color: var(--text-3); text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 0.3rem; }
 .raw-json {
   background: rgba(0,0,0,0.85); color: #d4e8d4;
@@ -770,9 +772,12 @@ const styleReferenceImageUrl = computed(() => {
   font-family: monospace;
   line-height: 1.5;
   max-height: 320px;
+  max-width: 100%;
   overflow: auto;
   white-space: pre-wrap;
   word-break: break-word;
+  overflow-wrap: anywhere;
+  box-sizing: border-box;
 }
 
 /* Style meta */
