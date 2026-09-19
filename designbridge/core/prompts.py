@@ -96,7 +96,7 @@ REQUIREMENT_ANALYZER_PROMPT = """你是一位專業的室內設計需求分析�
   "routing_decision": "design_adjuster | design",
   "structured_requirement": {{
     "user_description_raw": "原始需求文字",
-    "design_description": "完整英文圖像生成描述，涵蓋空間類型、風格、材質、色彩、氛圍、光線、家具配置等細節",
+    "design_description": "完整英文圖像生成描述，涵蓋空間類型、風格、材質、色彩、氛圍、光線。若 hint_layout 為 true，不要描述家具的具體擺放位置/方位（例如『床靠窗』『沙發面向電視牆』），下游佈局規劃器會依精確座標另外產生這段文字，這裡重複猜測只會跟實際規劃結果衝突，家具本身仍可提及但不加方位詞",
     "depth_conditioning_scale": 0.85,
     "meta": {{
       "room_type": "living_room | bedroom | bathroom | kitchen | study 等",

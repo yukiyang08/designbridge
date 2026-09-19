@@ -1961,18 +1961,13 @@ def _display_name(ftype: str) -> str:
     return key.replace("_", " ")
 
 
-def _describe_position(item: "FurnitureItem", *, ceiling: bool = False) -> str:
-    """正規化座標 → 自然語言方位。x：0 左→1 右；y：0 遠牆→1 近觀看者。"""
+def _describe_ceiling_position(item: "FurnitureItem") -> str:
+    """吊掛／壁掛物件的左右方位（沒有地板 footprint，深度投影管不到，只能用文字）。
+    x：0 左→1 右。落地家具的方位一律交給 renderer.py 的 _furniture_to_spatial_text
+    （用真實座標算，這裡不再重算一次，避免兩邊對不上互相矛盾）。"""
     cx = item.x + item.w / 2.0
-    cy = item.y + item.h / 2.0
     lateral = "on the left" if cx < 0.34 else ("on the right" if cx > 0.66 else "in the centre")
-    if ceiling:
-        return f"overhead {lateral}"
-    depth = (
-        "against the far wall" if cy < 0.34
-        else ("in the foreground" if cy > 0.66 else "in the middle of the room")
-    )
-    return f"{lateral}, {depth}"
+    return f"overhead {lateral}"
 
 
 _WALL_ZH: dict[str, str] = {
@@ -2063,7 +2058,9 @@ def _build_layout_prompt(
 
     只描述 diffusion 沒有其他管道能得知的東西：
       - 吊掛／壁掛物件：不進深度投影（沒有地板 footprint），文字是唯一通道
-      - 使用者要求新增的家具：深度圖有了，但文字加強能顯著提高出現率
+      - 使用者要求新增的家具：深度圖有了，但文字加強能顯著提高出現率（只提物件名稱，
+        不重複算方位——renderer.py 的 _furniture_to_spatial_text 已經用真實座標算過
+        一次全部落地家具的方位，這裡再用粗略的三區間估一次只會兩邊對不上、互相矛盾）
     既有的落地家具不列舉——深度圖已經精確控制它們，長清單只會稀釋 prompt。
     """
     from designbridge.layout.scene_graph_to_depth import is_floor_standing, normalize_furniture_type
@@ -2081,7 +2078,7 @@ def _build_layout_prompt(
     for item in items:
         if not is_floor_standing(item.type):
             hanging.append(
-                f"a {_display_name(item.type)} {_describe_position(item, ceiling=True)}"
+                f"a {_display_name(item.type)} {_describe_ceiling_position(item)}"
             )
         else:
             floor_by_type.setdefault(normalize_furniture_type(item.type), []).append(item)
@@ -2094,7 +2091,7 @@ def _build_layout_prompt(
         if not candidates:
             continue
         chosen = next((it for it in candidates if it.type == key), candidates[0])
-        added.append(f"a {_display_name(chosen.type)} {_describe_position(chosen)}")
+        added.append(f"a {_display_name(chosen.type)}")
 
     parts: list[str] = []
     if added:

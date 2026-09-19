@@ -8,6 +8,77 @@ from typing import Any, Literal
 
 from designbridge.style.style_apply import STYLE_NAME_TO_ID
 
+# ── Color naming ────────────────────────────────────────────────────────────────
+# Curated for interior-design vocabulary (not CSS3 names like "cornflowerblue", which
+# reads oddly here) — nearest-RGB match so the hex code always gets a plain-language
+# color word alongside it. FLUX's T5 encoder may partially understand hex on its own,
+# but the name is a cheap, reliable fallback signal either way.
+_INTERIOR_COLOR_NAMES: dict[str, tuple[int, int, int]] = {
+    "white": (255, 255, 255), "off-white": (250, 245, 235), "cream": (255, 253, 208),
+    "beige": (245, 245, 220), "ivory": (255, 255, 240), "tan": (210, 180, 140),
+    "greige": (210, 200, 185), "taupe": (139, 133, 137), "gray": (128, 128, 128), "charcoal": (54, 54, 54),
+    "black": (20, 20, 20), "brown": (101, 67, 33), "dark walnut": (94, 58, 39),
+    "terracotta": (204, 108, 78), "rust": (183, 65, 14), "gold": (255, 215, 0),
+    "brass": (181, 166, 66), "bronze": (205, 127, 50), "copper": (184, 115, 51),
+    "silver": (192, 192, 192), "navy": (0, 0, 128), "blue": (70, 130, 180),
+    "teal": (0, 128, 128), "green": (85, 130, 90), "sage green": (156, 175, 136),
+    "olive": (128, 128, 0), "burgundy": (128, 0, 32), "red": (178, 34, 34),
+    "pink": (230, 190, 190), "blush pink": (222, 165, 164), "purple": (110, 80, 130),
+    "yellow": (230, 210, 100), "mustard": (204, 164, 26), "orange": (210, 120, 50),
+}
+
+
+def _srgb_to_lab(rgb: tuple[int, int, int]) -> tuple[float, float, float]:
+    """sRGB (0-255) -> CIE Lab, so 'nearest color' compares perceptually (hue-aware)
+    instead of raw RGB distance — plain RGB distance lets a saturated dark blue
+    (e.g. #2F4F6F) land closer to neutral gray "charcoal" than to any blue, because
+    RGB conflates lightness and hue. Lab separates them (L = lightness, a/b = hue/chroma)."""
+    def _lin(c: float) -> float:
+        c /= 255.0
+        return c / 12.92 if c <= 0.04045 else ((c + 0.055) / 1.055) ** 2.4
+
+    r, g, b = (_lin(c) for c in rgb)
+    x = (0.4124 * r + 0.3576 * g + 0.1805 * b) / 0.95047
+    y = (0.2126 * r + 0.7152 * g + 0.0722 * b) / 1.00000
+    z = (0.0193 * r + 0.1192 * g + 0.9505 * b) / 1.08883
+
+    def _f(t: float) -> float:
+        return t ** (1 / 3) if t > 0.008856 else (7.787 * t) + 16 / 116
+
+    fx, fy, fz = _f(x), _f(y), _f(z)
+    return (116 * fy - 16, 500 * (fx - fy), 200 * (fy - fz))
+
+
+_INTERIOR_COLOR_LAB: dict[str, tuple[float, float, float]] = {
+    name: _srgb_to_lab(rgb) for name, rgb in _INTERIOR_COLOR_NAMES.items()
+}
+
+
+def _nearest_color_name(hex_code: str) -> str:
+    """Approximate color name for a hex code, for pairing alongside the raw hex value.
+    Matched in Lab space (perceptual/hue-aware), not raw RGB — see `_srgb_to_lab`."""
+    try:
+        h = hex_code.strip().lstrip("#")
+        if len(h) != 6:
+            return ""
+        r, g, b = int(h[0:2], 16), int(h[2:4], 16), int(h[4:6], 16)
+    except ValueError:
+        return ""
+    lab = _srgb_to_lab((r, g, b))
+    return min(
+        _INTERIOR_COLOR_LAB,
+        key=lambda name: sum((c1 - c2) ** 2 for c1, c2 in zip(_INTERIOR_COLOR_LAB[name], lab)),
+    )
+
+
+def _describe_color(hex_code: str) -> str:
+    """'#F5F5DC' -> '#F5F5DC (beige)', so the prompt carries both the raw hex (FLUX's
+    T5 encoder can partially infer color from it) and a plain-language name (a cheap,
+    reliable fallback that doesn't depend on how well hex happens to land)."""
+    name = _nearest_color_name(hex_code)
+    return f"{hex_code} ({name})" if name else hex_code
+
+
 # ── Prompt builders ────────────────────────────────────────────────────────────
 
 def _analyze_style_image_with_gemini(image_path: str) -> str:
@@ -93,11 +164,12 @@ def _build_imagen_prompt_from_requirement(
     if style_name_en:
         extra_parts.append(f"Style profile: {style_name_en} (strength {strength}).")
     if color_guidance.get("primary_color"):
-        extra_parts.append(
-            f"Palette: primary {color_guidance.get('primary_color')}, "
-            f"secondary {color_guidance.get('secondary_color')}, "
-            f"accent {color_guidance.get('accent_color')}."
-        )
+        _palette_bits = [
+            f"{label} {_describe_color(color_guidance[key])}"
+            for label, key in (("primary", "primary_color"), ("secondary", "secondary_color"), ("accent", "accent_color"))
+            if color_guidance.get(key)
+        ]
+        extra_parts.append("Palette: " + ", ".join(_palette_bits) + ".")
     if style_prompt:
         extra_parts.append(style_prompt)
 

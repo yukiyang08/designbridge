@@ -126,7 +126,8 @@ def scrape_images(
     max_pages: int | None,
     manifest_path: Path,
     refresh_manifest: bool,
-    style_filter: str | None = None,   # 中文風格名稱，例如 "工業風"
+    style_filter: str | None = None, 
+    kind_filter: str | None = None,   
 ) -> None:
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
@@ -141,6 +142,8 @@ def scrape_images(
     )
     if style_filter:
         print(f"🎯 只下載風格：{style_filter}")
+    if kind_filter:
+        print(f"🎯 只下載屋況：{kind_filter}")
 
     session = _create_session()
     downloaded = 0
@@ -171,6 +174,13 @@ def scrape_images(
             if style_filter:
                 work_style = work.get("style_cn", "")
                 if style_filter not in work_style:
+                    style_skipped += 1
+                    continue
+
+            # 屋況過濾（例如只要老屋翻新）
+            if kind_filter:
+                work_kind = work.get("kind_cn", "")
+                if kind_filter not in work_kind:
                     style_skipped += 1
                     continue
 
@@ -207,6 +217,8 @@ def main() -> None:
     parser.add_argument("--manifest", type=str,  default=str(MANIFEST_PATH))
     parser.add_argument("--style-filter", type=str, default=None,
                         help="只下載指定風格（中文），例如：工業風、美式風、鄉村風")
+    parser.add_argument("--kind-filter", type=str, default=None,
+                        help="只下載指定屋況（中文），例如：老屋翻新")
     parser.add_argument(
         "--refresh-manifest",
         action="store_true",
@@ -220,6 +232,7 @@ def main() -> None:
         manifest_path=Path(args.manifest),
         refresh_manifest=args.refresh_manifest,
         style_filter=args.style_filter,
+        kind_filter=args.kind_filter,
     )
 
 
