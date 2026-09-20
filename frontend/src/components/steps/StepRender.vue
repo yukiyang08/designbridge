@@ -7,7 +7,7 @@
  *    留在這一步、按了才生成，看完再往下走。
  *  · 風格推薦用既有的 StyleSuggestions（10 張、相似度標籤、ⓘ 資訊卡、下一輪／找相似），
  *    不是設計稿的三張靜態縮圖。
- *  · 裝潢風格下拉、風格參考圖上傳、不套用風格、styleMethod 收進進階設定。
+ *  · 裝潢風格下拉、風格參考圖上傳、不套用風格收進進階設定。
  */
 import { ref, computed, defineAsyncComponent } from 'vue'
 import AdvancedPanel from '@/components/shell/AdvancedPanel.vue'
@@ -23,7 +23,7 @@ const PanoramaViewer = defineAsyncComponent(() => import('@/components/PanoramaV
 
 const {
   planSource, extraPrompt, outputAspect,
-  selectedStyle, noStyleReference, styleMethod, styleRefImage,
+  selectedStyle, noStyleReference, styleRefImage,
   styleOptions, styleLoading, styleError, fetchStyleOptions,
   styleCandidates, candidatesLoading, confirmedStyle, showSuggestions,
   confirmStyle, clearConfirmedStyle, fetchStyleCandidates, showNextRound, scheduleSearch,
@@ -132,19 +132,6 @@ function onPanoClick() {
                 @change="styleRefImage.onChange"
                 @remove="styleRefImage.remove"
               />
-              <div v-if="styleRefImage.preview" class="method-group">
-                <label v-for="m in [
-                  { v: 'ai_analysis', t: 'AI 分析風格', s: 'Gemini 解析色調，注入 prompt' },
-                  { v: 'redux',       t: 'FLUX.1-Redux', s: '以圖為主做風格遷移' },
-                  { v: 'ipadapter',   t: 'IP-Adapter',  s: '圖像注入風格' },
-                ]" :key="m.v" :class="['method', { active: styleMethod === m.v }]">
-                  <input type="radio" v-model="styleMethod" :value="m.v" />
-                  <span class="method-body">
-                    <strong>{{ m.t }}</strong>
-                    <small>{{ m.s }}</small>
-                  </span>
-                </label>
-              </div>
             </template>
           </div>
         </div>

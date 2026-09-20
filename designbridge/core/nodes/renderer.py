@@ -22,9 +22,6 @@ from designbridge.render.render_backends import (
     _render_flux_kontext_fal,
     _render_flux_controlnet_depth_fal,
     _render_flux_depth_controlnet_fal,
-    _render_flux_redux_fal,
-    _render_flux_redux_local,
-    _render_flux_ipadapter_fal,
     _render_flux_fal,
     _render_flux,
 )
@@ -315,6 +312,14 @@ def renderer(state: DesignBridgeState) -> dict[str, Any]:
     backend = "placeholder"
 
     style_loras = resolve_style_loras(style_params.get("style_profile_id"))
+    # Debug-console LoRA override (see render_overrides in user_input) — resolved once
+    # here so every backend that reads style_loras honors it, not just whichever one
+    # happens to fire. controlnet_model/scale/steps/guidance stay scoped to the single
+    # ControlNet-depth branch below: the debug console documents that scope explicitly,
+    # and the layout-depth dual-ControlNet branch uses differently shaped config knobs
+    # that don't map onto these fields.
+    if render_overrides.get("loras") is not None:
+        style_loras = render_overrides["loras"]
 
     if style_params:
         generation_params["style_profile_id"] = style_params.get("style_profile_id")
@@ -454,48 +459,6 @@ def renderer(state: DesignBridgeState) -> dict[str, Any]:
     else:
         control_img = depth_path if depth_path and Path(depth_path).exists() else None
 
-    # IP-Adapter 模式：文字控制空間類型，圖像注入風格（fal.ai FLUX-general）
-    if style_method == "ipadapter" and user_style_reference_local and backend == "placeholder":
-        if not Config.FAL_KEY:
-            print("⚠️  IP-Adapter 模式需要 FAL_KEY，改走 ai_analysis fallback")
-        elif timed_call(
-            "renderer.flux_ipadapter_fal", task_id,
-            _render_flux_ipadapter_fal,
-            user_style_reference_local, out_path, prompt=prompt,
-            ip_adapter_scale=Config.FAL_IP_ADAPTER_SCALE,
-            num_steps=Config.FAL_IP_ADAPTER_STEPS,
-            guidance_scale=Config.FAL_IP_ADAPTER_GUIDANCE,
-            output_size=(Config.FAL_IP_ADAPTER_SIZE, Config.FAL_IP_ADAPTER_SIZE),
-            loras=style_loras,
-        ):
-            backend = "flux_ipadapter_fal"
-            generation_params["model"] = "fal-ai/flux-general + XLabs IP-Adapter"
-            generation_params["style_reference"] = user_style_reference_local
-            generation_params["ip_adapter_scale"] = Config.FAL_IP_ADAPTER_SCALE
-
-    # Redux 模式：本地 FLUX.1-Redux pipeline（需先在 HuggingFace 接受授權並下載模型）
-    # DESIGNBRIDGE_ENABLE_FLUX_REDUX=true 才嘗試載入，避免未授權時每次報錯
-    if style_method == "redux" and user_style_reference_local and backend == "placeholder":
-        if not Config.ENABLE_FLUX_REDUX:
-            print("⚠️  FLUX.1-Redux 未啟用（DESIGNBRIDGE_ENABLE_FLUX_REDUX=false），改走 ai_analysis fallback")
-        elif Config.FAL_KEY and timed_call(
-            "renderer.flux_redux_fal", task_id,
-            _render_flux_redux_fal,
-            user_style_reference_local, out_path, prompt=prompt, output_size=output_size,
-            num_steps=Config.FAL_REDUX_STEPS, guidance_scale=Config.FAL_REDUX_GUIDANCE,
-        ):
-            backend = "flux_redux_fal"
-            generation_params["model"] = "fal-ai/flux-1/dev/redux"
-            generation_params["style_reference"] = user_style_reference_local
-        elif timed_call(
-            "renderer.flux_redux_local", task_id,
-            _render_flux_redux_local,
-            user_style_reference_local, out_path, prompt=prompt, output_size=output_size,
-        ):
-            backend = "flux_redux_local"
-            generation_params["model"] = "black-forest-labs/FLUX.1-Redux-dev (local)"
-            generation_params["style_reference"] = user_style_reference_local
-
     # Kontext LoRA：有 depth map 時優先，保留空間結構
     # depth_conditioning_scale: 1.0=完全保留結構, 0.0=忽略深度圖
     # lora scale 直接對應 depth_conditioning_scale，不需轉換
@@ -528,15 +491,15 @@ def renderer(state: DesignBridgeState) -> dict[str, Any]:
             })
 
         # Debug-console overrides (see render_overrides in user_input): lets the
-        # standalone test UI swap the ControlNet checkpoint / scale / steps / LoRA
-        # stack for a single request without touching Config env vars.
+        # standalone test UI swap the ControlNet checkpoint / scale / steps stack for a
+        # single request without touching Config env vars. (LoRA override is already
+        # folded into style_loras above, so every backend — not just this one — honors it.)
         _ro = render_overrides
         _cn_model = _ro.get("controlnet_model") or Config.DEPTH_CONTROLNET_MODEL
         _cn_scale = _ro.get("controlnet_scale")
         _cn_scale = depth_conditioning_scale if _cn_scale is None else max(0.0, min(1.0, float(_cn_scale)))
         _cn_steps = _ro.get("controlnet_steps") or Config.FAL_CONTROLNET_STEPS
         _cn_guidance = _ro.get("controlnet_guidance") or Config.FAL_CONTROLNET_GUIDANCE
-        _cn_loras = _ro.get("loras") if _ro.get("loras") is not None else style_loras
 
         if timed_call(
             "renderer.flux_controlnet_depth_fal", task_id,
@@ -547,7 +510,7 @@ def renderer(state: DesignBridgeState) -> dict[str, Any]:
             guidance_scale=_cn_guidance,
             output_size=output_size,
             extra_controls=_extra_controls,
-            loras=_cn_loras,
+            loras=style_loras,
             controlnet_model=_cn_model,
         ):
             backend = "flux_controlnet_depth_fal"
@@ -555,8 +518,8 @@ def renderer(state: DesignBridgeState) -> dict[str, Any]:
             generation_params["depth_conditioning_scale"] = _cn_scale
             generation_params["controlnet_steps"] = _cn_steps
             generation_params["controlnet_guidance"] = _cn_guidance
-            if _cn_loras:
-                generation_params["loras"] = _cn_loras
+            if style_loras:
+                generation_params["loras"] = style_loras
             if _extra_controls:
                 generation_params["edge_controlnet_model"] = Config.EDGE_CONTROLNET_MODEL
                 generation_params["edge_conditioning_scale"] = Config.EDGE_CONDITIONING_SCALE

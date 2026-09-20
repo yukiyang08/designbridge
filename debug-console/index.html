@@ -1,0 +1,565 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>DesignBridge Pipeline 除錯台</title>
+<style>
+  :root {
+    --bg: #0f1115; --panel: #161a22; --panel-2: #1e2330; --border: #2a3040;
+    --text: #e6e9ef; --muted: #8992a6; --accent: #5b9dff; --accent-2: #ffb454;
+    --ok: #4caf7d; --warn: #e0a030; --err: #e05a5a; --mono: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text); font: 14px/1.5 -apple-system, "Segoe UI", Roboto, sans-serif; }
+  header { display: flex; align-items: center; gap: 12px; padding: 10px 16px; background: var(--panel); border-bottom: 1px solid var(--border); position: sticky; top: 0; z-index: 10; flex-wrap: wrap; }
+  header h1 { font-size: 15px; margin: 0; font-weight: 600; white-space: nowrap; }
+  header input[type=text] { width: 220px; }
+  #healthDot { width: 9px; height: 9px; border-radius: 50%; background: var(--muted); flex: none; }
+  #healthDot.ok { background: var(--ok); }
+  #healthDot.err { background: var(--err); }
+  #healthLabel { font-size: 12px; color: var(--muted); }
+  main { display: grid; grid-template-columns: 360px 1fr; gap: 14px; padding: 14px; align-items: start; }
+  @media (max-width: 900px) { main { grid-template-columns: 1fr; } }
+  .card { background: var(--panel); border: 1px solid var(--border); border-radius: 8px; padding: 12px 14px; margin-bottom: 14px; }
+  .card h2 { font-size: 13px; margin: 0 0 10px; color: var(--accent); text-transform: uppercase; letter-spacing: .04em; }
+  .card h3 { font-size: 12px; margin: 14px 0 6px; color: var(--muted); text-transform: uppercase; letter-spacing: .03em; }
+  label { display: block; font-size: 12px; color: var(--muted); margin: 10px 0 4px; }
+  label.inline { display: inline-flex; align-items: center; gap: 6px; color: var(--text); margin: 8px 0; }
+  input[type=text], input[type=number], textarea, select {
+    width: 100%; background: var(--panel-2); border: 1px solid var(--border); color: var(--text);
+    border-radius: 5px; padding: 6px 8px; font: inherit; font-family: var(--mono); font-size: 12.5px;
+  }
+  textarea { resize: vertical; min-height: 60px; }
+  input[type=range] { width: 100%; }
+  .row { display: flex; gap: 8px; align-items: center; }
+  .row > * { flex: 1; }
+  .scaleval { flex: none; width: 42px; text-align: right; color: var(--accent-2); font-family: var(--mono); font-size: 12px; }
+  button { cursor: pointer; border: none; border-radius: 6px; padding: 7px 12px; font: inherit; font-weight: 600; }
+  button.primary { background: var(--accent); color: #06101f; width: 100%; padding: 10px; font-size: 14px; margin-top: 6px; }
+  button.primary:disabled { opacity: .5; cursor: default; }
+  button.ghost { background: transparent; border: 1px solid var(--border); color: var(--muted); }
+  button.small { padding: 3px 8px; font-size: 12px; }
+  .lora-row { display: flex; gap: 6px; margin-bottom: 6px; }
+  .lora-row input.lora-path { flex: 3; }
+  .lora-row input.lora-scale { flex: 1; }
+  fieldset { border: 1px solid var(--border); border-radius: 6px; margin: 0 0 10px; padding: 8px 10px; }
+  fieldset legend { font-size: 12px; color: var(--muted); padding: 0 4px; }
+  fieldset.disabled-group { opacity: .45; }
+  .tag-hint { font-size: 11px; color: var(--muted); margin-top: 2px; }
+  pre { background: var(--panel-2); border: 1px solid var(--border); border-radius: 6px; padding: 10px; overflow: auto; max-height: 420px; font-size: 12px; font-family: var(--mono); white-space: pre-wrap; word-break: break-word; }
+  details > summary { cursor: pointer; color: var(--accent); font-size: 12px; margin-bottom: 6px; }
+  .kv { display: grid; grid-template-columns: 140px 1fr; gap: 4px 10px; font-size: 12.5px; }
+  .kv dt { color: var(--muted); }
+  .kv dd { margin: 0; font-family: var(--mono); word-break: break-all; }
+  .badge { display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 11px; font-weight: 700; }
+  .badge.route { background: rgba(91,157,255,.15); color: var(--accent); }
+  .badge.backend { background: rgba(76,175,125,.15); color: var(--ok); }
+  .thumbs { display: flex; flex-wrap: wrap; gap: 10px; }
+  .thumbs figure { margin: 0; width: 150px; }
+  .thumbs img { width: 100%; border-radius: 6px; border: 1px solid var(--border); background: #000; display: block; }
+  .thumbs figcaption { font-size: 11px; color: var(--muted); margin-top: 4px; text-align: center; word-break: break-all; }
+  .style-search-grid { display: flex; flex-wrap: wrap; gap: 8px; min-height: 8px; }
+  .style-search-thumb { width: 84px; cursor: pointer; border: 2px solid transparent; border-radius: 6px; padding: 2px; background: none; }
+  .style-search-thumb img { width: 100%; height: 84px; object-fit: cover; border-radius: 4px; display: block; background: #000; }
+  .style-search-thumb .cap { font-size: 10.5px; color: var(--muted); margin-top: 3px; text-align: center; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .style-search-thumb.selected { border-color: var(--accent); }
+  .style-search-thumb.selected .cap { color: var(--accent); }
+  .empty.small { color: var(--muted); font-size: 11.5px; padding: 4px 0; }
+  .hero-img { max-width: 100%; border-radius: 8px; border: 1px solid var(--border); display: block; }
+  table.ftable { width: 100%; border-collapse: collapse; font-size: 12px; }
+  table.ftable th, table.ftable td { border-bottom: 1px solid var(--border); padding: 4px 6px; text-align: left; font-family: var(--mono); }
+  table.ftable th { color: var(--muted); font-weight: 500; }
+  #status { font-size: 12px; color: var(--muted); margin-top: 8px; min-height: 16px; }
+  #status.err { color: var(--err); }
+  .empty { color: var(--muted); font-size: 12.5px; padding: 20px 0; text-align: center; }
+  .stagebar { display: flex; flex-wrap: wrap; gap: 6px; font-size: 11px; margin-bottom: 8px; }
+  .stagebar span { background: var(--panel-2); border: 1px solid var(--border); border-radius: 4px; padding: 3px 7px; color: var(--muted); }
+  .stagebar span.hit { color: var(--ok); border-color: var(--ok); }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>🔧 DesignBridge 除錯台</h1>
+  <span style="color:var(--muted); font-size:11px;">獨立測試介面，不影響正式前端</span>
+  <span style="flex:1"></span>
+  <span id="healthDot"></span>
+  <span id="healthLabel">檢查中…</span>
+  <input type="text" id="apiBase" value="http://localhost:8000" title="後端 API base URL">
+</header>
+
+<main>
+  <!-- ───────────── 左側：輸入表單 ───────────── -->
+  <div>
+    <div class="card">
+      <h2>使用者輸入</h2>
+
+      <label>文字需求 (text_prompt)</label>
+      <textarea id="textPrompt" placeholder="例如：現代簡約風格的客廳，希望有大沙發跟一株植物"></textarea>
+
+      <label>風格參考圖搜尋（打字時自動出現，點圖片套用；對應 /api/style-search）</label>
+      <div id="styleSearchThumbs" class="style-search-grid">
+        <div class="empty small">輸入文字需求後這裡會顯示相似的風格參考圖</div>
+      </div>
+      <div class="tag-hint" id="styleSearchStatus"></div>
+
+      <label>初始房間照片（選填，決定是否有真實深度圖）</label>
+      <input type="file" id="initialImageFile" accept="image/*">
+      <div class="tag-hint" id="initialImageStatus">尚未上傳</div>
+      <img id="initialImagePreview" style="display:none; max-width:100%; margin-top:6px; border-radius:6px; border:1px solid var(--border);">
+
+      <label>風格參考圖（選填）</label>
+      <input type="file" id="styleRefFile" accept="image/*">
+      <div class="tag-hint" id="styleRefStatus">尚未上傳</div>
+
+      <!-- edit_scope 先拿掉：目前產品端沒有在用這個概念。拿掉後 /api/generate 會用
+           DesignRequest 的預設值 0.6（api.py），routing 門檻 edit_scope<0.3 測不到，
+           adjuster 的 inpaint strength 固定為 0.85（封頂值）。要恢復就取消這塊註解，
+           並把下面 buildPayload() 裡對應的那行一起打開。
+      <div class="row">
+        <div>
+          <label>edit_scope（越小越保守／走 adjuster 機率越高）</label>
+          <div class="row"><input type="range" id="editScope" min="0" max="1" step="0.05" value="0.6"><span class="scaleval" id="editScopeVal">0.6</span></div>
+        </div>
+      </div>
+      -->
+
+      <label>output_aspect</label>
+      <select id="outputAspect">
+        <option value="auto">auto</option>
+        <option value="1:1">1:1</option>
+        <option value="4:3">4:3</option>
+        <option value="3:4">3:4</option>
+        <option value="16:9">16:9</option>
+        <option value="9:16">9:16</option>
+      </select>
+
+      <label>style_profile_id（選填，留空 = auto）</label>
+      <input type="text" id="styleProfileId" placeholder="例如 modern / nordic / industrial">
+
+      <label class="inline"><input type="checkbox" id="refineMode"> refine_mode（強制走 design_adjuster）</label>
+
+      <label>family_needs（逗號分隔，選填）</label>
+      <input type="text" id="familyNeeds" placeholder="輪椅, 幼童">
+
+      <label>fengshui_rules（逗號分隔，選填）</label>
+      <input type="text" id="fengshuiRules" placeholder="床不對門">
+    </div>
+
+    <div class="card">
+      <h2>進階：ControlNet / LoRA 覆寫</h2>
+      <div class="tag-hint" style="margin-bottom:8px;">留空 = 用後端 Config 預設值。這裡改的只影響本次請求，不會動到 .env。只在有深度圖（上傳照片或已規劃 layout）時才會真正生效，走的是 flux-general + Depth ControlNet 這條路徑。</div>
+
+      <fieldset>
+        <legend>ControlNet 模型</legend>
+        <input type="text" id="cnModel" placeholder="例如 Shakker-Labs/FLUX.1-dev-ControlNet-Depth（留空用預設）">
+      </fieldset>
+
+      <fieldset id="cnScaleGroup">
+        <legend><label class="inline" style="margin:0;"><input type="checkbox" id="cnScaleEnabled">覆寫 conditioning_scale</label></legend>
+        <div class="row"><input type="range" id="cnScale" min="0" max="1" step="0.05" value="0.7" disabled><span class="scaleval" id="cnScaleVal">0.7</span></div>
+      </fieldset>
+
+      <fieldset id="cnStepsGroup">
+        <legend><label class="inline" style="margin:0;"><input type="checkbox" id="cnStepsEnabled">覆寫 num_inference_steps</label></legend>
+        <input type="number" id="cnSteps" min="1" max="50" value="20" disabled>
+      </fieldset>
+
+      <fieldset id="cnGuidanceGroup">
+        <legend><label class="inline" style="margin:0;"><input type="checkbox" id="cnGuidanceEnabled">覆寫 guidance_scale</label></legend>
+        <input type="number" id="cnGuidance" min="0" max="20" step="0.1" value="3.5" disabled>
+      </fieldset>
+
+      <h3>LoRA 疊加（可加多筆）</h3>
+      <div id="loraRows"></div>
+      <button class="ghost small" id="addLoraBtn" type="button">+ 加一筆 LoRA</button>
+    </div>
+
+    <button class="primary" id="submitBtn">送出 → /api/generate</button>
+    <div id="status"></div>
+  </div>
+
+  <!-- ───────────── 右側：結果 ───────────── -->
+  <div id="results">
+    <div class="card"><div class="empty">送出後，這裡會顯示完整的 pipeline trace：路由決策、每個 agent/LLM 的輸出、組出來的 prompt、深度圖/ControlNet 條件圖、最終生成結果。</div></div>
+  </div>
+</main>
+
+<script>
+const $ = (sel) => document.querySelector(sel);
+const apiBase = () => $('#apiBase').value.replace(/\/$/, '');
+
+// ── health check ──────────────────────────────────────────────────────────
+async function checkHealth() {
+  const dot = $('#healthDot'), label = $('#healthLabel');
+  try {
+    const res = await fetch(apiBase() + '/api/health');
+    if (!res.ok) throw new Error(res.status);
+    dot.className = 'ok';
+    label.textContent = '後端已連線';
+  } catch (e) {
+    dot.className = 'err';
+    label.textContent = '連不到後端（' + apiBase() + '）';
+  }
+}
+checkHealth();
+$('#apiBase').addEventListener('change', checkHealth);
+
+// ── slider live values ───────────────────────────────────────────────────
+function bindSlider(rangeId, outId) {
+  const r = $(rangeId), o = $(outId);
+  const sync = () => o.textContent = r.value;
+  r.addEventListener('input', sync);
+  sync();
+}
+// bindSlider('#editScope', '#editScopeVal');  // edit_scope UI 拿掉，見上方 HTML 註解
+bindSlider('#cnScale', '#cnScaleVal');
+
+function bindOverrideToggle(checkboxId, ...fieldIds) {
+  const cb = $(checkboxId);
+  cb.addEventListener('change', () => {
+    fieldIds.forEach(id => $(id).disabled = !cb.checked);
+  });
+}
+bindOverrideToggle('#cnScaleEnabled', '#cnScale');
+bindOverrideToggle('#cnStepsEnabled', '#cnSteps');
+bindOverrideToggle('#cnGuidanceEnabled', '#cnGuidance');
+
+// ── LoRA rows ─────────────────────────────────────────────────────────────
+function addLoraRow(path = '', scale = 0.8) {
+  const div = document.createElement('div');
+  div.className = 'lora-row';
+  div.innerHTML = `
+    <input type="text" class="lora-path" placeholder="LoRA 權重 URL（HF 或 CivitAI 下載連結）" value="${path}">
+    <input type="number" class="lora-scale" step="0.05" min="0" max="4" value="${scale}">
+    <button class="ghost small" type="button" onclick="this.parentElement.remove()">✕</button>
+  `;
+  $('#loraRows').appendChild(div);
+}
+$('#addLoraBtn').addEventListener('click', () => addLoraRow());
+
+// ── image uploads ─────────────────────────────────────────────────────────
+const uploaded = { initialImagePath: null, styleRefPath: null };
+
+async function uploadFile(file) {
+  const fd = new FormData();
+  fd.append('file', file);
+  const res = await fetch(apiBase() + '/api/upload-image', { method: 'POST', body: fd });
+  if (!res.ok) throw new Error('upload failed: ' + res.status);
+  const data = await res.json();
+  return data.path;
+}
+
+$('#initialImageFile').addEventListener('change', async (e) => {
+  const file = e.target.files[0];
+  if (!file) return;
+  $('#initialImageStatus').textContent = '上傳中…';
+  try {
+    uploaded.initialImagePath = await uploadFile(file);
+    $('#initialImageStatus').textContent = '已上傳：' + uploaded.initialImagePath;
+    const preview = $('#initialImagePreview');
+    preview.src = URL.createObjectURL(file);
+    preview.style.display = 'block';
+  } catch (err) {
+    $('#initialImageStatus').textContent = '上傳失敗：' + err.message;
+  }
+});
+
+$('#styleRefFile').addEventListener('change', async (e) => {
+  const file = e.target.files[0];
+  if (!file) return;
+  $('#styleRefStatus').textContent = '上傳中…';
+  try {
+    uploaded.styleRefPath = await uploadFile(file);
+    $('#styleRefStatus').textContent = '已上傳：' + uploaded.styleRefPath;
+    clearStyleSelection(); // 手動上傳跟搜尋選圖只能二選一，上傳就取消搜尋選取（不動 uploaded.styleRefPath）
+  } catch (err) {
+    $('#styleRefStatus').textContent = '上傳失敗：' + err.message;
+  }
+});
+
+// ── style search（打字即時出現風格參考圖，對應 /api/style-search）───────────
+let selectedStyleCandidate = null;
+let styleSearchTimer = null;
+let styleSearchSeq = 0; // 忽略慢回來的舊請求，避免打字打到一半被舊結果蓋掉
+
+function renderStyleSearchThumbs(candidates) {
+  const box = $('#styleSearchThumbs');
+  if (!candidates.length) {
+    box.innerHTML = '<div class="empty small">找不到相似的風格參考圖</div>';
+    return;
+  }
+  box.innerHTML = candidates.map((c, i) => `
+    <button type="button" class="style-search-thumb" data-idx="${i}" title="${escapeHtml(c.style_name)}（相似度 ${c.similarity}）">
+      <img src="${c.image_url}" loading="lazy">
+      <div class="cap">${escapeHtml(c.style_name)}</div>
+    </button>
+  `).join('');
+  box.querySelectorAll('.style-search-thumb').forEach((btn) => {
+    btn.addEventListener('click', () => selectStyleCandidate(candidates[Number(btn.dataset.idx)]));
+  });
+  syncStyleSearchSelection();
+}
+
+function syncStyleSearchSelection() {
+  $('#styleSearchThumbs').querySelectorAll('.style-search-thumb').forEach((btn) => {
+    btn.classList.toggle('selected', !!selectedStyleCandidate && btn.querySelector('img').src === selectedStyleCandidate.image_url);
+  });
+}
+
+// 只重置「哪張搜尋結果被選中」的畫面狀態，不動 uploaded.styleRefPath——手動上傳檔案時
+// 呼叫這個，不能連帶把剛上傳的路徑清掉。
+function clearStyleSelection() {
+  selectedStyleCandidate = null;
+  syncStyleSearchSelection();
+}
+
+function selectStyleCandidate(candidate) {
+  if (selectedStyleCandidate === candidate) {
+    // 再點一次已選中的縮圖 = 取消選取，順便把它讓出來的 styleRefPath 清掉
+    selectedStyleCandidate = null;
+    if (uploaded.styleRefPath === candidate.image_url) {
+      uploaded.styleRefPath = null;
+      $('#styleRefStatus').textContent = '尚未上傳';
+    }
+    syncStyleSearchSelection();
+    return;
+  }
+  selectedStyleCandidate = candidate;
+  uploaded.styleRefPath = candidate.image_url;
+  $('#styleProfileId').value = candidate.style_id;
+  $('#styleRefFile').value = '';
+  $('#styleRefStatus').textContent = '已選搜尋結果：' + candidate.style_name + '（' + candidate.image_url + '）';
+  syncStyleSearchSelection();
+}
+
+async function runStyleSearch(query) {
+  const seq = ++styleSearchSeq;
+  $('#styleSearchStatus').textContent = '搜尋中…';
+  try {
+    const url = apiBase() + '/api/style-search?query=' + encodeURIComponent(query) + '&top_k=8';
+    const res = await fetch(url);
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    const candidates = await res.json();
+    if (seq !== styleSearchSeq) return; // 舊請求，畫面已經在等更新的查詢字
+    renderStyleSearchThumbs(candidates);
+    $('#styleSearchStatus').textContent = candidates.length ? candidates.length + ' 筆結果' : '';
+  } catch (err) {
+    if (seq !== styleSearchSeq) return;
+    $('#styleSearchStatus').textContent = '搜尋失敗：' + err.message;
+  }
+}
+
+$('#textPrompt').addEventListener('input', () => {
+  clearTimeout(styleSearchTimer);
+  const q = $('#textPrompt').value.trim();
+  if (!q) {
+    styleSearchSeq++; // 作廢任何還在飛的舊請求
+    $('#styleSearchThumbs').innerHTML = '<div class="empty small">輸入文字需求後這裡會顯示相似的風格參考圖</div>';
+    $('#styleSearchStatus').textContent = '';
+    return;
+  }
+  styleSearchTimer = setTimeout(() => runStyleSearch(q), 500);
+});
+
+// ── build request payload ────────────────────────────────────────────────
+function parseTags(str) {
+  return str.split(',').map(s => s.trim()).filter(Boolean);
+}
+
+function buildPayload() {
+  const payload = {
+    text_prompt: $('#textPrompt').value,
+    // edit_scope 先不帶，讓後端用 DesignRequest 預設值（0.6）。要恢復就取消上面
+    // HTML 的 editScope 滑桿註解，再打開這行。
+    // edit_scope: parseFloat($('#editScope').value),
+    output_aspect: $('#outputAspect').value,
+    refine_mode: $('#refineMode').checked,
+  };
+  if (uploaded.initialImagePath) payload.initial_image_path = uploaded.initialImagePath;
+  if (uploaded.styleRefPath) payload.style_reference_image_path = uploaded.styleRefPath;
+
+  const styleProfileId = $('#styleProfileId').value.trim();
+  if (styleProfileId) payload.style_profile_id = styleProfileId;
+
+  const familyNeeds = parseTags($('#familyNeeds').value);
+  if (familyNeeds.length) payload.family_needs = familyNeeds;
+  const fengshui = parseTags($('#fengshuiRules').value);
+  if (fengshui.length) payload.fengshui_rules = fengshui;
+
+  const cnModel = $('#cnModel').value.trim();
+  if (cnModel) payload.controlnet_model_override = cnModel;
+  if ($('#cnScaleEnabled').checked) payload.controlnet_scale_override = parseFloat($('#cnScale').value);
+  if ($('#cnStepsEnabled').checked) payload.controlnet_steps_override = parseInt($('#cnSteps').value, 10);
+  if ($('#cnGuidanceEnabled').checked) payload.controlnet_guidance_override = parseFloat($('#cnGuidance').value);
+
+  const loras = [];
+  document.querySelectorAll('.lora-row').forEach(row => {
+    const path = row.querySelector('.lora-path').value.trim();
+    const scale = parseFloat(row.querySelector('.lora-scale').value);
+    if (path) loras.push({ path, scale: isNaN(scale) ? 1.0 : scale });
+  });
+  if (loras.length) payload.lora_overrides = loras;
+
+  return payload;
+}
+
+// ── submit ────────────────────────────────────────────────────────────────
+$('#submitBtn').addEventListener('click', async () => {
+  const btn = $('#submitBtn'), status = $('#status');
+  btn.disabled = true;
+  status.className = '';
+  status.textContent = '⏳ 送出中，等待 pipeline 執行完成…（可能需要數十秒）';
+  try {
+    const payload = buildPayload();
+    const res = await fetch(apiBase() + '/api/generate', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.detail || ('HTTP ' + res.status));
+    status.textContent = '✅ 完成，耗時 ' + (data.elapsed_time || '?');
+    renderResults(data);
+  } catch (err) {
+    status.className = 'err';
+    status.textContent = '❌ ' + err.message;
+  } finally {
+    btn.disabled = false;
+  }
+});
+
+// ── result rendering ─────────────────────────────────────────────────────
+function toArtifactUrl(p) {
+  if (!p || typeof p !== 'string') return null;
+  const normalized = p.replace(/\\/g, '/');
+  if (normalized.startsWith('artifacts/')) return apiBase() + '/' + normalized;
+  if (normalized.startsWith('http://') || normalized.startsWith('https://')) return normalized;
+  return null; // absolute local path on the server — can't be served to a browser
+}
+
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+
+function kv(pairs) {
+  const rows = pairs.filter(([, v]) => v !== undefined && v !== null && v !== '')
+    .map(([k, v]) => `<dt>${escapeHtml(k)}</dt><dd>${escapeHtml(typeof v === 'object' ? JSON.stringify(v) : v)}</dd>`)
+    .join('');
+  return `<dl class="kv">${rows}</dl>`;
+}
+
+function jsonBlock(title, obj) {
+  if (obj === undefined || obj === null) return '';
+  return `<details><summary>${escapeHtml(title)}</summary><pre>${escapeHtml(JSON.stringify(obj, null, 2))}</pre></details>`;
+}
+
+// backend 名稱 → 這條路徑實際代表什麼（幫助判斷「走哪個 route」）
+const BACKEND_DESC = {
+  flux_controlnet_depth_fal: '真 Depth ControlNet（fal-ai/flux-general）：深度圖嚴格鎖定幾何結構',
+  hf_kontext: 'FLUX Kontext + depth-fusion LoRA：較鬆散的深度參考（非嚴格 ControlNet）',
+  flux_depth_controlnet_fal: '純文字→設計流程：2D 平面圖投影出的深度/邊緣 ControlNet',
+  hf_inference: 'HF Inference API：純文字生圖，無空間結構條件',
+  flux_fal: 'fal.ai flux/schnell：純文字生圖 fallback（最快、無條件控制）',
+  flux: '本地 FLUX pipeline（所有雲端 API 都失敗時的最後手段）',
+  placeholder: '⚠️ 所有生圖後端都失敗，回傳的是佔位圖',
+};
+
+function renderResults(data) {
+  const rr = data.render_result || {};
+  const gp = rr.generation_params || {};
+  const backendDesc = BACKEND_DESC[gp.backend] || '(未知 backend)';
+
+  let html = '';
+
+  // 1. 路由總覽
+  html += `<div class="card">
+    <h2>路由總覽</h2>
+    <div class="kv">
+      <dt>routing_decision</dt><dd><span class="badge route">${escapeHtml(data.routing_decision || '(無)')}</span></dd>
+      <dt>render backend</dt><dd><span class="badge backend">${escapeHtml(gp.backend || '(無)')}</span></dd>
+      <dt>backend 說明</dt><dd>${escapeHtml(backendDesc)}</dd>
+      <dt>model</dt><dd>${escapeHtml(gp.model || '(無)')}</dd>
+      <dt>elapsed_time</dt><dd>${escapeHtml(data.elapsed_time || '?')}</dd>
+      <dt>task_id</dt><dd>${escapeHtml(data.task_id || '?')}</dd>
+    </div>
+  </div>`;
+
+  // 2. 最終生成圖
+  html += `<div class="card"><h2>最終生成圖</h2>`;
+  if (data.generated_image_url) {
+    html += `<img class="hero-img" src="${data.generated_image_url}">`;
+  } else {
+    html += `<div class="empty">沒有生成圖片（${escapeHtml(gp.render_error || '未知原因')}）</div>`;
+  }
+  html += `</div>`;
+
+  // 3. Prompt 組合
+  html += `<div class="card">
+    <h2>Prompt 組合結果</h2>
+    <h3>最終 prompt（送進生圖模型的完整版本）</h3>
+    <pre>${escapeHtml(gp.prompt_preview || '(無)')}</pre>
+    <h3>negative prompt</h3>
+    <pre>${escapeHtml(gp.negative_prompt_preview || '(無)')}</pre>
+    ${gp.gemini_style_description ? `<h3>Gemini 風格圖描述（已注入 prompt）</h3><pre>${escapeHtml(gp.gemini_style_description)}</pre>` : ''}
+    ${gp.furniture_layout_injected ? `<h3>家具佈局描述（已注入 prompt）</h3><pre>${escapeHtml(gp.furniture_layout_injected)}</pre>` : ''}
+    ${kv([
+      ['style_profile_id', gp.style_profile_id],
+      ['style_strength', gp.style_strength],
+      ['style_lora', gp.style_lora],
+      ['loras (實際使用)', gp.loras],
+      ['depth_conditioning_scale', gp.depth_conditioning_scale],
+      ['controlnet_steps', gp.controlnet_steps],
+      ['controlnet_guidance', gp.controlnet_guidance],
+      ['layout_prompt_source', gp.layout_prompt_source],
+    ])}
+  </div>`;
+
+  // 4. 深度圖 / ControlNet 條件圖
+  const conditions = rr.controlnet_inputs || {};
+  const thumbs = Object.entries(conditions).map(([label, path]) => {
+    const url = toArtifactUrl(path);
+    if (!url) return `<figure><figcaption>${escapeHtml(label)}：無法預覽（伺服器本機路徑）<br>${escapeHtml(path)}</figcaption></figure>`;
+    return `<figure><img src="${url}"><figcaption>${escapeHtml(label)}</figcaption></figure>`;
+  }).join('');
+  html += `<div class="card">
+    <h2>深度圖 / ControlNet 條件圖</h2>
+    ${thumbs ? `<div class="thumbs">${thumbs}</div>` : '<div class="empty">這次生成沒有用到任何條件圖（純文字生圖）</div>'}
+  </div>`;
+
+  // 5. Agent / 中間節點輸出
+  html += `<div class="card">
+    <h2>Agent / 中間節點輸出</h2>
+    ${jsonBlock('structured_requirement（requirement_analyzer 輸出）', data.structured_requirement)}
+    ${jsonBlock('vision_features（visual_preprocessing 輸出）', data.vision_features)}
+    ${jsonBlock('style_params（layout_and_style_agent）', data.style_params)}
+    ${jsonBlock('intermediate_outputs（各節點狀態紀錄）', data.intermediate_outputs)}
+    ${jsonBlock('evaluation_result（CLIP evaluator）', data.evaluation_result)}
+  </div>`;
+
+  // 6. Scene graph 家具表
+  const placements = (data.scene_graph || {}).furniture_placements || [];
+  if (placements.length) {
+    const rows = placements.map(p => `<tr>
+      <td>${escapeHtml(p.type)}</td><td>${escapeHtml(p.x)}</td><td>${escapeHtml(p.y)}</td>
+      <td>${escapeHtml(p.w)}</td><td>${escapeHtml(p.h)}</td><td>${escapeHtml(p.rotation ?? '')}</td>
+    </tr>`).join('');
+    html += `<div class="card">
+      <h2>Scene Graph 家具佈局（${placements.length} 件）</h2>
+      <table class="ftable"><thead><tr><th>type</th><th>x</th><th>y</th><th>w</th><th>h</th><th>rotation</th></tr></thead>
+      <tbody>${rows}</tbody></table>
+    </div>`;
+  }
+
+  // 7. 完整 raw response（保底，任何沒特別顯示的欄位都能在這裡挖到）
+  html += `<div class="card">
+    <h2>完整 Raw Response</h2>
+    ${jsonBlock('展開查看完整 JSON', data)}
+  </div>`;
+
+  $('#results').innerHTML = html;
+}
+</script>
+</body>
+</html>

@@ -444,29 +444,6 @@ const showAdvanced = ref(false)
             @change="styleRefImage.onChange"
             @remove="styleRefImage.remove"
           />
-          <div v-if="styleRefImage.preview" class="radio-group style-method-group">
-            <label :class="{ active: styleMethod === 'ai_analysis' }">
-              <input type="radio" v-model="styleMethod" value="ai_analysis" />
-              <div class="radio-content">
-                <strong>AI 分析風格</strong>
-                <small>Gemini 解析色調，注入 prompt</small>
-              </div>
-            </label>
-            <label :class="{ active: styleMethod === 'redux' }">
-              <input type="radio" v-model="styleMethod" value="redux" />
-              <div class="radio-content">
-                <strong>FLUX.1-Redux</strong>
-                <small>以圖為主做風格遷移</small>
-              </div>
-            </label>
-            <label :class="{ active: styleMethod === 'ipadapter' }">
-              <input type="radio" v-model="styleMethod" value="ipadapter" />
-              <div class="radio-content">
-                <strong>IP-Adapter</strong>
-                <small>圖像注入風格</small>
-              </div>
-            </label>
-          </div>
           <div v-if="!styleRefImage.preview && matchedStylePreview?.image_url" class="matched-preview">
             <div class="matched-label">
               AI 依描述自動選取：<strong>{{ matchedStylePreview.style_name }}</strong>

@@ -167,17 +167,15 @@ def _build_user_input(request: DesignRequest) -> dict:
         user_input["fengshui_rules"] = request.fengshui_rules
     if request.style_method:
         user_input["style_method"] = request.style_method
-    render_overrides = {}
-    if request.controlnet_model_override:
-        render_overrides["controlnet_model"] = request.controlnet_model_override
-    if request.controlnet_scale_override is not None:
-        render_overrides["controlnet_scale"] = request.controlnet_scale_override
-    if request.controlnet_steps_override is not None:
-        render_overrides["controlnet_steps"] = request.controlnet_steps_override
-    if request.controlnet_guidance_override is not None:
-        render_overrides["controlnet_guidance"] = request.controlnet_guidance_override
-    if request.lora_overrides is not None:
-        render_overrides["loras"] = request.lora_overrides
+    render_overrides = {
+        k: v for k, v in {
+            "controlnet_model": request.controlnet_model_override,
+            "controlnet_scale": request.controlnet_scale_override,
+            "controlnet_steps": request.controlnet_steps_override,
+            "controlnet_guidance": request.controlnet_guidance_override,
+            "loras": request.lora_overrides,
+        }.items() if v is not None
+    }
     if render_overrides:
         user_input["render_overrides"] = render_overrides
     return user_input

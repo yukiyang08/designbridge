@@ -103,13 +103,6 @@ class Config:
     ENABLE_HF_INFERENCE: bool = os.getenv("DESIGNBRIDGE_ENABLE_HF_INFERENCE", "true").lower() in ("1", "true", "yes")
     HF_TOKEN: str | None = os.getenv("HF_TOKEN")
     HF_INFERENCE_PROVIDER: str = os.getenv("DESIGNBRIDGE_HF_INFERENCE_PROVIDER", "hf-inference")
-    FAL_REDUX_STEPS: int = int(os.getenv("FAL_REDUX_STEPS", "28"))
-    FAL_REDUX_GUIDANCE: float = float(os.getenv("FAL_REDUX_GUIDANCE", "3.5"))
-    ENABLE_FLUX_REDUX: bool = os.getenv("DESIGNBRIDGE_ENABLE_FLUX_REDUX", "false").lower() in ("1", "true", "yes")
-    FAL_IP_ADAPTER_STEPS: int = int(os.getenv("FAL_IP_ADAPTER_STEPS", "28"))
-    FAL_IP_ADAPTER_GUIDANCE: float = float(os.getenv("FAL_IP_ADAPTER_GUIDANCE", "3.5"))
-    FAL_IP_ADAPTER_SCALE: float = float(os.getenv("FAL_IP_ADAPTER_SCALE", "0.6"))
-    FAL_IP_ADAPTER_SIZE: int = int(os.getenv("FAL_IP_ADAPTER_SIZE", "512"))
 
     # Kontext LoRA (reference + depth fusion) via Replicate
     KONTEXT_LORA_MODEL: str = "thedeoxen/FLUX.1-Kontext-dev-reference-depth-fusion-LORA"
