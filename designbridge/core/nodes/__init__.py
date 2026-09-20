@@ -4,6 +4,7 @@ from designbridge.core.nodes.requirement import requirement_analyzer
 from designbridge.core.nodes.visual_preprocessing import visual_preprocessing_local
 from designbridge.core.nodes.adjuster import adjuster_agent_stub
 from designbridge.core.nodes.layout_and_style import layout_and_style_agent_stub
+from designbridge.core.nodes.composer import composer_node
 from designbridge.core.nodes.renderer import renderer
 from designbridge.core.nodes.depth_cloud import depth_cloud_node
 from designbridge.core.nodes.evaluator import clip_evaluator_node
@@ -14,6 +15,7 @@ __all__ = [
     "visual_preprocessing_local",
     "adjuster_agent_stub",
     "layout_and_style_agent_stub",
+    "composer_node",
     "renderer",
     "depth_cloud_node",
     "clip_evaluator_node",

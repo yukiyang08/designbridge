@@ -265,9 +265,17 @@ def renderer(state: DesignBridgeState) -> dict[str, Any]:
     out_path = render_dir / f"{task_id}_{render_suffix}.png"
 
     _user_text_prompt = ((state.get("user_input") or {}).get("text_prompt") or "").strip()
-    prompt = _build_imagen_prompt_from_requirement(
-        req, style_params=style_params, user_text_prompt=_user_text_prompt,
-    )
+    # composer already reconciled design_description + style_params.style_prompt into one
+    # coherent paragraph when there was a style to merge (see composer.py) — use that
+    # instead of naively concatenating them again. Falls back to the old concatenation
+    # when composer was skipped (no style to reconcile) or its LLM call failed.
+    composed_prompt = (state.get("composed_prompt") or "").strip()
+    if composed_prompt:
+        prompt = composed_prompt
+    else:
+        prompt = _build_imagen_prompt_from_requirement(
+            req, style_params=style_params, user_text_prompt=_user_text_prompt,
+        )
 
     # 只有使用者明確要求重新規劃佈局時，才把 layout 結果注入 prompt
     if req.get("hint_layout"):
@@ -308,6 +316,9 @@ def renderer(state: DesignBridgeState) -> dict[str, Any]:
         "negative_prompt_preview": negative_prompt or "",
         "output_aspect": output_aspect,
         "output_size": {"width": output_width, "height": output_height},
+        # true = composer 成功整合過（design_description + style_prompt 合併成一段）；
+        # false = 落回舊的字串硬接，通常代表 composer 被跳過（沒有風格要合併）或 LLM 呼叫失敗
+        "composer_used": bool(composed_prompt),
     }
     backend = "placeholder"
 

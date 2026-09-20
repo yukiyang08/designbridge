@@ -11,6 +11,7 @@ from langgraph.graph import StateGraph
 from designbridge.core.nodes import (
     adjuster_agent_stub,
     clip_evaluator_node,
+    composer_node,
     depth_cloud_node,
     layout_and_style_agent_stub,
     requirement_analyzer,
@@ -48,7 +49,7 @@ def build_graph() -> StateGraph:
     """
     Build DesignBridge workflow:
     START -> requirement_analyzer -> visual_preprocessing
-      -> (adjuster_agent | layout_and_style_agent) -> renderer
+      -> (adjuster_agent | layout_and_style_agent -> composer) -> renderer
       -> depth_cloud -> clip_evaluator -> END
 
     routing_decision（design vs design_adjuster）完全由 requirement_analyzer 決定
@@ -57,6 +58,10 @@ def build_graph() -> StateGraph:
     RA 失敗時的預設值）都已經折進 requirement_analyzer 裡，動態讀 SKILL.md 用 LLM
     路由那條路徑在實務上從沒真的被觸發過（RA 自己的語意判斷早就取代了它），
     所以整個節點直接拿掉，不用再多一次 graph hop。
+
+    composer 只接在 layout_and_style_agent 後面，不接在 adjuster_agent 後面——
+    局部編輯（inpaint）改的是既有照片的一小塊區域，prompt 本來就該貼著那個物件講，
+    沒有「design_description 跟風格參考互相矛盾」這個問題要協調。
 
     注意：quotation_agent（家具估價/報價推薦）不在這個自動流程裡執行。
     它耗時較長（觀測約 30-40 秒），且不影響生成圖片本身，因此改成
@@ -69,6 +74,7 @@ def build_graph() -> StateGraph:
     graph.add_node("visual_preprocessing", _timed_node("visual_preprocessing", visual_preprocessing_local))
     graph.add_node("adjuster_agent", _timed_node("adjuster_agent", adjuster_agent_stub))
     graph.add_node("layout_and_style_agent", _timed_node("layout_and_style_agent", layout_and_style_agent_stub))
+    graph.add_node("composer", _timed_node("composer", composer_node))
     graph.add_node("renderer", _timed_node("renderer", renderer))
     graph.add_node("depth_cloud", _timed_node("depth_cloud", depth_cloud_node))
     graph.add_node("clip_evaluator", _timed_node("clip_evaluator", clip_evaluator_node))
@@ -84,7 +90,8 @@ def build_graph() -> StateGraph:
         },
     )
     graph.add_edge("adjuster_agent", "renderer")
-    graph.add_edge("layout_and_style_agent", "renderer")
+    graph.add_edge("layout_and_style_agent", "composer")
+    graph.add_edge("composer", "renderer")
     graph.add_edge("renderer", "depth_cloud")
     graph.add_edge("depth_cloud", "clip_evaluator")
     graph.add_edge("clip_evaluator", END)

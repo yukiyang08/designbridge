@@ -48,6 +48,11 @@ class DesignBridgeState(TypedDict):
     # Agent outputs
     style_params: NotRequired[StyleParamsJSON]
     scene_graph: NotRequired[SceneGraphJSON]
+    # Composer output: design_description + style_params.style_prompt reconciled into
+    # one coherent render prompt (see designbridge/core/nodes/composer.py). Absent when
+    # there's no style to reconcile against, or the composer LLM call failed — renderer
+    # falls back to its own naive concatenation either way.
+    composed_prompt: NotRequired[str]
     # Renderer output
     render_result: NotRequired[RenderResultJSON]
     generated_image: NotRequired[str]
