@@ -460,6 +460,7 @@ def _render_flux_controlnet_depth_fal(
     output_size: tuple[int, int] = (1024, 1024),
     extra_controls: list[dict] | None = None,
     loras: list[dict] | None = None,
+    controlnet_model: str | None = None,
 ) -> bool:
     """Generate image via fal.ai FLUX-general + a true depth ControlNet.
 
@@ -504,11 +505,12 @@ def _render_flux_controlnet_depth_fal(
         }
         image_size = size_map.get((width, height), {"width": width, "height": height})
 
-        print(f"[controlnet] model: {Config.DEPTH_CONTROLNET_MODEL}  scale: {conditioning_scale}")
+        model_id = controlnet_model or Config.DEPTH_CONTROLNET_MODEL
+        print(f"[controlnet] model: {model_id}  scale: {conditioning_scale}")
 
         controlnets: list[dict] = [
             {
-                "path": Config.DEPTH_CONTROLNET_MODEL,
+                "path": model_id,
                 "control_image_url": depth_url,
                 "conditioning_scale": conditioning_scale,
             }

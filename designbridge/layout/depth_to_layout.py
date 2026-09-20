@@ -368,20 +368,10 @@ def _make_recommendation(
             })
 
     return {
-        "edit_scope_suggestion": _suggest_edit_scope(metrics),
-        "layout_suggestions":    suggestions,
-        "anchor_furniture":      main_zones,
-        "routing_hint":          _routing_hint(metrics),
+        "layout_suggestions": suggestions,
+        "anchor_furniture":   main_zones,
+        "routing_hint":       _routing_hint(metrics),
     }
-
-
-def _suggest_edit_scope(metrics: dict) -> float:
-    """根據空間複雜度建議 edit_scope 值。"""
-    if metrics["complexity_score"] > 0.10:
-        return 0.8   # 複雜 → 大改
-    if metrics["openness_score"] > 0.6:
-        return 0.4   # 空曠 → 中改
-    return 0.5
 
 
 def _routing_hint(metrics: dict) -> str:
@@ -508,7 +498,6 @@ def main():
     print(f"   空間類型      : {layout['space_analysis']['space_type']}")
     print(f"   開放度分數    : {metrics['openness_score']:.2%}")
     print(f"   複雜度分數    : {metrics['complexity_score']:.4f}")
-    print(f"   建議 edit_scope: {rec['edit_scope_suggestion']}")
     print(f"   路由建議      : {rec['routing_hint']}")
     print(f"   佈局建議      :")
     for s in rec["layout_suggestions"]:

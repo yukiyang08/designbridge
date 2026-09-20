@@ -20,11 +20,10 @@ RoutingDecision = Literal["design_adjuster", "design"]
 
 
 class UserInput(TypedDict):
-    """User input: image (optional), text prompt, edit scope (0~1)."""
+    """User input: image (optional), text prompt."""
 
     initial_image: NotRequired[str]  # image_path_or_id, optional for empty layout
     text_prompt: str
-    edit_scope: float  # 0~1
     output_aspect: NotRequired[Literal["auto", "1:1", "4:3", "3:4", "16:9", "9:16"]]
     style_profile_id: NotRequired[str]  # optional style profile id to apply directly
     style_reference_image: NotRequired[str]  # optional style reference image path

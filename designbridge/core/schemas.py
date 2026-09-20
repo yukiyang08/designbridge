@@ -48,13 +48,6 @@ class LayoutConstraints(TypedDict):
     functional_zones: NotRequired[list[dict[str, Any]]]  # Work/rest zones
 
 
-class EditScope(TypedDict):
-    """Edit scope parameters."""
-
-    scope_value: float  # 0.0 ~ 1.0
-    allowed_operations: NotRequired[list[str]]  # ["inpaint", "layout", "style"]
-
-
 class PriorityWeights(TypedDict):
     """Priority weights for evaluation."""
 
@@ -70,7 +63,6 @@ class RequirementJSON(TypedDict):
     space_info: NotRequired[SpaceInfo]
     style_preferences: StylePreferences
     layout_constraints: NotRequired[LayoutConstraints]
-    edit_scope: EditScope
     priority_weights: PriorityWeights
     # Routing hints (for Design Director)
     hint_layout: NotRequired[bool]

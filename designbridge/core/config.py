@@ -196,6 +196,9 @@ class Config:
     PROJECTED_DEPTH_MAX_CONDITIONING_SCALE: float = float(
         os.getenv("DESIGNBRIDGE_PROJECTED_DEPTH_MAX_CONDITIONING_SCALE", "0.3")
     )
+    # Design Adjuster 的 inpaint strength：edit_scope 移除前是 edit_scope+0.4 算出來的，
+    # 產品端過去固定送 0.6 → 換算後一直是封頂值 0.85，這裡直接固定同一個值，行為不變。
+    ADJUSTER_INPAINT_STRENGTH: float = float(os.getenv("DESIGNBRIDGE_ADJUSTER_INPAINT_STRENGTH", "0.85"))
 
     # Second ControlNet carrying object boundaries, stacked on top of depth.
     # Depth alone has no hard edges to offer: harmonic hole-filling smooths the wall and

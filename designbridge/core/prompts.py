@@ -5,7 +5,6 @@ REQUIREMENT_ANALYZER_PROMPT = """你是一位專業的室內設計需求分析�
 
 ## 使用者輸入
 文字需求: {text_prompt}
-改動幅度 (edit_scope): {edit_scope}（0.0 = 最小改動, 1.0 = 大幅改動）
 初始圖片: {initial_image}
 
 ## 任務
@@ -46,7 +45,7 @@ REQUIREMENT_ANALYZER_PROMPT = """你是一位專業的室內設計需求分析�
   → 只要句子裡出現「A 在 B 的左/右/旁邊/對面」「放/擺/移到…」這類**空間指定**，就設 true。
 - `hint_layout` 設 **false**：需求只涉及風格、材質、色彩、氛圍、光線，完全沒指定家具位置。
   例：「改成北歐風」、「換成深色木質調」、「氣氛溫馨一點」。
-- `hint_style` 設 **true**：需求涉及風格 / 材質 / 色彩 / 氛圍（絕大多數情況為 true）；純粹只移動家具而不動風格時才設 false。
+- `hint_style` 設 **true**：需求涉及風格 / 材質 / 色彩 / 氛圍。
 
 不確定 `hint_layout` 時，若句中有任何具體家具位置描述，一律設 true。
 
@@ -121,10 +120,6 @@ REQUIREMENT_ANALYZER_PROMPT = """你是一位專業的室內設計需求分析�
       "must_remove": [],
       "must_move": [],
       "functional_zones": []
-    }},
-    "edit_scope": {{
-      "scope_value": {edit_scope},
-      "allowed_operations": ["layout", "style"]
     }},
     "priority_weights": {{
       "layout_rationality": 0.4,

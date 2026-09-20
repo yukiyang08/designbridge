@@ -32,15 +32,6 @@ text_prompt = st.sidebar.text_area(
     help="描述你的室內設計需求，例如風格、功能、布局等",
 )
 
-edit_scope = st.sidebar.slider(
-    "改動幅度 (edit_scope)",
-    min_value=0.0,
-    max_value=1.0,
-    value=0.6,
-    step=0.1,
-    help="0.0 = 最小改動（局部微調），1.0 = 大幅改動（完全重新設計）",
-)
-
 # 生成模型選擇
 st.sidebar.markdown("**生成模型**")
 model_type = st.sidebar.radio(
@@ -178,9 +169,7 @@ if run_button:
     else:
         with st.spinner("🔄 執行 DesignBridge 工作流..."):
             # Build initial state
-            user_input = {
-                "edit_scope": edit_scope,
-            }
+            user_input = {}
             if has_text:
                 user_input["text_prompt"] = text_prompt
             if has_style:
@@ -255,10 +244,9 @@ if run_button:
                 req = result.get("structured_requirement", {})
                 if req:
                     # Display key fields
-                    col1, col2, col3, col4 = st.columns(4)
+                    col1, col2, col3 = st.columns(3)
                     meta = req.get("meta", {})
                     style_prefs = req.get("style_preferences", {})
-                    edit_scope_info = req.get("edit_scope", {})
 
                     with col1:
                         st.write("**房間類型**")
@@ -269,9 +257,6 @@ if run_button:
                     with col3:
                         st.write("**主要風格**")
                         st.code(style_prefs.get("primary_style", "N/A"))
-                    with col4:
-                        st.write("**Edit Scope**")
-                        st.code(f"{edit_scope_info.get('scope_value', 0):.1f}")
 
                     # Priority weights
                     weights = req.get("priority_weights", {})
@@ -400,7 +385,7 @@ END
     st.markdown("**路由邏輯**")
     st.markdown(
         """
-- **Design Adjuster**：`edit_scope < 0.3` 或關鍵字「局部」、「微調」
+- **Design Adjuster**：語意判斷為局部微調，或關鍵字「局部」、「微調」
 - **Layout**：關鍵字「動線」、「布局」、「layout」
 - **Style**：關鍵字「風格」、「style」、「色彩」
 - **Layout + Style**：同時包含布局與風格，或預設值

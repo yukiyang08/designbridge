@@ -75,10 +75,6 @@ const styleReferenceImageUrl = computed(() => {
         <template v-if="result.structured_requirement.style_preferences?.primary_style">
           <dt>主要風格</dt><dd>{{ result.structured_requirement.style_preferences.primary_style }}</dd>
         </template>
-        <template v-if="result.structured_requirement.edit_scope?.scope_value !== undefined">
-          <dt>改動幅度</dt>
-          <dd>{{ Number(result.structured_requirement.edit_scope.scope_value).toFixed(1) }}</dd>
-        </template>
       </dl>
     </section>
 

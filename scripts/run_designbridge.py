@@ -9,7 +9,6 @@ from designbridge import get_compiled_graph
 initial_state = {
     "user_input": {
         "text_prompt": "客廳想要北歐風格，希望動線順暢",
-        "edit_scope": 0.6,
         "style_profile_id": "country",
     }
 }

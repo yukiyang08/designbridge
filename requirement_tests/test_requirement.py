@@ -85,7 +85,7 @@ def _save_json(req: dict, prompt: str) -> None:
 def _validate(req: dict) -> None:
     """簡易驗證：印出缺少的必填欄位與預測路由。"""
     required_keys = [
-        "meta", "style_preferences", "edit_scope", "priority_weights",
+        "meta", "style_preferences", "priority_weights",
         "hint_layout", "hint_style", "hint_adjuster",
     ]
     missing = [k for k in required_keys if k not in req]

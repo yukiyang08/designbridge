@@ -297,6 +297,9 @@ def renderer(state: DesignBridgeState) -> dict[str, Any]:
     if _special.get("pets"):
         negative_prompt = f"{negative_prompt}, cat, dog, bird, rabbit, hamster, pet, animal"
     user_input = state.get("user_input") or {}
+    # Set by the standalone debug console (see api.py DesignRequest) to test a
+    # ControlNet model / scale / LoRA combo for one request without env changes.
+    render_overrides = user_input.get("render_overrides") or {}
 
     vision = state.get("vision_features") or {}
     output_aspect = str(user_input.get("output_aspect") or "auto")
@@ -524,20 +527,36 @@ def renderer(state: DesignBridgeState) -> dict[str, Any]:
                 "mode": Config.EDGE_CONTROLNET_MODE or None,
             })
 
+        # Debug-console overrides (see render_overrides in user_input): lets the
+        # standalone test UI swap the ControlNet checkpoint / scale / steps / LoRA
+        # stack for a single request without touching Config env vars.
+        _ro = render_overrides
+        _cn_model = _ro.get("controlnet_model") or Config.DEPTH_CONTROLNET_MODEL
+        _cn_scale = _ro.get("controlnet_scale")
+        _cn_scale = depth_conditioning_scale if _cn_scale is None else max(0.0, min(1.0, float(_cn_scale)))
+        _cn_steps = _ro.get("controlnet_steps") or Config.FAL_CONTROLNET_STEPS
+        _cn_guidance = _ro.get("controlnet_guidance") or Config.FAL_CONTROLNET_GUIDANCE
+        _cn_loras = _ro.get("loras") if _ro.get("loras") is not None else style_loras
+
         if timed_call(
             "renderer.flux_controlnet_depth_fal", task_id,
             _render_flux_controlnet_depth_fal,
             prompt, str(effective_depth_path), out_path,
-            conditioning_scale=depth_conditioning_scale,
-            num_steps=Config.FAL_CONTROLNET_STEPS,
-            guidance_scale=Config.FAL_CONTROLNET_GUIDANCE,
+            conditioning_scale=_cn_scale,
+            num_steps=_cn_steps,
+            guidance_scale=_cn_guidance,
             output_size=output_size,
             extra_controls=_extra_controls,
-            loras=style_loras,
+            loras=_cn_loras,
+            controlnet_model=_cn_model,
         ):
             backend = "flux_controlnet_depth_fal"
-            generation_params["model"] = f"fal-ai/flux-general + {Config.DEPTH_CONTROLNET_MODEL}"
-            generation_params["depth_conditioning_scale"] = depth_conditioning_scale
+            generation_params["model"] = f"fal-ai/flux-general + {_cn_model}"
+            generation_params["depth_conditioning_scale"] = _cn_scale
+            generation_params["controlnet_steps"] = _cn_steps
+            generation_params["controlnet_guidance"] = _cn_guidance
+            if _cn_loras:
+                generation_params["loras"] = _cn_loras
             if _extra_controls:
                 generation_params["edge_controlnet_model"] = Config.EDGE_CONTROLNET_MODEL
                 generation_params["edge_conditioning_scale"] = Config.EDGE_CONDITIONING_SCALE

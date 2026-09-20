@@ -309,10 +309,6 @@ const styleReferenceImageUrl = computed(() => {
             <span class="req-label">主要風格</span>
             <span class="req-value">{{ result.structured_requirement.style_preferences.primary_style }}</span>
           </div>
-          <div class="req-item" v-if="result.structured_requirement.edit_scope?.scope_value !== undefined">
-            <span class="req-label">改動幅度</span>
-            <span class="req-value">{{ Number(result.structured_requirement.edit_scope.scope_value).toFixed(1) }}</span>
-          </div>
         </div>
 
         <!-- testing 用：完整結構化需求 + 這次生成實際用的參數/prompt -->

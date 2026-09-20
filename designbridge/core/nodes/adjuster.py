@@ -141,7 +141,7 @@ replace_with: describe the new object only if action=replace, else null."""
 def adjuster_agent_stub(state: DesignBridgeState) -> dict[str, Any]:
     """
     Design Adjuster Agent：對初始圖片進行局部 inpainting。
-    觸發條件：edit_scope < 0.3 或 hint_adjuster = True。
+    觸發條件：requirement_analyzer/design_director 判斷 routing_decision = "design_adjuster"。
     """
     from PIL import Image
 
@@ -152,7 +152,6 @@ def adjuster_agent_stub(state: DesignBridgeState) -> dict[str, Any]:
     style_params = state.get("style_params")
 
     image_path = user_input.get("initial_image", "")
-    edit_scope = float(user_input.get("edit_scope", 0.2))
     manual_mask_path = user_input.get("mask_image")   # 手繪遮罩路徑（選填）
 
     # 沒有原圖就無法 inpaint，跳過
@@ -448,8 +447,7 @@ def adjuster_agent_stub(state: DesignBridgeState) -> dict[str, Any]:
             }
         }
 
-    # strength：edit_scope 越小改動越保守（0.4~0.85）
-    strength = max(0.4, min(0.85, edit_scope + 0.4))
+    strength = Config.ADJUSTER_INPAINT_STRENGTH
 
     render_suffix = uuid.uuid4().hex[:8]
     out_path = Path(Config.ARTIFACTS_DIR) / "render" / f"{task_id}_{render_suffix}.png"

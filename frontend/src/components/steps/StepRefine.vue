@@ -2,16 +2,14 @@
 /**
  * Step 微調編輯 — Figma MacBook Air - 19 / 21
  *
- * 左邊需求輸入 + 畫筆工具，右邊在渲染圖上塗抹遮罩。設計稿在畫筆與橡皮擦旁各畫了
- * 一條滑桿：上面那條對應筆刷大小，下面那條接到既有但先前沒有 UI 的 edit_scope
- * （改動幅度），讓這個實際會送進 API 的參數第一次可以被調整。
+ * 左邊需求輸入 + 畫筆工具，右邊在渲染圖上塗抹遮罩。
  */
 import { computed } from 'vue'
 import RefineCanvas from '@/components/RefineCanvas.vue'
 import { useDesignFlow } from '@/composables/useDesignFlow'
 
 const {
-  textPrompt, brushSize, drawMode, editScope,
+  textPrompt, brushSize, drawMode,
   spaceImage, baseImagePreview, refineCanvasRef,
   loading, submitRefine, nextStep, prevStep,
 } = useDesignFlow()
@@ -56,16 +54,10 @@ const hasBase = computed(() => !!baseImagePreview.value)
             :class="['tool-btn', { active: drawMode === 'erase' }]"
             @click="drawMode = 'erase'"
           >橡皮擦</button>
-          <input
-            v-model.number="editScope"
-            type="range" min="0.1" max="1" step="0.05"
-            class="slider" aria-label="改動幅度"
-          />
-          <span class="slider-val">改動 {{ Math.round(editScope * 100) }}%</span>
         </div>
 
         <p class="tool-hint">
-          不塗抹就整張重繪；塗抹後只重繪塗到的區域。改動幅度越高，AI 越敢偏離原圖。
+          不塗抹就整張重繪；塗抹後只重繪塗到的區域。
         </p>
 
         <!-- 沒有基底圖時（例如直接從網址進到這一步）給一個上傳入口 -->

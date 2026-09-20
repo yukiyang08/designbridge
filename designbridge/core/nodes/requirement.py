@@ -130,14 +130,13 @@ def requirement_analyzer(state: DesignBridgeState) -> dict[str, Any]:
 
     user = state.get("user_input") or {}
     text_prompt = (user.get("text_prompt") or "").strip()
-    edit_scope = float(user.get("edit_scope", 0.5))
     initial_image = user.get("initial_image", "無")
     style_reference_image = user.get("style_reference_image", "")
 
     # Try LLM (Gemini) first, fall back to passing prompt directly on failure
     try:
         structured_requirement = _call_llm_requirement_analyzer(
-            text_prompt, edit_scope, initial_image,
+            text_prompt, initial_image,
             style_reference_image=style_reference_image,
         )
     except Exception as e:
@@ -149,7 +148,6 @@ def requirement_analyzer(state: DesignBridgeState) -> dict[str, Any]:
             "space_info": {"estimated_size": {"width": 5.0, "height": 3.0, "depth": 4.0}, "windows": [], "doors": []},
             "style_preferences": {"primary_style": "", "secondary_style": None, "color_palette": [], "material_preferences": [], "style_strength": 0.7, "reference_images": []},
             "layout_constraints": {"must_keep": [], "must_add": [], "must_remove": [], "immutable_regions": [], "functional_zones": []},
-            "edit_scope": {"scope_value": edit_scope, "allowed_operations": ["layout", "style"]},
             "priority_weights": {"layout_rationality": 0.4, "style_consistency": 0.4, "user_preference": 0.2},
         }
 
@@ -207,7 +205,7 @@ _VALID_ROUTING_DECISIONS = {"design_adjuster", "design"}
 
 
 def _call_llm_requirement_analyzer(
-    text_prompt: str, edit_scope: float, initial_image: str,
+    text_prompt: str, initial_image: str,
     style_reference_image: str = "",
 ) -> dict[str, Any]:
     """Call LLM to analyze requirements and return {structured_requirement, routing_decision}.
@@ -218,7 +216,6 @@ def _call_llm_requirement_analyzer(
 
     prompt = REQUIREMENT_ANALYZER_PROMPT.format(
         text_prompt=text_prompt,
-        edit_scope=edit_scope,
         initial_image=initial_image,
     )
 

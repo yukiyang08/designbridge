@@ -146,7 +146,6 @@ const lastGeneratedImage = ref(null)
 const manualMaskPath     = ref('')
 const brushSize          = ref(32)
 const drawMode           = ref('draw')
-const editScope          = ref(0.6)
 const textPrompt         = ref('')
 const refineCanvasRef    = ref(null)
 
@@ -622,7 +621,6 @@ async function submit3D() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         text_prompt:      (spacePreamble + extraPrompt.value).trim(),
-        edit_scope:       1.0,
         style_profile_id: !noStyleReference.value && selectedStyle.value !== 'auto'
           ? selectedStyle.value
           : !noStyleReference.value ? confirmedStyle.value?.style_id || undefined : undefined,
@@ -715,7 +713,6 @@ async function submitRefine() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         text_prompt: textPrompt.value,
-        edit_scope: editScope.value,
         initial_image_path,
         no_style_reference: true,
         refine_mode: true,
@@ -816,7 +813,7 @@ export function useDesignFlow() {
     // 結果
     result, loading, loadingMsg, error, submitKey,
     // 微調
-    spaceImage, lastGeneratedImage, manualMaskPath, brushSize, drawMode, editScope,
+    spaceImage, lastGeneratedImage, manualMaskPath, brushSize, drawMode,
     textPrompt, refineCanvasRef, baseImagePreview, handleMaskReady,
     // 環景
     panoLoading, panoUrl, panoError, generatePanorama,

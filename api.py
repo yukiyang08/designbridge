@@ -107,7 +107,6 @@ app.add_middleware(
 # 1. 定義請求資料格式 (Pydantic Model)
 class DesignRequest(BaseModel):
     text_prompt: str = ""
-    edit_scope: float = 0.6
     style_profile_id: Optional[str] = None
     initial_image_path: Optional[str] = None
     style_reference_image_path: Optional[str] = None
@@ -123,6 +122,13 @@ class DesignRequest(BaseModel):
     # /api/plan-layout 回傳的結果，原樣回傳給 /api/generate 就能跳過重跑 RA/vision/layout_agent，
     # 直接進 renderer——使用者在前端確認過 3D 佈局預覽後才會帶著這個欄位呼叫
     plan: Optional[dict] = None
+    # 以下四個欄位只給獨立的除錯測試介面（debug-console/）用，測試不同 ControlNet
+    # 模型/強度/LoRA 組合；正式產品前端不會帶這些欄位，None 時完全走 Config 預設值。
+    controlnet_model_override: Optional[str] = None
+    controlnet_scale_override: Optional[float] = None
+    controlnet_steps_override: Optional[int] = None
+    controlnet_guidance_override: Optional[float] = None
+    lora_overrides: Optional[List[dict]] = None   # [{"path": str, "scale": float}]
 
 
 class LayoutRequest(BaseModel):
@@ -141,7 +147,6 @@ def _build_user_input(request: DesignRequest) -> dict:
     /api/generate and /api/plan-layout so the two stay in sync."""
     user_input = {
         "text_prompt": request.text_prompt,
-        "edit_scope": request.edit_scope,
         "output_aspect": request.output_aspect,
     }
     if request.style_profile_id and request.style_profile_id != "auto":
@@ -162,6 +167,19 @@ def _build_user_input(request: DesignRequest) -> dict:
         user_input["fengshui_rules"] = request.fengshui_rules
     if request.style_method:
         user_input["style_method"] = request.style_method
+    render_overrides = {}
+    if request.controlnet_model_override:
+        render_overrides["controlnet_model"] = request.controlnet_model_override
+    if request.controlnet_scale_override is not None:
+        render_overrides["controlnet_scale"] = request.controlnet_scale_override
+    if request.controlnet_steps_override is not None:
+        render_overrides["controlnet_steps"] = request.controlnet_steps_override
+    if request.controlnet_guidance_override is not None:
+        render_overrides["controlnet_guidance"] = request.controlnet_guidance_override
+    if request.lora_overrides is not None:
+        render_overrides["loras"] = request.lora_overrides
+    if render_overrides:
+        user_input["render_overrides"] = render_overrides
     return user_input
 
 # 2. 延遲編譯 Graph（避免 uvicorn 啟動前長時間阻塞，導致前端連不上）
@@ -516,7 +534,6 @@ async def generate_layout(request: LayoutRequest):
                 "immutable_regions": [],
                 "functional_zones": [],
             },
-            "edit_scope": {"scope_value": 1.0, "allowed_operations": ["layout"]},
             "priority_weights": {
                 "layout_rationality": 0.6,
                 "style_consistency": 0.2,

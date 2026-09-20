@@ -91,7 +91,6 @@ const outputAspect    = ref('auto')
 const brushSize       = ref(32)
 const drawMode        = ref('draw')
 const refineCanvasRef = ref(null)
-const editScope       = ref(0.6)
 const textPrompt      = ref('')
 
 const baseImagePreview = computed(() =>
@@ -489,7 +488,6 @@ async function handleSubmit3D() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         text_prompt:               extraPrompt.value,
-        edit_scope:                1.0,
         style_profile_id:          !noStyleReference.value && selectedStyle.value !== 'auto'
           ? selectedStyle.value
           : !noStyleReference.value ? confirmedStyle.value?.style_id || undefined : undefined,
@@ -585,7 +583,6 @@ async function handleRefineSubmit() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         text_prompt: textPrompt.value,
-        edit_scope: editScope.value,
         initial_image_path,
         no_style_reference: true,
         refine_mode: true,
