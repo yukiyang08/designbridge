@@ -134,44 +134,6 @@ REQUIREMENT_ANALYZER_PROMPT = """你是一位專業的室內設計需求分析�
 """
 
 
-LAYOUT_AGENT_PROMPT = """You are an interior layout planner. Generate a furniture placement plan as JSON.
-
-Room: {room_type}
-Size: {width}m wide x {depth}m deep
-Windows: {windows}
-Doors: {doors}
-Must keep: {must_keep}
-Must add: {must_add}
-Must remove: {must_remove}
-Immutable regions: {immutable_regions}
-User description: {user_description}
-
-Rules:
-- All coordinates (x, y, w, h) are normalized 0.0–1.0 relative to room dimensions
-- x/y = top-left corner of item, w/h = width/depth
-- Leave at least 0.60m clearance (≈0.12 normalized) for circulation paths
-- Place sofas/beds against walls; keep center open
-- Each item needs a unique id string
-
-Output ONLY this JSON, no extra text:
-{{"furniture": [
-  {{"id": "sofa_1", "type": "sofa", "x": 0.10, "y": 0.60, "w": 0.30, "h": 0.13}},
-  ...
-]}}
-"""
-
-LAYOUT_REFINEMENT_PROMPT = """The current layout scored:
-- Circulation (aisle clearance): {circulation:.2f}
-- Balance (weight distribution): {balance:.2f}
-- Focal point alignment: {focal_point:.2f}
-- Natural light (window clearance): {natural_light:.2f}
-- Ergonomics (reachability): {ergonomics:.2f}
-
-Improve the layout to score higher. Focus on the lowest scores.
-Return ONLY the same JSON format as before, with updated positions.
-"""
-
-
 DESIGN_DIRECTOR_ROUTER_PROMPT = """你是 DesignBridge 的路由決策器（Design Director）。
 你的工作是根據「結構化需求」與「可用技能描述」，判斷最適合的路由決策。
 
