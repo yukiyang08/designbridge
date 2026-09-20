@@ -32,12 +32,6 @@ class Config:
     # Text embedding model for style retrieval (text-to-text).
     TEXT_EMBEDDING_MODEL: str = os.getenv("DESIGNBRIDGE_TEXT_EMBEDDING_MODEL", "BAAI/bge-m3")
 
-    @classmethod
-    def get_dynamic_routing_enabled(cls) -> bool:
-        return os.getenv("DESIGNBRIDGE_ENABLE_DYNAMIC_ROUTING", "false").lower() in ("1", "true", "yes")
-
-    ROUTER_TEMPERATURE: float = float(os.getenv("DESIGNBRIDGE_ROUTER_TEMPERATURE", "0.0"))
-
     # Image generation (Imagen) - same API key as Gemini; requires billing
     IMAGEN_MODEL: str = os.getenv("DESIGNBRIDGE_IMAGEN_MODEL", "imagen-4.0-generate-001")
     # Local image generation backend: always Flux
@@ -264,21 +258,12 @@ class Config:
     LAYOUT_OPTIMIZER_STEPS: int = int(
         os.getenv("DESIGNBRIDGE_LAYOUT_OPTIMIZER_STEPS", "2000")
     )
-    # Re-enable the old "score the plan, ask the LLM again" loop on top of the optimizer.
-    # Off by default: it costs one round trip per iteration and the feedback it sends is
-    # five scalars with no indication of which piece is at fault.
     LAYOUT_LLM_REFINE: bool = os.getenv(
         "DESIGNBRIDGE_LAYOUT_LLM_REFINE", "false"
     ).lower() in ("1", "true", "yes")
-    # Project scene-graph furniture boxes into a perspective depth map for ControlNet.
-    # When true and the user re-plans layout, this projected depth overrides the
-    # input-photo depth so the precise coordinates actually control the render.
     ENABLE_LAYOUT_DEPTH_PROJECTION: bool = os.getenv(
         "DESIGNBRIDGE_ENABLE_LAYOUT_DEPTH_PROJECTION", "true"
     ).lower() in ("1", "true", "yes")
-    # Anchor the projected depth to the uploaded photo's own floor plane (homography from
-    # depth + segmentation) instead of a synthetic camera over an empty box. This is what
-    # keeps the render's camera angle, room proportions and architecture matching the photo.
     LAYOUT_PHOTO_ANCHORED_DEPTH: bool = os.getenv(
         "DESIGNBRIDGE_LAYOUT_PHOTO_ANCHORED_DEPTH", "true"
     ).lower() in ("1", "true", "yes")
@@ -286,12 +271,6 @@ class Config:
     LAYOUT_CAMERA_EYE_HEIGHT: float = float(
         os.getenv("DESIGNBRIDGE_LAYOUT_CAMERA_EYE_HEIGHT", "1.5")
     )
-
-    # Synthetic-camera fallback (no photo, or floor geometry unsolvable).
-    # pitch=-16 (calibrated for the Kontext path) over-tilts the depth-ControlNet path:
-    # too much empty foreground floor + the depth camera's perspective fights FLUX's own.
-    # -8 keeps a mild downward look without the void; setback 1.2 pushes the room back so
-    # the nearest furniture box doesn't dominate the frame.
     LAYOUT_PROJECTION_HFOV: float = float(os.getenv("DESIGNBRIDGE_LAYOUT_PROJECTION_HFOV", "65.0"))
     LAYOUT_PROJECTION_PITCH: float = float(os.getenv("DESIGNBRIDGE_LAYOUT_PROJECTION_PITCH", "-8.0"))
     LAYOUT_PROJECTION_SETBACK: float = float(os.getenv("DESIGNBRIDGE_LAYOUT_PROJECTION_SETBACK", "1.2"))

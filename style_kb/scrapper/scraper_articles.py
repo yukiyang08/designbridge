@@ -19,18 +19,17 @@ from urllib.parse import urlparse
 
 import requests
 from bs4 import BeautifulSoup
+from requests.adapters import HTTPAdapter
+from urllib3.util.retry import Retry
+
+from style_kb.scrapper.dedup import image_asset_key
+from style_kb.scrapper.scraper_100 import REQUEST_INTERVAL, REQUEST_TIMEOUT, USER_AGENT
 
 sys.stdout.reconfigure(encoding="utf-8")
 
 OUTPUT_DIR = Path(__file__).resolve().parent.parent / "raw" / "taiwan_retro_articles"
-REQUEST_TIMEOUT = 15
-REQUEST_INTERVAL = 1.0
 MIN_FILE_SIZE = 100 * 1024
-USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
 
-# 精選文章：searchome 官網維護中，改用 housetube.tw 鏡射版；另補幸福空間專欄
-# （sh/25483、sh/3905 頁面沒有 hmgcdn 內文圖，已剔除；hhh 專欄只留圖片網址
-#   跟導覽推薦區塊區分得開的 5968，避免混入不相關文章的縮圖）
 ARTICLES: list[dict] = [
     {"url": "https://home.housetube.tw/sh/17549", "title": "老屋常見的磨石子和水磨石變身時髦建材"},
     {"url": "https://home.housetube.tw/sh/19952", "title": "時髦不老派的復古台式風！5個質感設計提案"},
@@ -59,7 +58,13 @@ DOMAIN_IMG_PATTERNS: dict[str, re.Pattern] = {
 
 
 def _create_session() -> requests.Session:
+    # Retry/backoff strategy borrowed from scraper_100._create_session — but headers stay
+    # local (no Referer) since this scrapes housetube.tw/hhh.com.tw, not 100.com.tw.
     session = requests.Session()
+    retry_strategy = Retry(total=3, backoff_factor=1, status_forcelist=[429, 500, 502, 503, 504])
+    adapter = HTTPAdapter(max_retries=retry_strategy)
+    session.mount("http://", adapter)
+    session.mount("https://", adapter)
     session.headers.update({"User-Agent": USER_AGENT})
     return session
 
@@ -97,8 +102,7 @@ def _collect_images(session: requests.Session, article: dict) -> list[dict]:
 
 def _download_image(session: requests.Session, image_info: dict, output_dir: Path) -> bool:
     url = image_info["url"]
-    parsed = urlparse(url)
-    filename = Path(parsed.path).name
+    filename = image_asset_key(url)
     output_path = output_dir / filename
     if output_path.exists():
         return True

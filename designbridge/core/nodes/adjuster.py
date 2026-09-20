@@ -141,7 +141,7 @@ replace_with: describe the new object only if action=replace, else null."""
 def adjuster_agent_stub(state: DesignBridgeState) -> dict[str, Any]:
     """
     Design Adjuster Agent：對初始圖片進行局部 inpainting。
-    觸發條件：requirement_analyzer/design_director 判斷 routing_decision = "design_adjuster"。
+    觸發條件：requirement_analyzer 判斷 routing_decision = "design_adjuster"。
     """
     from PIL import Image
 

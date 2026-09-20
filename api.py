@@ -761,13 +761,12 @@ async def plan_layout(request: DesignRequest):
     try:
         from designbridge.core.nodes import (
             requirement_analyzer, visual_preprocessing_local,
-            design_director, layout_and_style_agent_stub,
+            layout_and_style_agent_stub,
         )
 
         state: dict = {"user_input": _build_user_input(request)}
-        state.update(requirement_analyzer(state))
+        state.update(requirement_analyzer(state))  # routing_decision 也是這裡決定的
         state.update(visual_preprocessing_local(state))
-        state.update(design_director(state))
         state.update(layout_and_style_agent_stub(state))
 
         scene_graph = state.get("scene_graph")

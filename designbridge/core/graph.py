@@ -12,7 +12,6 @@ from designbridge.core.nodes import (
     adjuster_agent_stub,
     clip_evaluator_node,
     depth_cloud_node,
-    design_director,
     layout_and_style_agent_stub,
     requirement_analyzer,
     renderer,
@@ -36,11 +35,9 @@ def _timed_node(
     return _wrapped
 
 
-def _route_after_director(state: DesignBridgeState) -> str:
-    """Map routing_decision to agent node name."""
+def _route_after_requirement(state: DesignBridgeState) -> str:
+    """Map routing_decision (always set by requirement_analyzer) to agent node name."""
     decision: RoutingDecision | None = state.get("routing_decision")
-    if not decision:
-        return "layout_and_style_agent"
     return {
         "design_adjuster": "adjuster_agent",
         "design": "layout_and_style_agent",
@@ -50,9 +47,16 @@ def _route_after_director(state: DesignBridgeState) -> str:
 def build_graph() -> StateGraph:
     """
     Build DesignBridge workflow:
-    START -> requirement_analyzer -> visual_preprocessing -> design_director
+    START -> requirement_analyzer -> visual_preprocessing
       -> (adjuster_agent | layout_and_style_agent) -> renderer
       -> depth_cloud -> clip_evaluator -> END
+
+    routing_decision（design vs design_adjuster）完全由 requirement_analyzer 決定
+    （RA 語意判斷 → refine_mode 覆蓋 → 都沒有才預設 "design"）。原本這裡有個獨立的
+    design_director 節點負責路由，但它唯一還有作用的兩件事（refine_mode 覆蓋、
+    RA 失敗時的預設值）都已經折進 requirement_analyzer 裡，動態讀 SKILL.md 用 LLM
+    路由那條路徑在實務上從沒真的被觸發過（RA 自己的語意判斷早就取代了它），
+    所以整個節點直接拿掉，不用再多一次 graph hop。
 
     注意：quotation_agent（家具估價/報價推薦）不在這個自動流程裡執行。
     它耗時較長（觀測約 30-40 秒），且不影響生成圖片本身，因此改成
@@ -63,7 +67,6 @@ def build_graph() -> StateGraph:
 
     graph.add_node("requirement_analyzer", _timed_node("requirement_analyzer", requirement_analyzer))
     graph.add_node("visual_preprocessing", _timed_node("visual_preprocessing", visual_preprocessing_local))
-    graph.add_node("design_director", _timed_node("design_director", design_director))
     graph.add_node("adjuster_agent", _timed_node("adjuster_agent", adjuster_agent_stub))
     graph.add_node("layout_and_style_agent", _timed_node("layout_and_style_agent", layout_and_style_agent_stub))
     graph.add_node("renderer", _timed_node("renderer", renderer))
@@ -72,10 +75,9 @@ def build_graph() -> StateGraph:
 
     graph.add_edge(START, "requirement_analyzer")
     graph.add_edge("requirement_analyzer", "visual_preprocessing")
-    graph.add_edge("visual_preprocessing", "design_director")
     graph.add_conditional_edges(
-        "design_director",
-        _route_after_director,
+        "visual_preprocessing",
+        _route_after_requirement,
         path_map={
             "adjuster_agent": "adjuster_agent",
             "layout_and_style_agent": "layout_and_style_agent",

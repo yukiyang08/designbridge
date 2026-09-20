@@ -115,80 +115,84 @@ def requirement_analyzer(state: DesignBridgeState) -> dict[str, Any]:
     """
     task_id = state.get("task_id") or str(uuid.uuid4())
     iteration = state.get("iteration", 0)
+    user = state.get("user_input") or {}
 
     # 已經有 structured_requirement 了（例如 /api/plan-layout 先跑過一次、使用者確認佈局後
     # 才呼叫 /api/generate 帶著這份結果進來）——不要重跑 Gemini，直接沿用，省一次 LLM 呼叫。
     if state.get("structured_requirement"):
-        result: dict[str, Any] = {
-            "task_id": task_id,
-            "iteration": iteration,
-            "structured_requirement": state["structured_requirement"],
-        }
-        if state.get("routing_decision"):
-            result["routing_decision"] = state["routing_decision"]
-        return result
+        structured_requirement = state["structured_requirement"]
+        routing_decision = state.get("routing_decision")
+    else:
+        text_prompt = (user.get("text_prompt") or "").strip()
+        initial_image = user.get("initial_image", "無")
+        style_reference_image = user.get("style_reference_image", "")
 
-    user = state.get("user_input") or {}
-    text_prompt = (user.get("text_prompt") or "").strip()
-    initial_image = user.get("initial_image", "無")
-    style_reference_image = user.get("style_reference_image", "")
+        # Try LLM (Gemini) first, fall back to passing prompt directly on failure
+        try:
+            structured_requirement = _call_llm_requirement_analyzer(
+                text_prompt, initial_image,
+                style_reference_image=style_reference_image,
+            )
+        except Exception as e:
+            print(f"⚠️  LLM call failed ({e}), passing prompt directly to renderer")
+            structured_requirement = {
+                "user_description_raw": text_prompt,
+                "design_description": text_prompt,
+                "meta": {"room_type": "living_room", "design_goal": "renovation", "user_experience_level": "general"},
+                "space_info": {"estimated_size": {"width": 5.0, "height": 3.0, "depth": 4.0}, "windows": [], "doors": []},
+                "style_preferences": {"primary_style": "", "secondary_style": None, "color_palette": [], "material_preferences": [], "style_strength": 0.7, "reference_images": []},
+                "layout_constraints": {"must_keep": [], "must_add": [], "must_remove": [], "immutable_regions": [], "functional_zones": []},
+                "priority_weights": {"layout_rationality": 0.4, "style_consistency": 0.4, "user_preference": 0.2},
+            }
 
-    # Try LLM (Gemini) first, fall back to passing prompt directly on failure
-    try:
-        structured_requirement = _call_llm_requirement_analyzer(
-            text_prompt, initial_image,
-            style_reference_image=style_reference_image,
+        # Merge family needs and feng shui rules into structured_requirement
+        # Must run before the layout agent reads windows/doors, and before the special
+        # constraints (wheelchair clearance, child safety) look for door positions.
+        _normalize_space_info(structured_requirement)
+        _si = structured_requirement["space_info"]
+        print(
+            f"[requirement_analyzer] space_info: "
+            f"{_si['estimated_size']['width']}×{_si['estimated_size']['depth']}m, "
+            f"windows={len(_si['windows'])}, doors={len(_si['doors'])}"
         )
-    except Exception as e:
-        print(f"⚠️  LLM call failed ({e}), passing prompt directly to renderer")
-        structured_requirement = {
-            "user_description_raw": text_prompt,
-            "design_description": text_prompt,
-            "meta": {"room_type": "living_room", "design_goal": "renovation", "user_experience_level": "general"},
-            "space_info": {"estimated_size": {"width": 5.0, "height": 3.0, "depth": 4.0}, "windows": [], "doors": []},
-            "style_preferences": {"primary_style": "", "secondary_style": None, "color_palette": [], "material_preferences": [], "style_strength": 0.7, "reference_images": []},
-            "layout_constraints": {"must_keep": [], "must_add": [], "must_remove": [], "immutable_regions": [], "functional_zones": []},
-            "priority_weights": {"layout_rationality": 0.4, "style_consistency": 0.4, "user_preference": 0.2},
-        }
 
-    # Merge family needs and feng shui rules into structured_requirement
-    # Must run before the layout agent reads windows/doors, and before the special
-    # constraints (wheelchair clearance, child safety) look for door positions.
-    _normalize_space_info(structured_requirement)
-    _si = structured_requirement["space_info"]
-    print(
-        f"[requirement_analyzer] space_info: "
-        f"{_si['estimated_size']['width']}×{_si['estimated_size']['depth']}m, "
-        f"windows={len(_si['windows'])}, doors={len(_si['doors'])}"
-    )
+        family_needs   = user.get("family_needs")   or []
+        fengshui_rules = user.get("fengshui_rules") or []
+        if family_needs or fengshui_rules:
+            from designbridge.layout.special_constraints import enrich_requirement
+            structured_requirement = enrich_requirement(structured_requirement, family_needs, fengshui_rules)
 
-    family_needs   = user.get("family_needs")   or []
-    fengshui_rules = user.get("fengshui_rules") or []
-    if family_needs or fengshui_rules:
-        from designbridge.layout.special_constraints import enrich_requirement
-        structured_requirement = enrich_requirement(structured_requirement, family_needs, fengshui_rules)
+        # If the user explicitly selected a style from the dropdown, override whatever
+        # Gemini / rule-based inferred from the text so the whole pipeline stays consistent.
+        explicit_style_id = (user.get("style_profile_id") or "").strip()
+        if explicit_style_id and explicit_style_id != "auto":
+            style_prefs = structured_requirement.setdefault("style_preferences", {})
+            style_prefs["primary_style"] = explicit_style_id
 
-    # If the user explicitly selected a style from the dropdown, override whatever
-    # Gemini / rule-based inferred from the text so the whole pipeline stays consistent.
-    explicit_style_id = (user.get("style_profile_id") or "").strip()
-    if explicit_style_id and explicit_style_id != "auto":
-        style_prefs = structured_requirement.setdefault("style_preferences", {})
-        style_prefs["primary_style"] = explicit_style_id
+        # Extract routing decision embedded by _call_llm_requirement_analyzer, then remove it
+        # from the requirement so it doesn't pollute structured data.
+        routing_decision = structured_requirement.pop("_routing_decision", None)
+        if routing_decision:
+            print(f"[requirement_analyzer] routing_decision from LLM: {routing_decision}")
 
-    # Extract routing decision embedded by _call_llm_requirement_analyzer, then remove it
-    # from the requirement so it doesn't pollute structured data.
-    routing_decision = structured_requirement.pop("_routing_decision", None)
+    # Routing used to be a separate "design director" node; folded in here since RA
+    # is the only thing that ever actually decided it (dynamic SKILL.md routing was
+    # never exercised in practice — RA's own semantic judgment already covers what it
+    # was for). refine_mode always wins regardless of what RA/LLM decided; a totally
+    # missing decision (RA call failed before it could embed one) defaults to "design".
+    if user.get("refine_mode"):
+        routing_decision = "design_adjuster"
+        print("[requirement_analyzer] refine_mode=True → design_adjuster")
+    elif not routing_decision:
+        routing_decision = "design"
+        print("[requirement_analyzer] no routing_decision available → default design")
 
-    result: dict[str, Any] = {
+    return {
         "task_id": task_id,
         "iteration": iteration,
         "structured_requirement": structured_requirement,
+        "routing_decision": routing_decision,
     }
-    if routing_decision:
-        result["routing_decision"] = routing_decision
-        print(f"[requirement_analyzer] routing_decision from LLM: {routing_decision}")
-
-    return result
 
 
 def _is_valid_image_path(image_path: str) -> bool:
