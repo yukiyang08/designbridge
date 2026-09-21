@@ -29,7 +29,7 @@ const counts = reactive({
   kitchen_count: 1,
   balcony_count: 1,
 })
-const totalPing = ref(25)
+const totalPing = ref(32)
 
 const loading = ref(false)
 const error = ref('')

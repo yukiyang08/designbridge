@@ -84,40 +84,44 @@ def allocate_areas(program: dict) -> list[RoomSpec]:
     return specs
 
 
-def build_room_order(specs: list[RoomSpec]) -> list[RoomSpec]:
-    """Order rooms so that sequential guillotine slicing produces sensible adjacency:
-    balcony <-> living/dining <-> kitchen <-> bathroom <-> bedrooms <-> extra balcony.
+def split_into_zones(specs: list[RoomSpec]) -> tuple[list[RoomSpec], list[RoomSpec]]:
+    """Group specs into a public zone (balcony/living-dining/kitchen) and a private zone
+    (bathroom/bedrooms), each already ordered for sensible adjacency within itself.
+
+    Real apartments read as two wings — a public hall and a private sleeping wing — not
+    one long chain of rooms. `partition_rooms` cuts the bounding rect once between these
+    two groups, then slices each zone independently, so a bedroom can no longer end up
+    wedged between the kitchen and the living room just because of list order.
     """
     by_type: dict[str, list[RoomSpec]] = {}
     for s in specs:
         by_type.setdefault(s.room_type, []).append(s)
 
-    balconies = by_type.get("balcony", [])
-    livings = by_type.get("living_dining", [])
-    kitchens = by_type.get("kitchen", [])
-    bathrooms = by_type.get("bathroom", [])
-    bedrooms = by_type.get("bedroom_master", []) + by_type.get("bedroom", [])
+    public = by_type.get("balcony", []) + by_type.get("living_dining", []) + by_type.get("kitchen", [])
+    private = by_type.get("bathroom", []) + by_type.get("bedroom_master", []) + by_type.get("bedroom", [])
+    return public, private
 
-    ordered: list[RoomSpec] = []
-    if balconies:
-        ordered.append(balconies[0])
-    ordered += livings
-    ordered += kitchens
-    ordered += bathrooms
-    ordered += bedrooms
-    ordered += balconies[1:]
-    return ordered
+
+def _split_rect(rect: Rect, ratio: float) -> tuple[Rect, Rect]:
+    """Cut `rect` into two along its currently-longer side, giving the first piece
+    `ratio` of that side (clamped so neither piece goes below MIN_ROOM_DIM_M)."""
+    if rect.w >= rect.h:
+        lo, hi = MIN_ROOM_DIM_M, max(MIN_ROOM_DIM_M, rect.w - MIN_ROOM_DIM_M)
+        w1 = min(max(rect.w * ratio, lo), hi)
+        return Rect(rect.x, rect.y, w1, rect.h), Rect(rect.x + w1, rect.y, rect.w - w1, rect.h)
+    lo, hi = MIN_ROOM_DIM_M, max(MIN_ROOM_DIM_M, rect.h - MIN_ROOM_DIM_M)
+    h1 = min(max(rect.h * ratio, lo), hi)
+    return Rect(rect.x, rect.y, rect.w, h1), Rect(rect.x, rect.y + h1, rect.w, rect.h - h1)
 
 
 def slice_sequence(rect: Rect, specs: list[RoomSpec]) -> list[RoomInstance]:
     """Recursively bisect `rect` between two consecutive sub-groups of `specs`.
 
-    The cut position is the groups' relative share of target area (not a fixed 50/50),
-    and always falls on the rect's currently-longer side. Splitting by *group* area
-    (rather than carving one room at a time using the full current cross-dimension)
-    keeps each room's own footprint proportioned on both axes — critical once the
-    sequence mixes very different room sizes (e.g. a balcony next to a living room).
-    Exact, non-overlapping tiling of `rect` is guaranteed by construction either way.
+    The cut position is the groups' relative share of target area (not a fixed 50/50).
+    Splitting by *group* area (rather than carving one room at a time using the full
+    current cross-dimension) keeps each room's own footprint proportioned on both axes —
+    critical once the sequence mixes very different room sizes (e.g. a balcony next to a
+    living room). Exact, non-overlapping tiling of `rect` is guaranteed by construction.
     """
     if len(specs) == 1:
         spec = specs[0]
@@ -142,22 +146,13 @@ def slice_sequence(rect: Rect, specs: list[RoomSpec]) -> list[RoomInstance]:
     area_b = sum(s.target_area_m2 for s in group_b)
     ratio = area_a / (area_a + area_b) if (area_a + area_b) > 0 else 0.5
 
-    if rect.w >= rect.h:
-        lo, hi = MIN_ROOM_DIM_M, max(MIN_ROOM_DIM_M, rect.w - MIN_ROOM_DIM_M)
-        w1 = min(max(rect.w * ratio, lo), hi)
-        rect_a = Rect(rect.x, rect.y, w1, rect.h)
-        rect_b = Rect(rect.x + w1, rect.y, rect.w - w1, rect.h)
-    else:
-        lo, hi = MIN_ROOM_DIM_M, max(MIN_ROOM_DIM_M, rect.h - MIN_ROOM_DIM_M)
-        h1 = min(max(rect.h * ratio, lo), hi)
-        rect_a = Rect(rect.x, rect.y, rect.w, h1)
-        rect_b = Rect(rect.x, rect.y + h1, rect.w, rect.h - h1)
-
+    rect_a, rect_b = _split_rect(rect, ratio)
     return slice_sequence(rect_a, group_a) + slice_sequence(rect_b, group_b)
 
 
 def partition_rooms(program: dict) -> tuple[list[RoomInstance], float, float, list[str]]:
-    """Top-level: allocate areas -> order for adjacency -> bounding box -> slice.
+    """Top-level: allocate areas -> split public/private zones -> bounding box ->
+    zone-cut -> slice each zone.
 
     Returns (rooms, bounding_w_m, bounding_d_m, warnings).
     """
@@ -165,12 +160,23 @@ def partition_rooms(program: dict) -> tuple[list[RoomInstance], float, float, li
     if not specs:
         raise RoomProgramError("至少需要一個房間")
 
-    ordered = build_room_order(specs)
     total_m2 = float(program.get("total_ping", 0) or 0) * PING_TO_M2
     bounding_w = math.sqrt(total_m2 * BOUNDING_ASPECT_RATIO)
     bounding_d = math.sqrt(total_m2 / BOUNDING_ASPECT_RATIO)
+    bounding_rect = Rect(0.0, 0.0, bounding_w, bounding_d)
 
-    rooms = slice_sequence(Rect(0.0, 0.0, bounding_w, bounding_d), ordered)
+    public_specs, private_specs = split_into_zones(specs)
+    if not public_specs or not private_specs:
+        # Everything landed in one zone (e.g. no bedrooms, or no living/kitchen/balcony
+        # at all) — nothing to cut a zone boundary between, fall back to one chain.
+        rooms = slice_sequence(bounding_rect, public_specs or private_specs)
+    else:
+        area_public = sum(s.target_area_m2 for s in public_specs)
+        area_private = sum(s.target_area_m2 for s in private_specs)
+        total_zoned = area_public + area_private
+        ratio = area_public / total_zoned if total_zoned > 0 else 0.5
+        rect_public, rect_private = _split_rect(bounding_rect, ratio)
+        rooms = slice_sequence(rect_public, public_specs) + slice_sequence(rect_private, private_specs)
 
     warnings: list[str] = []
     for room in rooms:

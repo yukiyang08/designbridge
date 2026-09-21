@@ -24,6 +24,241 @@ _WINDOW_FILL = "#c0daf8"
 _WINDOW_STROKE = "#2e6ab5"
 _DIM_STROKE = "#444444"
 _TEXT_FILL = "#111111"
+_FURNITURE_STROKE = "#2a2a2a"
+_FURNITURE_FILL = "white"
+
+# ───────────────────────── Default furniture symbols ─────────────────────────
+# Default furniture per room — same normalized (fraction-of-room) layout as the
+# frontend's CAD_DEFAULT_LAYOUT (useDesignFlow.js), so this whole-floor preview and the
+# single-room editor agree once a room is picked. Drawn as simplified architectural
+# top-down symbols (bed + pillow, chairs with a backrest facing the table, hatched
+# wardrobe, tub/toilet outlines, ...) rather than plain boxes, under the room name/area
+# text so the label always stays legible regardless of what furniture sits behind it.
+_ROOM_TYPE_TO_FURNITURE_KEY = {
+    "bedroom_master": "bedroom",
+    "bedroom": "bedroom",
+    "living_dining": "living_dining",
+    "kitchen": "kitchen",
+    "bathroom": "bathroom",
+    "balcony": "balcony",
+}
+
+_DEFAULT_FURNITURE: dict[str, list[dict]] = {
+    "bedroom": [
+        {"type": "bed", "x": 0.30, "y": 0.28, "w": 0.22, "h": 0.28},
+        {"type": "wardrobe", "x": 0.08, "y": 0.08, "w": 0.18, "h": 0.08},
+        {"type": "nightstand", "x": 0.24, "y": 0.58, "w": 0.07, "h": 0.07},
+    ],
+    "living_dining": [
+        {"type": "sofa", "x": 0.08, "y": 0.55, "w": 0.30, "h": 0.13},
+        {"type": "coffee_table", "x": 0.16, "y": 0.42, "w": 0.15, "h": 0.10},
+        {"type": "tv_unit", "x": 0.08, "y": 0.08, "w": 0.22, "h": 0.07},
+        {"type": "dining_table", "x": 0.58, "y": 0.55, "w": 0.20, "h": 0.15},
+        {"type": "chair", "x": 0.58, "y": 0.42, "w": 0.08, "h": 0.08, "facing": "down"},
+        {"type": "chair", "x": 0.68, "y": 0.42, "w": 0.08, "h": 0.08, "facing": "down"},
+        {"type": "chair", "x": 0.58, "y": 0.72, "w": 0.08, "h": 0.08, "facing": "up"},
+        {"type": "chair", "x": 0.68, "y": 0.72, "w": 0.08, "h": 0.08, "facing": "up"},
+    ],
+    "kitchen": [
+        {"type": "cabinet", "x": 0.05, "y": 0.05, "w": 0.30, "h": 0.08},
+        {"type": "shelf", "x": 0.60, "y": 0.05, "w": 0.18, "h": 0.05},
+    ],
+    "bathroom": [
+        {"type": "bathtub", "x": 0.05, "y": 0.05, "w": 0.30, "h": 0.14},
+        {"type": "sink", "x": 0.60, "y": 0.10, "w": 0.10, "h": 0.08},
+        {"type": "toilet", "x": 0.60, "y": 0.60, "w": 0.09, "h": 0.12},
+    ],
+    "balcony": [
+        {"type": "washer", "x": 0.08, "y": 0.08, "w": 0.16, "h": 0.16},
+        {"type": "drying_rack", "x": 0.40, "y": 0.10, "w": 0.20, "h": 0.06},
+    ],
+}
+
+
+def _svg_rect(x: float, y: float, w: float, h: float, rx: float = 0,
+              fill: str | None = None, stroke: str | None = None, sw: float = 1.2) -> str:
+    fill = fill if fill is not None else _FURNITURE_FILL
+    stroke = stroke or _FURNITURE_STROKE
+    rx_attr = f' rx="{rx:.1f}"' if rx else ''
+    return (f'<rect x="{x:.1f}" y="{y:.1f}" width="{w:.1f}" height="{h:.1f}"{rx_attr} '
+            f'fill="{fill}" stroke="{stroke}" stroke-width="{sw}"/>')
+
+
+def _svg_ellipse(cx: float, cy: float, rx: float, ry: float,
+                  fill: str | None = None, stroke: str | None = None, sw: float = 1.2) -> str:
+    fill = fill if fill is not None else _FURNITURE_FILL
+    stroke = stroke or _FURNITURE_STROKE
+    return (f'<ellipse cx="{cx:.1f}" cy="{cy:.1f}" rx="{rx:.1f}" ry="{ry:.1f}" '
+            f'fill="{fill}" stroke="{stroke}" stroke-width="{sw}"/>')
+
+
+def _svg_circle(cx: float, cy: float, r: float,
+                 fill: str | None = None, stroke: str | None = None, sw: float = 1.0) -> str:
+    fill = fill if fill is not None else _FURNITURE_FILL
+    stroke = stroke or _FURNITURE_STROKE
+    return f'<circle cx="{cx:.1f}" cy="{cy:.1f}" r="{r:.1f}" fill="{fill}" stroke="{stroke}" stroke-width="{sw}"/>'
+
+
+def _svg_line(x1: float, y1: float, x2: float, y2: float, sw: float = 1.0) -> str:
+    return (f'<line x1="{x1:.1f}" y1="{y1:.1f}" x2="{x2:.1f}" y2="{y2:.1f}" '
+            f'stroke="{_FURNITURE_STROKE}" stroke-width="{sw}"/>')
+
+
+def _sym_bed(x: float, y: float, w: float, h: float) -> list[str]:
+    out = [_svg_rect(x, y, w, h, rx=min(w, h) * 0.06)]
+    pw, ph = w * 0.7, h * 0.16
+    out.append(_svg_rect(x + (w - pw) / 2, y + h * 0.08, pw, ph, rx=ph * 0.3))
+    fold_y = y + h * 0.62
+    out.append(_svg_line(x + w * 0.06, fold_y, x + w * 0.94, fold_y))
+    return out
+
+
+def _sym_wardrobe(x: float, y: float, w: float, h: float) -> list[str]:
+    out = [_svg_rect(x, y, w, h, fill="url(#roomplan-hatch)")]
+    return out
+
+
+def _sym_nightstand(x: float, y: float, w: float, h: float) -> list[str]:
+    return [_svg_rect(x, y, w, h), _svg_circle(x + w * 0.5, y + h * 0.5, min(w, h) * 0.12)]
+
+
+def _sym_sofa(x: float, y: float, w: float, h: float) -> list[str]:
+    out = [_svg_rect(x, y, w, h, rx=min(w, h) * 0.15)]
+    back_h = h * 0.34
+    out.append(_svg_rect(x, y, w, back_h, rx=back_h * 0.3))
+    arm_w = w * 0.10
+    out.append(_svg_rect(x, y, arm_w, h, rx=arm_w * 0.3))
+    out.append(_svg_rect(x + w - arm_w, y, arm_w, h, rx=arm_w * 0.3))
+    seat_y0 = y + back_h
+    seg = (w - 2 * arm_w) / 3
+    for i in (1, 2):
+        lx = x + arm_w + seg * i
+        out.append(_svg_line(lx, seat_y0, lx, y + h, sw=0.8))
+    return out
+
+
+def _sym_coffee_table(x: float, y: float, w: float, h: float) -> list[str]:
+    out = [_svg_rect(x, y, w, h, rx=min(w, h) * 0.2)]
+    pad = min(w, h) * 0.18
+    out.append(_svg_rect(x + pad, y + pad, w - 2 * pad, h - 2 * pad,
+                          rx=max(0.0, min(w, h) * 0.12 - pad), fill="none", sw=0.8))
+    return out
+
+
+def _sym_tv_unit(x: float, y: float, w: float, h: float) -> list[str]:
+    out = [_svg_rect(x, y, w, h)]
+    sw_ = w * 0.55
+    out.append(_svg_rect(x + (w - sw_) / 2, y + h * 0.18, sw_, h * 0.5, fill="none", sw=0.8))
+    return out
+
+
+def _sym_dining_table(x: float, y: float, w: float, h: float) -> list[str]:
+    return [_svg_rect(x, y, w, h, rx=min(w, h) * 0.12)]
+
+
+def _sym_chair(x: float, y: float, w: float, h: float, facing: str = "down") -> list[str]:
+    out = [_svg_rect(x, y, w, h, rx=min(w, h) * 0.18)]
+    back_t = min(w, h) * 0.24
+    if facing == "down":       # backrest away from what's below (e.g. a table)
+        out.append(_svg_rect(x, y, w, back_t, rx=back_t * 0.3))
+    elif facing == "up":
+        out.append(_svg_rect(x, y + h - back_t, w, back_t, rx=back_t * 0.3))
+    elif facing == "right":
+        out.append(_svg_rect(x, y, back_t, h, rx=back_t * 0.3))
+    else:  # left
+        out.append(_svg_rect(x + w - back_t, y, back_t, h, rx=back_t * 0.3))
+    return out
+
+
+def _sym_cabinet(x: float, y: float, w: float, h: float) -> list[str]:
+    return [_svg_rect(x, y, w, h), _svg_line(x + w / 2, y, x + w / 2, y + h, sw=0.9)]
+
+
+def _sym_shelf(x: float, y: float, w: float, h: float) -> list[str]:
+    out = [_svg_rect(x, y, w, h)]
+    for f in (1 / 3, 2 / 3):
+        yy = y + h * f
+        out.append(_svg_line(x, yy, x + w, yy, sw=0.8))
+    return out
+
+
+def _sym_bathtub(x: float, y: float, w: float, h: float) -> list[str]:
+    out = [_svg_rect(x, y, w, h, rx=min(w, h) * 0.4)]
+    pad = min(w, h) * 0.14
+    out.append(_svg_rect(x + pad, y + pad, w - 2 * pad, h - 2 * pad,
+                          rx=max(0.0, min(w, h) * 0.4 - pad), fill="none", sw=0.8))
+    return out
+
+
+def _sym_sink(x: float, y: float, w: float, h: float) -> list[str]:
+    out = [_svg_rect(x, y, w, h, rx=min(w, h) * 0.15)]
+    out.append(_svg_ellipse(x + w / 2, y + h / 2, w * 0.32, h * 0.32, fill="none", sw=0.8))
+    return out
+
+
+def _sym_toilet(x: float, y: float, w: float, h: float) -> list[str]:
+    tank_h = h * 0.28
+    out = [_svg_rect(x, y, w, tank_h)]
+    bowl_cy = y + tank_h + (h - tank_h) / 2
+    out.append(_svg_ellipse(x + w / 2, bowl_cy, w * 0.42, (h - tank_h) * 0.46))
+    return out
+
+
+def _sym_washer(x: float, y: float, w: float, h: float) -> list[str]:
+    out = [_svg_rect(x, y, w, h)]
+    out.append(_svg_circle(x + w / 2, y + h / 2, min(w, h) * 0.34, fill="none", sw=1.0))
+    out.append(_svg_circle(x + w / 2, y + h / 2, min(w, h) * 0.20, fill="none", sw=0.7))
+    return out
+
+
+def _sym_drying_rack(x: float, y: float, w: float, h: float) -> list[str]:
+    out = [_svg_rect(x, y, w, h, fill="none")]
+    n = 4
+    for i in range(1, n):
+        yy = y + h * i / n
+        out.append(_svg_line(x, yy, x + w, yy, sw=0.8))
+    return out
+
+
+def _sym_default(x: float, y: float, w: float, h: float) -> list[str]:
+    return [_svg_rect(x, y, w, h)]
+
+
+_SYMBOL_FNS = {
+    "bed": _sym_bed,
+    "wardrobe": _sym_wardrobe,
+    "nightstand": _sym_nightstand,
+    "sofa": _sym_sofa,
+    "coffee_table": _sym_coffee_table,
+    "tv_unit": _sym_tv_unit,
+    "dining_table": _sym_dining_table,
+    "chair": _sym_chair,
+    "cabinet": _sym_cabinet,
+    "shelf": _sym_shelf,
+    "bathtub": _sym_bathtub,
+    "sink": _sym_sink,
+    "toilet": _sym_toilet,
+    "washer": _sym_washer,
+    "drying_rack": _sym_drying_rack,
+}
+
+
+def _furniture_svg(room: RoomInstance, fx1: float, fy1: float, fx2: float, fy2: float) -> list[str]:
+    key = _ROOM_TYPE_TO_FURNITURE_KEY.get(room.room_type)
+    items = _DEFAULT_FURNITURE.get(key, []) if key else []
+    if not items:
+        return []
+    rw, rh = fx2 - fx1, fy2 - fy1
+    lines = []
+    for item in items:
+        x, y = fx1 + item["x"] * rw, fy1 + item["y"] * rh
+        w, h = item["w"] * rw, item["h"] * rh
+        fn = _SYMBOL_FNS.get(item["type"], _sym_default)
+        if "facing" in item:
+            lines.extend(fn(x, y, w, h, facing=item["facing"]))
+        else:
+            lines.extend(fn(x, y, w, h))
+    return lines
 
 
 def render_room_plan_svg(
@@ -55,6 +290,13 @@ def render_room_plan_svg(
     lines: list[str] = [
         f'<svg xmlns="http://www.w3.org/2000/svg" width="{canvas_w:.0f}" height="{canvas_h:.0f}" '
         f'viewBox="0 0 {canvas_w:.0f} {canvas_h:.0f}" font-family="Arial, Helvetica, sans-serif">',
+        '<defs>'
+        '<pattern id="roomplan-hatch" width="6" height="6" patternUnits="userSpaceOnUse" '
+        'patternTransform="rotate(45)">'
+        f'<rect width="6" height="6" fill="white"/>'
+        f'<line x1="0" y1="0" x2="0" y2="6" stroke="{_FURNITURE_STROKE}" stroke-width="1"/>'
+        '</pattern>'
+        '</defs>',
         f'<rect width="{canvas_w:.0f}" height="{canvas_h:.0f}" fill="white"/>',
     ]
 
@@ -75,20 +317,39 @@ def render_room_plan_svg(
         fy1r = py(room.rect.y + top_t / 2)
         fx2r = px(room.rect.right - right_t / 2)
         fy2r = py(room.rect.bottom - bottom_t / 2)
+        # class/data-* hooks: no visual effect here, but let the frontend attach a
+        # click handler per room (e.g. a "pick a room to edit" step) without having
+        # to re-derive each room's on-screen rect from the meter coordinates.
         lines.append(
-            f'<rect x="{fx1r:.1f}" y="{fy1r:.1f}" width="{fx2r-fx1r:.1f}" height="{fy2r-fy1r:.1f}" '
+            f'<g class="room-rect" data-room-id="{room.id}" data-room-type="{room.room_type}">'
+        )
+        lines.append(
+            f'<rect class="room-floor" x="{fx1r:.1f}" y="{fy1r:.1f}" width="{fx2r-fx1r:.1f}" height="{fy2r-fy1r:.1f}" '
             f'fill="{_FLOOR_FILL}" stroke="{_FLOOR_STROKE}" stroke-width="1"/>'
         )
+        # Wrapped in its own group (class="room-furniture") so the frontend can swap
+        # these default symbols out for the user's actual live-edited placements
+        # (see CadRoomMiniMap.vue) without touching the floor rect or the labels.
+        furniture_lines = _furniture_svg(room, fx1r, fy1r, fx2r, fy2r)
+        if furniture_lines:
+            lines.append('<g class="room-furniture">')
+            lines.extend(furniture_lines)
+            lines.append('</g>')
 
+        # White stroke "halo" behind the label glyphs (paint-order draws it under the
+        # fill) so the room name/area stay legible over whatever furniture line happens
+        # to cross behind them, without having to estimate each string's pixel width.
         cx, cy = (fx1r + fx2r) / 2, (fy1r + fy2r) / 2
+        halo = ' paint-order="stroke" stroke="white" stroke-width="3" stroke-linejoin="round"'
         lines.append(
-            f'<text x="{cx:.1f}" y="{cy-6:.1f}" font-size="13" font-weight="bold" '
+            f'<text x="{cx:.1f}" y="{cy-6:.1f}" font-size="13" font-weight="bold"{halo} '
             f'text-anchor="middle" fill="{_TEXT_FILL}">{room.label_zh}</text>'
         )
         lines.append(
-            f'<text x="{cx:.1f}" y="{cy+11:.1f}" font-size="11" '
+            f'<text x="{cx:.1f}" y="{cy+11:.1f}" font-size="11"{halo} '
             f'text-anchor="middle" fill="{_TEXT_FILL}">{room.actual_area_m2:.1f} m²</text>'
         )
+        lines.append('</g>')
 
     for door in doors:
         half_w = pl(door.width_m) / 2

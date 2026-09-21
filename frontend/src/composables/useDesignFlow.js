@@ -54,10 +54,82 @@ export const STEP_FLOWS = {
     { key: 'refine',     label: '微調編輯' },
     { key: 'budget',     label: '預算估計' },
   ],
+  // CAD 房型生成（designbridge/roomplan）：輸入幾房幾廳＋總坪數，直接切割出整層樓
+  // 的房間配置（牆／門／窗），一定是多房間，所以固定經過「選擇房間」再進編輯器——
+  // 跟 upload 共用 roomPick/plan 這兩個步驟 key，差別只在資料來源（見 StepRoomPick）。
+  cad: [
+    { key: 'roomProgram', label: '房型設定' },
+    { key: 'roomPick',    label: '選擇房間' },
+    { key: 'plan',        label: '繪製平面圖' },
+    { key: 'render',      label: '3D渲染圖' },
+    { key: 'refine',      label: '微調編輯' },
+    { key: 'budget',      label: '預算估計' },
+  ],
 }
 
 const STYLE_PAGE_SIZE = 10
-const ROOM_TYPE_LABEL = { living_room: '客廳', bedroom: '臥室', kitchen: '廚房', study: '書房', dining_room: '餐廳' }
+const ROOM_TYPE_LABEL = {
+  living_room: '客廳', bedroom: '臥室', kitchen: '廚房', study: '書房', dining_room: '餐廳',
+  living_dining: '客餐廳', bathroom: '衛浴', balcony: '陽台',
+}
+
+// roomplan 的房型字彙（見 designbridge/roomplan/constants.py ROOM_TYPE_SPECS）→
+// LayoutEditor 家具面板/scene_graph 用的字彙（見 frontend/src/config/furniture.js）。
+// bedroom_master 沒有獨立家具面板，主臥跟一般臥室家具需求相同，直接併入 bedroom。
+const CAD_ROOM_TYPE_TO_EDITOR = {
+  bedroom_master: 'bedroom',
+  bedroom: 'bedroom',
+  living_dining: 'living_dining',
+  kitchen: 'kitchen',
+  bathroom: 'bathroom',
+  balcony: 'balcony',
+}
+
+// 選完房間後的預設家具擺法——跟 layout_agent.py 的 _default_layout 同一種做法
+// （靜態的歸一化座標 preset，不是 AI 排的），純前端、選完房間立刻有東西可看/可調，
+// 不用等一次 LLM 呼叫。之所以不直接呼叫 /api/generate-layout 讓 AI 排版：那個端點
+// 背後的 _normalize_ftype 只認得 FURNITURE_SIZES 裡的字彙（沙發、床…），bathtub／
+// washer 這些新家具類型不在裡面，LLM 排出來也會被當成未知類型整個丟掉（見
+// layout_agent.py 的 _call_llm_layout），排版一定失敗、退回 living_room 預設，
+// 對衛浴／陽台反而是錯的結果。
+const CAD_DEFAULT_LAYOUT = {
+  bedroom: [
+    { type: 'bed', x: 0.30, y: 0.28, w: 0.22, h: 0.28 },
+    { type: 'wardrobe', x: 0.08, y: 0.08, w: 0.18, h: 0.08 },
+    { type: 'nightstand', x: 0.24, y: 0.58, w: 0.07, h: 0.07 },
+  ],
+  living_dining: [
+    { type: 'sofa', x: 0.08, y: 0.55, w: 0.30, h: 0.13 },
+    { type: 'coffee_table', x: 0.16, y: 0.42, w: 0.15, h: 0.10 },
+    { type: 'tv_unit', x: 0.08, y: 0.08, w: 0.22, h: 0.07 },
+    { type: 'dining_table', x: 0.58, y: 0.55, w: 0.20, h: 0.15 },
+    { type: 'chair', x: 0.58, y: 0.42, w: 0.08, h: 0.08 },
+    { type: 'chair', x: 0.68, y: 0.42, w: 0.08, h: 0.08 },
+    { type: 'chair', x: 0.58, y: 0.72, w: 0.08, h: 0.08 },
+    { type: 'chair', x: 0.68, y: 0.72, w: 0.08, h: 0.08 },
+  ],
+  kitchen: [
+    { type: 'cabinet', x: 0.05, y: 0.05, w: 0.30, h: 0.08 },
+    { type: 'shelf', x: 0.60, y: 0.05, w: 0.18, h: 0.05 },
+  ],
+  bathroom: [
+    { type: 'bathtub', x: 0.05, y: 0.05, w: 0.30, h: 0.14 },
+    { type: 'sink', x: 0.60, y: 0.10, w: 0.10, h: 0.08 },
+    { type: 'toilet', x: 0.60, y: 0.60, w: 0.09, h: 0.12 },
+  ],
+  balcony: [
+    { type: 'washer', x: 0.08, y: 0.08, w: 0.16, h: 0.16 },
+    { type: 'drying_rack', x: 0.40, y: 0.10, w: 0.20, h: 0.06 },
+  ],
+}
+
+function cadDefaultPlacements(editorRoomType) {
+  const seen = {}
+  return (CAD_DEFAULT_LAYOUT[editorRoomType] || []).map((f) => {
+    seen[f.type] = (seen[f.type] || 0) + 1
+    return { id: `${f.type}_${seen[f.type]}`, type: f.type, x: f.x, y: f.y, w: f.w, h: f.h, rotation: 0 }
+  })
+}
 
 export const ASPECT_OPTIONS = [
   { value: 'auto', label: '自動' },
@@ -93,6 +165,19 @@ const uploadedPlanUrl   = ref('')
 const uploadedPlanPath  = ref('')   // 原始（未裁切）上傳圖的本機路徑，選房間裁切時要用
 const detectedRooms     = ref([])   // /api/detect-rooms 偵測到的房間清單，多間時才會用到
 
+// ── CAD 房型生成（designbridge/roomplan）──
+const cadCounts     = ref({ bedroom_count: 2, living_count: 1, bathroom_count: 1, kitchen_count: 1, balcony_count: 1 })
+const cadTotalPing  = ref(32)        // 2房1廳1衛1廚1陽台在 25 坪下房間偏小，32 坪落地起來更合理
+const cadPlanResult = ref(null)     // /api/generate-room-plan 的完整回應（rooms/walls/doors/windows/svg_markup…）
+
+// ── CAD 多房間逐一設計：進度追蹤（右上角縮圖用）──
+// 一次只「啟用」一間房：房間必須渲染出 3D 圖才算完成，完成前縮圖不能點去別間房
+// （使用者的決定）。cadRoomSnapshots 存每間房各自的家具/平面圖/渲染結果，離開時存檔、
+// 回來時還原，這樣同一間房不會因為切去別間又切回來而遺失進度。
+const cadActiveRoomId  = ref(null)          // 目前正在設計的房間 id
+const cadRoomStatus    = ref({})            // { [roomId]: 'active' | 'done' }
+const cadRoomSnapshots = ref({})            // { [roomId]: { roomW, roomD, roomTypeForPlan, editPlacements, floorPlanPath, floorPlanUrl, sceneGraph, layoutRenderConfig, result, lastGeneratedImage } }
+
 // ── 佈局編輯 ──
 const editPlacements     = ref([])
 const roomW              = ref(5.0)
@@ -103,7 +188,7 @@ const layoutRenderConfig = ref(null)
 
 // ── 空間設定表單 ──
 const roomType       = ref('living_room')
-const spaceSizePing  = ref(4)
+const spaceSizePing  = ref(8)        // 4 坪對單一房間（含客廳預設）太擠，8 坪是比較合理的起始值
 const customRoomW    = ref(null)            // 公尺，null = 用坪數估算
 const customRoomD    = ref(null)
 const furnitureItems = ref([])
@@ -215,6 +300,10 @@ function resetFlow() {
   uploadedPlanUrl.value = ''
   uploadedPlanPath.value = ''
   detectedRooms.value = []
+  cadPlanResult.value = null
+  cadActiveRoomId.value = null
+  cadRoomStatus.value = {}
+  cadRoomSnapshots.value = {}
   spacePhoto.remove()
   spacePhotoPath.value = ''
   spaceImage.remove()
@@ -520,6 +609,129 @@ async function parseFloorPlanAndProceed(path, requestId, roomTypeOverride) {
   }
 }
 
+/* ══ Step: CAD 房型生成 ═══════════════════════════════════
+   輸入幾房幾廳＋總坪數 → /api/generate-room-plan 直接切割出整層樓的房間配置
+   （牆／門／窗，結構化資料，不需要再像上傳流程那樣用 Gemini 視覺辨識），一定是
+   多房間，所以固定進「選擇房間」步驟，使用者選一間後才落地成單房間的
+   scene_graph 交給既有的 LayoutEditor。 */
+
+async function submitRoomProgram() {
+  const requestId = ++currentRequestId
+  error.value = ''
+  loading.value = true
+  loadingMsg.value = { title: '生成房型配置中', sub: '依房型配置切割空間、繪製牆體與門窗' }
+  result.value = null
+  try {
+    const res = await fetch(apiUrl('/api/generate-room-plan'), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ...cadCounts.value, total_ping: cadTotalPing.value }),
+    })
+    const data = await res.json()
+    if (!res.ok) throw new Error(data.detail || `${res.status}`)
+    if (requestId !== currentRequestId) return
+    cadPlanResult.value = data
+    if ((data.rooms || []).length > 1) {
+      loading.value = false
+      nextStep() // → 'roomPick'
+      return
+    }
+    if (data.rooms?.[0]) await handleCadRoomSelected(data.rooms[0], requestId)
+    else { error.value = '沒有可用的房間，請調整房型配置'; loading.value = false }
+  } catch (e) {
+    if (requestId === currentRequestId) { error.value = `生成房型配置失敗：${e.message}`; loading.value = false }
+  }
+}
+
+// 把目前這間房相關的狀態存一份快照，供之後從縮圖切回來還原用。
+function snapshotCurrentCadRoom() {
+  const id = cadActiveRoomId.value
+  if (!id) return
+  cadRoomSnapshots.value = {
+    ...cadRoomSnapshots.value,
+    [id]: {
+      roomW: roomW.value, roomD: roomD.value, roomTypeForPlan: roomTypeForPlan.value,
+      editPlacements: editPlacements.value, floorPlanPath: floorPlanPath.value, floorPlanUrl: floorPlanUrl.value,
+      sceneGraph: sceneGraph.value, layoutRenderConfig: layoutRenderConfig.value,
+      result: result.value, lastGeneratedImage: lastGeneratedImage.value,
+    },
+  }
+}
+
+function restoreCadRoomSnapshot(roomId) {
+  const snap = cadRoomSnapshots.value[roomId]
+  if (!snap) return false
+  roomW.value = snap.roomW
+  roomD.value = snap.roomD
+  roomTypeForPlan.value = snap.roomTypeForPlan
+  editPlacements.value = snap.editPlacements
+  floorPlanPath.value = snap.floorPlanPath
+  floorPlanUrl.value = snap.floorPlanUrl
+  sceneGraph.value = snap.sceneGraph
+  layoutRenderConfig.value = snap.layoutRenderConfig
+  result.value = snap.result
+  lastGeneratedImage.value = snap.lastGeneratedImage
+  return true
+}
+
+// 使用者從「選擇房間」／右上角縮圖選定一間房後，把它的絕對座標矩形換算成單房間的
+// roomW/roomD。回頭選過的房間（cadRoomSnapshots 裡已經有）直接還原上次的進度；
+// 第一次選的房間才用 cadDefaultPlacements 的預設家具跟 render-floor-plan 要一張底圖。
+async function handleCadRoomSelected(room, requestId = ++currentRequestId) {
+  cadActiveRoomId.value = room.id
+  if (!cadRoomStatus.value[room.id]) {
+    cadRoomStatus.value = { ...cadRoomStatus.value, [room.id]: 'active' }
+  }
+  uploadedPlanUrl.value = cadPlanResult.value?.svg_url || ''
+
+  if (restoreCadRoomSnapshot(room.id)) {
+    goStep(steps.value.findIndex(s => s.key === 'plan'))
+    return
+  }
+
+  error.value = ''
+  loading.value = true
+  loadingMsg.value = { title: '準備房間底圖中', sub: '生成預設家具配置與平面圖' }
+  try {
+    roomW.value = room.w
+    roomD.value = room.h
+    roomTypeForPlan.value = CAD_ROOM_TYPE_TO_EDITOR[room.room_type] || 'living_room'
+    sceneGraph.value = null
+    editPlacements.value = cadDefaultPlacements(roomTypeForPlan.value)
+
+    const res = await fetch(apiUrl('/api/render-floor-plan'), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        furniture_placements: editPlacements.value,
+        room_w: roomW.value,
+        room_d: roomD.value,
+        room_type: roomTypeForPlan.value,
+      }),
+    })
+    if (!res.ok) throw new Error(`${res.status}`)
+    const data = await res.json()
+    if (requestId !== currentRequestId) return
+    floorPlanPath.value = data.floor_plan_path || ''
+    floorPlanUrl.value = data.floor_plan_url || ''
+    goStep(steps.value.findIndex(s => s.key === 'plan'))
+  } catch (e) {
+    if (requestId === currentRequestId) error.value = `準備房間底圖失敗：${e.message}`
+  } finally {
+    if (requestId === currentRequestId) loading.value = false
+  }
+}
+
+// 縮圖上點別間房——只有目前這間已經渲染完成（cadRoomStatus === 'done'）才會被呼叫
+// （縮圖元件自己也擋，這裡再擋一次避免中途跳房弄亂進度）。
+function jumpToCadRoom(room) {
+  const activeId = cadActiveRoomId.value
+  if (activeId && cadRoomStatus.value[activeId] !== 'done') return
+  if (room.id === activeId) return
+  snapshotCurrentCadRoom()
+  handleCadRoomSelected(room)
+}
+
 /* ══ Step: 上傳空間照片 ════════════════════════════════════
    照片走 /api/generate 的 initial_image_path：visual_preprocessing 會抽視覺特徵、
    requirement agent 會把照片一起餵給 Gemini，所以不需要新的後端端點。 */
@@ -647,6 +859,12 @@ async function submit3D() {
       if (data.generated_image_path) {
         lastGeneratedImage.value = { path: data.generated_image_path, url: data.generated_image_url || null }
       }
+      // CAD 多房間流程：這間房的 3D 渲染圖生成完成才算「完成」，縮圖到這裡才會解鎖、
+      // 可以點去別間房（見 jumpToCadRoom）。
+      if (planSource.value === 'cad' && cadActiveRoomId.value) {
+        cadRoomStatus.value = { ...cadRoomStatus.value, [cadActiveRoomId.value]: 'done' }
+        snapshotCurrentCadRoom()
+      }
     }
   } catch (e) {
     if (requestId === currentRequestId) error.value = `生成渲染圖失敗：${e.message}`
@@ -731,6 +949,8 @@ async function submitRefine() {
       if (data.generated_image_path) {
         lastGeneratedImage.value = { path: data.generated_image_path, url: data.generated_image_url || null }
       }
+      // 微調也是同一間房的最新結果，重新存一次快照，回來看到的才是微調後的版本
+      if (planSource.value === 'cad' && cadActiveRoomId.value) snapshotCurrentCadRoom()
     }
   } catch (e) {
     if (requestId === currentRequestId) error.value = `微調失敗：${e.message}`
@@ -800,6 +1020,9 @@ export function useDesignFlow() {
     // 平面圖
     floorPlanUrl, floorPlanPath, sceneGraph, floorPlanUpload, uploadedPlanUrl,
     detectedRooms, handleRoomSelected,
+    // CAD 房型生成
+    cadCounts, cadTotalPing, cadPlanResult, submitRoomProgram, handleCadRoomSelected,
+    cadActiveRoomId, cadRoomStatus, jumpToCadRoom,
     // 佈局
     editPlacements, roomW, roomD, roomTypeForPlan, layoutViewMode, layoutRenderConfig,
     onEditorChange, updateFloorPlan,

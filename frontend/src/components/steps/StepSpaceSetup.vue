@@ -20,7 +20,7 @@ import {
 const {
   planSource, roomType, roomTypeForPlan, spaceSizePing, customRoomW, customRoomD, outputAspect,
   furnitureItems, furnitureQty, extraPrompt, familyNeeds, fengshuiRules,
-  loading, submitLayout, nextStep, scheduleSearch,
+  loading, submitLayout, nextStep, scheduleSearch, startFlow,
 } = useDesignFlow()
 
 const isSkip = computed(() => planSource.value === 'skip')
@@ -151,6 +151,16 @@ function submit() {
 
 <template>
   <div class="space-setup">
+    <!-- 這一步一定是「單間」（AI 排單一房間家具，或不排家具直接生成）；
+         點「整層房屋」切去 cad 流程的房型設定步驟（StepRoomProgram.vue）。 -->
+    <div class="mode-toggle-wrap">
+      <span class="mode-toggle-label">生成範圍</span>
+      <div class="mode-toggle" role="group" aria-label="生成範圍">
+        <button type="button" class="active">單間</button>
+        <button type="button" :disabled="loading" @click="startFlow('cad')">整層房屋</button>
+      </div>
+    </div>
+
     <div class="columns" :class="{ 'one-col': isSkip }">
 
       <!-- ── 空間類型 ── -->
@@ -373,6 +383,50 @@ function submit() {
 
 <style scoped>
 .space-setup { display: flex; flex-direction: column; }
+
+/* 單間／整層房屋——跟 StepRoomProgram.vue 的切換鈕同一套視覺，維持步驟之間一致 */
+.mode-toggle-wrap {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 0.35rem;
+  margin-bottom: 1.25rem;
+}
+.mode-toggle-label {
+  font-size: 0.78rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: var(--db-text-soft);
+}
+.mode-toggle {
+  display: inline-flex;
+  padding: 4px;
+  border: 1px solid #e2ddd0;
+  border-radius: var(--db-radius-pill);
+  background: var(--db-chip-soft);
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.04);
+}
+.mode-toggle button {
+  padding: 0.55rem 1.3rem;
+  border: none;
+  border-radius: var(--db-radius-pill);
+  background: none;
+  color: var(--db-text-soft);
+  font-family: var(--db-font-display);
+  font-style: italic;
+  font-weight: 500;
+  font-size: 1rem;
+  cursor: pointer;
+  transition: background 0.16s, color 0.16s, box-shadow 0.16s;
+}
+.mode-toggle button:not(.active):hover { background: rgba(255, 255, 255, 0.7); color: var(--db-text); }
+.mode-toggle button:disabled { opacity: 0.5; cursor: not-allowed; }
+.mode-toggle button.active {
+  background: var(--db-accent);
+  color: var(--db-on-accent);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.12);
+  cursor: default;
+}
 
 /* 排家具路徑三欄（房型／家具／坪數），收窄後置中，不等分整張卡——
    等分會讓內容少的欄下方空一大塊，分隔線又剛好把空白框起來。 */
@@ -645,5 +699,8 @@ function submit() {
   .columns.one-col { grid-template-columns: 1fr; }
   .col + .col { border-left: none; padding-left: 0; padding-top: 1.5rem; border-top: 1px solid #f0f0f0; }
   .actions .db-btn { min-width: 0; width: 100%; }
+  .mode-toggle-wrap { align-items: flex-start; width: 100%; }
+  .mode-toggle { width: 100%; }
+  .mode-toggle button { flex: 1; }
 }
 </style>
