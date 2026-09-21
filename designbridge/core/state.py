@@ -48,11 +48,16 @@ class DesignBridgeState(TypedDict):
     # Agent outputs
     style_params: NotRequired[StyleParamsJSON]
     scene_graph: NotRequired[SceneGraphJSON]
-    # Composer output: design_description + style_params.style_prompt reconciled into
-    # one coherent render prompt (see designbridge/core/nodes/composer.py). Absent when
-    # there's no style to reconcile against, or the composer LLM call failed — renderer
-    # falls back to its own naive concatenation either way.
+    # Composer output: design_description + style_params.style_prompt + layout furniture
+    # facts reconciled into one coherent render prompt (see designbridge/core/nodes/composer.py).
+    # Absent when there was nothing to reconcile (no style, no furniture), or the composer
+    # LLM call failed — renderer falls back to its own naive concatenation either way.
     composed_prompt: NotRequired[str]
+    # True when composed_prompt already wove in the layout's furniture/placement facts —
+    # tells renderer to skip its own separate furniture-prefix injection (it would otherwise
+    # duplicate what composer already said, using a coarser, non-projection-corrected
+    # description). See composer.py's `_layout_facts_text`.
+    composed_includes_furniture: NotRequired[bool]
     # Renderer output
     render_result: NotRequired[RenderResultJSON]
     generated_image: NotRequired[str]

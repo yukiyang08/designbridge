@@ -265,11 +265,8 @@ def renderer(state: DesignBridgeState) -> dict[str, Any]:
     out_path = render_dir / f"{task_id}_{render_suffix}.png"
 
     _user_text_prompt = ((state.get("user_input") or {}).get("text_prompt") or "").strip()
-    # composer already reconciled design_description + style_params.style_prompt into one
-    # coherent paragraph when there was a style to merge (see composer.py) — use that
-    # instead of naively concatenating them again. Falls back to the old concatenation
-    # when composer was skipped (no style to reconcile) or its LLM call failed.
     composed_prompt = (state.get("composed_prompt") or "").strip()
+    composed_includes_furniture = bool(state.get("composed_includes_furniture"))
     if composed_prompt:
         prompt = composed_prompt
     else:
@@ -277,8 +274,9 @@ def renderer(state: DesignBridgeState) -> dict[str, Any]:
             req, style_params=style_params, user_text_prompt=_user_text_prompt,
         )
 
-    # 只有使用者明確要求重新規劃佈局時，才把 layout 結果注入 prompt
-    if req.get("hint_layout"):
+    # 只有使用者明確要求重新規劃佈局時，才把 layout 結果注入 prompt——但如果 composer
+    # 已經把這段揉進 composed_prompt 了，這裡不重複注入，否則同一段文字會出現兩次。
+    if req.get("hint_layout") and not composed_includes_furniture:
         scene_graph = state.get("scene_graph") or {}
         layout_prompt = (scene_graph.get("layout_prompt") or "").strip()
 
@@ -316,9 +314,11 @@ def renderer(state: DesignBridgeState) -> dict[str, Any]:
         "negative_prompt_preview": negative_prompt or "",
         "output_aspect": output_aspect,
         "output_size": {"width": output_width, "height": output_height},
-        # true = composer 成功整合過（design_description + style_prompt 合併成一段）；
-        # false = 落回舊的字串硬接，通常代表 composer 被跳過（沒有風格要合併）或 LLM 呼叫失敗
+        # true = composer 成功整合過（design_description + style_prompt + 家具佈局合併成一段，
+        # 視實際有沒有風格/家具而定哪些部分有參與）；false = 落回舊的字串硬接，通常代表
+        # composer 被跳過（沒有風格也沒有家具可合併）或 LLM 呼叫失敗
         "composer_used": bool(composed_prompt),
+        "composer_includes_furniture": composed_includes_furniture,
     }
     backend = "placeholder"
 
@@ -389,9 +389,11 @@ def renderer(state: DesignBridgeState) -> dict[str, Any]:
         controlnet_inputs["floor_plan"] = str(floor_plan_path)
         print(f"[renderer] 2D floor plan → 3D render guide: {Path(floor_plan_path).name}")
 
-    # Inject furniture positions from scene_graph into prompt
+    # Inject furniture positions from scene_graph into prompt.
     furniture_placements = scene_graph_data.get("furniture_placements") or []
-    if furniture_placements:
+    if furniture_placements and composed_includes_furniture:
+        generation_params["layout_prompt_source"] = "composer"
+    elif furniture_placements:
         # 走投影深度時，優先用家具在深度圖上的實際落點來描述——這樣「沙發在左邊」指的
         # 就是深度圖左邊那塊輪廓，而不是平面圖上的左邊（透視後未必是同一處）。
         spatial_desc = ""

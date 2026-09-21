@@ -88,8 +88,13 @@ def _analyze_style_image_with_gemini(image_path: str) -> str:
 
         analysis_prompt = (
             "Analyze this interior design style reference image. "
-            "Describe concisely in English: color palette, materials and textures, "
-            "furniture style, lighting mood, and overall atmosphere. "
+            "Describe concisely in English: color palette, materials, textures, "
+            "lighting mood, and overall atmosphere. "
+            "Do NOT mention specific furniture types, counts, or arrangement (e.g. 'a sofa', "
+            "'two chairs', 'coffee tables') — the room's actual furniture is decided separately "
+            "by the layout planner, and repeating or inventing furniture here creates contradictions "
+            "with it. Only describe material/finish qualities (e.g. 'low-profile upholstered forms', "
+            "'sleek metal legs') if relevant, never specific pieces or quantities. "
             "Output only the description (no headers, no bullet points), "
             "suitable for appending to an image generation prompt. Under 60 words."
         )
