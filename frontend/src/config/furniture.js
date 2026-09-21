@@ -15,6 +15,8 @@ export const FURNITURE_LABEL_ZH = {
   bathtub: '浴缸', shower: '淋浴間', toilet: '馬桶', sink: '洗手台',
   vanity: '浴櫃', towel_rack: '毛巾架',
   toy_storage: '玩具收納', study_chair: '兒童椅', bean_bag: '懶骨頭',
+  // 陽台（CAD 房型生成會產生這個房型，見 designbridge/roomplan）。
+  washer: '洗衣機', drying_rack: '曬衣架', balcony_cabinet: '陽台收納櫃', mop_sink: '洗衣槽',
   default: '家具',
 }
 
@@ -39,6 +41,8 @@ export const FURNITURE_ICON_MAP = {
   sink: 'mdi:sink', vanity: 'mdi:cupboard-outline', towel_rack: 'mdi:hanger',
   toy_storage: 'mdi:toy-brick-outline', study_chair: 'mdi:seat-outline',
   bean_bag: 'mdi:sofa-single-outline',
+  washer: 'mdi:washing-machine', drying_rack: 'mdi:hanger', balcony_cabinet: 'mdi:cupboard-outline',
+  mop_sink: 'mdi:sink',
   default: 'mdi:cube-outline',
 }
 
@@ -116,6 +120,28 @@ export const FURNITURE_BY_ROOM = {
     { value: 'bean_bag',      label: '懶骨頭' },
     { value: 'rug',           label: '地毯' },
   ],
+  // 客餐廳合一——CAD 房型生成（designbridge/roomplan）把客廳跟餐廳算成同一間房，
+  // 家具面板就把兩邊清單合併，不用另外拆房間。
+  living_dining: [
+    { value: 'sofa',          label: '沙發' },
+    { value: 'coffee_table',  label: '茶几' },
+    { value: 'tv_unit',       label: '電視櫃' },
+    { value: 'dining_table',  label: '餐桌' },
+    { value: 'chair',         label: '餐椅' },
+    { value: 'armchair',      label: '扶手椅' },
+    { value: 'rug',           label: '地毯' },
+    { value: 'plant',         label: '植物' },
+    { value: 'bookshelf',     label: '書架' },
+    { value: 'side_table',    label: '邊桌' },
+  ],
+  // 陽台——CAD 房型生成會產生這個房型，舊版精靈原本沒有對應的家具面板。
+  balcony: [
+    { value: 'washer',          label: '洗衣機' },
+    { value: 'drying_rack',     label: '曬衣架' },
+    { value: 'balcony_cabinet', label: '收納櫃' },
+    { value: 'mop_sink',        label: '洗衣槽' },
+    { value: 'plant',           label: '植物' },
+  ],
 }
 
 // FURNITURE_BY_ROOM 條目沒有預設尺寸，LayoutEditor 的「新增家具」要落地一個正規化 w/h——
@@ -130,6 +156,7 @@ export const FURNITURE_DEFAULT_SIZE = {
   bathtub: [0.30, 0.14], shower: [0.16, 0.16], toilet: [0.09, 0.12],
   sink: [0.10, 0.08], vanity: [0.14, 0.08], towel_rack: [0.08, 0.03],
   toy_storage: [0.14, 0.08], study_chair: [0.07, 0.07], bean_bag: [0.11, 0.11],
+  washer: [0.16, 0.16], drying_rack: [0.20, 0.06], balcony_cabinet: [0.14, 0.08], mop_sink: [0.12, 0.10],
   default: [0.12, 0.10],
 }
 

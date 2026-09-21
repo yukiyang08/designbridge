@@ -11,21 +11,15 @@ import thumbScratch from '@/assets/figma/entry-scratch.png'
 const router = useRouter()
 const { startFlow } = useDesignFlow()
 
-// 第四條路（上傳 2D 平面配置圖，含多房間自動分割 + 選房間）已經重新開放。
-// 縮圖先借用「繪製平面圖」那張圖當 placeholder（entry-upload.png 還沒有設計稿），
-// 之後有正式設計圖再換掉 thumb。
+// 原本的「從繪製平面設計圖開始」「上傳CAD平面配置圖」兩張入口卡拿掉了——
+// 兩者的功能都收進 cad 流程的房型設定步驟（StepRoomProgram.vue）當次要按鈕：
+// 「上傳我自己的平面圖」「跳過，直接生成單間家具佈局」，不再各自佔一張首頁卡片。
 const ENTRIES = [
   {
-    source: 'generate',
+    source: 'cad',
     thumb: thumbPlan,
-    title: ['從繪製平面設計圖開始'],
-    desc: '選房型與家具，AI 先排出 2D 平面配置，可自己拖曳微調',
-  },
-  {
-    source: 'upload',
-    thumb: thumbPlan,
-    title: ['上傳CAD平面配置圖'],
-    desc: '已有設計師的平面圖？直接上傳，AI 幫你辨識房間與家具',
+    title: ['從 CAD 平面圖開始'],
+    desc: '填房型＋坪數自動切割整層格局，也能上傳自己的平面圖，或跳過直接排單間家具',
   },
   {
     source: 'photo',
@@ -93,7 +87,7 @@ function pick(source) {
 
 .cards {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
   gap: clamp(1rem, 2.4vw, 2rem);
   width: min(1440px, calc(100vw - 3rem));
   margin: 0 auto;

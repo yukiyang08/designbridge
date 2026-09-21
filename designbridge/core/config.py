@@ -205,9 +205,13 @@ class Config:
     # Union-style ControlNets need an explicit mode index; standalone ones must omit it.
     EDGE_CONTROLNET_MODE: str = os.getenv("DESIGNBRIDGE_EDGE_CONTROLNET_MODE", "")
     # Kept well below the depth scale: boundaries should sharpen the geometry depth
-    # already implies, not override it.
+    # already implies, not override it. The segmentation model sometimes splits one
+    # real surface into many small flickering regions (clutter, reflections, fabric
+    # folds); _seg_to_edge_condition now filters those out before extracting
+    # boundaries, but 0.3 (down from 0.45) leaves slack for whatever noise survives
+    # that filter instead of forcing FLUX to paint a literal seam at every stray edge.
     EDGE_CONDITIONING_SCALE: float = float(
-        os.getenv("DESIGNBRIDGE_EDGE_CONDITIONING_SCALE", "0.45")
+        os.getenv("DESIGNBRIDGE_EDGE_CONDITIONING_SCALE", "0.3")
     )
 
     # Local vision preprocessing (Depth + UPerNet segmentation)

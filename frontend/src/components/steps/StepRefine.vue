@@ -2,19 +2,23 @@
 /**
  * Step 微調編輯 — Figma MacBook Air - 19 / 21
  *
- * 左邊需求輸入 + 畫筆工具，右邊在渲染圖上塗抹遮罩。
+ * 左邊需求輸入 + 畫筆工具，右邊在渲染圖上塗抹遮罩。畫筆跟橡皮擦各有自己獨立的
+ * px 大小（RefineCanvas 塗跟擦共用同一個圓形筆刷，只是切換 mode 決定畫上去還是
+ * 擦掉，所以兩個工具的「大小」是分開的兩個數字，不能共用一個 brushSize）。
  */
 import { computed } from 'vue'
 import RefineCanvas from '@/components/RefineCanvas.vue'
 import { useDesignFlow } from '@/composables/useDesignFlow'
 
 const {
-  textPrompt, brushSize, drawMode,
+  textPrompt, brushSize, eraserSize, drawMode,
   spaceImage, baseImagePreview, refineCanvasRef,
   loading, submitRefine, nextStep, prevStep,
 } = useDesignFlow()
 
 const hasBase = computed(() => !!baseImagePreview.value)
+// RefineCanvas 只吃一個 brush-size：畫筆模式用 brushSize，橡皮擦模式用 eraserSize
+const activeBrushSize = computed(() => drawMode === 'erase' ? eraserSize.value : brushSize.value)
 </script>
 
 <template>
@@ -54,6 +58,12 @@ const hasBase = computed(() => !!baseImagePreview.value)
             :class="['tool-btn', { active: drawMode === 'erase' }]"
             @click="drawMode = 'erase'"
           >橡皮擦</button>
+          <input
+            v-model.number="eraserSize"
+            type="range" min="5" max="120" step="5"
+            class="slider" aria-label="橡皮擦大小"
+          />
+          <span class="slider-val">{{ eraserSize }}px</span>
         </div>
 
         <p class="tool-hint">
@@ -76,7 +86,7 @@ const hasBase = computed(() => !!baseImagePreview.value)
           v-if="hasBase"
           ref="refineCanvasRef"
           :image-url="baseImagePreview"
-          :brush-size="brushSize"
+          :brush-size="activeBrushSize"
           :draw-mode="drawMode"
         />
         <div v-else class="canvas-empty">

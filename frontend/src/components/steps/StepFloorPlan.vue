@@ -20,7 +20,7 @@ const LayoutPreview3D = defineAsyncComponent(() => import('@/components/LayoutPr
 const {
   editPlacements, roomW, roomD, roomTypeForPlan, layoutViewMode, layoutRenderConfig,
   floorPlanUrl, uploadedPlanUrl, onEditorChange,
-  nextStep, scheduleSearch, loading,
+  nextStep, scheduleSearch, loading, planSource,
 } = useDesignFlow()
 
 const editSceneGraph = computed(() => ({ furniture_placements: editPlacements.value }))
@@ -80,8 +80,8 @@ function goNext() {
         <img :src="floorPlanUrl" alt="2D 平面配置圖" class="ref-img" />
       </details>
       <details v-if="uploadedPlanUrl">
-        <summary>對照原始上傳平面圖</summary>
-        <img :src="uploadedPlanUrl" alt="原始上傳平面圖" class="ref-img" />
+        <summary>{{ planSource === 'cad' ? '對照整層 CAD 分區圖' : '對照原始上傳平面圖' }}</summary>
+        <img :src="uploadedPlanUrl" alt="平面圖參考" class="ref-img" />
       </details>
     </div>
 
