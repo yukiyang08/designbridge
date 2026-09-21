@@ -92,6 +92,10 @@ style_images_dir = Path("style_kb/images")
 if style_images_dir.exists():
     app.mount("/style-images", StaticFiles(directory=str(style_images_dir)), name="style-images")
 
+debug_console_dir = Path("debug-console")
+if debug_console_dir.exists():
+    app.mount("/debug-console", StaticFiles(directory=str(debug_console_dir), html=True), name="debug-console")
+
 # 解決前後端跨域問題 (具備彈性與擴充性的解法)
 cors_origins = os.getenv("CORS_ORIGINS", "").split(",") if os.getenv("CORS_ORIGINS") else []
 

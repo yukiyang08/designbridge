@@ -67,6 +67,13 @@
   .style-search-thumb.selected .cap { color: var(--accent); }
   .empty.small { color: var(--muted); font-size: 11.5px; padding: 4px 0; }
   .hero-img { max-width: 100%; border-radius: 8px; border: 1px solid var(--border); display: block; }
+  .hero-img, .thumbs img { cursor: zoom-in; }
+  .result-images { display: flex; gap: 16px; flex-wrap: wrap; align-items: flex-start; }
+  .result-hero { flex: 2 1 320px; min-width: 240px; }
+  .result-conditions { flex: 1 1 220px; }
+  #lightbox { display: none; position: fixed; inset: 0; background: rgba(0,0,0,.85); z-index: 100; align-items: center; justify-content: center; padding: 24px; cursor: zoom-out; }
+  #lightbox.open { display: flex; }
+  #lightbox img { max-width: 100%; max-height: 100%; border-radius: 8px; }
   table.ftable { width: 100%; border-collapse: collapse; font-size: 12px; }
   table.ftable th, table.ftable td { border-bottom: 1px solid var(--border); padding: 4px 6px; text-align: left; font-family: var(--mono); }
   table.ftable th { color: var(--muted); font-weight: 500; }
@@ -205,6 +212,22 @@ async function checkHealth() {
 }
 checkHealth();
 $('#apiBase').addEventListener('change', checkHealth);
+
+// ── lightbox（點圖放大：最終生成圖 + 所有條件圖）────────────────────────────
+const lightbox = document.createElement('div');
+lightbox.id = 'lightbox';
+lightbox.innerHTML = '<img>';
+document.body.appendChild(lightbox);
+lightbox.addEventListener('click', () => lightbox.classList.remove('open'));
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') lightbox.classList.remove('open');
+});
+$('#results').addEventListener('click', (e) => {
+  const img = e.target.closest('.hero-img, .thumbs img');
+  if (!img) return;
+  lightbox.querySelector('img').src = img.src;
+  lightbox.classList.add('open');
+});
 
 // ── slider live values ───────────────────────────────────────────────────
 function bindSlider(rangeId, outId) {
@@ -486,18 +509,43 @@ function renderResults(data) {
     </div>
   </div>`;
 
-  // 2. 最終生成圖
-  html += `<div class="card"><h2>最終生成圖</h2>`;
-  if (data.generated_image_url) {
-    html += `<img class="hero-img" src="${data.generated_image_url}">`;
-  } else {
-    html += `<div class="empty">沒有生成圖片（${escapeHtml(gp.render_error || '未知原因')}）</div>`;
-  }
-  html += `</div>`;
+  // 2. 最終生成圖 + 深度圖/ControlNet 條件圖（含 floor plan，並排顯示，點圖可放大）
+  const conditions = rr.controlnet_inputs || {};
+  const thumbs = Object.entries(conditions).map(([label, path]) => {
+    const url = toArtifactUrl(path);
+    if (!url) return `<figure><figcaption>${escapeHtml(label)}：無法預覽（伺服器本機路徑）<br>${escapeHtml(path)}</figcaption></figure>`;
+    return `<figure><img src="${url}"><figcaption>${escapeHtml(label)}</figcaption></figure>`;
+  }).join('');
+  html += `<div class="card">
+    <h2>最終生成圖 / 條件圖</h2>
+    <div class="result-images">
+      <div class="result-hero">
+        ${data.generated_image_url
+          ? `<img class="hero-img" src="${data.generated_image_url}">`
+          : `<div class="empty">沒有生成圖片（${escapeHtml(gp.render_error || '未知原因')}）</div>`}
+      </div>
+      <div class="thumbs result-conditions">
+        ${thumbs || '<div class="empty small">這次生成沒有用到任何條件圖（純文字生圖）</div>'}
+      </div>
+    </div>
+  </div>`;
 
   // 3. Prompt 組合
+  const composerUsed = !!gp.composer_used;
+  const rawDesignDesc = (data.structured_requirement || {}).design_description || '';
+  const rawStylePrompt = (data.style_params || {}).style_prompt || '';
   html += `<div class="card">
     <h2>Prompt 組合結果</h2>
+    <div class="kv">
+      <dt>composer 是否介入</dt>
+      <dd><span class="badge ${composerUsed ? 'backend' : 'route'}">${composerUsed ? '✅ 有合併衝突來源' : '➖ 未觸發（無風格可合併 / LLM 失敗，走舊字串硬接）'}</span></dd>
+    </div>
+    ${rawDesignDesc || rawStylePrompt ? `
+    <h3>合併前的兩個來源（供比對）</h3>
+    <div class="kv" style="grid-template-columns: 160px 1fr;">
+      <dt>RA design_description</dt><dd style="white-space:pre-wrap; font-family:var(--mono);">${escapeHtml(rawDesignDesc || '(空)')}</dd>
+      <dt>style_kb style_prompt</dt><dd style="white-space:pre-wrap; font-family:var(--mono);">${escapeHtml(rawStylePrompt || '(空，代表沒有比對到風格，composer 不會被觸發)')}</dd>
+    </div>` : ''}
     <h3>最終 prompt（送進生圖模型的完整版本）</h3>
     <pre>${escapeHtml(gp.prompt_preview || '(無)')}</pre>
     <h3>negative prompt</h3>
@@ -514,18 +562,6 @@ function renderResults(data) {
       ['controlnet_guidance', gp.controlnet_guidance],
       ['layout_prompt_source', gp.layout_prompt_source],
     ])}
-  </div>`;
-
-  // 4. 深度圖 / ControlNet 條件圖
-  const conditions = rr.controlnet_inputs || {};
-  const thumbs = Object.entries(conditions).map(([label, path]) => {
-    const url = toArtifactUrl(path);
-    if (!url) return `<figure><figcaption>${escapeHtml(label)}：無法預覽（伺服器本機路徑）<br>${escapeHtml(path)}</figcaption></figure>`;
-    return `<figure><img src="${url}"><figcaption>${escapeHtml(label)}</figcaption></figure>`;
-  }).join('');
-  html += `<div class="card">
-    <h2>深度圖 / ControlNet 條件圖</h2>
-    ${thumbs ? `<div class="thumbs">${thumbs}</div>` : '<div class="empty">這次生成沒有用到任何條件圖（純文字生圖）</div>'}
   </div>`;
 
   // 5. Agent / 中間節點輸出
