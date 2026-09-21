@@ -14,63 +14,37 @@ def layout_and_style_agent_stub(state: DesignBridgeState) -> dict[str, Any]:
     """Layout + style agent.
 
     Layout planning is only executed when the user explicitly requests spatial reorganization
-    (hint_layout=True from LLM semantic analysis). Otherwise only style params are built,
-    and spatial structure is left to the depth map (if available).
+    (hint_layout=True from LLM semantic analysis) and there isn't already a planned scene_graph.
+    Style params are searched independently and exactly once, regardless of which layout branch
+    below is taken — style search used to live inside the "no existing scene_graph" branch only,
+    which meant requests arriving with a scene_graph already set (Step 1's /api/generate-layout
+    or /api/parse-floor-plan output) silently got no style_params at all, ever. Computing it up
+    front fixes that without duplicating the search.
     """
-    # 已經跑過一次了（/api/plan-layout 先規劃、使用者確認後才呼叫 /api/generate）——
-    # 不重新搜尋風格、更不重新呼叫 layout_agent 的 Gemini。但 scene_graph 裡的
-    # furniture_placements 可能在 3D 預覽裡被使用者拖動過，projected_depth_path
-    # 是純 NumPy 運算出來的（不是 LLM 呼叫，重算很便宜），必須依當下座標重新投影一次，
-    # 不然 ControlNet 吃到的還是使用者編輯前的舊位置。
-    if state.get("scene_graph"):
-        from designbridge.layout.layout_agent import reproject_scene_graph
-        from designbridge.render.render_prompt import _resolve_output_size
-
-        req = state.get("structured_requirement") or {}
-        user_input = state.get("user_input") or {}
-        task_id = state.get("task_id") or str(uuid.uuid4())
-        output_size = _resolve_output_size(
-            str(user_input.get("output_aspect") or "auto"), user_input.get("initial_image")
-        )
-        updated_scene_graph = reproject_scene_graph(
-            state["scene_graph"], req.get("space_info") or {}, task_id, output_size,
-        )
-        return {"scene_graph": updated_scene_graph}
-    if state.get("style_params"):
-        return {}
-
     req = state.get("structured_requirement") or {}
     user_input = state.get("user_input") or {}
     hint_layout = bool(req.get("hint_layout", False))
     task_id = state.get("task_id") or str(uuid.uuid4())
 
-    style_params = timed_call("layout_and_style.style_search", task_id, build_style_params, req, user_input)
-
-    # Step 1 (the /layout API endpoint) may already have planned the room and seeded its
-    # scene_graph into state. Re-running the layout agent here would discard that plan and
-    # hand back a different arrangement than the one the user just reviewed and accepted,
-    # so reuse it and only build the style params.
-    existing_scene_graph = state.get("scene_graph") or {}
-    if existing_scene_graph.get("floor_plan_path"):
-        print(
-            "[layout_and_style] Reusing Step-1 floor plan: "
-            f"{existing_scene_graph['floor_plan_path']}"
-        )
-        return {
-            **({"style_params": style_params} if style_params else {}),
-            "intermediate_outputs": {
-                **(state.get("intermediate_outputs") or {}),
-                "layout_and_style_agent": {
-                    "layout": "reused_from_step1",
-                    "hint_layout": hint_layout,
-                    "style_profile_id": style_params.get("style_profile_id") if style_params else None,
-                },
-            },
-        }
+    style_params = state.get("style_params")
+    if style_params is None:
+        style_params = timed_call("layout_and_style.style_search", task_id, build_style_params, req, user_input)
 
     scene_graph: dict[str, Any] | None = None
     layout_intermediate: dict[str, Any] = {}
-    if hint_layout:
+    existing_scene_graph = state.get("scene_graph")
+    if existing_scene_graph:
+        from designbridge.layout.layout_agent import reproject_scene_graph
+        from designbridge.render.render_prompt import _resolve_output_size
+
+        output_size = _resolve_output_size(
+            str(user_input.get("output_aspect") or "auto"), user_input.get("initial_image")
+        )
+        scene_graph = reproject_scene_graph(
+            existing_scene_graph, req.get("space_info") or {}, task_id, output_size,
+        )
+        layout_status = "reused_from_step1"
+    elif hint_layout:
         from designbridge.layout.layout_agent import run_layout_agent
         from designbridge.render.render_prompt import _resolve_output_size
 
