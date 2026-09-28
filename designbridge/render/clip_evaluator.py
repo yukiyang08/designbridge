@@ -40,7 +40,7 @@ def _translate_to_english(text: str) -> str:
         from designbridge.render.llm import call_llm
         result = call_llm(
             f"Translate the following text to English. Output only the translated text, nothing else:\n{text}",
-            max_tokens=200,
+            max_tokens=400,
             temperature=0.0,
         )
         translated = result.strip()

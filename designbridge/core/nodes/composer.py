@@ -101,7 +101,12 @@ def composer_node(state: DesignBridgeState) -> dict[str, Any]:
 
     try:
         from designbridge.render.llm import call_llm
-        composed = call_llm(prompt_text, temperature=0.3, max_tokens=280).strip()
+        # max_tokens needs headroom beyond the ~130-word target: gemini-3.x models can't
+        # fully disable hidden thinking (see llm.py _thinking_config), so reasoning tokens
+        # eat into this same budget — too tight here silently truncates mid-sentence
+        # (observed: rule-1 style conflicts needing real reasoning cut the output to a
+        # ~8-word fragment when this was 280).
+        composed = call_llm(prompt_text, temperature=0.3, max_tokens=800).strip()
         if not composed:
             raise ValueError("empty composer output")
         print(f"[composer] merged prompt: {composed[:120]}")
