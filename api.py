@@ -1,4 +1,9 @@
 # DesignBridge FastAPI 後端
+import sys
+
+sys.stdout.reconfigure(encoding="utf-8")
+sys.stderr.reconfigure(encoding="utf-8")
+
 from fastapi import FastAPI, HTTPException, UploadFile, File, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
@@ -132,7 +137,10 @@ class DesignRequest(BaseModel):
     controlnet_scale_override: Optional[float] = None
     controlnet_steps_override: Optional[int] = None
     controlnet_guidance_override: Optional[float] = None
+    controlnet_control_end_override: Optional[float] = None   # 0~1，depth/edge control 在去噪過程中生效到百分之幾就放開
     lora_overrides: Optional[List[dict]] = None   # [{"path": str, "scale": float}]
+    disable_edge_control: Optional[bool] = None   # 停用 edge(canny) ControlNet，只留 depth，方便排查 artifact 來源
+    disable_lora: Optional[bool] = None   # 停用風格 LoRA，只留 ControlNet，方便排查 artifact 來源
 
 
 class LayoutRequest(BaseModel):
@@ -187,7 +195,10 @@ def _build_user_input(request: DesignRequest) -> dict:
             "controlnet_scale": request.controlnet_scale_override,
             "controlnet_steps": request.controlnet_steps_override,
             "controlnet_guidance": request.controlnet_guidance_override,
+            "controlnet_control_end": request.controlnet_control_end_override,
             "loras": request.lora_overrides,
+            "disable_edge_control": request.disable_edge_control,
+            "disable_lora": request.disable_lora,
         }.items() if v is not None
     }
     if render_overrides:
