@@ -1,6 +1,6 @@
 <script setup>
 import { computed, ref, reactive, watch, defineAsyncComponent } from 'vue'
-import { apiUrl } from '@/config/api'
+import { jsonFetch } from '@/config/api'
 import { useFurnitureSelection } from '@/composables/useFurnitureSelection'
 import PanoramaViewer from './PanoramaViewer.vue'
 import PointCloudViewer from './PointCloudViewer.vue'
@@ -59,15 +59,11 @@ async function generatePanorama() {
   panoError.value = null
 
   try {
-    const res = await fetch(apiUrl('/api/generate-panorama'), {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        task_id: result.task_id,
-        image_path: result.generated_image_path,
-        depth_path: result.vision_features?.depth || null,
-        prompt: result.structured_requirement?.meta?.design_goal || '',
-      }),
+    const res = await jsonFetch('/api/generate-panorama', {
+      task_id: result.task_id,
+      image_path: result.generated_image_path,
+      depth_path: result.vision_features?.depth || null,
+      prompt: result.structured_requirement?.meta?.design_goal || '',
     })
     if (!res.ok) {
       const err = await res.json().catch(() => ({}))
@@ -92,14 +88,10 @@ async function fetchQuotation() {
   quotationLoading.value = true
   quotationError.value = ''
   try {
-    const res = await fetch(apiUrl('/api/quotation'), {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        image_path: props.result.generated_image_path,
-        structured_requirement: props.result.structured_requirement || null,
-        selected_furniture: selectedFurniture.value,
-      }),
+    const res = await jsonFetch('/api/quotation', {
+      image_path: props.result.generated_image_path,
+      structured_requirement: props.result.structured_requirement || null,
+      selected_furniture: selectedFurniture.value,
     })
     if (!res.ok) throw new Error(`${res.status}`)
     const data = await res.json()

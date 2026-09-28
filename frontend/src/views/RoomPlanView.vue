@@ -7,7 +7,7 @@
 import { reactive, ref, computed } from 'vue'
 import { useRouter } from 'vue-router'
 import LoadingState from '@/components/shell/LoadingState.vue'
-import { apiUrl, mediaUrl } from '@/config/api'
+import { mediaUrl, jsonFetch } from '@/config/api'
 
 const router = useRouter()
 function goHome() { router.push('/') }
@@ -46,11 +46,7 @@ async function generate() {
   error.value = ''
   result.value = null
   try {
-    const res = await fetch(apiUrl('/api/generate-room-plan'), {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ ...counts, total_ping: totalPing.value }),
-    })
+    const res = await jsonFetch('/api/generate-room-plan', { ...counts, total_ping: totalPing.value })
     const data = await res.json()
     if (!res.ok) throw new Error(data.detail || `生成失敗（${res.status}）`)
     result.value = data
