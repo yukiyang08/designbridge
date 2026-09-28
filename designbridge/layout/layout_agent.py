@@ -973,7 +973,7 @@ def _parse_llm_layout(text: str) -> dict | None:
 def _call_llm_layout(prompt: str) -> list[FurnitureItem]:
     from designbridge.render.llm import call_llm
 
-    text = call_llm(prompt)
+    text = call_llm(prompt, json_mode=True)
     data = _parse_llm_layout(text)
     furniture_list = (data or {}).get("furniture") or []
     if not furniture_list:
@@ -1046,7 +1046,11 @@ def parse_floor_plan_image(
     )
 
     try:
-        text = call_llm(prompt, images=[image_path])
+        # ponytail: bounds worst-case latency/cost — observed avg is ~2.3-2.7k tokens
+        # (ablation 4.4), a runaway repetition loop with no cap ran to the 32k platform
+        # ceiling (308s, see ablation 4.3b). 4000 truncated dense plans (30+ items); 8000
+        # still bounds the worst case while giving them room.
+        text = call_llm(prompt, images=[image_path], json_mode=True, max_tokens=8000)
     except Exception as e:  # noqa: BLE001
         print(f"⚠️  Gemini floor-plan parse failed: {e}")
         return None
@@ -1136,7 +1140,7 @@ def detect_rooms_in_floor_plan(image_path: str) -> list[dict] | None:
     )
 
     try:
-        text = call_llm(prompt, images=[image_path])
+        text = call_llm(prompt, images=[image_path], json_mode=True, max_tokens=8000)
     except Exception as e:  # noqa: BLE001
         print(f"⚠️  Gemini room detection failed: {e}")
         return None

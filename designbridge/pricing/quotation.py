@@ -105,7 +105,7 @@ def detect_furniture_gemini(image_path: str, style_hint: str = "") -> list[dict]
     if style_hint:
         prompt += f"\n圖片風格提示：{style_hint}"
     try:
-        response = call_llm(prompt, images=[image_path])
+        response = call_llm(prompt, images=[image_path], json_mode=True)
         items = _parse_json_array(response)
         return items if isinstance(items, list) else []
     except Exception as e:

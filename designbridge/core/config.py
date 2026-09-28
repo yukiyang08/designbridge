@@ -22,12 +22,22 @@ class Config:
 
     # Vertex AI mode: no API key, authenticate via service-account JSON (ADC).
     GOOGLE_GENAI_USE_VERTEXAI: bool = os.getenv("GOOGLE_GENAI_USE_VERTEXAI", "").lower() in ("1", "true", "yes")
+    GOOGLE_GENAI_FORCE_API_KEY: bool = os.getenv("GOOGLE_GENAI_FORCE_API_KEY", "").lower() in ("1", "true", "yes")
     GOOGLE_CLOUD_PROJECT: str = os.getenv("GOOGLE_CLOUD_PROJECT", "")
     GOOGLE_CLOUD_LOCATION: str = os.getenv("GOOGLE_CLOUD_LOCATION", "global")
     GEMINI_TEMPERATURE: float = 0.3
     # 2.5 系列模型預設會啟用隱藏推理（thinking），對抽取/翻譯/辨識這類簡單任務只會多花時間。
     # 0 = 關閉 thinking；-1 = 交給模型動態決定；正整數 = 指定 thinking token 上限。
     GEMINI_THINKING_BUDGET: int = int(os.getenv("DESIGNBRIDGE_GEMINI_THINKING_BUDGET", "0"))
+
+    # 消融實驗用：call_llm() 走哪個 provider，"gemini" | "qwen" | "llama"
+    LLM_PROVIDER: str = os.getenv("DESIGNBRIDGE_LLM_PROVIDER", "gemini")
+    DASHSCOPE_API_KEY: str = os.getenv("DASHSCOPE_API_KEY", "")
+    DASHSCOPE_BASE_URL: str = os.getenv("DASHSCOPE_BASE_URL", "https://dashscope-intl.aliyuncs.com/compatible-mode/v1")
+    QWEN_MODEL: str = os.getenv("DESIGNBRIDGE_QWEN_MODEL", "qwen3-vl-30b-a3b-instruct")
+
+    LLAMA_MODEL: str = os.getenv("DESIGNBRIDGE_LLAMA_MODEL", "meta/llama-4-scout-17b-16e-instruct-maas")
+    LLAMA_LOCATION: str = os.getenv("DESIGNBRIDGE_LLAMA_LOCATION", "us-east5")
 
     # Text embedding model for style retrieval (text-to-text).
     TEXT_EMBEDDING_MODEL: str = os.getenv("DESIGNBRIDGE_TEXT_EMBEDDING_MODEL", "BAAI/bge-m3")
