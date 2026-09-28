@@ -83,6 +83,7 @@ class VisionJSON(TypedDict):
     """Output of Visual Preprocessor."""
 
     segmentation: NotRequired[str | Any]  # path or tensor
+    segmentation_preview: NotRequired[str]  # colorized preview of raw class IDs
     segmentation_meta: NotRequired[str | dict[str, Any]]  # class labels, present objects
     depth: NotRequired[str | Any]  # path or tensor
     geometry_constraints: NotRequired[dict[str, Any]]  # Immutable regions, spatial relations

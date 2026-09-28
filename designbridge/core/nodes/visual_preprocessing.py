@@ -41,6 +41,8 @@ def visual_preprocessing_local(state: DesignBridgeState) -> dict[str, Any]:
                 vision_features["depth"] = artifacts.depth_path
             if artifacts.segmentation_path:
                 vision_features["segmentation"] = artifacts.segmentation_path
+            if artifacts.segmentation_preview_path:
+                vision_features["segmentation_preview"] = artifacts.segmentation_preview_path
             if artifacts.segmentation_meta_path:
                 vision_features["segmentation_meta"] = artifacts.segmentation_meta_path
         except Exception as e:

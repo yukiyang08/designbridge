@@ -23,6 +23,7 @@ class VisionArtifacts:
 
     depth_path: str | None = None
     segmentation_path: str | None = None
+    segmentation_preview_path: str | None = None
     segmentation_meta_path: str | None = None
     layout_json: dict | None = None  # depth_to_layout 萃取結果
 
@@ -203,6 +204,27 @@ def run_segmentation(
     return str(seg_out), str(meta_out), meta_out
 
 
+def _write_segmentation_preview(segmentation_path: Path, preview_path: Path) -> None:
+    """Save a colorized view of the 16-bit class IDs for humans; keep raw labels intact."""
+    import colorsys
+
+    import numpy as np
+    from PIL import Image
+
+    with Image.open(segmentation_path) as image:
+        labels = np.asarray(image, dtype=np.uint16)
+
+    preview = np.zeros((*labels.shape, 3), dtype=np.uint8)
+    for class_id in np.unique(labels):
+        hue = (int(class_id) * 0.618033988749895) % 1.0
+        preview[labels == class_id] = tuple(
+            round(channel * 230 + 25)
+            for channel in colorsys.hsv_to_rgb(hue, 0.72, 0.9)
+        )
+
+    Image.fromarray(preview).save(preview_path)
+
+
 def _cache_key(image_path: str, parts: tuple[Any, ...]) -> str:
     """Content hash of the photo plus everything that changes the output."""
     import hashlib
@@ -262,6 +284,7 @@ def run_visual_preprocessing(
     out_dir = ensure_dir(artifacts_root / "vision" / key)
     depth_out = out_dir / "depth.png"
     seg_out = out_dir / "segmentation.png"
+    seg_preview_out = out_dir / "segmentation_preview.png"
     seg_meta_out = out_dir / "segmentation_meta.json"
     layout_out = out_dir / "layout_from_depth.json"
 
@@ -279,10 +302,16 @@ def run_visual_preprocessing(
                 layout_json = json.loads(layout_out.read_text(encoding="utf-8"))
             except (OSError, ValueError):
                 layout_json = None
+        if enable_segmentation and seg_out.is_file() and not seg_preview_out.is_file():
+            try:
+                _write_segmentation_preview(seg_out, seg_preview_out)
+            except Exception as e:
+                print(f"⚠️  無法建立 segmentation 預覽（{e}）")
         print(f"[vision] 命中快取：{out_dir.name}")
         return VisionArtifacts(
             depth_path=str(depth_out) if enable_depth else None,
             segmentation_path=str(seg_out) if enable_segmentation else None,
+            segmentation_preview_path=str(seg_preview_out) if enable_segmentation and seg_preview_out.is_file() else None,
             segmentation_meta_path=str(seg_meta_out) if enable_segmentation else None,
             layout_json=layout_json,
         )
@@ -334,6 +363,12 @@ def run_visual_preprocessing(
             import warnings
             warnings.warn(f"depth_to_layout 萃取失敗，略過：{e}")
 
+    if seg_path:
+        try:
+            _write_segmentation_preview(Path(seg_path), seg_preview_out)
+        except Exception as e:
+            print(f"⚠️  無法建立 segmentation 預覽（{e}）")
+
     if use_cache and layout_json is not None:
         import json
 
@@ -347,6 +382,7 @@ def run_visual_preprocessing(
     return VisionArtifacts(
         depth_path=depth_path,
         segmentation_path=seg_path,
+        segmentation_preview_path=str(seg_preview_out) if seg_path and seg_preview_out.is_file() else None,
         segmentation_meta_path=seg_meta_path,
         layout_json=layout_json,
     )
