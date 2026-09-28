@@ -1,4 +1,7 @@
 <script setup>
+// ponytail: 已無路由指向這個檔案（router/index.js 的 /classic 已移除）。
+// 新版精靈（StudioView + composables/design-flow）已完整取代這裡的功能，
+// 確認沒有需要再對照的行為之後可以整份刪除。
 import { ref, onMounted, watch, computed, defineAsyncComponent } from 'vue'
 import { useImageField } from '@/composables/useImageField'
 import designbridgeLogo from '../../asset/designbridge_logo.png'

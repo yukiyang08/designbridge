@@ -1,4 +1,6 @@
 <script setup>
+// ponytail: 已無路由指向這個檔案（router/index.js 的 /landing 已移除）。
+// 沒有入口連過去的深色行銷展示頁，確認不再需要之後可以整份刪除。
 import { ref, reactive, computed, onMounted, onBeforeUnmount, nextTick } from 'vue'
 import { useRouter } from 'vue-router'
 
