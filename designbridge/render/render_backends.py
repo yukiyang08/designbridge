@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import threading
 from pathlib import Path
 from typing import Any
 
@@ -11,6 +12,8 @@ from designbridge.core.config import Config
 # ── Model caches (loaded once, reused) ────────────────────────────────────────
 
 _flux_pipeline: Any = None
+_fal_unavailable_loras: set[tuple[tuple[str, str], ...]] = set()
+_fal_unavailable_loras_lock = threading.Lock()
 
 
 # ── Pipeline loaders ──────────────────────────────────────────────────────────
@@ -278,6 +281,7 @@ def _render_flux_controlnet_depth_fal(
     depth_path: str,
     out_path: Path,
     conditioning_scale: float = 0.7,
+    control_end: float = 1.0,
     num_steps: int = 28,
     guidance_scale: float = 3.5,
     output_size: tuple[int, int] = (1024, 1024),
@@ -292,6 +296,14 @@ def _render_flux_controlnet_depth_fal(
     scene-graph projected depth actually constrains furniture placement in the render.
 
     conditioning_scale: 0.0 = ignore depth, ~1.0 = strongly follow depth geometry.
+
+    control_end (0..1): end depth control partway through denoising — structure locks
+    in during the early steps, then the model freely resolves materials for the rest.
+    Flat/low-variance regions of the depth map (a far wall, mostly featureless) give the
+    model almost nothing to anchor on; controlling them for every single step leaves no
+    room to resolve that into a real material, so it renders noise instead. Same fix
+    already used on the layout branch (`_render_flux_depth_controlnet_fal`'s
+    `depth_control_end`). 1.0 = control the whole run (old behaviour).
 
     extra_controls: further ControlNets stacked on the same call, each
     `{"path", "image_path", "scale", "mode"}` (`mode` only for union-style models).
@@ -329,13 +341,15 @@ def _render_flux_controlnet_depth_fal(
         image_size = size_map.get((width, height), {"width": width, "height": height})
 
         model_id = controlnet_model or Config.DEPTH_CONTROLNET_MODEL
-        print(f"[controlnet] model: {model_id}  scale: {conditioning_scale}")
+        print(f"[controlnet] model: {model_id}  scale: {conditioning_scale}  end: {control_end}")
 
         controlnets: list[dict] = [
             {
                 "path": model_id,
                 "control_image_url": depth_url,
                 "conditioning_scale": conditioning_scale,
+                "start_percentage": 0.0,
+                "end_percentage": control_end,
             }
         ]
 
@@ -354,6 +368,8 @@ def _render_flux_controlnet_depth_fal(
                 "path": path,
                 "control_image_url": control_url,
                 "conditioning_scale": float(control.get("scale", 0.5)),
+                "start_percentage": 0.0,
+                "end_percentage": control_end,
             }
             mode = control.get("mode")
             if mode not in (None, ""):
@@ -368,15 +384,40 @@ def _render_flux_controlnet_depth_fal(
             "image_size": image_size,
             "controlnets": controlnets,
         }
-        if loras:
+        lora_signature = tuple(sorted(
+            (str(lora.get("path", "")), str(lora.get("scale", 1)))
+            for lora in (loras or [])
+        ))
+        with _fal_unavailable_loras_lock:
+            skip_known_unavailable_lora = bool(lora_signature) and lora_signature in _fal_unavailable_loras
+
+        if loras and not skip_known_unavailable_lora:
             arguments["loras"] = loras
             print(f"[lora] {', '.join(l['path'].rsplit('/', 1)[-1] for l in loras)}")
+        elif skip_known_unavailable_lora:
+            print("[lora] 已知 fal 無法下載此 LoRA，略過並保留深度 ControlNet")
 
-        result = fal_client.subscribe(
-            "fal-ai/flux-general",
-            arguments=arguments,
-            with_logs=False,
-        )
+        try:
+            result = fal_client.subscribe(
+                "fal-ai/flux-general",
+                arguments=arguments,
+                with_logs=False,
+            )
+        except Exception as e:
+            error_text = str(e).lower()
+            if not loras or "file_download_error" not in error_text or "loras" not in error_text:
+                raise
+
+            with _fal_unavailable_loras_lock:
+                _fal_unavailable_loras.add(lora_signature)
+            print("⚠️  fal.ai 無法下載 LoRA 權重，保留深度 ControlNet 並移除 LoRA 重試")
+            retry_arguments = dict(arguments)
+            retry_arguments.pop("loras", None)
+            result = fal_client.subscribe(
+                "fal-ai/flux-general",
+                arguments=retry_arguments,
+                with_logs=False,
+            )
 
         img_url = result["images"][0]["url"]
         resp = requests.get(img_url, timeout=60)

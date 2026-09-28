@@ -193,6 +193,25 @@ class Config:
     PROJECTED_DEPTH_MAX_CONDITIONING_SCALE: float = float(
         os.getenv("DESIGNBRIDGE_PROJECTED_DEPTH_MAX_CONDITIONING_SCALE", "0.3")
     )
+    # End depth/edge control partway through denoising for the real-photo ControlNet
+    # branch (renderer.py's flux_controlnet_depth_fal call). Structure still locks in
+    # during the early steps; 1.0 = control the whole run. Kept modest, but debug-console
+    # A/B testing showed this alone does NOT fix the "glitched far wall" artifact —
+    # see REAL_PHOTO_DEPTH_MAX_CONDITIONING_SCALE below for the confirmed fix.
+    REAL_PHOTO_DEPTH_CONTROL_END: float = float(
+        os.getenv("DESIGNBRIDGE_REAL_PHOTO_DEPTH_CONTROL_END", "0.7")
+    )
+    # Confirmed by controlled A/B testing (2026-09-28): a flat/low-variance region of a
+    # depth map (e.g. a far wall with almost no texture) gives the model almost nothing
+    # to anchor on. At conditioning_scale >= 0.85 it renders that region as noise no
+    # matter what the prompt asks for; at 0.6 the same photo renders cleanly every time.
+    # Neither disabling the edge ControlNet nor REAL_PHOTO_DEPTH_CONTROL_END fixed it in
+    # isolation — conditioning_scale itself is the lever. requirement_analyzer defaults
+    # pure-style requests to 0.85~1.0 ("preserve structure fully"), so cap it here
+    # regardless of what it asked for.
+    REAL_PHOTO_DEPTH_MAX_CONDITIONING_SCALE: float = float(
+        os.getenv("DESIGNBRIDGE_REAL_PHOTO_DEPTH_MAX_CONDITIONING_SCALE", "0.65")
+    )
     # Design Adjuster 的 inpaint strength：edit_scope 移除前是 edit_scope+0.4 算出來的，
     # 產品端過去固定送 0.6 → 換算後一直是封頂值 0.85，這裡直接固定同一個值，行為不變。
     ADJUSTER_INPAINT_STRENGTH: float = float(os.getenv("DESIGNBRIDGE_ADJUSTER_INPAINT_STRENGTH", "0.85"))
