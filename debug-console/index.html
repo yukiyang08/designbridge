@@ -147,8 +147,6 @@
 
       <label class="inline"><input type="checkbox" id="refineMode"> refine_mode（強制走 design_adjuster）</label>
 
-      <label>family_needs（逗號分隔，選填）</label>
-      <input type="text" id="familyNeeds" placeholder="輪椅, 幼童">
 
       <label>fengshui_rules（逗號分隔，選填）</label>
       <input type="text" id="fengshuiRules" placeholder="床不對門">
@@ -406,8 +404,6 @@ function buildPayload() {
   const styleProfileId = $('#styleProfileId').value.trim();
   if (styleProfileId) payload.style_profile_id = styleProfileId;
 
-  const familyNeeds = parseTags($('#familyNeeds').value);
-  if (familyNeeds.length) payload.family_needs = familyNeeds;
   const fengshui = parseTags($('#fengshuiRules').value);
   if (fengshui.length) payload.fengshui_rules = fengshui;
 

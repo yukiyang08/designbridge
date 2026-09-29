@@ -6,20 +6,21 @@
  *  · 「描述你想要的空間」併進這一頁。原本描述在下一步，等於先選房型／家具、
  *    翻頁、再打字，而且兩頁綁的是同一個欄位，看起來像被問了兩次。
  *  · 坪數收進「進階設定」：多數情況用預設值就好，擺在主畫面會跟房型搶注意力。
- *  · 其餘設計稿沒畫、但會影響生成結果的欄位（自訂長寬、輸出比例、家具數量、
- *    家庭結構、風水）同樣收在進階設定，一個都沒刪。
+ *  · 其餘設計稿沒畫、但會影響生成結果的欄位（自訂長寬、輸出比例、家具數量）
+ *    同樣收在進階設定，一個都沒刪。
+ *  · 風水禁忌反過來從進階設定拉回主畫面（FengshuiPicker.vue）：它是會真的搬動
+ *    家具的硬約束，跟房型／家具同一個等級，收在摺疊面板裡等於做了沒人用。
  */
 import { ref, computed, watch } from 'vue'
 import { Icon } from '@iconify/vue'
 import AdvancedPanel from '@/components/shell/AdvancedPanel.vue'
+import FengshuiPicker from '@/components/FengshuiPicker.vue'
 import { ROOM_OPTIONS, FURNITURE_BY_ROOM, furnitureIcon, furnitureLabel } from '@/config/furniture'
-import {
-  useDesignFlow, ASPECT_OPTIONS, FAMILY_OPTIONS, FENGSHUI_OPTIONS,
-} from '@/composables/useDesignFlow'
+import { useDesignFlow, ASPECT_OPTIONS } from '@/composables/useDesignFlow'
 
 const {
   planSource, roomType, roomTypeForPlan, spaceSizePing, customRoomW, customRoomD, outputAspect,
-  furnitureItems, furnitureQty, extraPrompt, familyNeeds, fengshuiRules,
+  furnitureItems, furnitureQty, extraPrompt, fengshuiRules,
   loading, submitLayout, nextStep, scheduleSearch, startFlow,
 } = useDesignFlow()
 
@@ -110,12 +111,6 @@ const derivedSize = computed(() => {
     custom: false,
   }
 })
-
-function toggleIn(listRef, value) {
-  listRef.value = listRef.value.includes(value)
-    ? listRef.value.filter(v => v !== value)
-    : [...listRef.value, value]
-}
 
 /* 描述改在這一頁輸入，風格推薦是下一步才顯示的，所以打字時就先在背景查好，
    翻頁過去不用再等一次。 */
@@ -273,6 +268,10 @@ function submit() {
       </section>
     </div>
 
+    <!-- ══ 風水禁忌 ══
+         原本收在進階設定裡，但這些是會實際搬動家具的硬約束，不是微調參數。 -->
+    <FengshuiPicker v-model="fengshuiRules" :room-type="roomType" />
+
     <!-- ══ 描述需求：只有不排家具路徑需要在這裡填 ══
          排家具路徑的描述留在下一步（選風格那頁），第一頁專心決定房型／家具／坪數。 -->
     <section v-if="isSkip" class="describe">
@@ -289,7 +288,7 @@ function submit() {
     </section>
 
     <!-- ══ 進階設定 ══ -->
-    <AdvancedPanel hint="坪數・長寬・比例・數量・家庭結構・風水">
+    <AdvancedPanel hint="坪數・長寬・比例・數量">
       <div class="adv-grid">
         <!-- 排家具路徑的坪數已經在主畫面，這裡不重複 -->
         <div v-if="isSkip" class="adv-field">
@@ -346,27 +345,6 @@ function submit() {
           </div>
         </div>
 
-        <div class="adv-field">
-          <label class="field-label">家庭結構</label>
-          <div class="chip-row">
-            <button
-              v-for="opt in FAMILY_OPTIONS" :key="opt.value" type="button"
-              :class="['db-chip', { 'is-active': familyNeeds.includes(opt.value) }]"
-              @click="toggleIn(familyNeeds, opt.value)"
-            >{{ opt.label }}</button>
-          </div>
-        </div>
-
-        <div class="adv-field">
-          <label class="field-label">風水需求</label>
-          <div class="chip-row">
-            <button
-              v-for="opt in FENGSHUI_OPTIONS" :key="opt.value" type="button"
-              :class="['db-chip', { 'is-active': fengshuiRules.includes(opt.value) }]"
-              @click="toggleIn(fengshuiRules, opt.value)"
-            >{{ opt.label }}</button>
-          </div>
-        </div>
       </div>
     </AdvancedPanel>
 

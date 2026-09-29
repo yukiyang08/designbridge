@@ -49,7 +49,6 @@ const customRoomD    = ref(null)
 const furnitureItems = ref([])
 const furnitureQty   = ref({})
 const extraPrompt    = ref('')
-const familyNeeds    = ref([])
 const fengshuiRules  = ref([])
 
 // ── Step 2 form values ────────────────────────────────────────
@@ -257,7 +256,6 @@ async function handleSubmitLayout() {
           t => Array(Math.max(1, furnitureQty.value[t] || 1)).fill(t)
         ),
         text_prompt:     extraPrompt.value,
-        family_needs:    familyNeeds.value,
         fengshui_rules:  fengshuiRules.value,
       }),
     })
@@ -657,7 +655,6 @@ onMounted(fetchStyleOptions)
           v-model:furnitureItems="furnitureItems"
           v-model:furnitureQty="furnitureQty"
           v-model:extraPrompt="extraPrompt"
-          v-model:familyNeeds="familyNeeds"
           v-model:fengshuiRules="fengshuiRules"
           v-model:selectedStyle="selectedStyle"
           v-model:noStyleReference="noStyleReference"

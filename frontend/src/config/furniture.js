@@ -10,6 +10,9 @@ export const FURNITURE_LABEL_ZH = {
   cabinet: '櫃子', dresser: '梳妝台',
   lamp: '立燈', plant: '盆栽', rug: '地毯',
   cat_tree: '貓跳台', dog_bed: '狗窩', litter_box: '貓砂盆',
+  // 風水規則的標的：沒有這幾件家具，開門不見灶／水火不相容／鏡不照床就永遠不會觸發，
+  // 所以它們同時進了後端的 FURNITURE_SIZES 與這裡的選單。
+  stove: '爐灶', fridge: '冰箱', mirror: '鏡子',
   // 浴室／兒童房（Figma 有這兩個房型）。後端 FURNITURE_SIZES 沒收錄這些 type，
   // 會落到 default 尺寸，但名稱仍會進 prompt，渲染時看得出來。
   bathtub: '浴缸', shower: '淋浴間', toilet: '馬桶', sink: '洗手台',
@@ -37,6 +40,7 @@ export const FURNITURE_ICON_MAP = {
   cabinet: 'mdi:cupboard', dresser: 'mdi:dresser',
   lamp: 'mdi:floor-lamp', plant: 'mdi:flower', rug: 'mdi:rug',
   cat_tree: 'mdi:cat', dog_bed: 'mdi:dog', litter_box: 'mdi:tray-full',
+  stove: 'mdi:stove', fridge: 'mdi:fridge', mirror: 'mdi:mirror',
   bathtub: 'mdi:bathtub-outline', shower: 'mdi:shower', toilet: 'mdi:toilet',
   sink: 'mdi:sink', vanity: 'mdi:cupboard-outline', towel_rack: 'mdi:hanger',
   toy_storage: 'mdi:toy-brick-outline', study_chair: 'mdi:seat-outline',
@@ -80,10 +84,14 @@ export const FURNITURE_BY_ROOM = {
     { value: 'desk',          label: '書桌' },
     { value: 'dresser',       label: '梳妝台' },
     { value: 'armchair',      label: '扶手椅' },
+    { value: 'mirror',        label: '鏡子' },
     { value: 'lamp',          label: '燈' },
   ],
   kitchen: [
     { value: 'cabinet',       label: '廚櫃' },
+    { value: 'stove',         label: '爐灶' },
+    { value: 'sink',          label: '水槽' },
+    { value: 'fridge',        label: '冰箱' },
     { value: 'shelf',         label: '層架' },
   ],
   dining_room: [
@@ -106,6 +114,7 @@ export const FURNITURE_BY_ROOM = {
     { value: 'toilet',        label: '馬桶' },
     { value: 'sink',          label: '洗手台' },
     { value: 'vanity',        label: '浴櫃' },
+    { value: 'mirror',        label: '鏡子' },
     { value: 'towel_rack',    label: '毛巾架' },
     { value: 'shelf',         label: '層架' },
   ],
@@ -155,6 +164,7 @@ export const FURNITURE_DEFAULT_SIZE = {
   plant: [0.06, 0.06], lamp: [0.05, 0.05], rug: [0.38, 0.24],
   bathtub: [0.30, 0.14], shower: [0.16, 0.16], toilet: [0.09, 0.12],
   sink: [0.10, 0.08], vanity: [0.14, 0.08], towel_rack: [0.08, 0.03],
+  stove: [0.13, 0.08], fridge: [0.09, 0.09], mirror: [0.12, 0.03],
   toy_storage: [0.14, 0.08], study_chair: [0.07, 0.07], bean_bag: [0.11, 0.11],
   washer: [0.16, 0.16], drying_rack: [0.20, 0.06], balcony_cabinet: [0.14, 0.08], mop_sink: [0.12, 0.10],
   default: [0.12, 0.10],

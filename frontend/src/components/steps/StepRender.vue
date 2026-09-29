@@ -11,6 +11,7 @@
  */
 import { ref, computed, defineAsyncComponent } from 'vue'
 import AdvancedPanel from '@/components/shell/AdvancedPanel.vue'
+import FengshuiPicker from '@/components/FengshuiPicker.vue'
 import StyleSuggestions from '@/components/StyleSuggestions.vue'
 import ImageUpload from '@/components/ImageUpload.vue'
 import DesignDetails from '@/components/steps/DesignDetails.vue'
@@ -22,7 +23,7 @@ import { API_BASE } from '@/config/api'
 const PanoramaViewer = defineAsyncComponent(() => import('@/components/PanoramaViewer.vue'))
 
 const {
-  planSource, extraPrompt, outputAspect,
+  planSource, extraPrompt, outputAspect, fengshuiRules, roomTypeForPlan,
   selectedStyle, noStyleReference, styleRefImage,
   styleOptions, styleLoading, styleError, fetchStyleOptions,
   styleCandidates, candidatesLoading, confirmedStyle, showSuggestions,
@@ -36,6 +37,17 @@ const showDetails = ref(false)
 
 const imageUrl = computed(() => result.value?.generated_image_url || '')
 const isSkipPath = computed(() => planSource.value === 'skip')
+
+/**
+ * 整層房屋（cad）與上傳平面圖（upload）這兩條路徑沒有「空間設定」那一步，
+ * 風水選單因此在前面的步驟裡沒有落腳處，只能擺在這裡。
+ *
+ * 其他路徑不重複顯示：它們在第一步就選過了，同一份狀態在兩頁各放一個控制項，
+ * 只會讓人以為是兩組設定。
+ */
+const showFengshui = computed(
+  () => planSource.value === 'cad' || planSource.value === 'upload',
+)
 
 // 排家具路徑在這一頁才打描述，打字時重查風格推薦（debounce 在 scheduleSearch 裡）
 function onPromptInput() { scheduleSearch() }
@@ -80,6 +92,17 @@ function onPanoClick() {
           @input="onPromptInput"
         />
       </template>
+
+      <!-- ══ 風水禁忌（只有 cad／upload 路徑在這裡出現，見 showFengshui）══
+           這兩條路徑的家具座標在「繪製平面圖」那一步就定下來了，所以這裡勾選只會
+           進生成效果圖的描述，不會回頭搬動平面圖上的家具——hint 要把這件事講明白，
+           不然使用者會以為勾了平面圖就會跟著改。 -->
+      <FengshuiPicker
+        v-if="showFengshui"
+        v-model="fengshuiRules"
+        :room-type="roomTypeForPlan"
+        hint="勾選的項目會寫進生成效果圖的描述；這條路徑的平面圖家具位置已經定了，不會再被搬動。"
+      />
 
       <!-- StyleSuggestions 自己有「AI 推薦風格參考」標題，這裡不再重複一層 -->
       <section v-if="showSuggestions" class="suggest">

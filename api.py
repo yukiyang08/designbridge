@@ -118,7 +118,6 @@ class DesignRequest(BaseModel):
     refine_mode: bool = False  # 細部微調模式：強制 routing 到 design_adjuster
     output_aspect: str = "auto"  # 輸出長寬比：auto | 1:1 | 4:3 | 3:4 | 16:9 | 9:16
     mask_image_path: Optional[str] = None  # 手繪遮罩路徑（refine 模式選填）
-    family_needs: List[str] = []
     fengshui_rules: List[str] = []
     style_method: str = "ai_analysis"
     floor_plan_path: Optional[str] = None   # 由 Step 1 產生的 2D 平面圖路徑
@@ -142,7 +141,6 @@ class LayoutRequest(BaseModel):
     room_d: Optional[float] = None   # 自訂深度（公尺）
     furniture_list: List[str] = []   # 預計擺放的家具
     text_prompt: str = ""
-    family_needs: List[str] = []
     fengshui_rules: List[str] = []
 
 
@@ -175,8 +173,6 @@ def _build_user_input(request: DesignRequest) -> dict:
         user_input["refine_mode"] = True
     if request.mask_image_path:
         user_input["mask_image"] = request.mask_image_path
-    if request.family_needs:
-        user_input["family_needs"] = request.family_needs
     if request.fengshui_rules:
         user_input["fengshui_rules"] = request.fengshui_rules
     if request.style_method:
@@ -553,9 +549,9 @@ async def generate_layout(request: LayoutRequest):
             },
         }
 
-        if request.family_needs or request.fengshui_rules:
+        if request.fengshui_rules:
             structured_requirement = enrich_requirement(
-                structured_requirement, request.family_needs, request.fengshui_rules
+                structured_requirement, request.fengshui_rules
             )
 
         task_id = str(_uuid.uuid4())

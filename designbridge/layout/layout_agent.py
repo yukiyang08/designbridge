@@ -40,6 +40,14 @@ FURNITURE_SIZES: dict[str, tuple[float, float]] = {
     "cat_tree": (0.06, 0.06),
     "dog_bed": (0.10, 0.08),
     "litter_box": (0.07, 0.06),
+    # 廚衛設備與鏡子：風水規則（開門不見灶／不見廁所、水火不相容、鏡不照床…）
+    # 要拿它們當標的，沒有進受控詞彙的話會被 _normalize_ftype 收斂成 default，
+    # 規則就永遠不會觸發。
+    "stove": (0.13, 0.08),
+    "toilet": (0.09, 0.12),
+    "sink": (0.10, 0.08),
+    "fridge": (0.09, 0.09),
+    "mirror": (0.12, 0.03),
     "default": (0.12, 0.10),
 }
 
@@ -61,6 +69,14 @@ _FTYPE_ALIASES: dict[str, str] = {
     "cat_tower": "cat_tree", "cat_condo": "cat_tree", "scratching_post": "cat_tree", "cat_climber": "cat_tree",
     "dog_crate": "dog_bed", "pet_bed": "dog_bed", "dog_house": "dog_bed", "dog_kennel": "dog_bed",
     "litter_tray": "litter_box", "cat_litter": "litter_box", "litter_pan": "litter_box",
+    "cooktop": "stove", "stovetop": "stove", "hob": "stove", "gas_stove": "stove",
+    "range": "stove", "cooker": "stove", "kitchen_stove": "stove", "oven": "stove",
+    "wc": "toilet", "water_closet": "toilet", "commode": "toilet", "lavatory": "toilet",
+    "kitchen_sink": "sink", "washbasin": "sink", "wash_basin": "sink", "basin": "sink",
+    "washstand": "sink", "mop_sink": "sink",
+    "refrigerator": "fridge", "freezer": "fridge", "icebox": "fridge", "fridge_freezer": "fridge",
+    "wall_mirror": "mirror", "full_length_mirror": "mirror", "dressing_mirror": "mirror",
+    "floor_mirror": "mirror", "looking_glass": "mirror", "vanity_mirror": "mirror",
 }
 
 
@@ -105,6 +121,11 @@ FURNITURE_COLORS: dict[str, tuple[int, int, int]] = {
     "cat_tree": (170, 140, 110),
     "dog_bed": (200, 170, 140),
     "litter_box": (190, 190, 200),
+    "stove": (90, 90, 95),
+    "toilet": (225, 230, 235),
+    "sink": (200, 215, 225),
+    "fridge": (185, 192, 202),
+    "mirror": (170, 205, 220),
     "default": (150, 200, 150),
 }
 

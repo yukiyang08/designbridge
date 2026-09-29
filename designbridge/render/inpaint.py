@@ -621,13 +621,6 @@ def build_inpaint_prompt(
         if neg:
             negative_prompt = f"{negative_prompt}, {neg}"
 
-    _special = req.get("special_constraints") or {}
-    if _special.get("wheelchair"):
-        negative_prompt = f"{negative_prompt}, wheelchair, wheelchair user, mobility aid, disability equipment"
-    if _special.get("children"):
-        negative_prompt = f"{negative_prompt}, child, children, baby, toddler, kid"
-    if _special.get("pets"):
-        negative_prompt = f"{negative_prompt}, cat, dog, bird, rabbit, hamster, pet, animal"
 
     obj_desc = ", ".join(target_objects) if target_objects else "furniture"
     color_hint = f", {colors}" if colors else ""

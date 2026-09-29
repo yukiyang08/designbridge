@@ -4,6 +4,10 @@ import { Icon } from '@iconify/vue'
 import ImageUpload from './ImageUpload.vue'
 import MaskEditor from './MaskEditor.vue'
 import { ROOM_OPTIONS, FURNITURE_BY_ROOM, furnitureIcon } from '@/config/furniture'
+// 這份清單的 value 必須對得上後端 skills/constraints/*/SKILL.md 的 trigger，
+// 所以只留 useDesignFlow 那一份來源——本檔原本自己複製了一份，加新規則時漏掉這裡，
+// 新的風水選項就只出現在精靈流程、舊側邊欄看不到。
+import { FENGSHUI_OPTIONS } from '@/composables/useDesignFlow'
 
 // ── Step control ──────────────────────────────────────────────
 const props = defineProps({
@@ -56,7 +60,6 @@ function onCustomRoomDInput() { recalcRoomSide(customRoomD.value, customRoomW) }
 const furnitureItems = defineModel('furnitureItems', { default: () => [] })
 const furnitureQty   = defineModel('furnitureQty',   { default: () => ({}) })
 const extraPrompt    = defineModel('extraPrompt',    { default: '' })
-const familyNeeds    = defineModel('familyNeeds',    { default: () => [] })
 const fengshuiRules  = defineModel('fengshuiRules',  { default: () => [] })
 
 const ASPECT_OPTIONS = [
@@ -107,29 +110,11 @@ function addCustomFurniture() {
   customFurnitureInput.value = ''
 }
 
-const FAMILY_OPTIONS = [
-  { value: 'children',   label: '有小孩' },
-  { value: 'wheelchair', label: '有輪椅使用者' },
-  { value: 'pets',       label: '有寵物' },
-]
-const FENGSHUI_OPTIONS = [
-  { value: 'bed_not_facing_door',    label: '床不對門' },
-  { value: 'sofa_not_back_to_door',  label: '沙發不背門' },
-  { value: 'desk_not_facing_window', label: '書桌不背窗' },
-]
-
-function toggleFamily(value) {
-  familyNeeds.value = familyNeeds.value.includes(value)
-    ? familyNeeds.value.filter(v => v !== value)
-    : [...familyNeeds.value, value]
-}
 function toggleFengshui(value) {
   fengshuiRules.value = fengshuiRules.value.includes(value)
     ? fengshuiRules.value.filter(v => v !== value)
     : [...fengshuiRules.value, value]
 }
-
-const showAdvanced = ref(false)
 </script>
 
 <template>
@@ -385,32 +370,16 @@ const showAdvanced = ref(false)
         />
       </div>
 
-      <!-- 進階設定 -->
-      <div class="advanced-wrapper">
-        <button type="button" class="advanced-toggle" @click="showAdvanced = !showAdvanced">
-          <span>進階設定（家庭結構 / 風水）</span>
-          <svg class="advanced-arrow" :class="{ open: showAdvanced }" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
-            <polyline points="6 9 12 15 18 9"/>
-          </svg>
-        </button>
-        <div v-show="showAdvanced" class="advanced-section">
-          <div class="field">
-            <label class="field-label">家庭結構</label>
-            <div class="chip-group">
-              <button v-for="opt in FAMILY_OPTIONS" :key="opt.value" type="button"
-                :class="['chip', { active: familyNeeds.includes(opt.value) }]"
-                @click="toggleFamily(opt.value)">{{ opt.label }}</button>
-            </div>
-          </div>
-          <div class="field">
-            <label class="field-label">風水需求</label>
-            <div class="chip-group">
-              <button v-for="opt in FENGSHUI_OPTIONS" :key="opt.value" type="button"
-                :class="['chip', { active: fengshuiRules.includes(opt.value) }]"
-                @click="toggleFengshui(opt.value)">{{ opt.label }}</button>
-            </div>
-          </div>
+      <!-- 風水禁忌——跟新版精靈一樣拉出摺疊面板，這是會搬動家具的硬約束 -->
+      <div class="field">
+        <label class="field-label">風水禁忌</label>
+        <div class="chip-group">
+          <button v-for="opt in FENGSHUI_OPTIONS" :key="opt.value" type="button"
+            :title="opt.desc"
+            :class="['chip', { active: fengshuiRules.includes(opt.value) }]"
+            @click="toggleFengshui(opt.value)">{{ opt.label }}</button>
         </div>
+        <p class="status-hint">勾選後排版會把家具移出禁忌位置；不勾就不限制。</p>
       </div>
 
       <!-- 裝潢風格 -->
@@ -670,21 +639,6 @@ textarea:focus {
   background: #fffaf5; box-shadow: 0 0 0 3px rgba(139,94,60,0.1);
 }
 textarea::placeholder { color: var(--text-4); }
-
-/* ── Advanced ── */
-.advanced-wrapper { display: flex; flex-direction: column; }
-.advanced-toggle {
-  display: flex; align-items: center; justify-content: space-between;
-  width: 100%; padding: 0.6rem 0.9rem;
-  background: rgba(0,0,0,0.03); border: 1.5px solid #ddd;
-  border-radius: var(--radius-md); color: #555;
-  font-size: 0.82rem; font-weight: 600; font-family: inherit;
-  cursor: pointer; transition: background 0.18s;
-}
-.advanced-toggle:hover { background: rgba(0,0,0,0.06); }
-.advanced-arrow { transition: transform 0.25s ease; flex-shrink: 0; }
-.advanced-arrow.open { transform: rotate(180deg); }
-.advanced-section { display: flex; flex-direction: column; gap: 1rem; padding: 1rem 0.25rem 0.25rem; }
 
 /* ── Floor plan preview (step 2) ── */
 .floor-plan-preview {
