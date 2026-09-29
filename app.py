@@ -32,20 +32,6 @@ text_prompt = st.sidebar.text_area(
     help="描述你的室內設計需求，例如風格、功能、布局等",
 )
 
-# 生成模型選擇
-st.sidebar.markdown("**生成模型**")
-model_type = st.sidebar.radio(
-    "選擇生成模型",
-    options=["flux"],
-    format_func=lambda x: {
-        "flux": "Flux.1 Schnell (快速，高品質)",
-    }[x],
-    help="Flux 生成速度快且品質高；之後接上微調模型可再加回選項",
-    label_visibility="collapsed",
-)
-import os as _os
-_os.environ["DESIGNBRIDGE_LOCAL_MODEL_TYPE"] = model_type
-
 
 # 風格功能 
 available_style_profiles = list_available_style_profiles()
@@ -230,8 +216,6 @@ if run_button:
                         st.success(f"Flux　`{gp.get('model','')}`")
                     elif backend == "hf_inference":
                         st.success(f"HF Inference API　`{gp.get('model','')}`")
-                    elif backend == "imagen":
-                        st.caption("Imagen API")
                     elif gp.get("fallback") == "placeholder":
                         st.info("⚠️ 生成失敗，顯示佔位圖")
                 elif gen_path:

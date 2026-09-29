@@ -36,13 +36,6 @@ function toggleConfirm(c) {
   else emit('confirm', c)
 }
 
-function similarityLabel(score) {
-  if (score >= 0.85) return '非常符合'
-  if (score >= 0.70) return '相當符合'
-  if (score >= 0.55) return '部分符合'
-  return '參考'
-}
-
 function normalizeImageUrl(rawUrl) {
   if (typeof rawUrl !== 'string') return ''
   const url = rawUrl.trim()
@@ -128,12 +121,6 @@ function toggleInfo(c, evt) {
         >
           <div class="card-img-wrap">
             <img :src="normalizeImageUrl(c.image_url)" :alt="c.style_name" loading="lazy" @error="$event.target.style.display='none'" />
-            <!--
-            <div class="similarity-badge">
-              {{ similarityLabel(c.similarity) }}
-              <span class="score">{{ (c.similarity * 100).toFixed(0) }}%</span>
-            </div>
-            -->
             <button
               type="button" class="info-btn" title="風格詳情"
               @mouseenter="openPopover(c, $event)" @mouseleave="scheduleClosePopover"
@@ -342,28 +329,6 @@ function toggleInfo(c, evt) {
   transition: background 0.15s;
 }
 .info-btn:hover { background: rgba(139, 94, 60, 0.9); }
-
-.similarity-badge {
-  position: absolute;
-  top: 0.5rem;
-  left: 0.5rem;
-  background: rgba(0, 0, 0, 0.55);
-  color: white;
-  font-size: 0.7rem;
-  font-weight: 600;
-  padding: 0.2rem 0.55rem;
-  border-radius: 99px;
-  display: flex;
-  align-items: center;
-  gap: 0.3rem;
-  backdrop-filter: blur(4px);
-}
-.score {
-  background: rgba(255,255,255,0.2);
-  padding: 0.05rem 0.35rem;
-  border-radius: 99px;
-  font-size: 0.68rem;
-}
 
 .selected-overlay {
   position: absolute;

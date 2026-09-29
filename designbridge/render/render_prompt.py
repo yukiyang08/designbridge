@@ -225,7 +225,11 @@ def _layout_json_to_prompt_text(layout_json: dict[str, Any]) -> str:
 
 OutputAspect = Literal["auto", "1:1", "4:3", "3:4", "16:9", "9:16"]
 _ASPECT_RATIO_MAP: dict[OutputAspect, float] = {
-    "auto": 1.0,
+    # ponytail: only matters for "auto" with no reference photo — _resolve_output_size
+    # below overrides this with the photo's own ratio whenever one is uploaded.
+    # Text-only room creation now defaults to landscape instead of square, matching
+    # how interior shots are normally framed.
+    "auto": 16.0 / 9.0,
     "1:1": 1.0,
     "4:3": 4.0 / 3.0,
     "3:4": 3.0 / 4.0,

@@ -44,10 +44,6 @@ class Config:
 
     # Image generation (Imagen) - same API key as Gemini; requires billing
     IMAGEN_MODEL: str = os.getenv("DESIGNBRIDGE_IMAGEN_MODEL", "imagen-4.0-generate-001")
-    # Local image generation backend: always Flux
-    @classmethod
-    def get_local_model_type(cls) -> str:
-        return "flux"
 
     # Model ID for Flux
     FLUX_MODEL: str = os.getenv("DESIGNBRIDGE_FLUX_MODEL", "black-forest-labs/FLUX.1-schnell")
@@ -96,12 +92,6 @@ class Config:
 
     # Text2Room 逐步 outpaint 環景（預設關閉 → 只產單視角 GLB）
     ENABLE_TEXT2ROOM: bool = os.getenv("DESIGNBRIDGE_ENABLE_TEXT2ROOM", "false").lower() in ("1", "true", "yes")
-    TEXT2ROOM_AZIMUTHS: str = os.getenv("DESIGNBRIDGE_TEXT2ROOM_AZIMUTHS", "-30,30")
-    # 每側 outpaint 幾次。單一 typical FOV ~75° 的原圖，每次向外補約半張寬度
-    # （約 +37°），steps_per_side=1 只覆蓋 ~150°，其餘角度在球面環景上會是
-    # 大片鏡射填色而非 AI 想像的內容。3 次/側覆蓋約 300°，缺口縮小到 ~60°；
-    # 4 次/側可覆蓋滿 360° 但每次都是一次額外的 fal.ai 呼叫（+30~60 秒)。
-    TEXT2ROOM_STEPS_PER_SIDE: int = int(os.getenv("DESIGNBRIDGE_TEXT2ROOM_STEPS_PER_SIDE", "3"))
 
     # Hugging Face Inference API (cloud Flux; no local download). Tried first when HF_TOKEN set.
     ENABLE_HF_INFERENCE: bool = os.getenv("DESIGNBRIDGE_ENABLE_HF_INFERENCE", "true").lower() in ("1", "true", "yes")

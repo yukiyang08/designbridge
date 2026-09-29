@@ -70,12 +70,9 @@ class RequirementJSON(TypedDict):
     hint_adjuster: NotRequired[bool]
     user_description_raw: str               # 使用者原始輸入，verbatim
     user_description_normalized: NotRequired[str]  # 語意清理後版本
-    ambiguity_flags: NotRequired[list[str]] # 推斷或不確定的部分
-    explicit_tasks: NotRequired[list[str]]  # 解析出的原子操作清單
     language: NotRequired[str]              # "zh-TW" / "en" 等
     source_image_id: NotRequired[str]       # 對應 Vision JSON 的 image ref
     has_vision_input: NotRequired[bool]     # 是否有圖片輸入
-    success_conditions: NotRequired[list[str]]
     depth_conditioning_scale: NotRequired[float]  # 0.0 (ignore depth) ~ 1.0 (fully preserve structure)
 
 # ========== Vision JSON ==========
@@ -88,16 +85,6 @@ class VisionJSON(TypedDict):
     depth: NotRequired[str | Any]  # path or tensor
     geometry_constraints: NotRequired[dict[str, Any]]  # Immutable regions, spatial relations
     scene_objects: NotRequired[list[dict[str, Any]]]  # Detected objects for cross-validation
-
-
-# ========== Task/Plan JSON ==========
-class TaskPlanJSON(TypedDict):
-    """Output of Design Director: task assignment and plan."""
-
-    assigned_agents: list[str]  # ["layout", "style"] or ["adjuster"]
-    generation_mode: Literal["layout_and_style", "style_only", "layout_only", "inpaint"]
-    constraints_summary: dict[str, Any]
-    priority_order: NotRequired[list[str]]
 
 
 # ========== Style Params JSON ==========
@@ -125,15 +112,6 @@ class SceneGraphJSON(TypedDict):
     spatial_relations: NotRequired[list[dict[str, Any]]]
     layout_prompt: str  # Text description for ControlNet guidance
     layout_constraints_met: dict[str, bool]
-
-
-# ========== Adjust Plan JSON ==========
-class AdjustPlanJSON(TypedDict):
-    """Output of Design Adjuster: inpainting plan."""
-
-    inpaint_regions: list[dict[str, Any]]  # [{"mask": ..., "prompt": ..., "strength": ...}]
-    protected_regions: NotRequired[list[dict[str, Any]]]
-    consistency_guidance: str
 
 
 # ========== Render Result JSON ==========

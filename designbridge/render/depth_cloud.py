@@ -1,73 +1,10 @@
-"""Depth map → 3D mesh PLY converter."""
+"""Depth map → 3D mesh GLB converter."""
 from __future__ import annotations
 
-import struct
 from pathlib import Path
 
 import numpy as np
 from PIL import Image
-
-
-def depth_to_mesh_ply(
-    rgb_image: Image.Image,
-    depth_norm: np.ndarray,
-    out_path: str,
-    focal_scale: float = 0.7,
-    depth_scale: float = 4.0,
-    edge_thresh: float = 0.15,
-) -> str:
-    """Back-project depth + RGB into a triangle mesh PLY.
-
-    Adjacent pixels are connected into triangles; edges where the depth
-    difference exceeds edge_thresh are skipped, preserving object boundaries.
-    """
-    H, W = depth_norm.shape
-    fx = fy = W * focal_scale
-    cx, cy = W / 2.0, H / 2.0
-
-    u, v = np.meshgrid(np.arange(W, dtype=np.float32), np.arange(H, dtype=np.float32))
-    d = depth_norm.astype(np.float32) * depth_scale + 0.1
-
-    X = ((u - cx) * d / fx).ravel()
-    Y = ((v - cy) * d / fy).ravel()
-    Z = d.ravel()
-    rgb = np.array(rgb_image.convert("RGB").resize((W, H))).reshape(-1, 3)
-    d_flat = depth_norm.ravel()
-
-    faces: list[tuple[int, int, int]] = []
-    for vi in range(H - 1):
-        for ui in range(W - 1):
-            i00 = vi * W + ui
-            i01 = vi * W + (ui + 1)
-            i10 = (vi + 1) * W + ui
-            i11 = (vi + 1) * W + (ui + 1)
-            depths = [d_flat[i00], d_flat[i01], d_flat[i10], d_flat[i11]]
-            if max(depths) - min(depths) > edge_thresh:
-                continue
-            faces.append((i00, i10, i01))
-            faces.append((i01, i10, i11))
-
-    n_verts, n_faces = len(X), len(faces)
-    Path(out_path).parent.mkdir(parents=True, exist_ok=True)
-    with open(out_path, "wb") as f:
-        hdr = (
-            f"ply\nformat binary_little_endian 1.0\n"
-            f"element vertex {n_verts}\n"
-            f"property float x\nproperty float y\nproperty float z\n"
-            f"property uchar red\nproperty uchar green\nproperty uchar blue\n"
-            f"element face {n_faces}\n"
-            f"property list uchar int vertex_indices\n"
-            f"end_header\n"
-        )
-        f.write(hdr.encode())
-        for i in range(n_verts):
-            f.write(struct.pack("<fff", X[i], Y[i], Z[i]))
-            f.write(bytes(int(x) for x in rgb[i].tolist()))
-        for tri in faces:
-            f.write(struct.pack("<B3i", 3, *tri))
-
-    print(f"[depth_cloud] {n_verts:,} verts {n_faces:,} faces → {out_path}")
-    return out_path
 
 
 def depth_to_mesh_glb(
@@ -232,19 +169,4 @@ def generate_depth_mesh_glb(image_path: str, depth_path: str, out_dir: str) -> s
     except Exception as e:
         import logging
         logging.error(f"[depth_cloud] generate_glb failed: {e}")
-        return None
-
-
-def generate_depth_cloud(image_path: str, depth_path: str, out_dir: str) -> str | None:
-    """Load image + depth PNG, generate mesh PLY. Returns ply path or None on failure."""
-    try:
-        rgb = Image.open(image_path).convert("RGB")
-        depth_png = np.array(Image.open(depth_path).convert("L"), dtype=np.float32)
-        depth_norm = depth_png / 255.0
-
-        out_path = str(Path(out_dir) / "point_cloud.ply")
-        return depth_to_mesh_ply(rgb, depth_norm, out_path)
-    except Exception as e:
-        import logging
-        logging.error(f"[depth_cloud] generate failed: {e}")
         return None

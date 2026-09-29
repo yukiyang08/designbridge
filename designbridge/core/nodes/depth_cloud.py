@@ -88,15 +88,12 @@ def depth_cloud_node(state: DesignBridgeState) -> dict[str, Any]:
 
     if Config.ENABLE_TEXT2ROOM:
         from designbridge.render.text2room import run_text2room_loop
-        azimuths = [float(x) for x in Config.TEXT2ROOM_AZIMUTHS.split(",") if x.strip()]
         design_prompt = (state.get("user_input") or {}).get("text_prompt", "")
         t2r = run_text2room_loop(
             image_path=final_image_path,
             depth_path=final_depth_path,
             out_dir=out_dir,
             prompt=design_prompt,
-            azimuths_deg=azimuths,
-            steps_per_side=Config.TEXT2ROOM_STEPS_PER_SIDE,
         )
         if t2r:
             glb_path = t2r.get("glb")

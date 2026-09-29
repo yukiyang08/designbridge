@@ -1,15 +1,12 @@
 <script setup>
 /**
- * 設計詳情：結構化需求 / 套用風格參數 / 3D 點雲 / 原始 JSON。
+ * 設計詳情：結構化需求 / 套用風格參數 / 原始 JSON。
  *
  * 設計稿完全沒有這一區，但它是舊 ResultPanel 裡實際在用的除錯與說明資訊
  * （尤其 raw JSON 在調 prompt 時很吃重），所以整組保留，收在摺疊區裡。
  */
-import { computed, ref, defineAsyncComponent } from 'vue'
+import { computed, ref } from 'vue'
 import { API_BASE } from '@/config/api'
-
-// 點雲檢視器同樣吃 three.js，展開設計詳情才載入
-const PointCloudViewer = defineAsyncComponent(() => import('@/components/PointCloudViewer.vue'))
 
 const props = defineProps({
   result: { type: Object, default: null },
@@ -48,12 +45,6 @@ const styleReferenceImageUrl = computed(() => {
     <section v-if="styleReferenceImageUrl" class="card">
       <h3 class="card-title">風格參考圖</h3>
       <img :src="styleReferenceImageUrl" alt="風格參考圖" class="ref-img" />
-    </section>
-
-    <!-- 3D 點雲 -->
-    <section v-if="result.depth_cloud_url" class="card">
-      <h3 class="card-title">3D 點雲 <span class="badge badge-teal">互動式</span></h3>
-      <PointCloudViewer :ply-url="result.depth_cloud_url" />
     </section>
 
     <!-- 結構化需求 -->

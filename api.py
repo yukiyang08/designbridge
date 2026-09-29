@@ -906,7 +906,6 @@ async def generate_design(request: DesignRequest):
             normalized = p.replace("\\", "/")
             return f"http://localhost:8000/{normalized}" if normalized.startswith("artifacts/") else None
 
-        depth_cloud_url = _artifact_url(result.get("depth_cloud_path"))
         room_glb_url = _artifact_url(result.get("room_glb_path"))
         room_panorama_url = _artifact_url(result.get("room_panorama_path"))
 
@@ -918,7 +917,6 @@ async def generate_design(request: DesignRequest):
             "generated_image_url": generated_image_url,
             "floor_plan_path": floor_plan_path,
             "floor_plan_url": floor_plan_url,
-            "depth_cloud_url": depth_cloud_url,
             "room_glb_url": room_glb_url,
             "room_panorama_url": room_panorama_url,
             "structured_requirement": result.get("structured_requirement"),
@@ -1064,13 +1062,11 @@ async def generate_panorama(request: PanoramaRequest):
 
     try:
         from designbridge.render.text2room import run_text2room_loop
-        from designbridge.core.config import Config
         t2r = run_text2room_loop(
             image_path=str(image_path),
             depth_path=str(depth_path),
             out_dir=str(out_dir),
             prompt=request.prompt,
-            steps_per_side=Config.TEXT2ROOM_STEPS_PER_SIDE,
         )
     except Exception as e:
         import traceback; traceback.print_exc()

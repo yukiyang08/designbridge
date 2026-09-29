@@ -216,11 +216,12 @@ export const confirmedStyle      = ref(null)
 export const matchedStylePreview = ref(null)
 
 // ── 結果 ──
-export const result     = ref(null)
-export const loading    = ref(false)
-export const loadingMsg = ref({ title: '', sub: '' })
-export const error      = ref('')
-export const submitKey  = ref(0)
+export const result        = ref(null)
+export const loading       = ref(false)
+export const loadingMsg    = ref({ title: '', sub: '' })
+export const error         = ref('')
+export const submitKey     = ref(0)
+export const swappingStyle = ref(false)  // 一鍵換風格：只重跑 style 搜尋 + render，不吃 loading/loadingMsg 那套全頁 overlay
 
 // 跨 domain 共用的請求序號／計時器，用物件包起來而不是裸 let——
 // ES module 匯出的裸 let 綁定在其他檔案裡是唯讀的，物件屬性可以互相寫入。

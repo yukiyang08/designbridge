@@ -1,7 +1,7 @@
 import { jsonFetch } from '@/config/api'
 import {
   ROOM_TYPE_LABEL, requestState, timers,
-  error, loading, loadingMsg, result, submitKey,
+  error, loading, loadingMsg, result, submitKey, swappingStyle,
   spacePhoto, spacePhotoPath,
   styleRefImage, confirmedStyle, noStyleReference, selectedStyle, styleMethod,
   editPlacements, sceneGraph, floorPlanPath,
