@@ -8,6 +8,7 @@ streamlit>=1.30.0
 google-generativeai>=0.3.0
 # Imagen image generation (optional; uses same GEMINI_API_KEY)
 google-genai>=1.0.0
+openai>=1.0.0
 python-multipart
 requests>=2.31.0
 # Local vision inference (Depth Anything V2 + Segmentation)
@@ -32,7 +33,6 @@ fastapi
 uvicorn
 pydantic>=2.0.0
 python-dotenv>=1.0.0
-python-multipart
 
 # 3D room mesh export (GLB for the 360° panorama / 3D viewer)
 trimesh>=4.0.0

@@ -228,7 +228,7 @@ def _call_llm_requirement_analyzer(
     if style_reference_image and _is_valid_image_path(style_reference_image):
         images.append(style_reference_image)
 
-    text = call_llm(prompt, images=images or None)
+    text = call_llm(prompt, images=images or None, json_mode=True)
     text = text.strip()
 
     # Strip markdown code fences

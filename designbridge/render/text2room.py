@@ -245,13 +245,8 @@ def run_text2room_loop(
     depth_path: str,
     out_dir: str,
     prompt: str = "",
-    azimuths_deg: list[float] | None = None,   # kept for API compat, unused
-    fov_deg: float = 20.0,                      # unused
-    render_w: int = 800,                        # unused
-    render_h: int = 600,                        # unused
     mesh_w: int = 512,
     mesh_h: int = 384,
-    steps_per_side: int = 1,                    # kept for API compat, unused — see below
 ) -> "dict | None":
     """Build a room panorama via FLUX Fill outpainting.
 
@@ -260,8 +255,7 @@ def run_text2room_loop(
     (width = 2 × height) — not the old "guess how many 37°-ish steps" loop.
     A third call then bridges the wrap-around seam using both far edges as
     context. Three fal.ai calls total, independent of how much width is
-    needed — ``steps_per_side`` from the old iterative version is no longer
-    used (kept as a parameter only so existing callers don't break).
+    needed.
 
     Also exports a GLB from the initial depth map for the 3D model viewer.
 

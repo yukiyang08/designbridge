@@ -1,9 +1,9 @@
 <script setup>
 import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
+import { apiUrl, jsonFetch, mediaUrl } from '@/config/api'
 
 const router = useRouter()
-const API_BASE = 'http://localhost:8000'
 const records = ref([])
 const loading = ref(true)
 const error = ref('')
@@ -30,11 +30,7 @@ async function toggleFavorite(r) {
   const next = !r.favorited
   const ids = new Set(favoritingIds.value); ids.add(r.task_id); favoritingIds.value = ids
   try {
-    const res = await fetch(`${API_BASE}/api/history/${encodeURIComponent(r.task_id)}/favorite`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ favorited: next }),
-    })
+    const res = await jsonFetch(`/api/history/${encodeURIComponent(r.task_id)}/favorite`, { favorited: next }, 'PATCH')
     if (!res.ok) throw new Error(res.status)
     r.favorited = next
   } catch {
@@ -69,7 +65,7 @@ async function deleteSelected() {
   deleting.value = true
   try {
     const ids = [...checkedIds.value]
-    const res = await fetch(`${API_BASE}/api/history?${ids.map(id => `task_ids=${encodeURIComponent(id)}`).join('&')}`, {
+    const res = await fetch(apiUrl(`/api/history?${ids.map(id => `task_ids=${encodeURIComponent(id)}`).join('&')}`), {
       method: 'DELETE',
     })
     if (!res.ok) throw new Error(res.status)
@@ -93,7 +89,7 @@ function handleTileClick(r) {
 
 onMounted(async () => {
   try {
-    const res = await fetch(`${API_BASE}/api/history`)
+    const res = await fetch(apiUrl('/api/history'))
     if (!res.ok) throw new Error(res.status)
     records.value = await res.json()
   } catch (e) {
@@ -133,9 +129,7 @@ function clipColor(r) {
 
 function styleRefUrl(r) {
   if (r.style_reference_image_url) return r.style_reference_image_url
-  const p = r.style_reference_image_path || ''
-  if (!p) return null
-  return `${API_BASE}/${p.replace(/\\/g, '/')}`
+  return mediaUrl(r.style_reference_image_path) || null
 }
 
 function styleKbUrl(r) {

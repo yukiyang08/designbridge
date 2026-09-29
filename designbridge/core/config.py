@@ -22,6 +22,7 @@ class Config:
 
     # Vertex AI mode: no API key, authenticate via service-account JSON (ADC).
     GOOGLE_GENAI_USE_VERTEXAI: bool = os.getenv("GOOGLE_GENAI_USE_VERTEXAI", "").lower() in ("1", "true", "yes")
+    GOOGLE_GENAI_FORCE_API_KEY: bool = os.getenv("GOOGLE_GENAI_FORCE_API_KEY", "").lower() in ("1", "true", "yes")
     GOOGLE_CLOUD_PROJECT: str = os.getenv("GOOGLE_CLOUD_PROJECT", "")
     GOOGLE_CLOUD_LOCATION: str = os.getenv("GOOGLE_CLOUD_LOCATION", "global")
     GEMINI_TEMPERATURE: float = 0.3
@@ -29,15 +30,20 @@ class Config:
     # 0 = 關閉 thinking；-1 = 交給模型動態決定；正整數 = 指定 thinking token 上限。
     GEMINI_THINKING_BUDGET: int = int(os.getenv("DESIGNBRIDGE_GEMINI_THINKING_BUDGET", "0"))
 
+    # 消融實驗用：call_llm() 走哪個 provider，"gemini" | "qwen" | "llama"
+    LLM_PROVIDER: str = os.getenv("DESIGNBRIDGE_LLM_PROVIDER", "gemini")
+    DASHSCOPE_API_KEY: str = os.getenv("DASHSCOPE_API_KEY", "")
+    DASHSCOPE_BASE_URL: str = os.getenv("DASHSCOPE_BASE_URL", "https://dashscope-intl.aliyuncs.com/compatible-mode/v1")
+    QWEN_MODEL: str = os.getenv("DESIGNBRIDGE_QWEN_MODEL", "qwen3-vl-30b-a3b-instruct")
+
+    LLAMA_MODEL: str = os.getenv("DESIGNBRIDGE_LLAMA_MODEL", "meta/llama-4-scout-17b-16e-instruct-maas")
+    LLAMA_LOCATION: str = os.getenv("DESIGNBRIDGE_LLAMA_LOCATION", "us-east5")
+
     # Text embedding model for style retrieval (text-to-text).
     TEXT_EMBEDDING_MODEL: str = os.getenv("DESIGNBRIDGE_TEXT_EMBEDDING_MODEL", "BAAI/bge-m3")
 
     # Image generation (Imagen) - same API key as Gemini; requires billing
     IMAGEN_MODEL: str = os.getenv("DESIGNBRIDGE_IMAGEN_MODEL", "imagen-4.0-generate-001")
-    # Local image generation backend: always Flux
-    @classmethod
-    def get_local_model_type(cls) -> str:
-        return "flux"
 
     # Model ID for Flux
     FLUX_MODEL: str = os.getenv("DESIGNBRIDGE_FLUX_MODEL", "black-forest-labs/FLUX.1-schnell")
@@ -86,12 +92,6 @@ class Config:
 
     # Text2Room 逐步 outpaint 環景（預設關閉 → 只產單視角 GLB）
     ENABLE_TEXT2ROOM: bool = os.getenv("DESIGNBRIDGE_ENABLE_TEXT2ROOM", "false").lower() in ("1", "true", "yes")
-    TEXT2ROOM_AZIMUTHS: str = os.getenv("DESIGNBRIDGE_TEXT2ROOM_AZIMUTHS", "-30,30")
-    # 每側 outpaint 幾次。單一 typical FOV ~75° 的原圖，每次向外補約半張寬度
-    # （約 +37°），steps_per_side=1 只覆蓋 ~150°，其餘角度在球面環景上會是
-    # 大片鏡射填色而非 AI 想像的內容。3 次/側覆蓋約 300°，缺口縮小到 ~60°；
-    # 4 次/側可覆蓋滿 360° 但每次都是一次額外的 fal.ai 呼叫（+30~60 秒)。
-    TEXT2ROOM_STEPS_PER_SIDE: int = int(os.getenv("DESIGNBRIDGE_TEXT2ROOM_STEPS_PER_SIDE", "3"))
 
     # Hugging Face Inference API (cloud Flux; no local download). Tried first when HF_TOKEN set.
     ENABLE_HF_INFERENCE: bool = os.getenv("DESIGNBRIDGE_ENABLE_HF_INFERENCE", "true").lower() in ("1", "true", "yes")
@@ -182,6 +182,25 @@ class Config:
     FAL_CONTROLNET_GUIDANCE: float = float(os.getenv("DESIGNBRIDGE_FAL_CONTROLNET_GUIDANCE", "3.5"))
     PROJECTED_DEPTH_MAX_CONDITIONING_SCALE: float = float(
         os.getenv("DESIGNBRIDGE_PROJECTED_DEPTH_MAX_CONDITIONING_SCALE", "0.3")
+    )
+    # End depth/edge control partway through denoising for the real-photo ControlNet
+    # branch (renderer.py's flux_controlnet_depth_fal call). Structure still locks in
+    # during the early steps; 1.0 = control the whole run. Kept modest, but debug-console
+    # A/B testing showed this alone does NOT fix the "glitched far wall" artifact —
+    # see REAL_PHOTO_DEPTH_MAX_CONDITIONING_SCALE below for the confirmed fix.
+    REAL_PHOTO_DEPTH_CONTROL_END: float = float(
+        os.getenv("DESIGNBRIDGE_REAL_PHOTO_DEPTH_CONTROL_END", "0.7")
+    )
+    # Confirmed by controlled A/B testing (2026-09-28): a flat/low-variance region of a
+    # depth map (e.g. a far wall with almost no texture) gives the model almost nothing
+    # to anchor on. At conditioning_scale >= 0.85 it renders that region as noise no
+    # matter what the prompt asks for; at 0.6 the same photo renders cleanly every time.
+    # Neither disabling the edge ControlNet nor REAL_PHOTO_DEPTH_CONTROL_END fixed it in
+    # isolation — conditioning_scale itself is the lever. requirement_analyzer defaults
+    # pure-style requests to 0.85~1.0 ("preserve structure fully"), so cap it here
+    # regardless of what it asked for.
+    REAL_PHOTO_DEPTH_MAX_CONDITIONING_SCALE: float = float(
+        os.getenv("DESIGNBRIDGE_REAL_PHOTO_DEPTH_MAX_CONDITIONING_SCALE", "0.65")
     )
     # Design Adjuster 的 inpaint strength：edit_scope 移除前是 edit_scope+0.4 算出來的，
     # 產品端過去固定送 0.6 → 換算後一直是封頂值 0.85，這裡直接固定同一個值，行為不變。

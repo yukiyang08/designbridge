@@ -23,14 +23,16 @@ from designbridge.layout.special_constraints import (
     verify_special_constraints,
 )
 
-_FLOW_JS = Path(__file__).resolve().parent.parent / "frontend" / "src" / "composables" / "useDesignFlow.js"
+# 選項清單原本在 useDesignFlow.js，前端拆檔後搬到 design-flow/state.js
+_FLOW_JS = (Path(__file__).resolve().parent.parent
+            / "frontend" / "src" / "composables" / "design-flow" / "state.js")
 
 
 def _frontend_fengshui_values() -> set[str]:
     """從 useDesignFlow.js 的 FENGSHUI_OPTIONS 撈出前端真的會送出的 trigger。"""
     src = _FLOW_JS.read_text(encoding="utf-8")
     block = re.search(r"FENGSHUI_OPTIONS\s*=\s*\[(.*?)\n\]", src, re.DOTALL)
-    assert block, "useDesignFlow.js 裡找不到 FENGSHUI_OPTIONS"
+    assert block, "design-flow/state.js 裡找不到 FENGSHUI_OPTIONS"
     return set(re.findall(r"value:\s*'([a-z_]+)'", block.group(1)))
 
 # 門在近牆（y=1）正中央——api.py 產生的預設門就長這樣

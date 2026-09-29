@@ -40,7 +40,7 @@ If the object is not visible in the image, return: {{"not_found": true}}"""
 
     try:
         from designbridge.render.llm import call_llm
-        raw = call_llm(prompt, images=[image_path], max_tokens=300, temperature=0.0)
+        raw = call_llm(prompt, images=[image_path], max_tokens=300, temperature=0.0, json_mode=True)
         raw = raw.strip()
         if "```" in raw:
             raw = raw.split("```")[1]
@@ -120,7 +120,7 @@ replace_with: describe the new object only if action=replace, else null."""
     try:
         from designbridge.render.llm import call_llm
         images = [image_path] if image_path and Path(image_path).is_file() else None
-        raw = call_llm(prompt, images=images, max_tokens=500, temperature=0.0)
+        raw = call_llm(prompt, images=images, max_tokens=500, temperature=0.0, json_mode=True)
         raw = raw.strip()
         # 去掉 LLM 可能包的 markdown fence
         if "```" in raw:

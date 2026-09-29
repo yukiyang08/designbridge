@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import threading
 from pathlib import Path
 from typing import Any
 
@@ -11,6 +12,27 @@ from designbridge.core.config import Config
 # ── Model caches (loaded once, reused) ────────────────────────────────────────
 
 _flux_pipeline: Any = None
+_fal_unavailable_loras: set[tuple[tuple[str, str], ...]] = set()
+_fal_unavailable_loras_lock = threading.Lock()
+
+# fal.ai's fixed named image-size presets (its API enum, not a tunable value).
+_FAL_SIZE_MAP: dict[tuple[int, int], str] = {
+    (1024, 1024): "square_hd",
+    (512, 512): "square",
+    (1024, 768): "landscape_4_3",
+    (768, 1024): "portrait_4_3",
+    (1280, 720): "landscape_16_9",
+    (720, 1280): "portrait_16_9",
+}
+
+
+def _depth_instruction(depth_conditioning_scale: float) -> str:
+    """Phrase how strongly the Kontext prompt should follow the depth map."""
+    if depth_conditioning_scale >= 0.75:
+        return "strictly preserve the spatial layout, depth structure, camera angle and perspective"
+    if depth_conditioning_scale >= 0.45:
+        return "generally follow the spatial layout and camera perspective"
+    return "use as loose spatial reference"
 
 
 # ── Pipeline loaders ──────────────────────────────────────────────────────────
@@ -96,15 +118,7 @@ def _render_flux_fal(
         print(f"☁️  fal.ai {model} 推理中...")
 
         width, height = output_size
-        size_map = {
-            (1024, 1024): "square_hd",
-            (512, 512): "square",
-            (1024, 768): "landscape_4_3",
-            (768, 1024): "portrait_4_3",
-            (1280, 720): "landscape_16_9",
-            (720, 1280): "portrait_16_9",
-        }
-        image_size = size_map.get((width, height), {"width": width, "height": height})
+        image_size = _FAL_SIZE_MAP.get((width, height), {"width": width, "height": height})
 
         result = fal_client.subscribe(
             model,
@@ -154,12 +168,7 @@ def _render_hf_kontext(
         with open(depth_path, "rb") as f:
             input_image = f.read()
 
-        if depth_conditioning_scale >= 0.75:
-            depth_instruction = "strictly preserve the spatial layout, depth structure, camera angle and perspective"
-        elif depth_conditioning_scale >= 0.45:
-            depth_instruction = "generally follow the spatial layout and camera perspective"
-        else:
-            depth_instruction = "use as loose spatial reference"
+        depth_instruction = _depth_instruction(depth_conditioning_scale)
 
         client = InferenceClient(
             provider=Config.KONTEXT_PROVIDER,
@@ -213,23 +222,10 @@ def _render_flux_kontext_fal(
         with open(depth_path, "rb") as f:
             depth_url = fal_client.upload(f.read(), content_type="image/png")
 
-        if depth_conditioning_scale >= 0.75:
-            depth_instruction = "strictly preserve the spatial layout, depth structure, camera angle and perspective"
-        elif depth_conditioning_scale >= 0.45:
-            depth_instruction = "generally follow the spatial layout and camera perspective"
-        else:
-            depth_instruction = "use as loose spatial reference"
+        depth_instruction = _depth_instruction(depth_conditioning_scale)
 
         width, height = output_size
-        size_map = {
-            (1024, 1024): "square_hd",
-            (512, 512): "square",
-            (1024, 768): "landscape_4_3",
-            (768, 1024): "portrait_4_3",
-            (1280, 720): "landscape_16_9",
-            (720, 1280): "portrait_16_9",
-        }
-        image_size = size_map.get((width, height), {"width": width, "height": height})
+        image_size = _FAL_SIZE_MAP.get((width, height), {"width": width, "height": height})
 
         full_prompt = f"redepthkontext {prompt}, {depth_instruction}"
         print(f"[kontext] prompt preview: {full_prompt[:120]}")
@@ -278,6 +274,7 @@ def _render_flux_controlnet_depth_fal(
     depth_path: str,
     out_path: Path,
     conditioning_scale: float = 0.7,
+    control_end: float = 1.0,
     num_steps: int = 28,
     guidance_scale: float = 3.5,
     output_size: tuple[int, int] = (1024, 1024),
@@ -292,6 +289,14 @@ def _render_flux_controlnet_depth_fal(
     scene-graph projected depth actually constrains furniture placement in the render.
 
     conditioning_scale: 0.0 = ignore depth, ~1.0 = strongly follow depth geometry.
+
+    control_end (0..1): end depth control partway through denoising — structure locks
+    in during the early steps, then the model freely resolves materials for the rest.
+    Flat/low-variance regions of the depth map (a far wall, mostly featureless) give the
+    model almost nothing to anchor on; controlling them for every single step leaves no
+    room to resolve that into a real material, so it renders noise instead. Same fix
+    already used on the layout branch (`_render_flux_depth_controlnet_fal`'s
+    `depth_control_end`). 1.0 = control the whole run (old behaviour).
 
     extra_controls: further ControlNets stacked on the same call, each
     `{"path", "image_path", "scale", "mode"}` (`mode` only for union-style models).
@@ -318,24 +323,18 @@ def _render_flux_controlnet_depth_fal(
             depth_url = fal_client.upload(f.read(), content_type="image/png")
 
         width, height = output_size
-        size_map = {
-            (1024, 1024): "square_hd",
-            (512, 512): "square",
-            (1024, 768): "landscape_4_3",
-            (768, 1024): "portrait_4_3",
-            (1280, 720): "landscape_16_9",
-            (720, 1280): "portrait_16_9",
-        }
-        image_size = size_map.get((width, height), {"width": width, "height": height})
+        image_size = _FAL_SIZE_MAP.get((width, height), {"width": width, "height": height})
 
         model_id = controlnet_model or Config.DEPTH_CONTROLNET_MODEL
-        print(f"[controlnet] model: {model_id}  scale: {conditioning_scale}")
+        print(f"[controlnet] model: {model_id}  scale: {conditioning_scale}  end: {control_end}")
 
         controlnets: list[dict] = [
             {
                 "path": model_id,
                 "control_image_url": depth_url,
                 "conditioning_scale": conditioning_scale,
+                "start_percentage": 0.0,
+                "end_percentage": control_end,
             }
         ]
 
@@ -354,6 +353,8 @@ def _render_flux_controlnet_depth_fal(
                 "path": path,
                 "control_image_url": control_url,
                 "conditioning_scale": float(control.get("scale", 0.5)),
+                "start_percentage": 0.0,
+                "end_percentage": control_end,
             }
             mode = control.get("mode")
             if mode not in (None, ""):
@@ -368,15 +369,40 @@ def _render_flux_controlnet_depth_fal(
             "image_size": image_size,
             "controlnets": controlnets,
         }
-        if loras:
+        lora_signature = tuple(sorted(
+            (str(lora.get("path", "")), str(lora.get("scale", 1)))
+            for lora in (loras or [])
+        ))
+        with _fal_unavailable_loras_lock:
+            skip_known_unavailable_lora = bool(lora_signature) and lora_signature in _fal_unavailable_loras
+
+        if loras and not skip_known_unavailable_lora:
             arguments["loras"] = loras
             print(f"[lora] {', '.join(l['path'].rsplit('/', 1)[-1] for l in loras)}")
+        elif skip_known_unavailable_lora:
+            print("[lora] 已知 fal 無法下載此 LoRA，略過並保留深度 ControlNet")
 
-        result = fal_client.subscribe(
-            "fal-ai/flux-general",
-            arguments=arguments,
-            with_logs=False,
-        )
+        try:
+            result = fal_client.subscribe(
+                "fal-ai/flux-general",
+                arguments=arguments,
+                with_logs=False,
+            )
+        except Exception as e:
+            error_text = str(e).lower()
+            if not loras or "file_download_error" not in error_text or "loras" not in error_text:
+                raise
+
+            with _fal_unavailable_loras_lock:
+                _fal_unavailable_loras.add(lora_signature)
+            print("⚠️  fal.ai 無法下載 LoRA 權重，保留深度 ControlNet 並移除 LoRA 重試")
+            retry_arguments = dict(arguments)
+            retry_arguments.pop("loras", None)
+            result = fal_client.subscribe(
+                "fal-ai/flux-general",
+                arguments=retry_arguments,
+                with_logs=False,
+            )
 
         img_url = result["images"][0]["url"]
         resp = requests.get(img_url, timeout=60)
@@ -444,15 +470,7 @@ def _render_flux_depth_controlnet_fal(
             depth_url = fal_client.upload(f.read(), content_type="image/png")
 
         width, height = output_size
-        size_map = {
-            (1024, 1024): "square_hd",
-            (512, 512): "square",
-            (1024, 768): "landscape_4_3",
-            (768, 1024): "portrait_4_3",
-            (1280, 720): "landscape_16_9",
-            (720, 1280): "portrait_16_9",
-        }
-        image_size = size_map.get((width, height), {"width": width, "height": height})
+        image_size = _FAL_SIZE_MAP.get((width, height), {"width": width, "height": height})
 
         # FLUX ControlNet Union on fal uses the `controlnet_unions` schema; each entry
         # in `controls` selects a modality via a string `control_mode`. We can stack a
@@ -527,77 +545,6 @@ def _render_flux_depth_controlnet_fal(
         import traceback
 
         print(f"⚠️  fal.ai FLUX depth-ControlNet 失敗：{e}")
-        traceback.print_exc()
-        return False
-
-
-def _render_flux_img2img_fal(
-    prompt: str,
-    init_path: str,
-    out_path: Path,
-    *,
-    strength: float = 0.65,
-    num_steps: int = 40,
-    guidance_scale: float = 3.5,
-    output_size: tuple[int, int] = (1024, 1024),
-) -> bool:
-    """Refine a material block-out into a photorealistic render via fal FLUX img2img.
-
-    ``strength`` is the denoise amount: LOW (~0.5) keeps furniture positions almost
-    exactly (precise coords, less texture); HIGH (~0.85) adds realism but drifts. This
-    is the precision↔realism slider — the block-out fixes WHERE things are, img2img
-    fills in materials/lighting.
-    """
-    fal_key = Config.FAL_KEY
-    if not fal_key:
-        return False
-    try:
-        import os
-
-        import fal_client
-        import requests
-
-        os.environ["FAL_KEY"] = fal_key
-
-        with open(init_path, "rb") as f:
-            init_url = fal_client.upload(f.read(), content_type="image/png")
-
-        width, height = output_size
-        size_map = {
-            (1024, 1024): "square_hd", (512, 512): "square",
-            (1024, 768): "landscape_4_3", (768, 1024): "portrait_4_3",
-            (1280, 720): "landscape_16_9", (720, 1280): "portrait_16_9",
-        }
-        image_size = size_map.get((width, height), {"width": width, "height": height})
-
-        print(f"☁️  fal.ai FLUX img2img 推理中... (strength={strength})")
-        result = fal_client.subscribe(
-            "fal-ai/flux/dev/image-to-image",
-            arguments={
-                "prompt": prompt,
-                "image_url": init_url,
-                "strength": strength,
-                "num_inference_steps": num_steps,
-                "guidance_scale": guidance_scale,
-                "image_size": image_size,
-            },
-            with_logs=True,
-        )
-        img_url = result["images"][0]["url"]
-        resp = requests.get(img_url, timeout=60)
-        resp.raise_for_status()
-        out_path.parent.mkdir(parents=True, exist_ok=True)
-        out_path.write_bytes(resp.content)
-        print(f"✅ fal.ai FLUX img2img 完成：{out_path.name}")
-        return True
-
-    except ImportError:
-        print("⚠️  fal_client 未安裝，請執行：pip install fal-client")
-        return False
-    except Exception as e:
-        import traceback
-
-        print(f"⚠️  fal.ai FLUX img2img 失敗：{e}")
         traceback.print_exc()
         return False
 

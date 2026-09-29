@@ -361,6 +361,8 @@ def renderer(state: DesignBridgeState) -> dict[str, Any]:
     # that don't map onto these fields.
     if render_overrides.get("loras") is not None:
         style_loras = render_overrides["loras"]
+    if render_overrides.get("disable_lora"):
+        style_loras = []
 
     if style_params:
         generation_params["style_profile_id"] = style_params.get("style_profile_id")
@@ -399,7 +401,11 @@ def renderer(state: DesignBridgeState) -> dict[str, Any]:
     # map itself was only ever recorded as metadata — no backend consumed it — so nothing
     # was telling the model where one surface stops and the next begins.
     edge_path: str | None = None
-    if Config.ENABLE_EDGE_CONTROL and seg_path and Path(str(seg_path)).is_file():
+    if (
+        Config.ENABLE_EDGE_CONTROL
+        and not render_overrides.get("disable_edge_control")
+        and seg_path and Path(str(seg_path)).is_file()
+    ):
         edge_path = _seg_to_edge_condition(
             str(seg_path), output_size, render_dir / "conditions", f"{task_id}_edge"
         )
@@ -523,6 +529,11 @@ def renderer(state: DesignBridgeState) -> dict[str, Any]:
     # disconnected floating boxes instead of a coherent room, so cap it lower here.
     if using_projected_depth:
         depth_conditioning_scale = min(depth_conditioning_scale, Config.PROJECTED_DEPTH_MAX_CONDITIONING_SCALE)
+    else:
+        # Confirmed by A/B testing: >=0.85 reliably renders flat/low-variance depth
+        # regions (a far wall) as noise regardless of prompt, edge control, or LoRA —
+        # see REAL_PHOTO_DEPTH_MAX_CONDITIONING_SCALE in config.py for the full story.
+        depth_conditioning_scale = min(depth_conditioning_scale, Config.REAL_PHOTO_DEPTH_MAX_CONDITIONING_SCALE)
     effective_depth_path = depth_path if depth_conditioning_scale >= 0.20 else None
 
     # 真正的 FLUX depth ControlNet（opt-in，需 FAL_KEY）：對深度幾何的約束遠強於 Kontext LoRA，
@@ -552,12 +563,15 @@ def renderer(state: DesignBridgeState) -> dict[str, Any]:
         _cn_scale = depth_conditioning_scale if _cn_scale is None else max(0.0, min(1.0, float(_cn_scale)))
         _cn_steps = _ro.get("controlnet_steps") or Config.FAL_CONTROLNET_STEPS
         _cn_guidance = _ro.get("controlnet_guidance") or Config.FAL_CONTROLNET_GUIDANCE
+        _cn_control_end = _ro.get("controlnet_control_end")
+        _cn_control_end = Config.REAL_PHOTO_DEPTH_CONTROL_END if _cn_control_end is None else max(0.0, min(1.0, float(_cn_control_end)))
 
         if timed_call(
             "renderer.flux_controlnet_depth_fal", task_id,
             _render_flux_controlnet_depth_fal,
             prompt, str(effective_depth_path), out_path,
             conditioning_scale=_cn_scale,
+            control_end=_cn_control_end,
             num_steps=_cn_steps,
             guidance_scale=_cn_guidance,
             output_size=output_size,
@@ -568,6 +582,7 @@ def renderer(state: DesignBridgeState) -> dict[str, Any]:
             backend = "flux_controlnet_depth_fal"
             generation_params["model"] = f"fal-ai/flux-general + {_cn_model}"
             generation_params["depth_conditioning_scale"] = _cn_scale
+            generation_params["controlnet_control_end"] = _cn_control_end
             generation_params["controlnet_steps"] = _cn_steps
             generation_params["controlnet_guidance"] = _cn_guidance
             if style_loras:
