@@ -145,9 +145,9 @@ def requirement_analyzer(state: DesignBridgeState) -> dict[str, Any]:
                 "priority_weights": {"layout_rationality": 0.4, "style_consistency": 0.4, "user_preference": 0.2},
             }
 
-        # Merge family needs and feng shui rules into structured_requirement
-        # Must run before the layout agent reads windows/doors, and before the special
-        # constraints (wheelchair clearance, child safety) look for door positions.
+        # Merge feng shui rules into structured_requirement.
+        # Must run before the layout agent reads windows/doors, and before the feng shui
+        # constraints (door sightlines, headboard walls) look for opening positions.
         _normalize_space_info(structured_requirement)
         _si = structured_requirement["space_info"]
         print(
@@ -156,11 +156,10 @@ def requirement_analyzer(state: DesignBridgeState) -> dict[str, Any]:
             f"windows={len(_si['windows'])}, doors={len(_si['doors'])}"
         )
 
-        family_needs   = user.get("family_needs")   or []
         fengshui_rules = user.get("fengshui_rules") or []
-        if family_needs or fengshui_rules:
+        if fengshui_rules:
             from designbridge.layout.special_constraints import enrich_requirement
-            structured_requirement = enrich_requirement(structured_requirement, family_needs, fengshui_rules)
+            structured_requirement = enrich_requirement(structured_requirement, fengshui_rules)
 
         # If the user explicitly selected a style from the dropdown, override whatever
         # Gemini / rule-based inferred from the text so the whole pipeline stays consistent.

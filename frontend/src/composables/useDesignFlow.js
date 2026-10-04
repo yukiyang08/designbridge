@@ -16,7 +16,7 @@
  * 呼叫端（各 Step 元件）不用改。
  */
 
-export { STEP_FLOWS, ASPECT_OPTIONS, FAMILY_OPTIONS, FENGSHUI_OPTIONS } from './design-flow/state'
+export { STEP_FLOWS, ASPECT_OPTIONS, FENGSHUI_OPTIONS } from './design-flow/state'
 
 import {
   planSource, stepIndex, steps, currentStep, isLastStep,
@@ -24,7 +24,7 @@ import {
   cadCounts, cadTotalPing, cadPlanResult, cadActiveRoomId, cadRoomStatus,
   editPlacements, roomW, roomD, roomTypeForPlan, layoutViewMode, layoutRenderConfig,
   roomType, spaceSizePing, customRoomW, customRoomD,
-  furnitureItems, furnitureQty, extraPrompt, familyNeeds, fengshuiRules, outputAspect,
+  furnitureItems, furnitureQty, extraPrompt, fengshuiRules, outputAspect,
   spacePhoto, spacePhotoPath,
   selectedStyle, noStyleReference, styleMethod, styleRefImage,
   styleOptions, styleLoading, styleError,
@@ -69,7 +69,7 @@ export function useDesignFlow() {
     onEditorChange, updateFloorPlan,
     // 空間設定
     roomType, spaceSizePing, customRoomW, customRoomD,
-    furnitureItems, furnitureQty, extraPrompt, familyNeeds, fengshuiRules, outputAspect,
+    furnitureItems, furnitureQty, extraPrompt, fengshuiRules, outputAspect,
     // 空間照片
     spacePhoto, spacePhotoPath,
     // 風格

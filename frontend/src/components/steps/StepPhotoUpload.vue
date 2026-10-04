@@ -6,19 +6,14 @@
  * requirement agent 把照片一起餵給 Gemini，所以不需要新的後端端點。
  */
 import AdvancedPanel from '@/components/shell/AdvancedPanel.vue'
+import FengshuiPicker from '@/components/FengshuiPicker.vue'
 import { ROOM_OPTIONS } from '@/config/furniture'
-import { useDesignFlow, ASPECT_OPTIONS, FAMILY_OPTIONS, FENGSHUI_OPTIONS } from '@/composables/useDesignFlow'
+import { useDesignFlow, ASPECT_OPTIONS } from '@/composables/useDesignFlow'
 
 const {
   spacePhoto, roomType, spaceSizePing, outputAspect,
-  familyNeeds, fengshuiRules, loading, submitPhoto,
+  fengshuiRules, loading, submitPhoto,
 } = useDesignFlow()
-
-function toggleIn(listRef, value) {
-  listRef.value = listRef.value.includes(value)
-    ? listRef.value.filter(v => v !== value)
-    : [...listRef.value, value]
-}
 </script>
 
 <template>
@@ -35,7 +30,15 @@ function toggleIn(listRef, value) {
       <button type="button" class="clear-btn" title="移除" @click="spacePhoto.remove()">✕</button>
     </div>
 
-    <AdvancedPanel hint="房型・坪數・比例・家庭結構・風水">
+    <!-- 風水禁忌擺在主畫面，理由同 StepSpaceSetup.vue：硬約束不該藏在摺疊面板裡。
+         這條路徑不排家具，規則走的是 prompt 通道（SKILL.md 的 prompt_addition）。 -->
+    <FengshuiPicker
+      v-model="fengshuiRules"
+      :room-type="roomType"
+      hint="這條路徑不排家具，勾選的項目會寫進生成效果圖的描述裡。"
+    />
+
+    <AdvancedPanel hint="房型・坪數・比例">
       <div class="adv-grid">
         <div class="adv-field">
           <label class="field-label" for="photo-room">房間類型</label>
@@ -54,28 +57,6 @@ function toggleIn(listRef, value) {
           <select id="photo-aspect" v-model="outputAspect" class="db-input">
             <option v-for="opt in ASPECT_OPTIONS" :key="opt.value" :value="opt.value">{{ opt.label }}</option>
           </select>
-        </div>
-
-        <div class="adv-field">
-          <label class="field-label">家庭結構</label>
-          <div class="chip-row">
-            <button
-              v-for="opt in FAMILY_OPTIONS" :key="opt.value" type="button"
-              :class="['db-chip', { 'is-active': familyNeeds.includes(opt.value) }]"
-              @click="toggleIn(familyNeeds, opt.value)"
-            >{{ opt.label }}</button>
-          </div>
-        </div>
-
-        <div class="adv-field">
-          <label class="field-label">風水需求</label>
-          <div class="chip-row">
-            <button
-              v-for="opt in FENGSHUI_OPTIONS" :key="opt.value" type="button"
-              :class="['db-chip', { 'is-active': fengshuiRules.includes(opt.value) }]"
-              @click="toggleIn(fengshuiRules, opt.value)"
-            >{{ opt.label }}</button>
-          </div>
         </div>
       </div>
     </AdvancedPanel>

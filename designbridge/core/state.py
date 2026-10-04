@@ -26,7 +26,6 @@ class UserInput(TypedDict):
     output_aspect: NotRequired[Literal["auto", "1:1", "4:3", "3:4", "16:9", "9:16"]]
     style_profile_id: NotRequired[str]  # optional style profile id to apply directly
     style_reference_image: NotRequired[str]  # optional style reference image path
-    family_needs: NotRequired[list[str]]   # e.g. ["children", "wheelchair", "pets"]
     fengshui_rules: NotRequired[list[str]] # e.g. ["bed_not_facing_door", ...]
 
 

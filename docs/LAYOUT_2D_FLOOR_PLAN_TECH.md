@@ -9,7 +9,7 @@
 ## 1. 整體管線
 
 ```
-使用者輸入（坪數 / 房型 / 家具清單 / 文字需求 / 家庭需求 / 風水規則）
+使用者輸入（坪數 / 房型 / 家具清單 / 文字需求 / 風水規則）
         │  api.py:364  POST /api/generate-layout
         ▼
 structured_requirement（房間尺寸換算、硬性限制、權重）
@@ -47,7 +47,7 @@ structured_requirement（房間尺寸換算、硬性限制、權重）
 全程用**正規化座標**而非公尺，好處是同一份佈局可以直接套到任何房間尺寸；
 需要物理量時（走道寬度、間距）才乘上 `room_w` / `room_d` 換算回公尺。
 
-`FURNITURE_SIZES`（`layout_agent.py:16`）給 23 種家具的預設 footprint，
+`FURNITURE_SIZES`（`layout_agent.py:16`）給 27 種家具的預設 footprint，
 LLM 沒給尺寸或給了離譜值時用它兜底，同時也是 `must_add` 新增家具的尺寸來源。
 
 坪數→房間尺寸的換算在 `api.py:373`：`總坪數 × 3.306 m²`，再依 **5:4 長寬比**開根號拆成 width/depth。
@@ -85,7 +85,7 @@ LLM 沒給尺寸或給了離譜值時用它兜底，同時也是 `must_add` 新�
 | 5 | `_inject_bunk_bed_ladder` | 上下舖自動補一個梯子佔位 |
 | 6 | `_push_apart` | AABB 碰撞分離，最多 60 輪，沿**重疊較短的軸**推開；夾邊界放在迴圈內部（先分離後夾會把家具推回鄰居身上，造成「回報成功但留著碰撞」） |
 | 7 | 約束卡片 | 由 registry 動態載入（見 3.3） |
-| 8 | `apply_special_layout_constraints` | 家庭需求／風水規則 |
+| 8 | `apply_special_layout_constraints` | 風水規則 |
 | 9 | `_push_apart` + `_clip_to_room` | 第二次分離：7、8 的貼牆與推離門口會製造新的重疊 |
 
 **地毯特例**：`_UNDERLAY_TYPES`（rug/carpet/mat…）完全不參與碰撞判定。
@@ -112,6 +112,66 @@ Python 函式名）、`order`（執行順序）、`parameters`（可調參數）
 | `bed-not-near-window` | 床不緊貼窗戶 | `window_clearance=0.08` |
 
 好處是加一條新規則＝加一個資料夾，不必動 `run_layout_agent`。
+
+### 3.3b 風水規則（`skills/constraints/*/SKILL.md`）
+
+跟 3.3 同一套 Skill Card 機制，但走另一個 registry（`special_constraints.py` 的
+`ConstraintRegistry`）與另一張 dispatch 表（`_ENFORCERS` / `_VERIFIERS`）。
+差別在**觸發方式**：3.3 的卡片每次排版都會跑，這裡的卡片只有使用者在介面上勾選、
+`special_constraints[trigger]` 為 `true` 時才會生效。
+
+每張卡片有兩條通道，缺一不可：
+
+- `enforce`：幾何修正函式，實際搬動家具座標。
+- `prompt_addition`：併進 `design_description` 的英文提示，讓效果圖的 LLM
+  也知道這條限制——只改座標的話，渲染出來的圖還是可能把爐灶畫回門口。
+
+另外每條規則都有 **verifier**，排完之後回報 `{trigger: satisfied}`。
+房間窄到無解時，enforcer 保持原位、verifier 回報 `False`——
+硬把家具塞進牆裡只會製造假的合規。
+
+#### 14 條規則
+
+`order` 就是執行順序，排在後面的會覆蓋前面的結果，所以同一件家具的規則要照
+「先挪配角、再定主角」排：先把鏡子挪到定位（10），才用鏡子的最終位置去判斷床（12）。
+
+| order | trigger | 規則 | enforce | 標的 |
+|---|---|---|---|---|
+| 4 | `bed_not_facing_door` | 床腳不對門 | `bed_not_facing_door` | bed / bunk_bed |
+| 5 | `sofa_not_back_to_door` | 沙發不背門 | `sofa_not_back_to_door` | sofa / loveseat |
+| 6 | `desk_not_facing_window` | 書桌不背窗 | `desk_not_facing_window` | desk |
+| 7 | `desk_not_back_to_door` | 書桌不背門 | `desk_not_back_to_door` | desk |
+| 8 | `door_not_facing_stove` | 開門不見灶 | `door_sightline_clear` | stove |
+| 9 | `door_not_facing_toilet` | 開門不見廁 | `door_sightline_clear` | toilet |
+| 10 | `door_not_facing_mirror` | 門不對鏡 | `door_sightline_clear` | mirror |
+| 11 | `door_not_facing_bed` | 開門不見床 | `door_sightline_clear` | bed / bunk_bed |
+| 12 | `mirror_not_facing_bed` | 鏡不照床 | `item_sightline_clear` | 鏡 → 床 |
+| 13 | `bed_head_not_under_window` | 床頭不靠窗 | `not_backed_by_opening` | bed / bunk_bed |
+| 14 | `sofa_not_back_to_window` | 沙發不背窗 | `not_backed_by_opening` | sofa / loveseat |
+| 15 | `stove_not_under_window` | 灶後不宜空 | `not_backed_by_opening` | stove |
+| 16 | `stove_away_from_water` | 水火不相容 | `group_separation` | stove ↔ sink / fridge |
+| 17 | `door_not_facing_window` | 穿堂煞 | `door_window_screen` | 高櫃／書架當屏風 |
+
+四支泛用 enforcer 撐起其中十條，新增規則多半只要寫一張卡片換參數：
+
+| enforce | 幾何 |
+|---|---|
+| `door_sightline_clear` | 門寬往室內延伸成一條**視線帶**，`blocked_types` 落在帶上就沿橫向推開 |
+| `item_sightline_clear` | 同上，但視線起點換成靠牆的家具（鏡子），`blocked_types` 被推開 |
+| `not_backed_by_opening` | 家具貼哪面牆、背就朝那面牆；該牆上的開口與它重疊就沿牆滑到實牆段 |
+| `group_separation` | `group_a` 與 `group_b` 的跨組配對推開至 `min_gap`，組內不動 |
+
+**受控詞彙是前提**：規則只認 `FURNITURE_SIZES` 裡的 type。LLM 會自由命名
+（`cooktop` / `refrigerator` / `wall_mirror`），`_normalize_ftype` 的別名表要收得到，
+否則全部收斂成 `default`，規則永遠不會觸發。`stove` / `toilet` / `sink` / `fridge` /
+`mirror` 就是為了這幾條風水規則才進受控詞彙的。
+
+**前端選單與卡片一對一**：`useDesignFlow.js` 的 `FENGSHUI_OPTIONS` 少一條就是勾不到、
+多一條就是勾了沒作用。`test/test_fengshui_constraints.py` 會把兩邊比對起來擋下不一致。
+
+**介面位置**：風水禁忌在主畫面（`frontend/src/components/FengshuiPicker.vue`），
+不在「進階設定」摺疊面板裡——這些是會實際搬動家具的硬約束，
+跟房型／家具同一個等級，收起來等於做了沒人用。
 
 ### 3.4 軟性指標評分（`_score_soft_constraints`）
 

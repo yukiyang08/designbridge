@@ -5,7 +5,7 @@ import {
   spacePhoto, spacePhotoPath,
   styleRefImage, confirmedStyle, noStyleReference, selectedStyle, styleMethod,
   editPlacements, sceneGraph, floorPlanPath,
-  extraPrompt, familyNeeds, fengshuiRules, outputAspect, roomTypeForPlan, spaceSizePing,
+  extraPrompt, fengshuiRules, outputAspect, roomTypeForPlan, spaceSizePing,
   planSource, cadActiveRoomId, cadRoomStatus, lastGeneratedImage,
   panoLoading, panoUrl, panoError,
 } from './state'
@@ -87,7 +87,6 @@ export async function submit3D() {
       refine_mode:        false,
       output_aspect:      outputAspect.value,
       style_method:       styleMethod.value,
-      family_needs:       familyNeeds.value,
       fengshui_rules:     fengshuiRules.value,
       // 上傳照片路徑：把照片當作生成的起始影像
       initial_image_path: spacePhotoPath.value || undefined,

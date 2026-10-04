@@ -330,13 +330,6 @@ def renderer(state: DesignBridgeState) -> dict[str, Any]:
 
     _style_neg = (style_params.get("negative_prompt") or "").strip(", ")
     negative_prompt = f"{_BASE_NEGATIVE_PROMPT}, {_style_neg}" if _style_neg else _BASE_NEGATIVE_PROMPT
-    _special = req.get("special_constraints") or {}
-    if _special.get("wheelchair"):
-        negative_prompt = f"{negative_prompt}, wheelchair, wheelchair user, mobility aid, disability equipment"
-    if _special.get("children"):
-        negative_prompt = f"{negative_prompt}, child, children, baby, toddler, kid"
-    if _special.get("pets"):
-        negative_prompt = f"{negative_prompt}, cat, dog, bird, rabbit, hamster, pet, animal"
     user_input = state.get("user_input") or {}
     # Set by the standalone debug console (see api.py DesignRequest) to test a
     # ControlNet model / scale / LoRA combo for one request without env changes.

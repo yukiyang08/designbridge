@@ -137,15 +137,96 @@ export const ASPECT_OPTIONS = [
   { value: '16:9', label: '16:9 寬螢幕' },
   { value: '9:16', label: '9:16 直式寬螢幕' },
 ]
-export const FAMILY_OPTIONS = [
-  { value: 'children',   label: '有小孩' },
-  { value: 'wheelchair', label: '有輪椅使用者' },
-  { value: 'pets',       label: '有寵物' },
-]
+// 風水規則選單。每一筆都要對得上 skills/constraints/<slug>/SKILL.md 的 `trigger`，
+// 對不上就是「勾了沒作用」——test/test_fengshui_constraints.py 會把兩邊比對起來擋下來。
+//   · desc  ：chip 上直接顯示的一句話，使用者不必猜「開門不見灶」是什麼意思
+//   · rooms ：跟目前房型相關的規則排在前面，其餘收進「其他空間的規則」
+//   · fix   ：勾了之後排版實際會做的事，寫給會追問「所以它會怎麼改」的人
 export const FENGSHUI_OPTIONS = [
-  { value: 'bed_not_facing_door',    label: '床不對門' },
-  { value: 'sofa_not_back_to_door',  label: '沙發不背門' },
-  { value: 'desk_not_facing_window', label: '書桌不背窗' },
+  {
+    value: 'bed_not_facing_door', label: '床腳不對門', icon: 'mdi:bed',
+    desc: '床腳不正對門口，避免開門直衝床位',
+    fix: '床沿著牆橫移，讓床腳錯開門的中心線',
+    rooms: ['bedroom', 'kids_room'],
+  },
+  {
+    value: 'door_not_facing_bed', label: '開門不見床', icon: 'mdi:door-open',
+    desc: '整張床都不落在門口的正向視線上',
+    fix: '床整個推出門的視線帶，比「床腳不對門」更嚴格',
+    rooms: ['bedroom', 'kids_room'],
+  },
+  {
+    value: 'bed_head_not_under_window', label: '床頭不靠窗', icon: 'mdi:window-closed-variant',
+    desc: '床頭要靠實牆，不睡在窗戶底下',
+    fix: '床沿著同一面牆滑到沒有開窗的那一段',
+    rooms: ['bedroom', 'kids_room'],
+  },
+  {
+    value: 'mirror_not_facing_bed', label: '鏡不照床', icon: 'mdi:mirror',
+    desc: '鏡面不正對睡床，睡醒不會照到自己',
+    fix: '移動的是床——鏡子掛在牆上，換牆等於換裝潢',
+    rooms: ['bedroom', 'kids_room'],
+  },
+  {
+    value: 'door_not_facing_mirror', label: '門不對鏡', icon: 'mdi:mirror-rectangle',
+    desc: '一進門不被鏡面正對回照',
+    fix: '鏡子挪出門的正向視線帶',
+    rooms: ['bedroom', 'living_room', 'bathroom'],
+  },
+  {
+    value: 'sofa_not_back_to_door', label: '沙發不背門', icon: 'mdi:sofa',
+    desc: '沙發背靠實牆、面向入口',
+    fix: '沙發往門的另一側推，背面不與門同側',
+    rooms: ['living_room', 'living_dining'],
+  },
+  {
+    value: 'sofa_not_back_to_window', label: '沙發不背窗', icon: 'mdi:sofa-outline',
+    desc: '沙發背後要有靠，不背對整片落地窗',
+    fix: '沙發沿著牆滑到實牆段',
+    rooms: ['living_room', 'living_dining'],
+  },
+  {
+    value: 'desk_not_back_to_door', label: '書桌不背門', icon: 'mdi:desk',
+    desc: '坐著的時候能側身看到門口',
+    fix: '書桌沿牆推開，座位不再正背著門',
+    rooms: ['study', 'bedroom', 'kids_room'],
+  },
+  {
+    value: 'desk_not_facing_window', label: '書桌不背窗', icon: 'mdi:desk-lamp',
+    desc: '側對窗戶取自然側光，避免正面眩光',
+    fix: '書桌往室內推離窗戶中心線',
+    rooms: ['study', 'bedroom', 'kids_room'],
+  },
+  {
+    value: 'door_not_facing_stove', label: '開門不見灶', icon: 'mdi:stove',
+    desc: '站在廚房門口看不到爐灶',
+    fix: '爐灶橫向推出門的視線帶',
+    rooms: ['kitchen'],
+  },
+  {
+    value: 'stove_not_under_window', label: '灶後不宜空', icon: 'mdi:fire',
+    desc: '爐灶背後是實牆，不背對窗戶',
+    fix: '爐灶沿著流理檯那面牆滑到實牆段',
+    rooms: ['kitchen'],
+  },
+  {
+    value: 'stove_away_from_water', label: '水火不相容', icon: 'mdi:water-off',
+    desc: '爐灶與水槽、冰箱之間留出備料檯面',
+    fix: '兩者互相推開至少 60 公分',
+    rooms: ['kitchen'],
+  },
+  {
+    value: 'door_not_facing_toilet', label: '開門不見廁', icon: 'mdi:toilet',
+    desc: '馬桶不正對浴室門口',
+    fix: '馬桶橫向推出門的視線帶',
+    rooms: ['bathroom'],
+  },
+  {
+    value: 'door_not_facing_window', label: '穿堂煞', icon: 'mdi:weather-windy',
+    desc: '門正對對牆的窗，一進門氣就直穿出去',
+    fix: '把一件高櫃／書架搬到門窗之間當屏風',
+    rooms: ['living_room', 'living_dining', 'bedroom', 'study', 'kitchen', 'bathroom', 'kids_room'],
+  },
 ]
 
 /* ══ 模組層級狀態 ══════════════════════════════════════════ */
@@ -192,7 +273,6 @@ export const customRoomD    = ref(null)
 export const furnitureItems = ref([])
 export const furnitureQty   = ref({})
 export const extraPrompt    = ref('')
-export const familyNeeds    = ref([])
 export const fengshuiRules  = ref([])
 export const outputAspect   = ref('auto')
 

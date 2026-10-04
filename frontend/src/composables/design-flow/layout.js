@@ -2,7 +2,7 @@ import { mediaUrl, jsonFetch } from '@/config/api'
 import {
   requestState, timers,
   error, loading, loadingMsg, result,
-  furnitureItems, furnitureQty, extraPrompt, familyNeeds, fengshuiRules,
+  furnitureItems, furnitureQty, extraPrompt, fengshuiRules,
   roomType, spaceSizePing, customRoomW, customRoomD,
   floorPlanUrl, floorPlanPath, sceneGraph, layoutRenderConfig, editPlacements,
   roomW, roomD, roomTypeForPlan,
@@ -36,7 +36,6 @@ export async function submitLayout() {
         t => Array(Math.max(1, furnitureQty.value[t] || 1)).fill(t),
       ),
       text_prompt:    extraPrompt.value,
-      family_needs:   familyNeeds.value,
       fengshui_rules: fengshuiRules.value,
     })
     if (!res.ok) throw new Error(`${res.status}`)
