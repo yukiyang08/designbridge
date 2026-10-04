@@ -7,6 +7,7 @@
  */
 import { computed, ref } from 'vue'
 import { API_BASE } from '@/config/api'
+import { cleanDescription } from '@/utils/text'
 
 const props = defineProps({
   result: { type: Object, default: null },
@@ -97,7 +98,7 @@ const styleReferenceImageUrl = computed(() => {
         <span class="style-badge">使用者上傳</span>
         <span class="style-name">Gemini 視覺分析</span>
       </div>
-      <p class="desc">{{ result.render_result.generation_params.gemini_style_description }}</p>
+      <p class="desc">{{ cleanDescription(result.render_result.generation_params.gemini_style_description) }}</p>
     </section>
 
     <section v-else class="card">

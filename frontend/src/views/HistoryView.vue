@@ -2,6 +2,7 @@
 import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { apiUrl, jsonFetch, mediaUrl } from '@/config/api'
+import { cleanDescription } from '@/utils/text'
 
 const router = useRouter()
 const records = ref([])
@@ -259,8 +260,8 @@ function modelBadge(r) {
             <span class="tile-time">{{ formatTime(r.timestamp).slice(0, 16) }}</span>
             <span v-if="r.elapsed_seconds" class="tile-elapsed">{{ r.elapsed_seconds }}s</span>
           </div>
-          <p v-if="r.gemini_style_description" class="tile-gemini">{{ r.gemini_style_description }}</p>
-          <p v-if="r.style_params?.style_summary" class="tile-summary">{{ r.style_params.style_summary }}</p>
+          <p v-if="r.gemini_style_description" class="tile-gemini">{{ cleanDescription(r.gemini_style_description) }}</p>
+          <p v-if="r.style_params?.style_summary" class="tile-summary">{{ cleanDescription(r.style_params.style_summary) }}</p>
         </div>
       </div>
     </div>
@@ -308,12 +309,12 @@ function modelBadge(r) {
 
             <div v-if="selected.gemini_style_description" class="info-block gemini">
               <div class="block-label">Gemini 風格分析</div>
-              <p>{{ selected.gemini_style_description }}</p>
+              <p>{{ cleanDescription(selected.gemini_style_description) }}</p>
             </div>
 
             <div v-if="selected.style_params?.style_summary" class="info-block summary">
               <div class="block-label">風格摘要</div>
-              <p>{{ selected.style_params.style_summary }}</p>
+              <p>{{ cleanDescription(selected.style_params.style_summary) }}</p>
             </div>
 
             <details class="json-details">
