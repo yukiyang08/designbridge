@@ -47,6 +47,7 @@ function normalizeImageUrl(rawUrl) {
 }
 
 // ── 資訊卡片（hover/鍵盤聚焦卡片本身就會開）── 用 Teleport 貼到 body，避免被 .rail 的橫向捲動裁掉
+const POPOVER_W = 280   // 要跟 .style-popover 的 width 一致
 const openInfoId = ref(null)
 const popoverPos = ref({ top: 0, left: 0 })
 let closeTimer = null
@@ -57,10 +58,13 @@ const activeInfoCandidate = computed(
 
 function openPopover(c, evt) {
   clearTimeout(closeTimer)
+  // 浮在卡片右上角旁邊；右邊放不下（捲到最右那幾張）就翻到卡片左側
   const rect = evt.currentTarget.getBoundingClientRect()
+  const gap = 8
+  const fitsRight = rect.right + gap + POPOVER_W <= window.innerWidth - gap
   popoverPos.value = {
-    top: rect.bottom + 8,
-    left: Math.min(rect.left - 220, window.innerWidth - 300),
+    top: Math.max(gap, rect.top),
+    left: fitsRight ? rect.right + gap : Math.max(gap, rect.left - gap - POPOVER_W),
   }
   openInfoId.value = c.image_url
 }
@@ -117,6 +121,7 @@ function cancelClosePopover() { clearTimeout(closeTimer) }
             <img :src="normalizeImageUrl(c.image_url)" :alt="c.style_name" loading="lazy" @error="$event.target.style.display='none'" />
             <div class="card-overlay">
               <div class="overlay-name">{{ c.style_name }}</div>
+              <p v-if="c.description" class="overlay-desc">{{ cleanDescription(c.description) }}</p>
             </div>
           </div>
         </div>
@@ -274,7 +279,7 @@ function cancelClosePopover() { clearTimeout(closeTimer) }
 .card-img-wrap {
   position: relative;
   width: 100%;
-  aspect-ratio: 3 / 4;
+  aspect-ratio: 1 / 1;
   overflow: hidden;
   border-radius: 14px;
   border: 1.5px solid #d4b89a;
@@ -301,8 +306,8 @@ function cancelClosePopover() { clearTimeout(closeTimer) }
 .card-overlay {
   position: absolute;
   inset: auto 0 0 0;
-  padding: 0.7rem 0.85rem;
-  background: linear-gradient(to top, rgba(15, 9, 3, 0.88), rgba(15, 9, 3, 0) 70%);
+  padding: 2.2rem 0.85rem 0.7rem;
+  background: linear-gradient(to top, rgba(15, 9, 3, 0.92) 35%, rgba(15, 9, 3, 0));
   color: #fff;
   pointer-events: none;
 }
@@ -310,6 +315,19 @@ function cancelClosePopover() { clearTimeout(closeTimer) }
   font-size: 1rem;
   font-weight: 800;
   text-shadow: 0 1px 2px rgba(0,0,0,0.85), 0 1px 8px rgba(0,0,0,0.5);
+}
+/* 卡片上直接露出一段描述（完整版仍在 ⓘ 浮卡裡），限 3 行避免蓋掉太多照片 */
+.overlay-desc {
+  margin: 0.3rem 0 0;
+  font-size: 0.74rem;
+  line-height: 1.5;
+  color: rgba(255, 255, 255, 0.92);
+  text-shadow: 0 1px 2px rgba(0,0,0,0.85);
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
 }
 
 .empty-state {

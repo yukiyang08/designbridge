@@ -99,17 +99,6 @@ function onPanoClick() {
         />
       </template>
 
-      <!-- ══ 風水禁忌（只有 cad／upload 路徑在這裡出現，見 showFengshui）══
-           這兩條路徑的家具座標在「繪製平面圖」那一步就定下來了，所以這裡勾選只會
-           進生成效果圖的描述，不會回頭搬動平面圖上的家具——hint 要把這件事講明白，
-           不然使用者會以為勾了平面圖就會跟著改。 -->
-      <FengshuiPicker
-        v-if="showFengshui"
-        v-model="fengshuiRules"
-        :room-type="roomTypeForPlan"
-        hint="勾選的項目會寫進生成效果圖的描述；這條路徑的平面圖家具位置已經定了，不會再被搬動。"
-      />
-
       <!-- StyleSuggestions 自己有「AI 推薦風格參考」標題，這裡不再重複一層 -->
       <section v-if="showSuggestions" class="suggest">
         <StyleSuggestions
@@ -122,6 +111,16 @@ function onPanoClick() {
           @search="confirmedStyle ? fetchStyleCandidates({ anchorSelected: true }) : showNextRound()"
         />
       </section>
+
+      <!-- ══ 風水禁忌（只有 cad／upload 路徑在這裡出現，見 showFengshui）══
+           放在風格推薦下方。這兩條路徑的家具座標在「繪製平面圖」那一步就定下來了，
+           所以這裡勾選只會進生成效果圖的描述，不會回頭搬動平面圖上的家具——hint 要把
+           這件事講明白，不然使用者會以為勾了平面圖就會跟著改。 -->
+      <FengshuiPicker
+        v-if="showFengshui"
+        v-model="fengshuiRules"
+        :room-type="roomTypeForPlan"
+      />
 
       <AdvancedPanel hint="指定風格・參考圖・風格轉移方式・輸出比例">
         <div class="adv-grid">
@@ -193,18 +192,18 @@ function onPanoClick() {
             class="swap-card"
             :class="{ active: opt.value === activeStyleId, generated: !!styleSwapCache[opt.value] }"
             :disabled="swappingStyle"
-            :title="styleSwapCache[opt.value] ? `${opt.label}（已生成，點一下切換）` : `${opt.label}（點一下生成）`"
+            :title="styleSwapCache[opt.value] ? `${opt.name}，已生成，點一下切換` : `${opt.name}，點一下生成`"
             @click="swapStyle(opt.value)"
           >
             <span class="swap-thumb">
               <img
                 v-if="styleSwapCache[opt.value]?.generated_image_url || styleDemoImages[opt.value]"
                 :src="styleSwapCache[opt.value]?.generated_image_url || styleDemoImages[opt.value]"
-                :alt="opt.label"
+                :alt="opt.name"
               />
               <span v-else class="swap-thumb-empty">＋</span>
             </span>
-            <span class="swap-label">{{ opt.label }}</span>
+            <span class="swap-label">{{ opt.name }}</span>
           </button>
         </div>
         <p v-if="swappingStyle" class="pano-hint">換風格中，沿用同一個房間佈局重新生成…</p>

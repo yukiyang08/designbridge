@@ -37,7 +37,7 @@ export async function fetchStyleOptions() {
     const data = await res.json()
     styleOptions.value = [
       { label: '自動', value: 'auto' },
-      ...data.map(({ style_name, style_id }) => ({ label: `${style_name} (${style_id})`, value: style_id })),
+      ...data.map(({ style_name, style_id }) => ({ label: `${style_name} (${style_id})`, name: style_name, value: style_id })),
     ]
     styleError.value = ''
   } catch { styleError.value = '無法載入風格選項，請稍後重試' }
