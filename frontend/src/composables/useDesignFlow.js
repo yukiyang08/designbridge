@@ -29,8 +29,9 @@ import {
   selectedStyle, noStyleReference, styleMethod, styleRefImage,
   styleOptions, styleLoading, styleError,
   styleCandidates, candidatesLoading, candidatesSearched, confirmedStyle, matchedStylePreview,
+  styleDemoImages,
   showSuggestions,
-  result, loading, loadingMsg, error, submitKey,
+  result, loading, loadingMsg, error, submitKey, swappingStyle, styleSwapCache,
   spaceImage, lastGeneratedImage, manualMaskPath, brushSize, eraserSize, drawMode,
   textPrompt, refineCanvasRef, baseImagePreview,
   panoLoading, panoUrl, panoError,
@@ -42,13 +43,13 @@ import { goStep, nextStep, prevStep, startFlow, resetFlow } from './design-flow/
 import { uploadFile } from './design-flow/common'
 import {
   fetchStyleOptions, fetchStyleCandidates, showNextRound, scheduleSearch,
-  confirmStyle, clearConfirmedStyle,
+  confirmStyle, clearConfirmedStyle, fetchStyleDemoImages,
 } from './design-flow/style'
 import {
   submitLayout, useUploadedPlan, handleRoomSelected, onEditorChange, updateFloorPlan,
 } from './design-flow/layout'
 import { submitRoomProgram, handleCadRoomSelected, jumpToCadRoom } from './design-flow/cad'
-import { submitPhoto, submit3D, generatePanorama } from './design-flow/render'
+import { submitPhoto, submit3D, swapStyle, generatePanorama } from './design-flow/render'
 import { handleMaskReady, submitRefine } from './design-flow/refine'
 import { fetchQuotation, toggleFavoriteDesign } from './design-flow/quotation'
 
@@ -75,10 +76,11 @@ export function useDesignFlow() {
     selectedStyle, noStyleReference, styleMethod, styleRefImage,
     styleOptions, styleLoading, styleError,
     styleCandidates, candidatesLoading, candidatesSearched, confirmedStyle, matchedStylePreview,
+    styleDemoImages, fetchStyleDemoImages,
     showSuggestions, fetchStyleOptions, fetchStyleCandidates, showNextRound, scheduleSearch,
     confirmStyle, clearConfirmedStyle,
     // 結果
-    result, loading, loadingMsg, error, submitKey,
+    result, loading, loadingMsg, error, submitKey, swappingStyle, styleSwapCache, swapStyle,
     // 微調
     spaceImage, lastGeneratedImage, manualMaskPath, brushSize, eraserSize, drawMode,
     textPrompt, refineCanvasRef, baseImagePreview, handleMaskReady,

@@ -1,7 +1,7 @@
 import { jsonFetch } from '@/config/api'
 import {
   ROOM_TYPE_LABEL, requestState, timers,
-  error, loading, loadingMsg, result, submitKey, swappingStyle,
+  error, loading, loadingMsg, result, submitKey, swappingStyle, styleSwapCache,
   spacePhoto, spacePhotoPath,
   styleRefImage, confirmedStyle, noStyleReference, selectedStyle, styleMethod,
   editPlacements, sceneGraph, floorPlanPath,
@@ -98,6 +98,9 @@ export async function submit3D() {
     const data = await res.json()
     if (requestId === requestState.current) {
       result.value = data
+      // 新的一輪生成（房間/描述可能都變了），舊風格版本快取失效；用這次的結果重新起頭。
+      const styleId = data.style_params?.style_profile_id
+      styleSwapCache.value = styleId ? { [styleId]: data } : {}
       if (data.generated_image_path) {
         lastGeneratedImage.value = { path: data.generated_image_path, url: data.generated_image_url || null }
       }
@@ -112,6 +115,58 @@ export async function submit3D() {
     if (requestId === requestState.current) error.value = `生成渲染圖失敗：${e.message}`
   } finally {
     if (requestId === requestState.current) loading.value = false
+  }
+}
+
+/* ══ 一鍵換風格 ═══════════════════════════════════════════
+   帶著上次 /api/generate 的完整回應當 plan 送回去（見 api.py 的 plan 欄位），
+   讓 requirement/vision/layout 三個節點偵測到已有值而跳過重跑，只有
+   layout_and_style_agent 的風格搜尋 + renderer 會重跑。故意不帶 style_params，
+   帶了的話 layout_and_style_agent 會直接沿用舊風格、新 style_profile_id 等於沒送。
+   text_prompt 在這裡不影響結果：structured_requirement 已經在 plan 裡，
+   requirement_analyzer 會整個跳過，不會重讀 text_prompt。
+
+   styleSwapCache 記住這個房間這一輪每個風格生成過的結果：換過的風格再點一次
+   不用重打 API，直接換圖；同一個房間裡切來切去的版本都留著，不會互相覆蓋掉。 */
+
+export async function swapStyle(styleId) {
+  const prev = result.value
+  if (!prev || swappingStyle.value) return
+
+  const cached = styleSwapCache.value[styleId]
+  if (cached) {
+    result.value = cached
+    if (cached.generated_image_path) {
+      lastGeneratedImage.value = { path: cached.generated_image_path, url: cached.generated_image_url || null }
+    }
+    return
+  }
+
+  const requestId = ++requestState.current
+  error.value = ''
+  swappingStyle.value = true
+  try {
+    const { style_params, ...plan } = prev
+    const res = await jsonFetch('/api/generate', {
+      text_prompt:       extraPrompt.value.trim(),
+      style_profile_id:  styleId,
+      output_aspect:      outputAspect.value,
+      style_method:       styleMethod.value,
+      plan,
+    })
+    if (!res.ok) throw new Error(`${res.status}`)
+    const data = await res.json()
+    if (requestId === requestState.current) {
+      result.value = data
+      styleSwapCache.value = { ...styleSwapCache.value, [data.style_params?.style_profile_id || styleId]: data }
+      if (data.generated_image_path) {
+        lastGeneratedImage.value = { path: data.generated_image_path, url: data.generated_image_url || null }
+      }
+    }
+  } catch (e) {
+    if (requestId === requestState.current) error.value = `換風格失敗：${e.message}`
+  } finally {
+    if (requestId === requestState.current) swappingStyle.value = false
   }
 }
 

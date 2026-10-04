@@ -1,6 +1,7 @@
 <script setup>
 import { computed, ref } from 'vue'
 import { Icon } from '@iconify/vue'
+import { cleanDescription } from '@/utils/text'
 
 const props = defineProps({
   // [{ style_id, style_name, image_url, similarity, description, tags, colors, materials, space_info }]
@@ -45,7 +46,7 @@ function normalizeImageUrl(rawUrl) {
   return url
 }
 
-// ── 資訊卡片（ⓘ hover/點擊）── 用 Teleport 貼到 body，避免被 .rail 的橫向捲動裁掉
+// ── 資訊卡片（hover/鍵盤聚焦卡片本身就會開）── 用 Teleport 貼到 body，避免被 .rail 的橫向捲動裁掉
 const openInfoId = ref(null)
 const popoverPos = ref({ top: 0, left: 0 })
 let closeTimer = null
@@ -68,10 +69,6 @@ function scheduleClosePopover() {
   closeTimer = setTimeout(() => { openInfoId.value = null }, 150)
 }
 function cancelClosePopover() { clearTimeout(closeTimer) }
-function toggleInfo(c, evt) {
-  if (openInfoId.value === c.image_url) openInfoId.value = null
-  else openPopover(c, evt)
-}
 </script>
 
 <template>
@@ -90,12 +87,7 @@ function toggleInfo(c, evt) {
     <!-- 骨架載入 -->
     <div v-if="loading" class="rail">
       <div v-for="i in 5" :key="i" class="card skeleton">
-        <div class="card-img skeleton-img"></div>
-        <div class="card-body">
-          <div class="skeleton-line short"></div>
-          <div class="skeleton-line"></div>
-          <div class="skeleton-line medium"></div>
-        </div>
+        <div class="card-img-wrap skeleton-img"></div>
       </div>
     </div>
 
@@ -118,24 +110,13 @@ function toggleInfo(c, evt) {
           @keydown.enter.prevent="toggleConfirm(c)"
           @keydown.space.prevent="toggleConfirm(c)"
           @click="toggleConfirm(c)"
+          @mouseenter="openPopover(c, $event)" @mouseleave="scheduleClosePopover"
+          @focus="openPopover(c, $event)" @blur="scheduleClosePopover"
         >
           <div class="card-img-wrap">
             <img :src="normalizeImageUrl(c.image_url)" :alt="c.style_name" loading="lazy" @error="$event.target.style.display='none'" />
-            <button
-              type="button" class="info-btn" title="風格詳情"
-              @mouseenter="openPopover(c, $event)" @mouseleave="scheduleClosePopover"
-              @click.stop="toggleInfo(c, $event)"
-            >
-              <Icon icon="mdi:information-outline" width="15" />
-            </button>
-            <div v-if="confirmed?.image_url === c.image_url" class="selected-overlay">
-              <span class="check">✓</span>
-            </div>
-          </div>
-          <div class="card-body">
-            <div class="style-name">{{ c.style_name }}</div>
-            <div class="tags">
-              <span v-for="t in (c.tags?.length ? c.tags.slice(0, 3) : [c.style_id])" :key="t" class="tag">{{ t }}</span>
+            <div class="card-overlay">
+              <div class="overlay-name">{{ c.style_name }}</div>
             </div>
           </div>
         </div>
@@ -164,7 +145,12 @@ function toggleInfo(c, evt) {
           <Icon icon="mdi:close" width="14" />
         </button>
       </div>
-      <p v-if="activeInfoCandidate.description" class="popover-desc">{{ activeInfoCandidate.description }}</p>
+      <p v-if="activeInfoCandidate.description" class="popover-desc">{{ cleanDescription(activeInfoCandidate.description) }}</p>
+      <div v-if="activeInfoCandidate.tags?.length" class="popover-row">
+        <div class="chip-row">
+          <span v-for="t in activeInfoCandidate.tags" :key="t" class="chip">{{ t }}</span>
+        </div>
+      </div>
       <div v-if="Object.keys(activeInfoCandidate.colors || {}).length" class="popover-row">
         <span class="popover-label">主要色彩</span>
         <div class="swatches">
@@ -240,7 +226,8 @@ function toggleInfo(c, evt) {
 .rail {
   display: flex;
   gap: 1.05rem;
-  padding: 0.25rem 0.25rem 0.6rem;
+  /* 上下留夠空間給選中卡片的 scale + 陰影，不然會被 overflow-x:auto 連帶產生的 overflow-y 裁掉 */
+  padding: 1rem 0.3rem 1.15rem;
   overflow-x: auto;
   scroll-snap-type: x proximity;
   scroll-behavior: smooth;
@@ -266,41 +253,40 @@ function toggleInfo(c, evt) {
 }
 .rail-arrow:hover { background: #8B5E3C; color: white; border-color: #8B5E3C; }
 
-/* Card */
+/* Card：整張是圖，文字疊在圖片底部（漸層），不再另外留白色 card-body */
 .card {
-  background: rgba(255, 250, 243, 0.85);
-  border: 1.5px solid #d4b89a;
+  position: relative;
   border-radius: 14px;
-  overflow: hidden;
+  overflow: visible;
   cursor: pointer;
   transition: all 0.2s;
-  display: flex;
-  flex-direction: column;
-  flex: 0 0 clamp(150px, 20%, 280px);
+  flex: 0 0 clamp(180px, 22%, 280px);
   scroll-snap-align: start;
 }
-.card:hover {
-  border-color: #b07845;
-  box-shadow: 0 8px 24px rgba(139, 94, 60, 0.2);
-  transform: translateY(-2px);
-}
-.card.selected {
-  border-color: #8B5E3C;
-  box-shadow: 0 0 0 3px rgba(139, 94, 60, 0.25);
-}
+.card:hover { transform: translateY(-2px); }
 .card:focus-visible {
   outline: none;
+  border-radius: 14px;
   box-shadow: 0 0 0 3px rgba(139, 94, 60, 0.25), 0 0 0 6px rgba(139, 94, 60, 0.14);
-  border-color: #8B5E3C;
 }
 
 /* Image */
 .card-img-wrap {
   position: relative;
   width: 100%;
-  aspect-ratio: 4 / 3;
+  aspect-ratio: 3 / 4;
   overflow: hidden;
+  border-radius: 14px;
+  border: 1.5px solid #d4b89a;
   background: #f5e8d8;
+  transition: border-color 0.15s, box-shadow 0.15s, transform 0.15s;
+}
+.card:hover .card-img-wrap { border-color: #b07845; box-shadow: 0 8px 24px rgba(139, 94, 60, 0.2); }
+/* 選中：邊框變色 + 微放大 + 陰影，不用太誇張的粗框/外圈光暈 */
+.card.selected .card-img-wrap {
+  border-color: #8B5E3C;
+  box-shadow: 0 6px 16px rgba(92, 61, 36, 0.28);
+  transform: scale(1.03);
 }
 .card-img-wrap img {
   width: 100%;
@@ -311,69 +297,19 @@ function toggleInfo(c, evt) {
 }
 .card:hover .card-img-wrap img { transform: scale(1.04); }
 
-.info-btn {
+/* 名稱常駐在圖片底部；沒有 hover/選取時漸層也夠深、文字雙層陰影，避免亮色照片把白字洗掉。 */
+.card-overlay {
   position: absolute;
-  top: 0.5rem;
-  right: 0.5rem;
-  width: 24px;
-  height: 24px;
-  border-radius: 50%;
-  border: none;
-  background: rgba(0, 0, 0, 0.55);
-  color: white;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  cursor: pointer;
-  backdrop-filter: blur(4px);
-  transition: background 0.15s;
-}
-.info-btn:hover { background: rgba(139, 94, 60, 0.9); }
-
-.selected-overlay {
-  position: absolute;
-  inset: 0;
-  background: rgba(139, 94, 60, 0.35);
+  inset: auto 0 0 0;
+  padding: 0.7rem 0.85rem;
+  background: linear-gradient(to top, rgba(15, 9, 3, 0.88), rgba(15, 9, 3, 0) 70%);
+  color: #fff;
   pointer-events: none;
-  display: flex;
-  align-items: center;
-  justify-content: center;
 }
-.check {
-  font-size: 2.5rem;
-  color: white;
-  text-shadow: 0 2px 8px rgba(0,0,0,0.3);
-}
-
-/* Body */
-.card-body {
-  padding: 0.9rem 1rem 1rem;
-  display: flex;
-  flex-direction: column;
-  gap: 0.45rem;
-  flex: 1;
-}
-.style-name {
-  font-size: 0.95rem;
-  font-weight: 700;
-  color: #5c3d24;
-}
-.tags {
-  display: flex;
-  flex-wrap: wrap;
-  align-content: flex-start;  /* 卡片變高、標籤只有一行時，不要把那一行往垂直方向撐開 */
-  justify-content: flex-start;
-  gap: 0.35rem;
-  flex: 1 1 auto;
-}
-.tag {
-  flex: 0 0 auto;   /* 固定不隨卡片變寬而被拉伸，寬度只吃自己的文字+padding */
-  font-size: 0.72rem;
-  font-weight: 600;
-  color: #8B5E3C;
-  background: rgba(139, 94, 60, 0.1);
-  border-radius: 99px;
-  padding: 0.18rem 0.55rem;
+.overlay-name {
+  font-size: 1rem;
+  font-weight: 800;
+  text-shadow: 0 1px 2px rgba(0,0,0,0.85), 0 1px 8px rgba(0,0,0,0.5);
 }
 
 .empty-state {
@@ -466,21 +402,10 @@ function toggleInfo(c, evt) {
 /* Skeleton */
 .skeleton { pointer-events: none; }
 .skeleton-img {
-  aspect-ratio: 4 / 3;
   background: linear-gradient(90deg, #f5e8d8 25%, #e8d4b8 50%, #f5e8d8 75%);
   background-size: 200% 100%;
   animation: shimmer 1.4s infinite;
 }
-.skeleton-line {
-  height: 12px;
-  border-radius: 6px;
-  background: linear-gradient(90deg, #f5e8d8 25%, #e8d4b8 50%, #f5e8d8 75%);
-  background-size: 200% 100%;
-  animation: shimmer 1.4s infinite;
-}
-.skeleton-line.short  { width: 45%; }
-.skeleton-line.medium { width: 70%; }
-
 @keyframes shimmer {
   0%   { background-position: 200% 0; }
   100% { background-position: -200% 0; }

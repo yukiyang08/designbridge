@@ -214,6 +214,7 @@ export const candidatesLoading   = ref(false)
 export const candidatesSearched  = ref(false)
 export const confirmedStyle      = ref(null)
 export const matchedStylePreview = ref(null)
+export const styleDemoImages     = ref({})  // { [style_id]: image_url } —— 一鍵換風格還沒生成過的卡片先顯示這張示範圖
 
 // ── 結果 ──
 export const result        = ref(null)
@@ -222,6 +223,7 @@ export const loadingMsg    = ref({ title: '', sub: '' })
 export const error         = ref('')
 export const submitKey     = ref(0)
 export const swappingStyle = ref(false)  // 一鍵換風格：只重跑 style 搜尋 + render，不吃 loading/loadingMsg 那套全頁 overlay
+export const styleSwapCache = ref({})    // { [style_profile_id]: 該風格上次生成的完整 /api/generate 回應 } —— 換回去不用重打
 
 // 跨 domain 共用的請求序號／計時器，用物件包起來而不是裸 let——
 // ES module 匯出的裸 let 綁定在其他檔案裡是唯讀的，物件屬性可以互相寫入。

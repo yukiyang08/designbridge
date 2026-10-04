@@ -28,6 +28,7 @@ const {
   styleCandidates, candidatesLoading, confirmedStyle, showSuggestions,
   confirmStyle, clearConfirmedStyle, fetchStyleCandidates, showNextRound, scheduleSearch,
   result, loading, submit3D, nextStep, prevStep,
+  swappingStyle, swapStyle, styleSwapCache, styleDemoImages,
   panoLoading, panoUrl, panoError, generatePanorama,
 } = useDesignFlow()
 
@@ -36,6 +37,10 @@ const showDetails = ref(false)
 
 const imageUrl = computed(() => result.value?.generated_image_url || '')
 const isSkipPath = computed(() => planSource.value === 'skip')
+// 「自動」對換風格沒有意義（重送同一個 plan、style_profile_id=auto 只會重查一次語意搜尋，
+// 不保證換成別的風格），一鍵換風格只列有固定 LoRA 對應的實際風格。
+const swapStyleOptions = computed(() => styleOptions.value.filter(opt => opt.value !== 'auto'))
+const activeStyleId = computed(() => result.value?.style_params?.style_profile_id)
 
 // 排家具路徑在這一頁才打描述，打字時重查風格推薦（debounce 在 scheduleSearch 裡）
 function onPromptInput() { scheduleSearch() }
@@ -46,6 +51,7 @@ function goEditPrompt() { prevStep() }
 function regenerate() {
   showPano.value = false
   result.value = null
+  styleSwapCache.value = {}   // 房間/描述可能都要重打了，舊風格版本的快取跟著失效
   scheduleSearch()
 }
 
@@ -145,10 +151,41 @@ function onPanoClick() {
 
     <!-- ══ 已生成：結果 + 360° 環景 ══ -->
     <template v-else>
-      <div class="result-stage">
+      <div class="result-stage" :class="{ 'is-swapping': swappingStyle }">
         <img v-if="imageUrl" :src="imageUrl" alt="生成的 3D 渲染圖" class="result-img" />
         <p v-else class="no-img">生成完成，但沒有取得圖片 URL。</p>
       </div>
+
+      <!-- 一鍵換風格：沿用同一個房間佈局／視角，只重換風格 LoRA 重繪。
+           已經生成過的風格顯示實際成果縮圖、點了直接切換（不重打 API）；
+           還沒生成的顯示風格庫的示範圖（styleDemoImages，見 style.js 的
+           fetchStyleDemoImages），點了才送出換風格請求、生成後蓋掉示範圖。 -->
+      <section class="style-swap">
+        <h3 class="sub-title">一鍵換風格</h3>
+        <div class="swap-row">
+          <button
+            v-for="opt in swapStyleOptions"
+            :key="opt.value"
+            type="button"
+            class="swap-card"
+            :class="{ active: opt.value === activeStyleId, generated: !!styleSwapCache[opt.value] }"
+            :disabled="swappingStyle"
+            :title="styleSwapCache[opt.value] ? `${opt.label}（已生成，點一下切換）` : `${opt.label}（點一下生成）`"
+            @click="swapStyle(opt.value)"
+          >
+            <span class="swap-thumb">
+              <img
+                v-if="styleSwapCache[opt.value]?.generated_image_url || styleDemoImages[opt.value]"
+                :src="styleSwapCache[opt.value]?.generated_image_url || styleDemoImages[opt.value]"
+                :alt="opt.label"
+              />
+              <span v-else class="swap-thumb-empty">＋</span>
+            </span>
+            <span class="swap-label">{{ opt.label }}</span>
+          </button>
+        </div>
+        <p v-if="swappingStyle" class="pano-hint">換風格中，沿用同一個房間佈局重新生成…</p>
+      </section>
 
       <!-- 360° 環景：設計稿是獨立步驟，這裡改回同頁按需生成 -->
       <section class="pano">
@@ -311,6 +348,51 @@ function onPanoClick() {
   box-shadow: var(--db-shadow-soft);
 }
 .no-img { color: var(--db-text-soft); }
+.result-stage.is-swapping .result-img { opacity: 0.5; transition: opacity 0.16s; }
+
+.style-swap { margin-top: 0.5rem; }
+.style-swap .sub-title { margin-bottom: 0.6rem; }
+.swap-row { display: flex; flex-wrap: wrap; gap: 0.7rem; }
+.swap-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.4rem;
+  width: 84px;
+  padding: 0;
+  border: none;
+  background: none;
+  font-family: var(--db-font-body);
+  cursor: pointer;
+}
+.swap-thumb {
+  display: grid;
+  place-items: center;
+  width: 84px;
+  height: 84px;
+  border-radius: 12px;
+  overflow: hidden;
+  border: 2px solid #ececec;
+  background: #f5f3ee;
+  transition: border-color 0.16s, box-shadow 0.16s, transform 0.16s;
+}
+.swap-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.swap-thumb-empty { font-size: 1.4rem; color: var(--db-placeholder); }
+.swap-card:hover:not(:disabled) .swap-thumb { border-color: var(--db-accent); }
+.swap-card.generated .swap-thumb { border-style: solid; }
+.swap-card.active .swap-thumb {
+  border-color: var(--db-accent);
+  box-shadow: 0 0 0 3px var(--db-accent-soft);
+  transform: scale(1.03);
+}
+.swap-label {
+  font-size: 0.8rem;
+  color: var(--db-text-soft);
+  text-align: center;
+  line-height: 1.3;
+}
+.swap-card.active .swap-label { color: var(--db-text); font-weight: 600; }
+.swap-card:disabled { opacity: 0.6; cursor: not-allowed; }
 
 .pano { margin-top: 0.75rem; }
 .pano-head {

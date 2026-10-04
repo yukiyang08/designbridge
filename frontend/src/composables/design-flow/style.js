@@ -4,7 +4,7 @@ import {
   styleRefImage, extraPrompt, roomTypeForPlan, selectedStyle,
   styleOptions, styleLoading, styleError,
   styleCandidates, styleCandidatePool, candidatesLoading, candidatesSearched,
-  confirmedStyle, matchedStylePreview,
+  confirmedStyle, matchedStylePreview, styleDemoImages,
 } from './state'
 
 async function waitForBackend(maxWaitMs = 120000, intervalMs = 2000) {
@@ -42,6 +42,22 @@ export async function fetchStyleOptions() {
     styleError.value = ''
   } catch { styleError.value = '無法載入風格選項，請稍後重試' }
   finally { styleLoading.value = false }
+}
+
+/* ══ 每個風格一張示範圖（一鍵換風格還沒生成過的卡片用）══════ */
+
+export async function fetchStyleDemoImages() {
+  if (Object.keys(styleDemoImages.value).length) return  // 一次就夠，不用每次進結果頁都重打
+  try {
+    const res = await fetch(apiUrl('/api/style-search?query=&style_id=&top_k=24&diverse=true'))
+    if (!res.ok) return
+    const data = await res.json()
+    const map = {}
+    for (const c of Array.isArray(data) ? data : []) {
+      if (c.style_id && !map[c.style_id]) map[c.style_id] = c.image_url
+    }
+    styleDemoImages.value = map
+  } catch {}
 }
 
 /* ══ 風格搜尋（沿用舊 HomeView 的錨定／輪替行為） ══════════ */

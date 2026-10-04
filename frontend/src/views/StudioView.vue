@@ -28,7 +28,7 @@ const {
   loading, loadingMsg, error,
   editPlacements, floorPlanUrl, spacePhotoPath, lastGeneratedImage, planSource,
   detectedRooms, cadPlanResult, cadRoomStatus, cadActiveRoomId, jumpToCadRoom,
-  fetchStyleOptions, resetFlow,
+  fetchStyleOptions, fetchStyleDemoImages, resetFlow,
 } = flow
 
 // 右上角縮圖只在 CAD 多房間流程、且已經進到逐一設計房間（plan 之後）的步驟才顯示——
@@ -86,6 +86,7 @@ const maxReached = computed(() => {
 onMounted(() => {
   // 風格下拉選單的選項要先跟後端要；順便當作後端健康檢查
   if (flow.styleOptions.value.length <= 1) fetchStyleOptions()
+  fetchStyleDemoImages()
 })
 </script>
 
