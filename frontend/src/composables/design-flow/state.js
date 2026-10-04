@@ -1,4 +1,4 @@
-import { ref, computed } from 'vue'
+import { ref, computed, watch } from 'vue'
 import { useImageField } from '@/composables/useImageField'
 
 /**
@@ -78,6 +78,7 @@ export const CAD_ROOM_TYPE_TO_EDITOR = {
   bedroom_master: 'bedroom',
   bedroom: 'bedroom',
   living_dining: 'living_dining',
+  dining: 'living_dining',
   kitchen: 'kitchen',
   bathroom: 'bathroom',
   balcony: 'balcony',
@@ -245,7 +246,8 @@ export const uploadedPlanPath  = ref('')   // 原始（未裁切）上傳圖的�
 export const detectedRooms     = ref([])   // /api/detect-rooms 偵測到的房間清單，多間時才會用到
 
 // ── CAD 房型生成（designbridge/roomplan）──
-export const cadCounts     = ref({ bedroom_count: 2, living_count: 1, bathroom_count: 1, kitchen_count: 1, balcony_count: 1 })
+export const cadCounts     = ref({ bedroom_count: 2, living_count: 1, dining_count: 1, bathroom_count: 1, kitchen_count: 1, balcony_count: 1 })
+export const cadExtraRooms = ref([])   // 自訂空間名稱（書房、儲藏室…），每個 1 間
 export const cadTotalPing  = ref(32)        // 2房1廳1衛1廚1陽台在 25 坪下房間偏小，32 坪落地起來更合理
 export const cadPlanResult = ref(null)     // /api/generate-room-plan 的完整回應（rooms/walls/doors/windows/svg_markup…）
 
@@ -350,3 +352,32 @@ export const showSuggestions = computed(
   () => !styleRefImage.file &&
     (styleCandidates.value.length > 0 || candidatesLoading.value || candidatesSearched.value),
 )
+
+/* ══ 草稿保存（sessionStorage）══════════════════════════════
+   重新整理頁面時模組狀態會歸零。這裡只存「路徑 + 表單欄位」——圖片、平面圖、生成結果
+   都是大物件或伺服器端產物，還原後反而可能跟畫面對不上，所以不存。
+   ponytail: 還原只回到第一步並保留已填欄位；要連步驟一起還原，要先能從伺服器重建結果。 */
+const DRAFT_KEY = 'db.flow'
+const DRAFT_FIELDS = {
+  planSource, roomType, spaceSizePing, customRoomW, customRoomD, furnitureItems, furnitureQty,
+  extraPrompt, fengshuiRules, outputAspect, selectedStyle, noStyleReference, styleMethod,
+}
+
+export function saveDraft() {
+  try {
+    const d = {}
+    for (const k in DRAFT_FIELDS) d[k] = DRAFT_FIELDS[k].value
+    sessionStorage.setItem(DRAFT_KEY, JSON.stringify(d))
+  } catch { /* 無痕模式或儲存空間滿了：沒有草稿而已，不影響流程 */ }
+}
+
+export function hasDraft() {
+  try { return !!sessionStorage.getItem(DRAFT_KEY) } catch { return false }
+}
+
+try {
+  const d = JSON.parse(sessionStorage.getItem(DRAFT_KEY) || 'null')
+  if (d) for (const k in DRAFT_FIELDS) if (k in d) DRAFT_FIELDS[k].value = d[k]
+} catch { /* 壞掉的草稿直接忽略 */ }
+
+watch(Object.values(DRAFT_FIELDS), saveDraft, { deep: true })

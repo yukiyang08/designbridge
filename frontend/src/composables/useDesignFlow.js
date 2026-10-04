@@ -21,7 +21,7 @@ export { STEP_FLOWS, ASPECT_OPTIONS, FENGSHUI_OPTIONS } from './design-flow/stat
 import {
   planSource, stepIndex, steps, currentStep, isLastStep,
   floorPlanUrl, floorPlanPath, sceneGraph, floorPlanUpload, uploadedPlanUrl, detectedRooms,
-  cadCounts, cadTotalPing, cadPlanResult, cadActiveRoomId, cadRoomStatus,
+  cadCounts, cadTotalPing, cadExtraRooms, cadPlanResult, cadActiveRoomId, cadRoomStatus,
   editPlacements, roomW, roomD, roomTypeForPlan, layoutViewMode, layoutRenderConfig,
   roomType, spaceSizePing, customRoomW, customRoomD,
   furnitureItems, furnitureQty, extraPrompt, fengshuiRules, outputAspect,
@@ -62,7 +62,7 @@ export function useDesignFlow() {
     floorPlanUrl, floorPlanPath, sceneGraph, floorPlanUpload, uploadedPlanUrl,
     detectedRooms, handleRoomSelected,
     // CAD 房型生成
-    cadCounts, cadTotalPing, cadPlanResult, submitRoomProgram, handleCadRoomSelected,
+    cadCounts, cadTotalPing, cadExtraRooms, cadPlanResult, submitRoomProgram, handleCadRoomSelected,
     cadActiveRoomId, cadRoomStatus, jumpToCadRoom,
     // 佈局
     editPlacements, roomW, roomD, roomTypeForPlan, layoutViewMode, layoutRenderConfig,

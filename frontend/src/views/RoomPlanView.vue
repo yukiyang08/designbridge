@@ -16,7 +16,8 @@ const PING_TO_M2 = 3.305785
 
 const COUNT_FIELDS = [
   { key: 'bedroom_count', label: '臥室' },
-  { key: 'living_count', label: '客餐廳' },
+  { key: 'living_count', label: '客廳' },
+  { key: 'dining_count', label: '餐廳' },
   { key: 'bathroom_count', label: '衛浴' },
   { key: 'kitchen_count', label: '廚房' },
   { key: 'balcony_count', label: '陽台' },
@@ -25,6 +26,7 @@ const COUNT_FIELDS = [
 const counts = reactive({
   bedroom_count: 2,
   living_count: 1,
+  dining_count: 1,
   bathroom_count: 1,
   kitchen_count: 1,
   balcony_count: 1,
@@ -186,7 +188,7 @@ async function generate() {
 }
 .count-label {
   font-family: var(--db-font-display);
-  font-style: italic;
+  font-style: normal;
   font-weight: 500;
   color: var(--db-text);
 }
@@ -216,7 +218,7 @@ async function generate() {
 }
 .ping-word-lg {
   font-family: var(--db-font-display);
-  font-style: italic;
+  font-style: normal;
   font-size: 1.2rem;
   color: var(--db-text);
 }

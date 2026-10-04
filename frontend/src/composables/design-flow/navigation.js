@@ -8,7 +8,7 @@ import {
   styleCandidates, styleCandidatePool, candidatesSearched, confirmedStyle, matchedStylePreview,
   lastGeneratedImage, manualMaskPath, textPrompt,
   panoUrl, panoError, panoLoading, quotationError,
-  timers,
+  timers, saveDraft,
 } from './state'
 
 export function goStep(i) {
@@ -28,6 +28,7 @@ export function startFlow(source) {
   resetFlow()
   planSource.value = source
   stepIndex.value = 0
+  saveDraft()   // 路由守衛靠它判斷「是從入口頁進來的」
 }
 
 export function resetFlow() {

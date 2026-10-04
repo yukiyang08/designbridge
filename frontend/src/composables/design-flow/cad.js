@@ -2,7 +2,7 @@ import { jsonFetch } from '@/config/api'
 import {
   requestState, cadDefaultPlacements, CAD_ROOM_TYPE_TO_EDITOR,
   error, loading, loadingMsg, result,
-  cadCounts, cadTotalPing, cadPlanResult,
+  cadCounts, cadTotalPing, cadExtraRooms, cadPlanResult,
   cadActiveRoomId, cadRoomStatus, cadRoomSnapshots,
   roomW, roomD, roomTypeForPlan, editPlacements,
   floorPlanPath, floorPlanUrl, sceneGraph, layoutRenderConfig, lastGeneratedImage,
@@ -23,7 +23,7 @@ export async function submitRoomProgram() {
   loadingMsg.value = { title: '生成房型配置中', sub: '依房型配置切割空間、繪製牆體與門窗' }
   result.value = null
   try {
-    const res = await jsonFetch('/api/generate-room-plan', { ...cadCounts.value, total_ping: cadTotalPing.value })
+    const res = await jsonFetch('/api/generate-room-plan', { ...cadCounts.value, total_ping: cadTotalPing.value, extra_rooms: cadExtraRooms.value })
     const data = await res.json()
     if (!res.ok) throw new Error(data.detail || `${res.status}`)
     if (requestId !== requestState.current) return
