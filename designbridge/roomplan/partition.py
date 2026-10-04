@@ -37,9 +37,14 @@ def _expand_program(program: dict) -> list[RoomSpec]:
         add("bedroom_master", 1)
         add("bedroom", bedroom_count - 1)
     add("living_dining", int(program.get("living_count", 0) or 0))
+    add("dining", int(program.get("dining_count", 0) or 0))
     add("kitchen", int(program.get("kitchen_count", 0) or 0))
     add("bathroom", int(program.get("bathroom_count", 0) or 0))
     add("balcony", int(program.get("balcony_count", 0) or 0))
+    for i, name in enumerate(program.get("extra_rooms") or [], start=1):  # 使用者自訂空間（書房、儲藏室…）
+        name = str(name).strip()[:12]
+        if name:
+            specs.append(RoomSpec("custom", i, 1.0, 4.0, name, name))
     return specs
 
 
@@ -97,8 +102,9 @@ def split_into_zones(specs: list[RoomSpec]) -> tuple[list[RoomSpec], list[RoomSp
     for s in specs:
         by_type.setdefault(s.room_type, []).append(s)
 
-    public = by_type.get("balcony", []) + by_type.get("living_dining", []) + by_type.get("kitchen", [])
-    private = by_type.get("bathroom", []) + by_type.get("bedroom_master", []) + by_type.get("bedroom", [])
+    public = by_type.get("balcony", []) + by_type.get("living_dining", []) + by_type.get("dining", []) + by_type.get("kitchen", [])
+    private = (by_type.get("bathroom", []) + by_type.get("bedroom_master", [])
+               + by_type.get("bedroom", []) + by_type.get("custom", []))
     return public, private
 
 
@@ -163,6 +169,8 @@ def partition_rooms(program: dict) -> tuple[list[RoomInstance], float, float, li
     total_m2 = float(program.get("total_ping", 0) or 0) * PING_TO_M2
     bounding_w = math.sqrt(total_m2 * BOUNDING_ASPECT_RATIO)
     bounding_d = math.sqrt(total_m2 / BOUNDING_ASPECT_RATIO)
+    if program.get("room_w") and program.get("room_d"):  # 自訂長寬；total_ping 已由 router 換算成 w*d
+        bounding_w, bounding_d = float(program["room_w"]), float(program["room_d"])
     bounding_rect = Rect(0.0, 0.0, bounding_w, bounding_d)
 
     public_specs, private_specs = split_into_zones(specs)

@@ -27,9 +27,13 @@ class RoomProgramRequest(BaseModel):
     bedroom_count: int = 2
     living_count: int = 1
     bathroom_count: int = 1
+    dining_count: int = 0
     kitchen_count: int = 1
     balcony_count: int = 1
     total_ping: float = 25.0
+    extra_rooms: List[str] = []      # 自訂空間名稱（書房、儲藏室…），每個 1 間
+    room_w: Optional[float] = None   # 自訂整層外框寬/深（公尺），兩者都給才生效，此時 total_ping 以 w*d 換算
+    room_d: Optional[float] = None
 
 
 
@@ -124,14 +128,18 @@ def generate_room_plan_endpoint(request: RoomProgramRequest):
     from designbridge.roomplan import RoomProgramError, generate_room_plan
 
     if not any([
+        request.extra_rooms, request.dining_count,
         request.bedroom_count, request.living_count, request.bathroom_count,
         request.kitchen_count, request.balcony_count,
     ]):
         raise HTTPException(status_code=400, detail="至少需要一個房間")
 
     try:
+        program = request.dict()
+        if request.room_w and request.room_d:
+            program["total_ping"] = request.room_w * request.room_d / 3.306
         task_id = str(_uuid.uuid4())
-        result = generate_room_plan(request.dict(), task_id)
+        result = generate_room_plan(program, task_id)
     except RoomProgramError as e:
         raise HTTPException(status_code=422, detail=str(e))
     except Exception as e:
@@ -144,7 +152,7 @@ def generate_room_plan_endpoint(request: RoomProgramRequest):
     return {
         "status": "success",
         "task_id": task_id,
-        "total_ping": request.total_ping,
+        "total_ping": program["total_ping"],
         "total_m2": result.total_m2,
         "bounding_w_m": result.bounding_w_m,
         "bounding_d_m": result.bounding_d_m,
