@@ -514,7 +514,7 @@ watch(() => props.sceneGraph, () => {
 }
 .layout-3d-hint {
   font-size: 0.72rem;
-  color: var(--text-4, #999);
+  color: var(--db-secondary);
   text-align: center;
   margin: 0;
 }

@@ -424,7 +424,7 @@ const boardAspect = computed(() => {
   font-family: inherit; font-weight: 600; cursor: pointer; transition: all 0.15s;
 }
 .tool-btn:hover:not(:disabled) { background: #f7efe3; }
-.tool-btn.active { background: #8B5E3C; color: #fff; }
+.tool-btn.active { background: #756d66; color: #fff; }
 .tool-btn:disabled { opacity: 0.35; cursor: default; }
 .tool-sep { width: 1px; height: 24px; background: #e7dcc9; margin: 0 0.2rem; }
 .hint { font-size: 0.74rem; color: #a08a6f; text-align: center; }
@@ -457,7 +457,7 @@ const boardAspect = computed(() => {
 .palette-item-label { line-height: 1.15; }
 .palette-item-add {
   position: absolute; top: 0.2rem; right: 0.2rem;
-  color: #8B5E3C; font-size: 0.8rem;
+  color: #756d66; font-size: 0.8rem;
 }
 .palette-hint { font-size: 0.68rem; color: #a08a6f; margin: 0; text-align: center; }
 
@@ -498,14 +498,14 @@ const boardAspect = computed(() => {
 
 .node {
   position: absolute; box-sizing: border-box;
-  border: 1.5px solid #7a5c3a; background: rgba(180,140,100,0.32);
+  border: 1.5px solid #7a5c3a; background: rgba(163, 155, 148,0.32);
   border-radius: 3px; cursor: grab; display: flex; flex-direction: column;
   align-items: center; justify-content: center; gap: 1px;
   user-select: none; transition: box-shadow 0.12s;
 }
 .node:active { cursor: grabbing; }
 .node.floor { background: rgba(160,160,160,0.20); border: 1.5px dashed #999; z-index: 0; }
-.node.selected { box-shadow: 0 0 0 2px #8B5E3C, 0 3px 12px rgba(0,0,0,0.2); z-index: 5; }
+.node.selected { box-shadow: 0 0 0 2px #756d66, 0 3px 12px rgba(0,0,0,0.2); z-index: 5; }
 .node.locked { cursor: default; opacity: 0.85; }
 .node-icon { font-size: 1rem; line-height: 1; pointer-events: none; }
 .node-label {
@@ -525,7 +525,7 @@ const boardAspect = computed(() => {
 .node-btn.del { top: -22px; right: -6px; background: #c0392b; }
 .handle {
   position: absolute; right: -6px; bottom: -6px; width: 13px; height: 13px;
-  background: #8B5E3C; border: 2px solid #fff; border-radius: 3px;
+  background: #756d66; border: 2px solid #fff; border-radius: 3px;
   cursor: nwse-resize;
 }
 
@@ -552,5 +552,5 @@ const boardAspect = computed(() => {
   display: flex; align-items: center; justify-content: space-between;
   font-size: 0.78rem; color: #5c4630; font-weight: 600;
 }
-.switch-input { width: 36px; height: 20px; accent-color: #8B5E3C; cursor: pointer; }
+.switch-input { width: 36px; height: 20px; accent-color: #756d66; cursor: pointer; }
 </style>

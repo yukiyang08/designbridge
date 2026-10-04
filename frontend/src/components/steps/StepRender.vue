@@ -5,7 +5,7 @@
  * 與設計稿的差異：
  *  · 360° 環景不獨立成一步。它要跑 30–60 秒且不是每次都想看，所以沿用舊版做法，
  *    留在這一步、按了才生成，看完再往下走。
- *  · 風格推薦用既有的 StyleSuggestions（10 張、相似度標籤、ⓘ 資訊卡、下一輪／找相似），
+ *  · 風格推薦用既有的 StyleSuggestions（10 張、相似度標籤、ⓘ 資訊卡、換一批／找相似），
  *    不是設計稿的三張靜態縮圖。
  *  · 裝潢風格下拉、風格參考圖上傳、不套用風格收進進階設定。
  */
@@ -108,7 +108,8 @@ function onPanoClick() {
           :api-base="API_BASE"
           @confirm="confirmStyle"
           @clear="clearConfirmedStyle"
-          @search="confirmedStyle ? fetchStyleCandidates({ anchorSelected: true }) : showNextRound()"
+          @next-round="showNextRound"
+          @similar="fetchStyleCandidates({ anchorSelected: true })"
         />
       </section>
 
@@ -352,7 +353,7 @@ function onPanoClick() {
   cursor: pointer;
   transition: border-color 0.16s, background 0.16s;
 }
-.method.active { border-color: var(--db-accent); background: #fbfaf6; }
+.method.active { border-color: var(--db-accent); background: #f7f6f3; }
 .method-body { display: flex; flex-direction: column; }
 .method-body strong { font-size: 0.9rem; font-weight: 600; }
 .method-body small { color: var(--db-text-soft); font-size: 0.78rem; }

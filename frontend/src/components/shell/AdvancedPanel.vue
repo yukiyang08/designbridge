@@ -51,7 +51,7 @@ const open = ref(false)
   background: none;
   color: var(--db-text-soft);
   font-family: var(--db-font-display);
-  font-style: italic;
+  font-style: normal;
   font-size: 1.05rem;
   cursor: pointer;
   transition: background 0.16s, color 0.16s;

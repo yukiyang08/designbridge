@@ -27,7 +27,7 @@ defineEmits(['change', 'remove'])
 <style scoped>
 .image-upload { display: flex; flex-direction: column; gap: 0.5rem; }
 
-.hint { font-size: 0.75rem; color: #a07850; margin: 0; }
+.hint { font-size: 0.75rem; color: #a39b94; margin: 0; }
 
 .upload-area {
   display: flex;
@@ -35,19 +35,19 @@ defineEmits(['change', 'remove'])
   align-items: center;
   gap: 0.4rem;
   padding: 1.5rem;
-  border: 2px dashed #d4b89a;
+  border: 2px dashed #c9c4bb;
   border-radius: 8px;
   cursor: pointer;
-  color: #a07850;
+  color: #a39b94;
   font-size: 0.85rem;
   transition: all 0.2s;
   font-weight: normal;
   background: rgba(255,250,243,0.5);
 }
 .upload-area:hover {
-  border-color: var(--primary);
-  color: var(--primary);
-  background: var(--primary-light);
+  border-color: var(--db-accent-deep);
+  color: var(--db-accent-deep);
+  background: var(--db-accent-soft);
 }
 
 .icon { font-size: 1.6rem; }

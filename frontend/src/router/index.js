@@ -1,3 +1,4 @@
+import { hasDraft } from '../composables/design-flow/state'
 import { createRouter, createWebHistory } from 'vue-router'
 import HeroView from '../views/HeroView.vue'
 import StartView from '../views/StartView.vue'
@@ -30,5 +31,8 @@ const router = createRouter({
     { path: '/room-plan', name: 'room-plan', component: () => import('../views/RoomPlanView.vue') },
   ],
 })
+
+// 直接輸入 /studio（沒經過入口頁選路徑）會得到一個空流程，導回入口頁。
+router.beforeEach(to => (to.name === 'studio' && !hasDraft() ? { name: 'start' } : true))
 
 export default router

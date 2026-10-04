@@ -167,7 +167,7 @@ function goNext() {
   cursor: pointer;
   color: var(--db-text);
   font-family: var(--db-font-display);
-  font-style: italic;
+  font-style: normal;
   font-weight: 500;
   font-size: 1.05rem;
 }

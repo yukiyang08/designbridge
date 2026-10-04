@@ -64,5 +64,5 @@ onBeforeUnmount(clearHandlers)
    every <rect> under .room-rect — the group also contains furniture symbol rects, and
    an unscoped selector would recolor those too on hover instead of just the floor. */
 .board :deep(.room-rect .room-floor) { transition: fill 0.15s, stroke 0.15s; }
-.board :deep(.room-rect:hover .room-floor) { fill: var(--db-accent-soft, #e4dfd0); stroke: var(--db-accent-deep, #b7ad8c); }
+.board :deep(.room-rect:hover .room-floor) { fill: var(--db-accent-soft, #e6e3dd); stroke: var(--db-accent-deep, #a39b94); }
 </style>

@@ -95,6 +95,7 @@ onMounted(() => {
     <AppNav />
 
     <StepBar
+      class="studio-steps"
       :steps="steps"
       :current="stepIndex"
       :max-reached="maxReached"
@@ -143,10 +144,35 @@ onMounted(() => {
   padding-bottom: 3rem;
 }
 
+.studio { --studio-w: min(1760px, calc(100vw - 2rem)); }   /* 白框與步驟列共用，左緣對齊 */
+.studio-steps { width: var(--studio-w); margin: 0 auto; padding-left: 0.35rem; padding-right: 0.35rem; box-sizing: border-box; }
+
 .studio-card {
-  padding: clamp(1.5rem, 3vw, 2.5rem);
+  --pad: clamp(1.5rem, 3vw, 2.5rem);
+  width: var(--studio-w);   /* 比預設 1192 寬 */
+  padding: var(--pad) var(--pad) 0;
   position: relative;
 }
+
+/* 上一步 / 次要動作靠左、下一步 / 主要動作靠右，固定在卡片底部（捲動時黏在視窗底）。
+   ponytail: 沿用各 step 的 .actions，不搬按鈕；只有一顆時靠右。 */
+.studio-main :deep(.actions) {
+  position: sticky;
+  bottom: 0;
+  z-index: 5;
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  margin: 1.5rem calc(-1 * var(--pad)) 0;
+  padding: 1rem var(--pad);
+  background: #fff;
+  border-top: 1px solid #e8e6e1;
+  border-radius: 0 0 var(--db-radius-card) var(--db-radius-card);
+}
+.studio-main :deep(.actions > :only-child) { margin-left: auto; }
+.studio-main :deep(.actions .db-btn) { min-width: 0; }
 /* 有縮圖時卡片內部變兩欄 grid：左邊主內容、右邊縮圖，同一個框框裡面，
    不是另外浮一個獨立的白卡在旁邊。 */
 .studio-card.has-minimap {
@@ -178,7 +204,7 @@ onMounted(() => {
 }
 .mode-back-btn:hover {
   border-color: var(--db-accent);
-  background: #fbfaf6;
+  background: #f7f6f3;
   transform: translateX(-2px);
 }
 .mode-back-btn svg { flex-shrink: 0; }
@@ -193,5 +219,9 @@ onMounted(() => {
 
 @media (max-width: 1100px) {
   .studio-card.has-minimap { grid-template-columns: 1fr; }
+}
+@media (max-width: 720px) {
+  .studio-main :deep(.actions) { flex-direction: row; }
+  .studio-main :deep(.actions .db-btn) { flex: 1; width: auto; }
 }
 </style>

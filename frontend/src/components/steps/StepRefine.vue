@@ -18,7 +18,7 @@ const {
 
 const hasBase = computed(() => !!baseImagePreview.value)
 // RefineCanvas 只吃一個 brush-size：畫筆模式用 brushSize，橡皮擦模式用 eraserSize
-const activeBrushSize = computed(() => drawMode === 'erase' ? eraserSize.value : brushSize.value)
+const activeBrushSize = computed(() => drawMode.value === 'erase' ? eraserSize.value : brushSize.value)
 </script>
 
 <template>
@@ -153,7 +153,7 @@ const activeBrushSize = computed(() => drawMode === 'erase' ? eraserSize.value :
   background: var(--db-secondary-2);
   color: #fff;                     /* 底色是灰的，不吃 --db-on-accent */
   font-family: var(--db-font-display);
-  font-style: italic;
+  font-style: normal;
   font-size: 0.98rem;
   cursor: pointer;
   transition: background 0.16s, border-color 0.16s;

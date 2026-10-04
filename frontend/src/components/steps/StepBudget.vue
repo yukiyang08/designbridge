@@ -213,7 +213,7 @@ function toFavoriteItem(item, c) {
 }
 .row-label {
   font-family: var(--db-font-display);
-  font-style: italic;
+  font-style: normal;
   font-size: 1.05rem;
   color: var(--db-text);
 }
@@ -298,7 +298,7 @@ function toFavoriteItem(item, c) {
 .total-label { color: var(--db-text-soft); font-size: 0.9rem; }
 .total-val {
   font-family: var(--db-font-display);
-  font-style: italic;
+  font-style: normal;
   font-size: 1.6rem;
   color: var(--db-text);
   font-variant-numeric: tabular-nums;
@@ -333,7 +333,7 @@ function toFavoriteItem(item, c) {
   background: #fff;
   color: var(--db-text);
   font-family: var(--db-font-display);
-  font-style: italic;
+  font-style: normal;
   font-weight: 500;
   font-size: 1rem;
   cursor: pointer;

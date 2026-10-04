@@ -1,7 +1,7 @@
 <script setup>
 /**
  * Figma 的流程列：`01 空間設定  02 繪製平面圖  03 3D渲染圖 …`
- * 圓圈在設計稿是純色 ellipse（進行中 #CDC5AC、其餘 #D9D9D9），
+ * 圓圈在設計稿是純色 ellipse（進行中 #c9c4bb、其餘 #D9D9D9），
  * 沒有向量細節，所以用 CSS 圓形，不另外掛 SVG 檔。
  *
  * 步數依入口路徑而定（見 useDesignFlow 的 STEP_FLOWS），不是寫死六步。
@@ -88,11 +88,11 @@ const emit = defineEmits(['go'])
 
 /* 只有進行中那一步變色（圓圈 + 標籤）。已完成的步驟不上色——同時有兩三個
    米色圓圈時看不出「現在在哪一步」，那正是這條流程列唯一要回答的問題。 */
-.step.active .dot   { background: var(--db-accent); }
-.step.active .label { color: var(--db-accent); font-weight: 500; }
+.step.active .dot   { background: #fff; color: #222; box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.45), 0 2px 10px rgba(0, 0, 0, 0.35); }
+.step.active .label { color: #fff; font-weight: 700; text-shadow: 0 1px 10px rgba(0, 0, 0, 0.75); }
 
 /* 還沒走到的步驟淡出，暗示不能點 */
-.step:not(.reachable) { opacity: 0.55; }
+.step:not(.reachable) { opacity: 0.5; }
 
 @media (max-width: 1100px) {
   .dot   { width: 34px; height: 34px; font-size: 1rem; }

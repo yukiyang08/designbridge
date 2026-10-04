@@ -11,7 +11,7 @@ const props = defineProps({
   apiBase: { type: String, default: 'http://localhost:8000' },
 })
 
-const emit = defineEmits(['confirm', 'clear', 'search'])
+const emit = defineEmits(['confirm', 'clear', 'next-round', 'similar'])
 
 // 每個風格一張卡，數量交給後端（diverse 模式 = 風格總數），前端不再砍到固定 6 張。
 const topCandidates = computed(() => {
@@ -26,7 +26,7 @@ function scrollRail(dir) {
   const el = railRef.value
   if (!el) return
   // 卡片寬度現在是「可視寬度/5」算出來的，不是寫死的值，捲動量跟著量測，不用另外維護一個數字
-  const card = el.querySelector('.card')
+  const card = el.querySelector('.card-slot')
   const gap = parseFloat(getComputedStyle(el).columnGap || '0') || 0
   const step = card ? card.getBoundingClientRect().width + gap : el.clientWidth / 5
   el.scrollBy({ left: dir * step, behavior: 'smooth' })
@@ -56,10 +56,25 @@ const activeInfoCandidate = computed(
   () => topCandidates.value.find((c) => c.image_url === openInfoId.value) || null
 )
 
-function openPopover(c, evt) {
+let openTimer = null
+// 滑鼠移過去停 200ms 才開，快速掃過整排卡片不會一直跳浮卡；觸控沒有 hover，點 ⓘ 就開
+function hoverOpen(c, evt) {
+  clearTimeout(openTimer)
+  const btn = evt.currentTarget
+  openTimer = setTimeout(() => openPopover(c, btn), 200)
+}
+function hoverLeave() {
+  clearTimeout(openTimer)
+  scheduleClosePopover()
+}
+function toggleInfo(c, evt) {
+  if (openInfoId.value === c.image_url) openInfoId.value = null
+  else openPopover(c, evt.currentTarget)
+}
+function openPopover(c, btn) {
   clearTimeout(closeTimer)
   // 浮在卡片右上角旁邊；右邊放不下（捲到最右那幾張）就翻到卡片左側
-  const rect = evt.currentTarget.getBoundingClientRect()
+  const rect = btn.closest('.card-slot').getBoundingClientRect()
   const gap = 8
   const fitsRight = rect.right + gap + POPOVER_W <= window.innerWidth - gap
   popoverPos.value = {
@@ -79,13 +94,17 @@ function cancelClosePopover() { clearTimeout(closeTimer) }
   <div class="suggestions">
     <div class="header">
       <div class="header-top">
-        <h2>AI 推薦風格參考</h2>
-        <button type="button" class="search-btn" :disabled="loading" @click="emit('search')">
-          <Icon :icon="confirmed ? 'mdi:magnify' : 'mdi:refresh'" width="15" />
-          {{ confirmed ? '找相似風格' : '換下一輪' }}
-        </button>
+        <h2>智慧風格推薦</h2>
+        <div class="header-btns">
+          <button type="button" class="search-btn" :disabled="loading" @click="emit('next-round')">
+            <Icon icon="mdi:refresh" width="15" />換一批
+          </button>
+          <button v-if="confirmed" type="button" class="search-btn" :disabled="loading" @click="emit('similar')">
+            <Icon icon="mdi:magnify" width="15" />找相似風格
+          </button>
+        </div>
       </div>
-      <p class="subtitle">根據你的文字描述，找到以下相似風格圖片，選擇一張套用其風格參數</p>
+      <p class="subtitle">根據你的文字描述，找到以下相似風格圖片，選擇一張套用其風格參數；點卡片右下角的 ⓘ 看詳情</p>
     </div>
 
     <!-- 骨架載入 -->
@@ -103,27 +122,47 @@ function cancelClosePopover() { clearTimeout(closeTimer) }
     <!-- 候選卡片：單列橫向捲動 + 左右箭頭 -->
     <div v-else-if="topCandidates.length" class="rail-wrap">
       <button type="button" class="rail-arrow left" aria-label="往左捲動" @click="scrollRail(-1)">‹</button>
-      <div ref="railRef" class="rail" role="list" aria-label="風格參考圖候選清單">
-        <div
-          v-for="c in topCandidates"
-          :key="c.image_url"
-          class="card"
-          :class="{ selected: confirmed?.image_url === c.image_url }"
-          role="listitem"
-          tabindex="0"
-          @keydown.enter.prevent="toggleConfirm(c)"
-          @keydown.space.prevent="toggleConfirm(c)"
-          @click="toggleConfirm(c)"
-          @mouseenter="openPopover(c, $event)" @mouseleave="scheduleClosePopover"
-          @focus="openPopover(c, $event)" @blur="scheduleClosePopover"
-        >
-          <div class="card-img-wrap">
-            <img :src="normalizeImageUrl(c.image_url)" :alt="c.style_name" loading="lazy" @error="$event.target.style.display='none'" />
-            <div class="card-overlay">
-              <div class="overlay-name">{{ c.style_name }}</div>
-              <p v-if="c.description" class="overlay-desc">{{ cleanDescription(c.description) }}</p>
+      <div ref="railRef" class="rail" role="listbox" aria-label="風格參考圖候選清單">
+        <div v-for="c in topCandidates" :key="c.image_url" class="card-slot">
+          <div
+            class="card"
+            :class="{ selected: confirmed?.image_url === c.image_url }"
+            role="option"
+            :aria-selected="confirmed?.image_url === c.image_url"
+            tabindex="0"
+            @keydown.enter.prevent="toggleConfirm(c)"
+            @keydown.space.prevent="toggleConfirm(c)"
+            @click="toggleConfirm(c)"
+          >
+            <div class="card-img-wrap">
+              <img :src="normalizeImageUrl(c.image_url)" :alt="c.style_name" loading="lazy" @error="$event.target.style.display='none'" />
+              <div class="card-overlay">
+                <div class="overlay-name">{{ c.style_name }}</div>
+                <div v-if="c.tags?.length" class="overlay-tags">
+                  <span v-for="t in c.tags.slice(0, 3)" :key="t" class="overlay-tag">{{ t }}</span>
+                </div>
+              </div>
+              <!-- 選中打勾：邊框變色在一排圖片裡不夠明顯 -->
+              <span v-if="confirmed?.image_url === c.image_url" class="check-badge" aria-hidden="true">
+                <Icon icon="mdi:check" width="16" />已選
+              </span>
+              <!-- 主要色彩放卡片右上角，不跟底部的名稱／標籤擠在一起 -->
+              <div v-if="Object.keys(c.colors || {}).length" class="overlay-swatches" aria-label="主要色彩">
+                <span v-for="(hex, k) in c.colors" :key="k" class="swatch" :style="{ background: hex }"></span>
+              </div>
             </div>
           </div>
+          <!-- 看詳情 ≠ 選取：獨立按鈕，觸控也點得到（原本只靠 hover/focus） -->
+          <button
+            type="button"
+            class="info-btn"
+            :aria-label="`${c.style_name} 風格詳情`"
+            :aria-expanded="openInfoId === c.image_url"
+            @click.stop="toggleInfo(c, $event)"
+            @mouseenter="hoverOpen(c, $event)" @mouseleave="hoverLeave"
+          >
+            <Icon icon="mdi:information-outline" width="18" />
+          </button>
         </div>
       </div>
       <button type="button" class="rail-arrow right" aria-label="往右捲動" @click="scrollRail(1)">›</button>
@@ -142,11 +181,13 @@ function cancelClosePopover() { clearTimeout(closeTimer) }
       v-if="activeInfoCandidate"
       class="style-popover"
       :style="{ top: popoverPos.top + 'px', left: popoverPos.left + 'px' }"
+      role="dialog" :aria-label="`${activeInfoCandidate.style_name} 詳情`"
       @mouseenter="cancelClosePopover" @mouseleave="scheduleClosePopover"
+      @keydown.esc="openInfoId = null"
     >
       <div class="popover-header">
         <strong>{{ activeInfoCandidate.style_name }}</strong>
-        <button type="button" class="popover-close" @click="openInfoId = null">
+        <button type="button" class="popover-close" aria-label="關閉" @click="openInfoId = null">
           <Icon icon="mdi:close" width="14" />
         </button>
       </div>
@@ -191,7 +232,7 @@ function cancelClosePopover() { clearTimeout(closeTimer) }
 }
 .subtitle {
   font-size: 0.875rem;
-  color: #a07850;
+  color: #7d746c;
   margin-bottom: 0.2rem;
 }
 
@@ -202,14 +243,15 @@ function cancelClosePopover() { clearTimeout(closeTimer) }
   gap: 0.75rem;
   margin-bottom: 0.3rem;
 }
+.header-btns { display: flex; gap: 0.5rem; flex-shrink: 0; }
 .search-btn {
   flex-shrink: 0;
   display: flex;
   align-items: center;
   gap: 0.3rem;
-  border: 1.5px solid #8B5E3C;
+  border: 1.5px solid #756d66;
   background: #fff;
-  color: #8B5E3C;
+  color: #756d66;
   border-radius: 8px;
   padding: 0.4rem 0.85rem;
   font-size: 0.8rem;
@@ -218,7 +260,7 @@ function cancelClosePopover() { clearTimeout(closeTimer) }
   cursor: pointer;
   transition: all 0.15s;
 }
-.search-btn:hover:not(:disabled) { background: #8B5E3C; color: #fff; }
+.search-btn:hover:not(:disabled) { background: #756d66; color: #fff; }
 .search-btn:disabled { opacity: 0.55; cursor: default; }
 
 /* 單列橫向捲動 + 左右箭頭 */
@@ -245,9 +287,9 @@ function cancelClosePopover() { clearTimeout(closeTimer) }
   width: 2.1rem;
   height: 2.1rem;
   border-radius: 50%;
-  border: 1.5px solid #d4b89a;
+  border: 1.5px solid #c9c4bb;
   background: rgba(255, 250, 243, 0.95);
-  color: #8B5E3C;
+  color: #756d66;
   font-size: 1.3rem;
   line-height: 1;
   cursor: pointer;
@@ -256,7 +298,47 @@ function cancelClosePopover() { clearTimeout(closeTimer) }
   justify-content: center;
   transition: all 0.15s;
 }
-.rail-arrow:hover { background: #8B5E3C; color: white; border-color: #8B5E3C; }
+.rail-arrow:hover { background: #756d66; color: white; border-color: #756d66; }
+
+/* slot 負責 rail 裡的寬度與吸附；ⓘ 按鈕是 .card 的兄弟節點，不放在 role=option 裡面 */
+.card-slot {
+  position: relative;
+  flex: 0 0 clamp(210px, 26%, 320px);
+  scroll-snap-align: start;
+}
+.info-btn {
+  position: absolute;
+  right: 0.55rem;
+  bottom: 0.55rem;
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.92);
+  color: #5c3d24;
+  cursor: pointer;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.3);
+  transition: transform 0.15s, background 0.15s;
+}
+.info-btn:hover { background: #fff; transform: scale(1.1); }
+.info-btn:focus-visible { outline: 2px solid #5c3d24; outline-offset: 2px; }
+.check-badge {
+  position: absolute;
+  top: 0.55rem;
+  left: 0.55rem;
+  display: flex;
+  align-items: center;
+  gap: 0.15rem;
+  padding: 0.2rem 0.55rem 0.2rem 0.35rem;
+  border-radius: 99px;
+  background: #5c3d24;
+  color: #fff;
+  font-size: 0.75rem;
+  font-weight: 700;
+}
 
 /* Card：整張是圖，文字疊在圖片底部（漸層），不再另外留白色 card-body */
 .card {
@@ -265,31 +347,29 @@ function cancelClosePopover() { clearTimeout(closeTimer) }
   overflow: visible;
   cursor: pointer;
   transition: all 0.2s;
-  flex: 0 0 clamp(180px, 22%, 280px);
-  scroll-snap-align: start;
 }
 .card:hover { transform: translateY(-2px); }
 .card:focus-visible {
   outline: none;
   border-radius: 14px;
-  box-shadow: 0 0 0 3px rgba(139, 94, 60, 0.25), 0 0 0 6px rgba(139, 94, 60, 0.14);
+  box-shadow: 0 0 0 3px rgba(117, 109, 102, 0.25), 0 0 0 6px rgba(117, 109, 102, 0.14);
 }
 
 /* Image */
 .card-img-wrap {
   position: relative;
   width: 100%;
-  aspect-ratio: 1 / 1;
+  aspect-ratio: 10 / 11;
   overflow: hidden;
   border-radius: 14px;
-  border: 1.5px solid #d4b89a;
+  border: 1.5px solid #c9c4bb;
   background: #f5e8d8;
   transition: border-color 0.15s, box-shadow 0.15s, transform 0.15s;
 }
-.card:hover .card-img-wrap { border-color: #b07845; box-shadow: 0 8px 24px rgba(139, 94, 60, 0.2); }
+.card:hover .card-img-wrap { border-color: #b07845; box-shadow: 0 8px 24px rgba(117, 109, 102, 0.2); }
 /* 選中：邊框變色 + 微放大 + 陰影，不用太誇張的粗框/外圈光暈 */
 .card.selected .card-img-wrap {
-  border-color: #8B5E3C;
+  border-color: #756d66;
   box-shadow: 0 6px 16px rgba(92, 61, 36, 0.28);
   transform: scale(1.03);
 }
@@ -316,27 +396,35 @@ function cancelClosePopover() { clearTimeout(closeTimer) }
   font-weight: 800;
   text-shadow: 0 1px 2px rgba(0,0,0,0.85), 0 1px 8px rgba(0,0,0,0.5);
 }
-/* 卡片上直接露出一段描述（完整版仍在 ⓘ 浮卡裡），限 3 行避免蓋掉太多照片 */
-.overlay-desc {
-  margin: 0.3rem 0 0;
-  font-size: 0.74rem;
-  line-height: 1.5;
-  color: rgba(255, 255, 255, 0.92);
-  text-shadow: 0 1px 2px rgba(0,0,0,0.85);
-  display: -webkit-box;
-  -webkit-line-clamp: 3;
-  line-clamp: 3;
-  -webkit-box-orient: vertical;
-  overflow: hidden;
+/* 卡片只露標籤 + 主要用色；描述文字留在 hover 浮卡（information） */
+.overlay-tags { display: flex; flex-wrap: wrap; gap: 0.25rem; margin-top: 0.35rem; }
+.overlay-tag {
+  font-size: 0.75rem;
+  color: #fff;
+  background: rgba(255, 255, 255, 0.2);
+  border-radius: 99px;
+  padding: 0.1rem 0.5rem;
 }
+.overlay-swatches {
+  position: absolute;
+  top: 0.55rem;
+  right: 0.55rem;
+  display: flex;
+  gap: 0.3rem;
+  padding: 0.25rem 0.4rem;
+  border-radius: 99px;
+  background: rgba(15, 9, 3, 0.35);   /* 淺色照片上色塊也看得清楚 */
+  pointer-events: none;
+}
+.overlay-swatches .swatch { width: 16px; height: 16px; border-color: rgba(255,255,255,0.8); }
 
 .empty-state {
   padding: 2rem;
   text-align: center;
-  color: #a07850;
+  color: #a39b94;
   font-size: 0.9rem;
   background: rgba(255,250,243,0.6);
-  border: 1px dashed #d4b89a;
+  border: 1px dashed #c9c4bb;
   border-radius: 12px;
 }
 
@@ -346,7 +434,7 @@ function cancelClosePopover() { clearTimeout(closeTimer) }
   z-index: 200;
   width: 280px;
   background: #fffaf3;
-  border: 1.5px solid #d4b89a;
+  border: 1.5px solid #c9c4bb;
   border-radius: 12px;
   box-shadow: 0 12px 32px rgba(92, 61, 36, 0.22);
   padding: 0.9rem 1rem;
@@ -366,7 +454,7 @@ function cancelClosePopover() { clearTimeout(closeTimer) }
 .popover-close {
   border: none;
   background: none;
-  color: #a07850;
+  color: #a39b94;
   cursor: pointer;
   display: flex;
   padding: 0;
@@ -379,7 +467,7 @@ function cancelClosePopover() { clearTimeout(closeTimer) }
   margin: 0;
 }
 .popover-row { display: flex; flex-direction: column; gap: 0.35rem; }
-.popover-label { font-size: 0.72rem; font-weight: 700; color: #a07850; }
+.popover-label { font-size: 0.75rem; font-weight: 700; color: #7d746c; }
 .swatches { display: flex; gap: 0.4rem; }
 .swatch {
   width: 22px; height: 22px; border-radius: 50%;
@@ -389,9 +477,23 @@ function cancelClosePopover() { clearTimeout(closeTimer) }
 .chip-row .chip {
   font-size: 0.72rem;
   color: #5c3d24;
-  background: rgba(139, 94, 60, 0.1);
+  background: rgba(117, 109, 102, 0.1);
   border-radius: 99px;
   padding: 0.18rem 0.55rem;
+}
+
+/* 手機：浮卡改成貼底的 bottom sheet，不用算座標、也不會被螢幕邊緣切掉 */
+@media (max-width: 640px) {
+  .style-popover {
+    top: auto !important;
+    left: 0 !important;
+    right: 0;
+    bottom: 0;
+    width: auto;
+    max-height: 60vh;
+    overflow-y: auto;
+    border-radius: 16px 16px 0 0;
+  }
 }
 
 /* Confirmed bar */
@@ -399,8 +501,8 @@ function cancelClosePopover() { clearTimeout(closeTimer) }
   display: flex;
   align-items: center;
   justify-content: space-between;
-  background: rgba(139, 94, 60, 0.08);
-  border: 1px solid #d4b89a;
+  background: rgba(117, 109, 102, 0.08);
+  border: 1px solid #c9c4bb;
   border-radius: 10px;
   padding: 0.65rem 1rem;
   font-size: 0.875rem;
@@ -409,13 +511,14 @@ function cancelClosePopover() { clearTimeout(closeTimer) }
 .clear-btn {
   background: none;
   border: none;
-  color: #b07845;
+  color: #8a5a2b;
   cursor: pointer;
   font-size: 0.82rem;
   font-weight: 600;
-  padding: 0;
+  padding: 0.3rem 0.6rem;
+  border-radius: 6px;
 }
-.clear-btn:hover { color: #8B5E3C; }
+.clear-btn:hover { background: rgba(117, 109, 102, 0.12); color: #5c3d24; }
 
 /* Skeleton */
 .skeleton { pointer-events: none; }

@@ -143,6 +143,11 @@ function clearAll() {
   margin-top: 1.5rem;
   padding: 1.5rem clamp(1rem, 3vw, 2rem) 1.6rem;
   border-top: 1px solid #e6e2d8;
+  /* 勾選狀態原本用全站共用的 --db-accent-soft/-deep（米杏底+卡其邊），跟其他一般
+     互動元件同色，勾了之後對比太弱、看起來不像硬性條件。這裡只加深同一組色相、
+     邊框改墨色，維持低彩度調性但拉開對比——只有這個元件在用，不升級成全站 token。 */
+  --fs-active-bg: #faf8f2;
+  --fs-active-border: #2b2822;
 }
 
 .fs-head { text-align: center; }
@@ -200,8 +205,8 @@ function clearAll() {
 }
 .fs-card:hover:not(.is-active) { background: #e4e4e4; }
 .fs-card.is-active {
-  background: var(--db-accent-soft);
-  border-color: var(--db-accent-deep);
+  background: var(--fs-active-bg);
+  border-color: var(--fs-active-border);
   box-shadow: var(--db-shadow-soft);
 }
 
@@ -211,7 +216,7 @@ function clearAll() {
 .fs-text { display: flex; flex-direction: column; gap: 0.15rem; min-width: 0; flex: 1; }
 .fs-label {
   font-family: var(--db-font-display);
-  font-style: italic;
+  font-style: normal;
   font-weight: 600;
   font-size: 1.05rem;
   line-height: 1.3;
@@ -228,7 +233,7 @@ function clearAll() {
 .fs-card.is-active .fs-fix { opacity: 1; color: var(--db-text-soft); }
 
 .fs-check { flex: none; width: 19px; height: 19px; margin-top: 3px; color: var(--db-placeholder); }
-.fs-card.is-active .fs-check { color: var(--db-accent-deep); }
+.fs-card.is-active .fs-check { color: var(--fs-active-border); }
 
 .fs-more { margin-top: 0.9rem; }
 .fs-summary {

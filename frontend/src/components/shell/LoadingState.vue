@@ -1,9 +1,16 @@
 <script setup>
+import { ref, onMounted, onUnmounted } from 'vue'
 /** 設計稿沒有畫載入狀態，但每個生成步驟都要等 10–60 秒，沒有它畫面會像當掉。 */
 defineProps({
   title: { type: String, default: 'AI 生成中' },
   sub:   { type: String, default: '' },
 })
+
+// 等 10–60 秒的步驟，讓人看到時間在走，才知道不是當掉。
+const elapsed = ref(0)
+let timer
+onMounted(() => { timer = setInterval(() => elapsed.value++, 1000) })
+onUnmounted(() => clearInterval(timer))
 </script>
 
 <template>
@@ -14,6 +21,7 @@ defineProps({
     </div>
     <p class="title">{{ title }}</p>
     <p v-if="sub" class="sub">{{ sub }}</p>
+    <p v-if="elapsed >= 3" class="elapsed" aria-live="off">已等待 {{ elapsed }} 秒</p>
   </div>
 </template>
 
@@ -61,6 +69,13 @@ defineProps({
   font-style: italic;
   font-size: 1.4rem;
   color: var(--db-text);
+}
+.elapsed {
+  margin: 0.5rem 0 0;
+  color: var(--db-secondary);
+  font-family: var(--db-font-num);
+  font-size: 0.85rem;
+  letter-spacing: 0.04em;
 }
 .sub {
   margin: 0;

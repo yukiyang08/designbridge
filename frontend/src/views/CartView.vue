@@ -98,6 +98,7 @@ function goHome() {
             <img
               v-if="item.image_url"
               :src="item.image_url"
+              :alt="item.name"
               class="card-img"
               loading="lazy"
               @error="$event.target.style.display='none'"
@@ -149,13 +150,13 @@ function goHome() {
 .header-actions { margin-left: auto; display: flex; align-items: center; gap: 0.6rem; }
 .clear-btn { background: none; border: 1px solid #ccc; border-radius: 6px; padding: 0.3rem 0.8rem; font-size: 0.8rem; cursor: pointer; color: #555; }
 .clear-btn:hover { background: #f0f0f0; }
-.done-btn { background: linear-gradient(135deg, #8B5E3C 0%, #b07845 100%); color: #fff; border: none; border-radius: 6px; padding: 0.4rem 1rem; font-size: 0.85rem; font-weight: 700; cursor: pointer; }
+.done-btn { background: linear-gradient(135deg, #756d66 0%, #b07845 100%); color: #fff; border: none; border-radius: 6px; padding: 0.4rem 1rem; font-size: 0.85rem; font-weight: 700; cursor: pointer; }
 .done-btn:hover { opacity: 0.9; }
 
 .empty-state { text-align: center; padding: 4rem 1rem; color: #888; }
 .browse-btn {
   margin-top: 1rem;
-  background: linear-gradient(135deg, #8B5E3C 0%, #b07845 100%);
+  background: linear-gradient(135deg, #756d66 0%, #b07845 100%);
   color: #fff; border: none; border-radius: 8px;
   padding: 0.55rem 1.4rem; font-size: 0.85rem; font-weight: 700; cursor: pointer;
 }
@@ -164,8 +165,8 @@ function goHome() {
 .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 0.75rem; }
 
 .card { border: 1px solid #e8ddd0; border-radius: 10px; overflow: hidden; background: #fffaf5; transition: box-shadow 0.15s, border-color 0.15s; }
-.card:hover { box-shadow: 0 4px 18px rgba(139,94,60,0.18); border-color: #d4b89a; }
-.card.checked { border-color: #8B5E3C; box-shadow: 0 0 0 2px #d4b89a; }
+.card:hover { box-shadow: 0 4px 18px rgba(117, 109, 102,0.18); border-color: #c9c4bb; }
+.card.checked { border-color: #756d66; box-shadow: 0 0 0 2px #c9c4bb; }
 
 .card-img-wrap { position: relative; aspect-ratio: 1/1; background: #f5f5f5; overflow: hidden; }
 .card-img { width: 100%; height: 100%; object-fit: cover; display: block; }
@@ -204,7 +205,7 @@ function goHome() {
   display: flex; align-items: center; gap: 0.35rem;
   font-size: 0.7rem; color: #6b4a28; font-weight: 600; cursor: pointer;
 }
-.check-total input { accent-color: #8B5E3C; cursor: pointer; }
+.check-total input { accent-color: #756d66; cursor: pointer; }
 
 .cart-summary {
   display: flex; justify-content: space-between; align-items: center;

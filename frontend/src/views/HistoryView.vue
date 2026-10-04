@@ -14,6 +14,8 @@ const selected = ref(null)
 const batchMode = ref(false)
 const checkedIds = ref(new Set())
 const deleting = ref(false)
+const confirmingDelete = ref(false)   // 兩段式確認，取代原生 confirm()
+const actionError = ref('')
 
 // 只看收藏——收藏是在預算估計那一步標記的，這裡只是把它們濾出來看
 const favoritesOnly = ref(false)
@@ -35,7 +37,7 @@ async function toggleFavorite(r) {
     if (!res.ok) throw new Error(res.status)
     r.favorited = next
   } catch {
-    alert('收藏失敗，請稍後再試')
+    actionError.value = '收藏失敗，請稍後再試'
   } finally {
     const s = new Set(favoritingIds.value); s.delete(r.task_id); favoritingIds.value = s
   }
@@ -44,6 +46,7 @@ async function toggleFavorite(r) {
 function toggleBatchMode() {
   batchMode.value = !batchMode.value
   checkedIds.value = new Set()
+  confirmingDelete.value = false
 }
 
 function toggleCheck(id) {
@@ -62,7 +65,8 @@ function toggleAll() {
 
 async function deleteSelected() {
   if (!checkedCount.value) return
-  if (!confirm(`確定要刪除選取的 ${checkedCount.value} 筆紀錄嗎？`)) return
+  if (!confirmingDelete.value) { confirmingDelete.value = true; return }
+  confirmingDelete.value = false
   deleting.value = true
   try {
     const ids = [...checkedIds.value]
@@ -74,7 +78,7 @@ async function deleteSelected() {
     checkedIds.value = new Set()
     if (records.value.length === 0) batchMode.value = false
   } catch (e) {
-    alert('刪除失敗：' + e)
+    actionError.value = '刪除失敗，請稍後再試'
   } finally {
     deleting.value = false
   }
@@ -166,9 +170,9 @@ function modelBadge(r) {
             {{ allChecked ? '取消全選' : '全選' }}
           </button>
           <button class="action-btn delete-btn" :disabled="!checkedCount || deleting" @click="deleteSelected">
-            {{ deleting ? '刪除中…' : `刪除 (${checkedCount})` }}
+            {{ deleting ? '刪除中…' : confirmingDelete ? `確定刪除 ${checkedCount} 筆？` : `刪除 (${checkedCount})` }}
           </button>
-          <button class="action-btn cancel-btn" @click="toggleBatchMode">取消</button>
+          <button class="action-btn cancel-btn" @click="confirmingDelete ? (confirmingDelete = false) : toggleBatchMode()">取消</button>
         </template>
         <template v-else>
           <button
@@ -179,6 +183,11 @@ function modelBadge(r) {
         </template>
       </div>
     </header>
+
+    <p v-if="actionError" class="db-error action-error" role="alert">
+      {{ actionError }}
+      <button type="button" class="action-error-x" aria-label="關閉" @click="actionError = ''">✕</button>
+    </p>
 
     <div v-if="loading" class="state-msg">載入中…</div>
     <div v-else-if="error" class="state-msg error">{{ error }}</div>
@@ -198,6 +207,7 @@ function modelBadge(r) {
           <img
             v-if="r.generated_image_url"
             :src="r.generated_image_url"
+            alt="生成的設計圖"
             class="tile-img"
             loading="lazy"
             @error="$event.target.style.display='none'"
@@ -218,6 +228,7 @@ function modelBadge(r) {
           <div v-if="styleRefUrl(r) || styleKbUrl(r)" class="tile-ref-group">
             <img
               :src="styleRefUrl(r) || styleKbUrl(r)"
+              alt="風格參考圖"
               class="tile-ref-thumb"
               loading="lazy"
               @error="$event.target.closest('.tile-ref-group').style.display='none'"
@@ -276,7 +287,7 @@ function modelBadge(r) {
             <div class="panel-img-wrap">
               <div class="panel-img-label">生成結果</div>
               <a :href="selected.generated_image_url" target="_blank">
-                <img v-if="selected.generated_image_url" :src="selected.generated_image_url" class="panel-img" @error="$event.target.style.display='none'" />
+                <img v-if="selected.generated_image_url" :src="selected.generated_image_url" alt="生成結果" class="panel-img" @error="$event.target.style.display='none'" />
               </a>
             </div>
             <div class="panel-img-wrap" v-if="styleRefUrl(selected) || styleKbUrl(selected)">
@@ -286,7 +297,7 @@ function modelBadge(r) {
                   {{ styleRefSource(selected) === 'user' ? '用戶上傳' : 'Supabase KB' }}
                 </span>
               </div>
-              <img :src="styleRefUrl(selected) || styleKbUrl(selected)" class="panel-img" @error="$event.target.style.display='none'" />
+              <img :src="styleRefUrl(selected) || styleKbUrl(selected)" alt="風格參考圖" class="panel-img" @error="$event.target.style.display='none'" />
             </div>
           </div>
 
@@ -346,27 +357,29 @@ function modelBadge(r) {
 .back-btn:hover { background: #eee; border-color: #666; }
 .header-actions { margin-left: auto; display: flex; gap: 0.5rem; align-items: center; }
 .action-btn { font-size: 0.82rem; border-radius: 6px; padding: 0.3rem 0.85rem; cursor: pointer; border: 1px solid transparent; }
-.batch-btn  { background: #f5e8d8; color: #5c3d24; border-color: #d4b89a; }
+.batch-btn  { background: #f5e8d8; color: #5c3d24; border-color: #c9c4bb; }
 .batch-btn:hover { background: #ead8c0; }
-.select-all { background: none; color: #5c3d24; border-color: #d4b89a; }
-.select-all:hover { background: #f7f0e8; }
+.select-all { background: none; color: #5c3d24; border-color: #c9c4bb; }
+.select-all:hover { background: #f1efeb; }
 .delete-btn { background: #c0392b; color: #fff; border-color: #a93226; }
 .delete-btn:disabled { opacity: 0.45; cursor: not-allowed; }
 .delete-btn:not(:disabled):hover { background: #a93226; }
 .cancel-btn { background: none; color: #555; border-color: #aaa; font-weight: 600; }
 .cancel-btn:hover { background: #f0f0f0; color: #333; }
-.fav-filter-btn { background: none; color: #a08050; border-color: #d4b89a; }
-.fav-filter-btn:hover { background: #f7f0e8; }
-.fav-filter-btn.active { background: #8B5E3C; color: #fff; border-color: #8B5E3C; }
+.fav-filter-btn { background: none; color: #a08050; border-color: #c9c4bb; }
+.fav-filter-btn:hover { background: #f1efeb; }
+.fav-filter-btn.active { background: #756d66; color: #fff; border-color: #756d66; }
 
 .state-msg { text-align: center; color: #888; padding: 3rem; }
-.state-msg.error { color: #c00; }
+.state-msg.error { color: var(--db-danger); }
+.action-error { display: flex; justify-content: space-between; align-items: center; margin: 0.75rem 1.5rem 0; }
+.action-error-x { border: none; background: none; color: inherit; cursor: pointer; }
 
 /* 縮圖格 */
 .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 0.75rem; }
 
 .tile { border: 1px solid #e8ddd0; border-radius: 10px; overflow: hidden; cursor: pointer; background: #fffaf5; transition: box-shadow 0.15s; }
-.tile:hover { box-shadow: 0 4px 18px rgba(139,94,60,0.18); border-color: #d4b89a; }
+.tile:hover { box-shadow: 0 4px 18px rgba(117, 109, 102,0.18); border-color: #c9c4bb; }
 
 .tile-img-wrap { position: relative; aspect-ratio: 4/3; background: #f5f5f5; overflow: hidden; }
 .tile-img { width: 100%; height: 100%; object-fit: cover; display: block; }
@@ -404,8 +417,8 @@ function modelBadge(r) {
 .tile-fav:disabled { opacity: 0.5; cursor: not-allowed; }
 .tile-checkbox { position: absolute; top: 6px; right: 6px; z-index: 2; }
 .checkbox-icon { display: flex; align-items: center; justify-content: center; width: 20px; height: 20px; border-radius: 50%; border: 2px solid #fff; background: rgba(255,255,255,0.7); font-size: 0.7rem; font-weight: 700; color: #fff; box-shadow: 0 1px 4px rgba(0,0,0,0.2); }
-.checkbox-icon.checked { background: #8B5E3C; border-color: #8B5E3C; }
-.tile-checked { border-color: #8B5E3C; box-shadow: 0 0 0 2px #d4b89a; }
+.checkbox-icon.checked { background: #756d66; border-color: #756d66; }
+.tile-checked { border-color: #756d66; box-shadow: 0 0 0 2px #c9c4bb; }
 .batch-mode { cursor: default; }
 
 .tile-footer { padding: 0.55rem 0.7rem; display: flex; flex-direction: column; gap: 0.32rem; }
@@ -425,7 +438,7 @@ function modelBadge(r) {
 .tile-bottom { display: flex; gap: 0.75rem; }
 .tile-time    { font-size: 0.65rem; color: #aaa; }
 .tile-elapsed { font-size: 0.65rem; color: #bbb; }
-.tile-gemini  { font-size: 0.7rem; color: #7a5530; margin: 0; line-height: 1.4; border-left: 2px solid #d4b89a; padding-left: 0.4rem;
+.tile-gemini  { font-size: 0.7rem; color: #7a5530; margin: 0; line-height: 1.4; border-left: 2px solid #c9c4bb; padding-left: 0.4rem;
   display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
 .tile-summary { font-size: 0.7rem; color: #3a7a5a; margin: 0; line-height: 1.4; border-left: 2px solid #81c995; padding-left: 0.4rem;
   display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
@@ -438,9 +451,9 @@ function modelBadge(r) {
 .close-btn { position: absolute; top: 0.75rem; right: 0.9rem; background: none; border: none; font-size: 1.1rem; cursor: pointer; color: #888; z-index: 1; }
 .close-btn:hover { color: #333; }
 
-.panel-images { display: flex; border-bottom: 1px solid #f0e8d8; }
+.panel-images { display: flex; border-bottom: 1px solid #e6e3dd; }
 .panel-img-wrap { flex: 1; position: relative; }
-.panel-img-wrap + .panel-img-wrap { border-left: 1px solid #f0e8d8; }
+.panel-img-wrap + .panel-img-wrap { border-left: 1px solid #e6e3dd; }
 .panel-img-label { position: absolute; top: 6px; left: 8px; font-size: 0.65rem; background: rgba(0,0,0,0.5); color: #fff; padding: 0.1rem 0.4rem; border-radius: 4px; z-index: 1; }
 .panel-img { width: 100%; aspect-ratio: 4/3; object-fit: cover; display: block; }
 
@@ -461,13 +474,13 @@ function modelBadge(r) {
 .clip { font-size: 0.78rem; font-weight: 700; margin-left: auto; }
 
 .info-block { border-left: 3px solid #ccc; border-radius: 0 6px 6px 0; padding: 0.45rem 0.7rem; }
-.info-block.gemini  { background: #fdf6ee; border-color: #d4b89a; }
+.info-block.gemini  { background: #f1efeb; border-color: #c9c4bb; }
 .info-block.summary { background: #f6fbf8; border-color: #81c995; }
 .info-block p { font-size: 0.8rem; color: #444; margin: 0; line-height: 1.55; }
 .block-label { font-size: 0.63rem; font-weight: 700; color: #888; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 0.2rem; }
 
 .json-details { border: 1px solid #e8ddd0; border-radius: 6px; overflow: hidden; }
-.json-details summary { padding: 0.4rem 0.75rem; cursor: pointer; font-size: 0.75rem; color: #8B5E3C; font-weight: 600; background: #fdf6ee; user-select: none; }
-.json-details summary:hover { background: #f7f0e8; }
+.json-details summary { padding: 0.4rem 0.75rem; cursor: pointer; font-size: 0.75rem; color: #756d66; font-weight: 600; background: #f1efeb; user-select: none; }
+.json-details summary:hover { background: #f1efeb; }
 .json-details pre { background: #2c1810; color: #e8d4b8; font-size: 0.7rem; margin: 0; padding: 0.6rem 0.9rem; overflow-x: auto; white-space: pre-wrap; word-break: break-all; }
 </style>

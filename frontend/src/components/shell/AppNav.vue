@@ -41,7 +41,7 @@ defineProps({
 
 .links a {
   font-family: var(--db-font-display);
-  font-style: italic;
+  font-style: normal;
   font-size: 1.25rem;
   color: #fff;
   text-decoration: none;
