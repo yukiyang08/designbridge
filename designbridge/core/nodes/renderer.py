@@ -308,8 +308,11 @@ def renderer(state: DesignBridgeState) -> dict[str, Any]:
     if composed_prompt:
         prompt = composed_prompt
     else:
+        # 同一個「這是換風格」訊號也要餵給這條 fallback 路徑（composer 被跳過或失敗時
+        # 走這裡），理由見 composer.py 的 is_style_swap 註解。
         prompt = _build_imagen_prompt_from_requirement(
             req, style_params=style_params, user_text_prompt=_user_text_prompt,
+            is_style_swap=bool(state.get("generated_image")),
         )
 
     # 只有使用者明確要求重新規劃佈局時，才把 layout 結果注入 prompt——但如果 composer
@@ -537,28 +540,33 @@ def renderer(state: DesignBridgeState) -> dict[str, Any]:
         depth_conditioning_scale = min(depth_conditioning_scale, Config.REAL_PHOTO_DEPTH_MAX_CONDITIONING_SCALE)
     effective_depth_path = depth_path if depth_conditioning_scale >= 0.20 else None
 
-    # image-to-image 換風格測試（debug-console 專用，見 render_overrides 的
-    # img2img_base_image/img2img_strength）：帶了 base image 就直接拿它當起始圖低強度
-    # 重繪，跳過下面整條 depth ControlNet 分支。用來 A/B 比較「同一張已生成的照片，
-    # img2img 換風格」跟「depth ControlNet 從頭重繪」哪個更快、幾何更準。還沒接進正式
-    # 產品的 swapStyle，先只讓 debug console 能測。
+    # image-to-image（debug-console 測試專用，不再自動接手換風格）：實測換風格後畫面跟
+    # 原圖看不太出風格差異（即使修掉了 prompt 沿用舊風格描述的 bug、调高 strength、
+    # 關掉沒幫助的 LoRA），改回讓換風格走下面的 ControlNet／Kontext 分支——那條路徑從
+    # prompt 重新生成而非在舊圖上做局部重繪，風格變化比較明顯。img2img 保留給
+    # debug-console 手動測試（render_overrides.img2img_base_image），不會自動觸發。
     _img2img_base = render_overrides.get("img2img_base_image")
     if backend == "placeholder" and Config.FAL_KEY and _img2img_base:
         _img2img_strength = render_overrides.get("img2img_strength")
         _img2img_strength = 0.5 if _img2img_strength is None else max(0.01, min(1.0, float(_img2img_strength)))
+        # Config.IMG2IMG_USE_LORA：A/B 測出來目前這批風格 LoRA 對 img2img 換風格沒幫助
+        # 還拖慢速度，先不套用（見 config.py 的註解跟 docs/images/img2img_lora_ab/）。
+        # debug-console 明確指定 render_overrides.loras 時照樣放行，方便之後重測。
+        _img2img_loras = style_loras if (Config.IMG2IMG_USE_LORA or render_overrides.get("loras") is not None) else []
         if timed_call(
             "renderer.flux_img2img_fal", task_id,
             _render_flux_img2img_fal,
             prompt, str(_img2img_base), out_path,
             strength=_img2img_strength,
-            loras=style_loras,
+            loras=_img2img_loras,
         ):
             backend = "flux_img2img_fal"
             generation_params["model"] = "fal-ai/flux-general/image-to-image"
             generation_params["img2img_strength"] = _img2img_strength
-            generation_params["img2img_base_image"] = _img2img_base
-            if style_loras:
-                generation_params["loras"] = style_loras
+            generation_params["img2img_base_image"] = str(_img2img_base)
+            generation_params["img2img_source"] = "debug_override" if render_overrides.get("img2img_base_image") else "style_swap"
+            if _img2img_loras:
+                generation_params["loras"] = _img2img_loras
             controlnet_inputs["img2img_base"] = str(_img2img_base)
 
     # 真正的 FLUX depth ControlNet（opt-in，需 FAL_KEY）：對深度幾何的約束遠強於 Kontext LoRA，
@@ -659,7 +667,7 @@ def renderer(state: DesignBridgeState) -> dict[str, Any]:
             _room = (req.get("space_info") or {}).get("estimated_size") or {}
             _rw = float(scene_graph_data.get("room_w") or _room.get("width", 4.0) or 4.0)
             _rd = float(scene_graph_data.get("room_d") or _room.get("depth", 4.0) or 4.0)
-            # Elevated three-quarter "look-at" camera so the floor layout reads clearly.
+            # Near-eye-level "look-at" camera (values/rationale: Config.LAYOUT_CAM_*).
             _cam = {
                 "eye_h": Config.LAYOUT_CAM_EYE_H,
                 "setback": Config.LAYOUT_CAM_SETBACK,
@@ -690,11 +698,14 @@ def renderer(state: DesignBridgeState) -> dict[str, Any]:
             # furniture (no draped clothes, tables keep their legs, etc.). A negative
             # prompt can't be used — it breaks the ControlNet-Union pipeline on fal.
             layout_prompt = (
-                "Elevated three-quarter photorealistic interior view. " + prompt +
+                "Natural eye-level wide-angle photorealistic interior view, the whole room "
+                "visible with solid walls and ceiling. " + prompt +
                 " Clean tidy space, well-proportioned realistic furniture with proper legs, "
                 "nothing draped on the sofa, professional interior design photography, high detail."
             )
-            if _render_flux_depth_controlnet_fal(
+            if timed_call(
+                "renderer.fal_flux_depth_controlnet", task_id,
+                _render_flux_depth_controlnet_fal,
                 layout_prompt,
                 layout_depth_path,
                 out_path,
@@ -801,7 +812,9 @@ def renderer(state: DesignBridgeState) -> dict[str, Any]:
     if not vision.get("depth") and not using_projected_depth and backend != "placeholder" and Path(path_str).is_file():
         try:
             from designbridge.layout.vision import run_depth_estimation
-            new_depth_path, _ = run_depth_estimation(
+            new_depth_path, _ = timed_call(
+                "renderer.post_depth_estimation", task_id,
+                run_depth_estimation,
                 path_str, model_name=Config.DEPTH_MODEL, out_dir=render_dir / "conditions",
             )
             result["vision_features"] = {**vision, "depth": new_depth_path}

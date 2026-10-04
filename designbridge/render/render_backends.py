@@ -273,17 +273,23 @@ def _render_flux_img2img_fal(
     prompt: str,
     base_image: str,
     out_path: Path,
-    strength: float = 0.5,
-    num_steps: int = 28,
+    strength: float = 0.7,
+    num_steps: int = 20,
     guidance_scale: float = 3.5,
     loras: list[dict] | None = None,
 ) -> bool:
-    """fal.ai FLUX 真正的 image-to-image（fal-ai/flux-general/image-to-image）。
+    """fal.ai FLUX 真正的 image-to-image（fal-ai/flux-general/image-to-image）。一鍵換風格
+    的正式路徑，見 renderer.py 的 img2img_base 判斷。
 
     起始圖是上一輪實際生成的照片本身，不是先壓成深度圖再重建——構圖/家具形狀/相機角度
-    直接繼承自這張圖的像素，strength 越低重繪幅度越小。跟 depth ControlNet 分支比，
-    省了深度圖條件化那一步，理論上換風格能更快也更貼近上一輪結果的幾何。
-    測試用（debug-console 的 img2img_base_image_override），還沒接進正式的 swapStyle。
+    直接繼承自這張圖的像素，strength 越低重繪幅度越小。
+
+    strength/num_steps 的預設值：fal 這個 endpoint 自己的 schema 預設 strength=0.85
+    （見 get_model_schema），我們原本壓到 0.5 太保守——實測換風格（modern→country）材質/
+    家具幾乎沒變，因為 0.5 只動用大約 strength×num_steps 的有效去噪步數，留給新 LoRA
+    重畫材質的空間不夠（這還只是次要原因，主因是 prompt 本身沒把舊風格描述換掉，見
+    render_prompt.py 的 is_style_swap）。调到 0.7，同时把 num_steps 從 28 降到 20——
+    有效步數 0.7×20=14，跟原本 0.5×28=14 打平，換風格明顯更有感但不會變慢。
     """
     fal_key = Config.FAL_KEY
     if not fal_key:

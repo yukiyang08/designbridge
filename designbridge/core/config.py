@@ -157,18 +157,21 @@ class Config:
         "DESIGNBRIDGE_ENABLE_SEMANTIC_SHAPES", "true"
     ).lower() in ("1", "true", "yes")
 
-    # Elevated three-quarter "look-at room centre" camera for the layout control
-    # images — spreads the floor layout out legibly (an eye-level view crushes it).
-    # Footroom-tuned: a lower/further eye aimed slightly deeper lifts the FRONT wall
-    # off the bottom edge, so front-of-room furniture (e.g. an accent armchair) stays
-    # fully framed instead of being clipped into the bottom dead zone and dropped.
-    LAYOUT_CAM_EYE_H: float = float(os.getenv("DESIGNBRIDGE_LAYOUT_CAM_EYE_H", "2.2"))
-    LAYOUT_CAM_SETBACK: float = float(os.getenv("DESIGNBRIDGE_LAYOUT_CAM_SETBACK", "2.6"))
-    LAYOUT_CAM_TARGET_H: float = float(os.getenv("DESIGNBRIDGE_LAYOUT_CAM_TARGET_H", "0.5"))
+    # Near-eye-level "look-at room centre" camera for the layout control images.
+    # The old elevated camera (eye 2.2 m, 2.6 m outside, aimed at 0.5 m) left ~20% of
+    # the frame black around a trapezoid room shell, and the model painted that as a
+    # glowing "dollhouse" frame seen from above. This one fills the frame (0% black on
+    # a 5x4 m room) and still keeps furniture next to the entrance fully framed; going
+    # lower/closer (eye 1.5, setback 1.0) crops front-of-room furniture.
+    # Tuned on 1024x576; to go back to the old look use EYE_H=2.2 SETBACK=2.6
+    # TARGET_H=0.5 TARGET_DEPTH_FRAC=0.58 FOV=58 (and the "Elevated" prompt in renderer.py).
+    LAYOUT_CAM_EYE_H: float = float(os.getenv("DESIGNBRIDGE_LAYOUT_CAM_EYE_H", "1.6"))
+    LAYOUT_CAM_SETBACK: float = float(os.getenv("DESIGNBRIDGE_LAYOUT_CAM_SETBACK", "1.6"))
+    LAYOUT_CAM_TARGET_H: float = float(os.getenv("DESIGNBRIDGE_LAYOUT_CAM_TARGET_H", "0.9"))
     LAYOUT_CAM_TARGET_DEPTH_FRAC: float = float(
-        os.getenv("DESIGNBRIDGE_LAYOUT_CAM_TARGET_DEPTH_FRAC", "0.58")
+        os.getenv("DESIGNBRIDGE_LAYOUT_CAM_TARGET_DEPTH_FRAC", "0.6")
     )
-    LAYOUT_CAM_FOV: float = float(os.getenv("DESIGNBRIDGE_LAYOUT_CAM_FOV", "58"))
+    LAYOUT_CAM_FOV: float = float(os.getenv("DESIGNBRIDGE_LAYOUT_CAM_FOV", "65"))
     # Depth conditioning backend for re-planned layouts (uses the scene-graph projected depth):
     #   "kontext"    → Kontext depth-fusion LoRA (loose reference depth; community LoRA via HF's
     #                  fal-ai provider routing — unreliable output quality, kept for reference only)
@@ -180,6 +183,11 @@ class Config:
     )
     FAL_CONTROLNET_STEPS: int = int(os.getenv("DESIGNBRIDGE_FAL_CONTROLNET_STEPS", "20"))
     FAL_CONTROLNET_GUIDANCE: float = float(os.getenv("DESIGNBRIDGE_FAL_CONTROLNET_GUIDANCE", "3.5"))
+    # 一鍵換風格（img2img）是否套用風格 LoRA。A/B 測試（docs/images/img2img_lora_ab/）
+    # 顯示目前這批 LoRA 對換風格沒有正面貢獻（country LoRA 生出來的圖主觀上比沒套 LoRA
+    # 還不像鄉村風），還把耗時從 14s 拉到 54s（fal 下載/合併 LoRA 權重的開銷）。先關掉，
+    # LoRA 重新微調過、確認有幫助之後再打開。ControlNet 路徑的 LoRA 不受此影響。
+    IMG2IMG_USE_LORA: bool = os.getenv("DESIGNBRIDGE_IMG2IMG_USE_LORA", "false").lower() in ("1", "true", "yes")
     PROJECTED_DEPTH_MAX_CONDITIONING_SCALE: float = float(
         os.getenv("DESIGNBRIDGE_PROJECTED_DEPTH_MAX_CONDITIONING_SCALE", "0.3")
     )

@@ -63,12 +63,29 @@ def composer_node(state: DesignBridgeState) -> dict[str, Any]:
     degrades to {} (renderer falls back to the naive concatenation) on any LLM
     failure, same graceful-degradation pattern as every other Gemini call in this
     pipeline.
+
+    Also no-op on a pure style swap with no furniture facts to weave in. This node's
+    whole job is resolving a conflict between the user's own room description and the
+    KB-matched style text — but on a swap (state already has a prior generated_image,
+    see routers/generate.py's plan replay) the base-prompt builder already skips the
+    stale old-style description and builds a neutral room_type+new_style template
+    instead (is_style_swap, below), which by construction doesn't conflict with the
+    same style's own style_prompt. There's nothing left to reconcile, so the Gemini
+    round-trip (~12-18s per PERFORMANCE_NOTES.md) is pure latency with no upside —
+    skip it and let the non-LLM concatenation in renderer.py's fallback handle it.
+    Furniture facts still need this node: weaving new-style material words onto a
+    fixed list of furniture is real merge work an LLM-free concatenation can't do.
     """
     req = state.get("structured_requirement") or {}
     style_params = state.get("style_params") or {}
     style_prompt = (style_params.get("style_prompt") or "").strip()
     furniture_facts = _layout_facts_text(state, req)
-    if not style_prompt and not furniture_facts:
+    # 換風格時 state 已經有上一輪的 generated_image（見 routers/generate.py 的 plan
+    # replay），用這個當訊號跳過 design_description——那段文字是原本那個風格寫的，
+    # 原封不動塞給 Gemini當「使用者自己的描述，優先權最高」，換風格時只會變成新風格
+    # 的詞彙擠不過舊風格的描述，生出來的圖跟原圖幾乎一樣。
+    is_style_swap = bool(state.get("generated_image"))
+    if not furniture_facts and (not style_prompt or is_style_swap):
         return {}
 
     user_text_prompt = ((state.get("user_input") or {}).get("text_prompt") or "").strip()
@@ -76,7 +93,7 @@ def composer_node(state: DesignBridgeState) -> dict[str, Any]:
     # (design_description, or the room+style fallback when it's empty) without
     # its own naive style concatenation — that's exactly the part this node replaces.
     base_prompt = _build_imagen_prompt_from_requirement(
-        req, style_params=None, user_text_prompt=user_text_prompt,
+        req, style_params=None, user_text_prompt=user_text_prompt, is_style_swap=is_style_swap,
     )
 
     style_name = (style_params.get("style_profile_id") or "unspecified").strip()

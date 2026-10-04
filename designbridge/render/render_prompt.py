@@ -109,6 +109,7 @@ def _build_imagen_prompt_from_requirement(
     req: dict[str, Any],
     style_params: dict[str, Any] | None = None,
     user_text_prompt: str | None = None,
+    is_style_swap: bool = False,
 ) -> str:
     """Build an English text prompt for image generation from structured_requirement and style params.
 
@@ -118,6 +119,17 @@ def _build_imagen_prompt_from_requirement(
     changes…") rather than an actual room description — which starves the renderer of
     positive room content and lets the ControlNet structure dominate. In that case we
     ignore ``design_description`` and fall back to a concrete room/style prompt.
+
+    ``is_style_swap``: ``design_description`` is written once by requirement_analyzer
+    for the room's *original* style and never regenerated on a style swap (that node
+    is skipped — see routers/generate.py's plan replay). It's saturated with that
+    original style's own adjectives ("modern minimalist, clean lines, sleek
+    surfaces..."), so reusing it verbatim while only appending the new style's
+    style_prompt made every swap read as a minor accent on the old style instead of
+    an actual style change — confirmed by swapped renders coming back visually
+    identical to the source. On a swap we skip straight to the neutral
+    room_type + style template below so the new style's own words aren't fighting an
+    old style's description for dominance.
     """
     _STYLE_ID_TO_EN = {
         "modern": "modern contemporary",
@@ -134,7 +146,7 @@ def _build_imagen_prompt_from_requirement(
     # empty user prompt it is an LLM meta-narrative, not a room — fall through to the
     # room_type + style fallback below instead.
     _user_described = user_text_prompt is None or bool(user_text_prompt.strip())
-    if design_description and _user_described:
+    if design_description and _user_described and not is_style_swap:
         base_prompt = design_description
     else:
         meta = req.get("meta") or {}

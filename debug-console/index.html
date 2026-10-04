@@ -198,12 +198,11 @@
     </div>
 
     <div class="card">
-      <h2>進階：Image-to-Image 換風格測試</h2>
+      <h2>進階：Image-to-Image 覆寫</h2>
       <div class="tag-hint" style="margin-bottom:8px;">
-        留空 = 不測試，照原本的 depth ControlNet 路徑跑。填了起始圖，renderer 會整個跳過
-        ControlNet 分支，直接拿這張圖做 fal-ai/flux-general/image-to-image 低強度重繪——
-        用來比較「同一張已生成的照片直接 img2img 換風格」跟現在的 depth ControlNet 路徑，
-        誰更快、幾何更貼近原圖。先在上面送出一次正常請求，才有「上次生成結果」可以用。
+        img2img 實測後換風格跟原圖看不出明顯差異，正式的「一鍵換風格」已經改回走
+        ControlNet／Kontext 分支（見 renderer.py），不會自動用這條路徑。這裡留空 = 不覆寫，
+        照正式邏輯跑；填了起始圖才會強制測試 img2img 本身（例如重新評估要不要之後再啟用）。
       </div>
 
       <label>起始圖（img2img base，伺服器路徑或 URL）</label>
@@ -676,7 +675,7 @@ function jsonBlock(title, obj) {
 
 // backend 名稱 → 這條路徑實際代表什麼（幫助判斷「走哪個 route」）
 const BACKEND_DESC = {
-  flux_img2img_fal: 'fal-ai/flux-general/image-to-image：拿上一輪照片當起始圖低強度重繪，測試換風格用',
+  flux_img2img_fal: 'fal-ai/flux-general/image-to-image：debug-console 測試專用（實測換風格效果不夠明顯，正式路徑已改回 ControlNet）',
   flux_controlnet_depth_fal: '真 Depth ControlNet（fal-ai/flux-general）：深度圖嚴格鎖定幾何結構',
   hf_kontext: 'FLUX Kontext + depth-fusion LoRA：較鬆散的深度參考（非嚴格 ControlNet）',
   flux_depth_controlnet_fal: '純文字→設計流程：2D 平面圖投影出的深度/邊緣 ControlNet',

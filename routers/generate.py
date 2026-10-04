@@ -103,6 +103,14 @@ def generate_design(request: DesignRequest):
             ):
                 if request.plan.get(key) is not None:
                     initial_state[key] = request.plan[key]
+            # 一鍵換風格（swapStyle 帶著上一輪完整回應當 plan 回來，見 render.js）：
+            # renderer 偵測到這裡已經有上一輪的生成結果，會直接拿它當 img2img 起始圖
+            # 低強度重繪，取代整條 depth ControlNet 分支（見 renderer.py 的
+            # img2img_base 判斷）。欄位名稱不同（plan 用回應格式的
+            # generated_image_path，state 用 graph 內部的 generated_image）要轉換。
+            prev_image = request.plan.get("generated_image_path")
+            if prev_image and Path(prev_image).is_file():
+                initial_state["generated_image"] = prev_image
 
         # 執行工作流
         t0 = time.perf_counter()
