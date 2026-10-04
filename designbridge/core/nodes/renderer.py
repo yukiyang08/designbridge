@@ -22,6 +22,7 @@ from designbridge.render.render_backends import (
     _render_flux_kontext_fal,
     _render_flux_controlnet_depth_fal,
     _render_flux_depth_controlnet_fal,
+    _render_flux_img2img_fal,
     _render_flux_fal,
     _render_flux,
 )
@@ -543,6 +544,30 @@ def renderer(state: DesignBridgeState) -> dict[str, Any]:
         depth_conditioning_scale = min(depth_conditioning_scale, Config.REAL_PHOTO_DEPTH_MAX_CONDITIONING_SCALE)
     effective_depth_path = depth_path if depth_conditioning_scale >= 0.20 else None
 
+    # image-to-image 換風格測試（debug-console 專用，見 render_overrides 的
+    # img2img_base_image/img2img_strength）：帶了 base image 就直接拿它當起始圖低強度
+    # 重繪，跳過下面整條 depth ControlNet 分支。用來 A/B 比較「同一張已生成的照片，
+    # img2img 換風格」跟「depth ControlNet 從頭重繪」哪個更快、幾何更準。還沒接進正式
+    # 產品的 swapStyle，先只讓 debug console 能測。
+    _img2img_base = render_overrides.get("img2img_base_image")
+    if backend == "placeholder" and Config.FAL_KEY and _img2img_base:
+        _img2img_strength = render_overrides.get("img2img_strength")
+        _img2img_strength = 0.5 if _img2img_strength is None else max(0.01, min(1.0, float(_img2img_strength)))
+        if timed_call(
+            "renderer.flux_img2img_fal", task_id,
+            _render_flux_img2img_fal,
+            prompt, str(_img2img_base), out_path,
+            strength=_img2img_strength,
+            loras=style_loras,
+        ):
+            backend = "flux_img2img_fal"
+            generation_params["model"] = "fal-ai/flux-general/image-to-image"
+            generation_params["img2img_strength"] = _img2img_strength
+            generation_params["img2img_base_image"] = _img2img_base
+            if style_loras:
+                generation_params["loras"] = style_loras
+            controlnet_inputs["img2img_base"] = str(_img2img_base)
+
     # 真正的 FLUX depth ControlNet（opt-in，需 FAL_KEY）：對深度幾何的約束遠強於 Kontext LoRA，
     # 讓 scene-graph 投影深度真正控制家具擺位。設 LAYOUT_DEPTH_CONTROL_BACKEND=controlnet 啟用。
     if (
@@ -771,7 +796,24 @@ def renderer(state: DesignBridgeState) -> dict[str, Any]:
     if controlnet_inputs:
         render_result["controlnet_inputs"] = controlnet_inputs
 
-    return {
+    result: dict[str, Any] = {
         "generated_image": path_str,
         "render_result": render_result,
     }
+
+    # 一鍵換風格要鎖住家具：這次生成完全沒有任何 depth 可用時（純文字/無 hint_layout，
+    # 這輪走的是 flux_fal 之類無結構約束的 backend），在剛生出的圖上補跑一次深度估計存回
+    # vision_features。下次「換風格」把這個結果當 plan 送回來時，renderer 就有 depth 可以
+    # 餵 ControlNet，不會每次換風格都整張重新構圖、家具亂跑。
+    if not vision.get("depth") and not using_projected_depth and backend != "placeholder" and Path(path_str).is_file():
+        try:
+            from designbridge.layout.vision import run_depth_estimation
+            new_depth_path, _ = run_depth_estimation(
+                path_str, model_name=Config.DEPTH_MODEL, out_dir=render_dir / "conditions",
+            )
+            result["vision_features"] = {**vision, "depth": new_depth_path}
+            print(f"[renderer] 這輪沒有 depth 輸入，已對生成結果補跑深度估計供下次換風格鎖定結構：{new_depth_path}")
+        except Exception as e:
+            print(f"[renderer] 補跑深度估計失敗（{e}），下次換風格仍不會有結構鎖定")
+
+    return result

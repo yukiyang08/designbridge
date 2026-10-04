@@ -269,6 +269,74 @@ def _render_flux_kontext_fal(
         return False
 
 
+def _render_flux_img2img_fal(
+    prompt: str,
+    base_image: str,
+    out_path: Path,
+    strength: float = 0.5,
+    num_steps: int = 28,
+    guidance_scale: float = 3.5,
+    loras: list[dict] | None = None,
+) -> bool:
+    """fal.ai FLUX 真正的 image-to-image（fal-ai/flux-general/image-to-image）。
+
+    起始圖是上一輪實際生成的照片本身，不是先壓成深度圖再重建——構圖/家具形狀/相機角度
+    直接繼承自這張圖的像素，strength 越低重繪幅度越小。跟 depth ControlNet 分支比，
+    省了深度圖條件化那一步，理論上換風格能更快也更貼近上一輪結果的幾何。
+    測試用（debug-console 的 img2img_base_image_override），還沒接進正式的 swapStyle。
+    """
+    fal_key = Config.FAL_KEY
+    if not fal_key:
+        return False
+    try:
+        import fal_client
+        import requests
+        import os
+
+        os.environ["FAL_KEY"] = fal_key
+
+        image_url = base_image
+        if Path(base_image).is_file():
+            with open(base_image, "rb") as f:
+                image_url = fal_client.upload(f.read(), content_type="image/png")
+
+        print(f"☁️  fal.ai FLUX image-to-image 推理中...（strength={strength}）")
+
+        arguments: dict = {
+            "prompt": prompt.strip(),
+            "image_url": image_url,
+            "strength": strength,
+            "num_inference_steps": num_steps,
+            "guidance_scale": guidance_scale,
+        }
+        if loras:
+            arguments["loras"] = loras
+            print(f"[img2img] {', '.join(l['path'].rsplit('/', 1)[-1] for l in loras)}")
+
+        result = fal_client.subscribe(
+            "fal-ai/flux-general/image-to-image",
+            arguments=arguments,
+            with_logs=False,
+        )
+
+        img_url = result["images"][0]["url"]
+        resp = requests.get(img_url, timeout=60)
+        resp.raise_for_status()
+
+        out_path.parent.mkdir(parents=True, exist_ok=True)
+        out_path.write_bytes(resp.content)
+        print(f"✅ fal.ai FLUX image-to-image 完成：{out_path.name}")
+        return True
+    except ImportError:
+        print("⚠️  fal_client 未安裝，請執行：pip install fal-client")
+        return False
+    except Exception as e:
+        import traceback
+        print(f"⚠️  fal.ai FLUX image-to-image 失敗：{e}")
+        traceback.print_exc()
+        return False
+
+
 def _render_flux_controlnet_depth_fal(
     prompt: str,
     depth_path: str,

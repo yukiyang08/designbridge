@@ -199,8 +199,49 @@
       <button class="ghost small" id="addLoraBtn" type="button">+ 加一筆 LoRA</button>
     </div>
 
+    <div class="card">
+      <h2>進階：Image-to-Image 換風格測試</h2>
+      <div class="tag-hint" style="margin-bottom:8px;">
+        留空 = 不測試，照原本的 depth ControlNet 路徑跑。填了起始圖，renderer 會整個跳過
+        ControlNet 分支，直接拿這張圖做 fal-ai/flux-general/image-to-image 低強度重繪——
+        用來比較「同一張已生成的照片直接 img2img 換風格」跟現在的 depth ControlNet 路徑，
+        誰更快、幾何更貼近原圖。先在上面送出一次正常請求，才有「上次生成結果」可以用。
+      </div>
+
+      <label>起始圖（img2img base，伺服器路徑或 URL）</label>
+      <div class="row">
+        <input type="text" id="img2imgBase" placeholder="例如 artifacts/render/xxx.png">
+        <button class="ghost small" id="useLastResultBtn" type="button" style="flex:none;">用上次生成結果</button>
+      </div>
+
+      <label>strength（0 = 完全保留原圖，1 = 完全重畫，預設 0.5）</label>
+      <div class="row"><input type="range" id="img2imgStrength" min="0.05" max="1" step="0.05" value="0.5"><span class="scaleval" id="img2imgStrengthVal">0.5</span></div>
+    </div>
+
     <button class="primary" id="submitBtn">送出 → /api/generate</button>
     <div id="status"></div>
+
+    <div class="card">
+      <h2>批次比較（同一個 plan，只換 override 參數）</h2>
+      <div class="tag-hint" style="margin-bottom:8px;">
+        沿用左邊「最後一次成功結果」當 plan（structured_requirement / vision_features / scene_graph 都固定，
+        <b>預設連 style_params 也固定</b>），每筆只換你在下面指定的 override 欄位再各打一次
+        <code>/api/generate</code>——這樣才是真正的參數對照，不會混進 style 搜尋或版面規劃的隨機性。
+        某筆想連風格一起換，加 <code>"style_profile_id"</code> 欄位即可（該筆會排除 plan 裡的 style_params，
+        跟正式「一鍵換風格」邏輯一致）。先在上面送出一次正常請求才能用這個。
+      </div>
+      <label>Override 組合（JSON 陣列，每個物件一組；<code>label</code> 純顯示用）</label>
+      <textarea id="batchOverridesJson" style="min-height:140px;">[
+  { "label": "steps=10", "controlnet_steps_override": 10 },
+  { "label": "steps=14", "controlnet_steps_override": 14 },
+  { "label": "steps=20 (預設)", "controlnet_steps_override": 20 },
+  { "label": "control_end=0.7", "controlnet_control_end_override": 0.7 },
+  { "label": "無 LoRA", "disable_lora": true }
+]</textarea>
+      <button class="primary" id="runBatchBtn" disabled>先在上面送出一次成功結果，才能執行批次</button>
+      <div id="batchStatus"></div>
+      <div id="batchGrid" class="thumbs" style="margin-top:10px;"></div>
+    </div>
   </div>
 
   <!-- ───────────── 右側：結果 ───────────── -->
@@ -255,6 +296,7 @@ function bindSlider(rangeId, outId) {
 // bindSlider('#editScope', '#editScopeVal');  // edit_scope UI 拿掉，見上方 HTML 註解
 bindSlider('#cnScale', '#cnScaleVal');
 bindSlider('#cnControlEnd', '#cnControlEndVal');
+bindSlider('#img2imgStrength', '#img2imgStrengthVal');
 
 function bindOverrideToggle(checkboxId, ...fieldIds) {
   const cb = $(checkboxId);
@@ -457,6 +499,12 @@ function buildPayload() {
   if ($('#disableEdgeControl').checked) payload.disable_edge_control = true;
   if ($('#disableLora').checked) payload.disable_lora = true;
 
+  const img2imgBase = $('#img2imgBase').value.trim();
+  if (img2imgBase) {
+    payload.img2img_base_image_override = img2imgBase;
+    payload.img2img_strength_override = parseFloat($('#img2imgStrength').value);
+  }
+
   const loras = [];
   document.querySelectorAll('.lora-row').forEach(row => {
     const path = row.querySelector('.lora-path').value.trim();
@@ -466,6 +514,16 @@ function buildPayload() {
   if (loras.length) payload.lora_overrides = loras;
 
   return payload;
+}
+
+// ── 即時計時（等回應的時候先顯示前端量到的等待秒數，回來後換成後端真正的
+//    elapsed_time——後端那個數字才排除得掉前端排隊/網路延遲，是實際比較快慢用的）──
+function startTicker(el, prefix) {
+  const t0 = performance.now();
+  const tick = () => { el.textContent = `${prefix}${Math.round((performance.now() - t0) / 1000)}s…`; };
+  tick();
+  const id = setInterval(tick, 1000);
+  return () => clearInterval(id);
 }
 
 // ── submit ────────────────────────────────────────────────────────────────
@@ -483,7 +541,7 @@ $('#submitBtn').addEventListener('click', async () => {
   }
   btn.disabled = true;
   status.className = '';
-  status.textContent = '⏳ 送出中，等待 pipeline 執行完成…（可能需要數十秒）';
+  const stopTicker = startTicker(status, '⏳ 生成中…');
   try {
     const payload = buildPayload();
     const res = await fetch(apiBase() + '/api/generate', {
@@ -492,16 +550,108 @@ $('#submitBtn').addEventListener('click', async () => {
       body: JSON.stringify(payload),
     });
     const data = await res.json();
+    stopTicker();
     if (!res.ok) throw new Error(data.detail || ('HTTP ' + res.status));
     status.textContent = '✅ 完成，耗時 ' + (data.elapsed_time || '?');
     renderResults(data);
+    lastFullResponse = data;
+    $('#runBatchBtn').disabled = false;
+    $('#runBatchBtn').textContent = '執行批次 → 逐筆打 /api/generate（沿用剛剛這次的 plan）';
   } catch (err) {
+    stopTicker();
     status.className = 'err';
     status.textContent = '❌ ' + err.message;
   } finally {
     btn.disabled = pendingUploads.size > 0;
   }
 });
+
+// ── 批次比較：同一個 plan，只換 override 參數，逐筆打 /api/generate ──────────
+let lastFullResponse = null;
+
+$('#useLastResultBtn').addEventListener('click', () => {
+  if (!lastFullResponse || !lastFullResponse.generated_image_path) {
+    $('#status').className = 'err';
+    $('#status').textContent = '❌ 還沒有上次生成結果，先送出一次一般請求。';
+    return;
+  }
+  $('#img2imgBase').value = lastFullResponse.generated_image_path;
+});
+
+async function runBatch() {
+  const btn = $('#runBatchBtn'), status = $('#batchStatus'), grid = $('#batchGrid');
+  if (!lastFullResponse) return;
+
+  let overrides;
+  try {
+    overrides = JSON.parse($('#batchOverridesJson').value);
+    if (!Array.isArray(overrides) || !overrides.length) throw new Error('必須是非空 JSON 陣列');
+  } catch (err) {
+    status.className = 'err';
+    status.textContent = '❌ Override JSON 格式錯誤：' + err.message;
+    return;
+  }
+
+  btn.disabled = true;
+  grid.innerHTML = '';
+  const baseOutputAspect = $('#outputAspect').value;
+  const baseStyleMethod = 'ai_analysis';
+
+  for (let i = 0; i < overrides.length; i++) {
+    const ov = overrides[i];
+    const label = ov.label || `#${i + 1}`;
+    status.className = '';
+    status.textContent = `⏳ 執行中 ${i + 1}/${overrides.length}：${label}…`;
+
+    // 換風格的那筆要把 plan 裡的 style_params 拿掉，讓 layout_and_style_agent 重新搜尋
+    // 這個新 style_profile_id；其他筆保留完整 plan（含 style_params），才是真正的參數對照。
+    const { style_params, ...planWithoutStyle } = lastFullResponse;
+    const plan = ov.style_profile_id ? planWithoutStyle : lastFullResponse;
+
+    const payload = {
+      text_prompt: '',
+      output_aspect: baseOutputAspect,
+      style_method: baseStyleMethod,
+      plan,
+      ...ov,
+    };
+    delete payload.label;
+
+    const card = document.createElement('figure');
+    const placeholder = document.createElement('div');
+    placeholder.className = 'empty small';
+    placeholder.style.cssText = 'width:150px;height:150px;display:flex;align-items:center;justify-content:center;background:var(--panel-2);border-radius:6px;';
+    card.appendChild(placeholder);
+    card.insertAdjacentHTML('beforeend', `<figcaption>${escapeHtml(label)}</figcaption>`);
+    grid.appendChild(card);
+    const stopCardTicker = startTicker(placeholder, '生成中…');
+
+    try {
+      const res = await fetch(apiBase() + '/api/generate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      const data = await res.json();
+      stopCardTicker();
+      if (!res.ok) throw new Error(data.detail || ('HTTP ' + res.status));
+      const gp = (data.render_result || {}).generation_params || {};
+      card.innerHTML = `
+        <img src="${data.generated_image_url || ''}">
+        <figcaption>${escapeHtml(label)}<br>${escapeHtml(gp.backend || '?')} · ${escapeHtml(data.elapsed_time || '?')}</figcaption>
+      `;
+      card.style.cursor = 'zoom-in';
+      card.addEventListener('click', () => renderResults(data));
+    } catch (err) {
+      stopCardTicker();
+      card.innerHTML = `<div class="empty small" style="width:150px;color:var(--err);">❌ ${escapeHtml(err.message)}</div><figcaption>${escapeHtml(label)}</figcaption>`;
+    }
+  }
+
+  status.textContent = `✅ 批次完成，共 ${overrides.length} 筆（點縮圖可在右側看完整 pipeline trace）`;
+  btn.disabled = false;
+}
+$('#runBatchBtn').addEventListener('click', runBatch);
 
 // ── result rendering ─────────────────────────────────────────────────────
 function toArtifactUrl(p) {
@@ -530,6 +680,7 @@ function jsonBlock(title, obj) {
 
 // backend 名稱 → 這條路徑實際代表什麼（幫助判斷「走哪個 route」）
 const BACKEND_DESC = {
+  flux_img2img_fal: 'fal-ai/flux-general/image-to-image：拿上一輪照片當起始圖低強度重繪，測試換風格用',
   flux_controlnet_depth_fal: '真 Depth ControlNet（fal-ai/flux-general）：深度圖嚴格鎖定幾何結構',
   hf_kontext: 'FLUX Kontext + depth-fusion LoRA：較鬆散的深度參考（非嚴格 ControlNet）',
   flux_depth_controlnet_fal: '純文字→設計流程：2D 平面圖投影出的深度/邊緣 ControlNet',

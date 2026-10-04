@@ -141,6 +141,10 @@ class DesignRequest(BaseModel):
     lora_overrides: Optional[List[dict]] = None   # [{"path": str, "scale": float}]
     disable_edge_control: Optional[bool] = None   # 停用 edge(canny) ControlNet，只留 depth，方便排查 artifact 來源
     disable_lora: Optional[bool] = None   # 停用風格 LoRA，只留 ControlNet，方便排查 artifact 來源
+    # image-to-image 換風格測試（見 render_backends._render_flux_img2img_fal）：
+    # 帶了 base image 就整個跳過 depth ControlNet，改用這張圖當起始圖低強度重繪。
+    img2img_base_image_override: Optional[str] = None   # 本機路徑或 URL，通常是上一輪 generated_image_path
+    img2img_strength_override: Optional[float] = None   # 0~1，越低越貼近原圖（預設 0.5）
 
 
 class LayoutRequest(BaseModel):
@@ -199,6 +203,8 @@ def _build_user_input(request: DesignRequest) -> dict:
             "loras": request.lora_overrides,
             "disable_edge_control": request.disable_edge_control,
             "disable_lora": request.disable_lora,
+            "img2img_base_image": request.img2img_base_image_override,
+            "img2img_strength": request.img2img_strength_override,
         }.items() if v is not None
     }
     if render_overrides:
