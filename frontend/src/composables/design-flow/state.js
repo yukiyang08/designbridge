@@ -259,10 +259,14 @@ export const cadPlanResult = ref(null)     // /api/generate-room-plan 的完整�
 export const cadActiveRoomId  = ref(null)          // 目前正在設計的房間 id
 export const cadRoomStatus    = ref({})            // { [roomId]: 'active' | 'done' }
 // 目前這間房的牆厚／門／窗（從整層結果換算，不另外存——快照還原也會自動對上）。非 CAD 路徑沒有資料就是 null。
+// 使用者拖動／改寬度後的門窗：{ 'roomId:openingId': { frac?, width? } }，疊在換算結果上。共用的內門在兩間房各自記一份。
+export const openingEdits = ref({})
 export const roomGeometry = computed(() => {
   if (planSource.value !== 'cad' || !cadActiveRoomId.value) return null
   const room = cadPlanResult.value?.rooms?.find(r => r.id === cadActiveRoomId.value)
-  return buildRoomGeometry(room, cadPlanResult.value)
+  const g = buildRoomGeometry(room, cadPlanResult.value)
+  if (!g) return null
+  return { ...g, openings: g.openings.map(o => ({ ...o, ...openingEdits.value[`${room.id}:${o.id}`] })) }
 })
 export const cadBatch = ref({})                // 批次生成進行中：{ [roomId]: { status: 'queued'|'running'|'failed', error } }，不存草稿
 export const cadBatchRunning = ref(false)

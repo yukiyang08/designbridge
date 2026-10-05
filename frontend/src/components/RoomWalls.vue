@@ -10,7 +10,9 @@ const props = defineProps({
   roomW: { type: Number, required: true },
   roomD: { type: Number, required: true },
   geometry: { type: Object, required: true },   // { wallT, openings }（見 utils/roomGeometry）
+  selectedId: { type: String, default: '' },     // 被選取的門窗 id
 })
+const emit = defineEmits(['pick'])
 
 // 沿牆的局部座標 (u 沿牆, v 往房間內) → 畫布座標
 function map(side, u, v) {
@@ -63,6 +65,13 @@ const windows = computed(() => props.geometry.openings.filter(o => o.type === 'w
   const [mx1, my1] = map(o.side, c - o.width / 2, t / 2), [mx2, my2] = map(o.side, c + o.width / 2, t / 2)
   return { id: o.id, x: Math.min(x1, x2), y: Math.min(y1, y2), w: Math.abs(x2 - x1), h: Math.abs(y2 - y1), mid: `M ${mx1} ${my1} L ${mx2} ${my2}` }
 }))
+
+// 點選用的透明熱區：沿牆方向蓋住整個開口，往房間內 30cm（比牆厚大，好點）
+const hits = computed(() => props.geometry.openings.map(o => {
+  const L = len(o.side), c = o.frac * L
+  const [x1, y1] = map(o.side, c - o.width / 2, 0), [x2, y2] = map(o.side, c + o.width / 2, 0.3)
+  return { o, x: Math.min(x1, x2), y: Math.min(y1, y2), w: Math.abs(x2 - x1), h: Math.abs(y2 - y1) }
+}))
 </script>
 
 <template>
@@ -77,6 +86,11 @@ const windows = computed(() => props.geometry.openings.filter(o => o.type === 'w
         <path :d="d.arc" class="arc" />
       </template>
     </g>
+    <rect
+      v-for="h in hits" :key="`${h.o.id}h`" :x="h.x" :y="h.y" :width="h.w" :height="h.h"
+      class="hit" :class="{ sel: h.o.id === selectedId }"
+      @pointerdown.stop.prevent="emit('pick', h.o, $event)"
+    />
   </svg>
 </template>
 
@@ -86,6 +100,8 @@ const windows = computed(() => props.geometry.openings.filter(o => o.type === 'w
 .win { fill: #c0daf8; stroke: #2e6ab5; stroke-width: 1.5; vector-effect: non-scaling-stroke; }
 .win-mid { stroke: #2e6ab5; stroke-width: 1; vector-effect: non-scaling-stroke; fill: none; }
 .sill { stroke: #bfae95; stroke-width: 2; vector-effect: non-scaling-stroke; }
+.hit { fill: transparent; pointer-events: all; cursor: ew-resize; vector-effect: non-scaling-stroke; }
+.hit.sel { stroke: #e08a1e; stroke-width: 2; fill: rgba(224, 138, 30, 0.12); }
 .leaf { stroke: #444; stroke-width: 1.6; vector-effect: non-scaling-stroke; fill: none; }
 .arc { stroke: #777; stroke-width: 1.2; stroke-dasharray: 4 3; vector-effect: non-scaling-stroke; fill: none; }
 </style>

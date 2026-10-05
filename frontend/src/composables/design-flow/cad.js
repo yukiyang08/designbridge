@@ -3,7 +3,7 @@ import {
   requestState, cadDefaultPlacements, CAD_ROOM_TYPE_TO_EDITOR,
   error, loading, loadingMsg, result,
   cadCounts, cadTotalPing, cadExtraRooms, cadPlanResult,
-  cadActiveRoomId, cadRoomStatus, cadRoomSnapshots, cadBatch,
+  cadActiveRoomId, cadRoomStatus, cadRoomSnapshots, cadBatch, openingEdits,
   roomW, roomD, roomTypeForPlan, editPlacements,
   floorPlanPath, floorPlanUrl, sceneGraph, layoutRenderConfig, lastGeneratedImage,
   uploadedPlanUrl, panoUrl, panoError,
@@ -32,6 +32,7 @@ export async function submitRoomProgram() {
     cadActiveRoomId.value = null
     cadRoomStatus.value = {}
     cadRoomSnapshots.value = {}
+    openingEdits.value = {}
     cancelCadBatch()
     cadPlanResult.value = data
     if ((data.rooms || []).length > 1) {
@@ -44,6 +45,11 @@ export async function submitRoomProgram() {
   } catch (e) {
     if (requestId === requestState.current) { error.value = `生成房型配置失敗：${e.message}`; loading.value = false }
   }
+}
+
+export function setOpeningEdit(id, patch) {
+  const key = `${cadActiveRoomId.value}:${id}`
+  openingEdits.value = { ...openingEdits.value, [key]: { ...openingEdits.value[key], ...patch } }
 }
 
 // 把目前這間房相關的狀態存一份快照，供之後從縮圖切回來還原用。

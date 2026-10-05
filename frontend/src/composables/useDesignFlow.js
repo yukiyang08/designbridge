@@ -33,7 +33,7 @@ import {
   styleDemoImages,
   showSuggestions,
   result, loading, loadingMsg, error, submitKey, swappingStyle, styleSwapCache,
-  roomGeometry,
+  roomGeometry, openingEdits,
   spaceImage, lastGeneratedImage, manualMaskPath, brushSize, eraserSize, drawMode,
   textPrompt, refineCanvasRef, baseImagePreview,
   panoLoading, panoUrl, panoError,
@@ -51,7 +51,7 @@ import {
   submitLayout, useUploadedPlan, handleRoomSelected, onEditorChange, updateFloorPlan,
 } from './design-flow/layout'
 import { applyToRooms, cancelCadBatch } from './design-flow/cadBatch'
-import { submitRoomProgram, handleCadRoomSelected, jumpToCadRoom, abandonCadRoom } from './design-flow/cad'
+import { submitRoomProgram, handleCadRoomSelected, jumpToCadRoom, abandonCadRoom, setOpeningEdit } from './design-flow/cad'
 import { submitPhoto, submit3D, swapStyle, generatePanorama } from './design-flow/render'
 import { handleMaskReady, submitRefine, undoRefine, canUndoRefine } from './design-flow/refine'
 import { fetchQuotation, toggleFavoriteDesign } from './design-flow/quotation'
@@ -69,7 +69,7 @@ export function useDesignFlow() {
     cadActiveRoomId, cadRoomStatus, jumpToCadRoom, abandonCadRoom,
     cadBatch, cadBatchRunning, applyToRooms, cancelCadBatch,
     // 佈局
-    editPlacements, roomW, roomD, roomTypeForPlan, roomGeometry, layoutViewMode, layoutRenderConfig,
+    editPlacements, roomW, roomD, roomTypeForPlan, roomGeometry, setOpeningEdit, layoutViewMode, layoutRenderConfig,
     onEditorChange, updateFloorPlan,
     // 空間設定
     roomType, spaceSizePing, customRoomW, customRoomD,

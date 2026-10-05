@@ -18,7 +18,7 @@ const props = defineProps({
   roomType: { type: String, default: 'living_room' },  // 家具面板預設分類
   geometry: { type: Object, default: null },            // 這間房的牆厚／門／窗（CAD 路徑才有，見 utils/roomGeometry）
 })
-const emit = defineEmits(['update:placements', 'room-size-changed'])
+const emit = defineEmits(['update:placements', 'room-size-changed', 'opening-change'])
 
 // 公尺，點畫布外框可直接調整（雙向綁定回父層，3D 預覽/最終渲染跟著用同一組數字）
 const roomW = defineModel('roomW', { default: 5 })
@@ -31,8 +31,25 @@ const isFloor = (t) => FLOOR_TYPES.has(t)
 function rectsOverlap(a, b) {
   return a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y
 }
-function collidesWithOthers(rect, type, excludeId) {
+// 門的開啟範圍（往這間房開的門，方形包住 90° 弧）：家具不能放進去。
+// `from` 是這次拖曳開始前的位置——本來就壓在範圍裡的家具（預設擺法）仍可被拖出來，不會卡死。
+const doorKeepouts = computed(() => {
+  const W = roomW.value, D = roomD.value
+  return (props.geometry?.openings || []).filter(o => o.type === 'door' && o.swingIn).map(o => {
+    const horiz = o.side === 'top' || o.side === 'bottom'
+    const L = horiz ? W : D
+    const u0 = o.frac * L - o.width / 2
+    const a = u0 / L, aw = o.width / L                 // 沿牆方向
+    const d = o.width / (horiz ? D : W)                // 往房內方向
+    if (o.side === 'top') return { x: a, y: 0, w: aw, h: d }
+    if (o.side === 'bottom') return { x: a, y: 1 - d, w: aw, h: d }
+    if (o.side === 'left') return { x: 0, y: a, w: d, h: aw }
+    return { x: 1 - d, y: a, w: d, h: aw }
+  })
+})
+function collidesWithOthers(rect, type, excludeId, from = null) {
   if (isFloor(type)) return false
+  if (doorKeepouts.value.some((k) => rectsOverlap(rect, k) && !(from && rectsOverlap(from, k)))) return true
   return items.value.some((it) => (
     it.id !== excludeId && !isFloor(it.type) && rectsOverlap(rect, it)
   ))
@@ -112,13 +129,13 @@ function onMove(e) {
       const x = clamp(drag.ox + dx, 0, 1 - it.w)
       const y = clamp(drag.oy + dy, 0, 1 - it.h)
       // 撞到別的家具（非地毯類）：卡在目前位置，不繼續往那個方向移動
-      if (collidesWithOthers({ x, y, w: it.w, h: it.h }, it.type, it.id)) return it
+      if (collidesWithOthers({ x, y, w: it.w, h: it.h }, it.type, it.id, { x: drag.ox, y: drag.oy, w: it.w, h: it.h })) return it
       return { ...it, x, y }
     }
     // resize from bottom-right corner
     const w = clamp(drag.ow + dx, MIN, 1 - drag.ox)
     const h = clamp(drag.oh + dy, MIN, 1 - drag.oy)
-    if (collidesWithOthers({ x: drag.ox, y: drag.oy, w, h }, it.type, it.id)) return it
+    if (collidesWithOthers({ x: drag.ox, y: drag.oy, w, h }, it.type, it.id, { x: drag.ox, y: drag.oy, w: drag.ow, h: drag.oh })) return it
     return { ...it, w, h }
   })
   commit(next)
@@ -136,7 +153,7 @@ function onUp() {
       if (y < SNAP) y = 0
       if (y + h > 1 - SNAP) y = 1 - h
       // 貼牆會撞到別的家具的話，維持原位不貼牆
-      if ((x !== ox || y !== oy) && collidesWithOthers({ x, y, w, h }, it.type, it.id)) return it
+      if ((x !== ox || y !== oy) && collidesWithOthers({ x, y, w, h }, it.type, it.id, { x: drag.ox, y: drag.oy, w, h })) return it
       return { ...it, x, y }
     })
     commit(next)
@@ -151,6 +168,61 @@ function onUp() {
   window.removeEventListener('pointermove', onMove)
   window.removeEventListener('pointerup', onUp)
 }
+
+// ── 門窗：點選、沿牆拖曳、改寬度 ───────────────────────────────────
+const OP_PREFIX = 'op:'
+const selectedOpening = computed(
+  () => props.geometry?.openings.find((o) => OP_PREFIX + o.id === selectedId.value) || null,
+)
+const opLen = (o) => (o.side === 'top' || o.side === 'bottom' ? roomW.value : roomD.value)
+const OP_MARGIN = 0.1   // 門窗離牆角至少 10cm
+function clampFrac(o, frac, width = o.width) {
+  const L = opLen(o), m = (width / 2 + OP_MARGIN) / L
+  return m >= 0.5 ? 0.5 : clamp(frac, m, 1 - m)
+}
+let opDrag = null
+function onOpeningDown(o, e) {
+  selectedId.value = OP_PREFIX + o.id
+  const horiz = o.side === 'top' || o.side === 'bottom'
+  const el = boardRef.value
+  opDrag = {
+    id: o.id, startX: e.clientX, startY: e.clientY, frac0: o.frac, horiz,
+    px: (horiz ? el.clientWidth : el.clientHeight) * zoom.value,   // 畫面上這條牆有多少 px（含縮放）
+  }
+  window.addEventListener('pointermove', onOpeningMove)
+  window.addEventListener('pointerup', onOpeningUp)
+}
+function onOpeningMove(e) {
+  if (!opDrag) return
+  const o = props.geometry.openings.find((x) => x.id === opDrag.id)
+  if (!o) return
+  const delta = (opDrag.horiz ? e.clientX - opDrag.startX : e.clientY - opDrag.startY) / opDrag.px
+  emit('opening-change', o.id, { frac: clampFrac(o, opDrag.frac0 + delta) })
+}
+function onOpeningUp() {
+  opDrag = null
+  window.removeEventListener('pointermove', onOpeningMove)
+  window.removeEventListener('pointerup', onOpeningUp)
+}
+// 面板：寬度、離牆角距離（公分）
+const opWidthCm = computed({
+  get: () => (selectedOpening.value ? Math.round(selectedOpening.value.width * 100) : 0),
+  set: (cm) => {
+    const o = selectedOpening.value
+    if (!o || !(cm >= 40)) return
+    const width = Math.min(cm / 100, opLen(o) - 2 * OP_MARGIN)
+    emit('opening-change', o.id, { width, frac: clampFrac(o, o.frac, width) })
+  },
+})
+const opOffsetCm = computed({
+  get: () => (selectedOpening.value ? Math.round((selectedOpening.value.frac * opLen(selectedOpening.value) - selectedOpening.value.width / 2) * 100) : 0),
+  set: (cm) => {
+    const o = selectedOpening.value
+    if (!o || !Number.isFinite(cm)) return
+    emit('opening-change', o.id, { frac: clampFrac(o, (cm / 100 + o.width / 2) / opLen(o)) })
+  },
+})
+const OP_SIDE = { top: '上牆', bottom: '下牆', left: '左牆', right: '右牆' }
 
 // ── Item ops ────────────────────────────────────────────────────
 // 90° 增量旋轉：交換 footprint 的 w/h（保持中心點不變）。後端的碰撞偵測/深度投影只讀
@@ -349,7 +421,10 @@ const boardAspect = computed(() => {
              :style="{ aspectRatio: boardAspect }"
              @pointerdown="selectedId = null">
           <div class="grid"></div>
-          <RoomWalls v-if="geometry" :room-w="roomW" :room-d="roomD" :geometry="geometry" />
+          <RoomWalls
+            v-if="geometry" :room-w="roomW" :room-d="roomD" :geometry="geometry"
+            :selected-id="selectedOpening?.id || ''" @pick="onOpeningDown"
+          />
 
           <!-- 點外框可選取「房間」，調整整體長寬（見下方家具設定面板的房間分支） -->
           <div class="frame-hit frame-top"    title="調整房間尺寸" @pointerdown.stop="selectRoom"></div>
@@ -413,6 +488,21 @@ const boardAspect = computed(() => {
           <span>鎖定位置</span>
           <input type="checkbox" v-model="lockedModel" class="switch-input" />
         </label>
+      </aside>
+      <aside class="props-panel" v-else-if="selectedOpening">
+        <div class="props-header">
+          <Icon :icon="selectedOpening.type === 'door' ? 'mdi:door' : 'mdi:window-closed-variant'" width="20" />
+          <span>{{ selectedOpening.type === 'door' ? (selectedOpening.entry ? '大門' : '門') : '窗' }}（{{ OP_SIDE[selectedOpening.side] }}）</span>
+        </div>
+        <label class="props-field">
+          <span>寬度 (cm)</span>
+          <input type="number" v-model.number="opWidthCm" min="40" />
+        </label>
+        <label class="props-field">
+          <span>{{ selectedOpening.side === 'top' || selectedOpening.side === 'bottom' ? '離左側牆角 (cm)' : '離上側牆角 (cm)' }}</span>
+          <input type="number" v-model.number="opOffsetCm" min="0" />
+        </label>
+        <p class="props-note">也可以直接在畫布上沿牆拖動</p>
       </aside>
       <aside class="props-panel" v-else-if="selectedId === ROOM_SEL">
         <div class="props-header">
@@ -520,6 +610,7 @@ const boardAspect = computed(() => {
   font-size: 10px; line-height: 1; padding: 1px 3px; border-radius: 2px;
   background: rgba(255,255,255,0.85); color: #5a4a36; white-space: nowrap; pointer-events: none;
 }
+.props-note { margin: 0; font-size: 0.74rem; color: #a08a6f; }
 .gap { position: absolute; pointer-events: none; }
 .gap-h { height: 0; border-top: 1px dashed #c0392b; }
 .gap-v { width: 0; border-left: 1px dashed #c0392b; }
