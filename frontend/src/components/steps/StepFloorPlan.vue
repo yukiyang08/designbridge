@@ -18,7 +18,7 @@ import { useDesignFlow } from '@/composables/useDesignFlow'
 const LayoutPreview3D = defineAsyncComponent(() => import('@/components/LayoutPreview3D.vue'))
 
 const {
-  editPlacements, roomW, roomD, roomTypeForPlan, layoutViewMode, layoutRenderConfig,
+  editPlacements, roomW, roomD, roomTypeForPlan, roomGeometry, layoutViewMode, layoutRenderConfig,
   floorPlanUrl, uploadedPlanUrl, onEditorChange,
   nextStep, scheduleSearch, loading, planSource,
 } = useDesignFlow()
@@ -57,6 +57,7 @@ function goNext() {
         v-model:room-w="roomW"
         v-model:room-d="roomD"
         :room-type="roomTypeForPlan"
+        :geometry="roomGeometry"
         @update:placements="onEditorChange"
         @room-size-changed="onEditorChange(editPlacements)"
       />

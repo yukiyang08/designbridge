@@ -33,6 +33,7 @@ import {
   styleDemoImages,
   showSuggestions,
   result, loading, loadingMsg, error, submitKey, swappingStyle, styleSwapCache,
+  roomGeometry,
   spaceImage, lastGeneratedImage, manualMaskPath, brushSize, eraserSize, drawMode,
   textPrompt, refineCanvasRef, baseImagePreview,
   panoLoading, panoUrl, panoError,
@@ -68,7 +69,7 @@ export function useDesignFlow() {
     cadActiveRoomId, cadRoomStatus, jumpToCadRoom, abandonCadRoom,
     cadBatch, cadBatchRunning, applyToRooms, cancelCadBatch,
     // 佈局
-    editPlacements, roomW, roomD, roomTypeForPlan, layoutViewMode, layoutRenderConfig,
+    editPlacements, roomW, roomD, roomTypeForPlan, roomGeometry, layoutViewMode, layoutRenderConfig,
     onEditorChange, updateFloorPlan,
     // 空間設定
     roomType, spaceSizePing, customRoomW, customRoomD,

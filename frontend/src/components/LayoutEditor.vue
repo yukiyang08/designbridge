@@ -1,6 +1,8 @@
 <script setup>
 import { ref, computed } from 'vue'
 import { Icon } from '@iconify/vue'
+import RoomWalls from '@/components/RoomWalls.vue'
+import RoomDims from '@/components/RoomDims.vue'
 import {
   furnitureLabel, furnitureIcon, furnitureDefaultSize,
   ROOM_OPTIONS, FURNITURE_BY_ROOM,
@@ -14,6 +16,7 @@ import {
 const props = defineProps({
   placements: { type: Array, default: () => [] },
   roomType: { type: String, default: 'living_room' },  // 家具面板預設分類
+  geometry: { type: Object, default: null },            // 這間房的牆厚／門／窗（CAD 路徑才有，見 utils/roomGeometry）
 })
 const emit = defineEmits(['update:placements', 'room-size-changed'])
 
@@ -259,6 +262,21 @@ const lockedModel = computed({
 const paletteRoomType = ref(props.roomType)
 const paletteCatalog = computed(() => FURNITURE_BY_ROOM[paletteRoomType.value] || [])
 
+// ── 尺寸標示模式 ─────────────────────────────────────────────────
+// 開啟後：畫布外圍顯示總長與門窗尺寸鏈、每件家具標寬×深、選取家具時標出它到四面牆的距離。
+const showDims = ref(false)
+const cmOf = (frac, meters) => Math.round(frac * meters * 100)
+const gaps = computed(() => {
+  const it = selectedItem.value
+  if (!showDims.value || !it) return []
+  return [
+    { k: 'l', cls: 'gap-h', style: { left: 0, top: pct(it.y + it.h / 2), width: pct(it.x) }, cm: cmOf(it.x, roomW.value) },
+    { k: 'r', cls: 'gap-h', style: { left: pct(it.x + it.w), top: pct(it.y + it.h / 2), width: pct(1 - it.x - it.w) }, cm: cmOf(1 - it.x - it.w, roomW.value) },
+    { k: 't', cls: 'gap-v', style: { top: 0, left: pct(it.x + it.w / 2), height: pct(it.y) }, cm: cmOf(it.y, roomD.value) },
+    { k: 'b', cls: 'gap-v', style: { top: pct(it.y + it.h), left: pct(it.x + it.w / 2), height: pct(1 - it.y - it.h) }, cm: cmOf(1 - it.y - it.h, roomD.value) },
+  ].filter(g => g.cm > 0)
+})
+
 // ── Zoom ───────────────────────────────────────────────────────
 const zoom = ref(1)
 function zoomIn() { zoom.value = Math.min(2, Math.round((zoom.value + 0.2) * 10) / 10) }
@@ -291,6 +309,9 @@ const boardAspect = computed(() => {
       <button class="tool-btn" @click="zoomOut" title="縮小">
         <Icon icon="mdi:magnify-minus-outline" width="16" /><span>縮小</span>
       </button>
+      <button class="tool-btn" :class="{ active: showDims }" :aria-pressed="showDims" @click="showDims = !showDims" title="顯示／隱藏尺寸標示">
+        <Icon icon="mdi:ruler" width="16" /><span>尺寸</span>
+      </button>
       <button class="tool-btn" :disabled="!selectedItem" @click="removeItem(selectedItem)" title="刪除">
         <Icon icon="mdi:trash-can-outline" width="16" /><span>刪除</span>
       </button>
@@ -322,12 +343,13 @@ const boardAspect = computed(() => {
 
       <!-- ── 畫布 ── -->
       <div class="board-viewport">
-        <div ref="boardRef" class="board"
-             :style="{ transform: `scale(${zoom})`, aspectRatio: boardAspect }"
+        <div class="board-stage" :class="{ dims: showDims }" :style="{ transform: `scale(${zoom})`, '--z': zoom }">
+        <RoomDims v-if="showDims" :room-w="roomW" :room-d="roomD" :geometry="geometry" />
+        <div ref="boardRef" class="board" :class="{ 'has-walls': !!geometry }"
+             :style="{ aspectRatio: boardAspect }"
              @pointerdown="selectedId = null">
           <div class="grid"></div>
-          <div class="door" title="門"></div>
-          <div class="window" title="窗"></div>
+          <RoomWalls v-if="geometry" :room-w="roomW" :room-d="roomD" :geometry="geometry" />
 
           <!-- 點外框可選取「房間」，調整整體長寬（見下方家具設定面板的房間分支） -->
           <div class="frame-hit frame-top"    title="調整房間尺寸" @pointerdown.stop="selectRoom"></div>
@@ -345,6 +367,7 @@ const boardAspect = computed(() => {
           >
             <Icon :icon="iconOf(item.type)" class="node-icon" />
             <span class="node-label">{{ labelOf(item.type) }}</span>
+            <span v-if="showDims" class="node-size">{{ cmOf(item.w, roomW) }}×{{ cmOf(item.h, roomD) }}</span>
             <Icon v-if="item.locked" icon="mdi:lock-outline" class="node-lock" />
 
             <template v-if="selectedId === item.id && !item.locked">
@@ -359,6 +382,12 @@ const boardAspect = computed(() => {
               <div class="handle" @pointerdown="onDown($event, item, 'resize')"></div>
             </template>
           </div>
+
+          <!-- 選取家具 → 到四面牆的距離 -->
+          <div v-for="g in gaps" :key="g.k" class="gap" :class="g.cls" :style="g.style">
+            <span class="gap-lab">{{ g.cm }}</span>
+          </div>
+        </div>
         </div>
       </div>
 
@@ -405,7 +434,7 @@ const boardAspect = computed(() => {
       </aside>
     </div>
 
-    <span class="hint">拖動移動 · 右下角縮放 · ⟳ 旋轉 · 靠牆自動吸附 · 點選外框可調整房間尺寸</span>
+    <span class="hint">拖動移動 · 右下角縮放 · ⟳ 旋轉 · 靠牆自動吸附 · 點選外框可調整房間尺寸 · 「尺寸」可顯示標註</span>
   </div>
 </template>
 
@@ -465,12 +494,18 @@ const boardAspect = computed(() => {
   flex: 1; min-width: 420px; max-height: 720px; overflow: auto;
   display: flex; justify-content: center;
 }
-.board {
-  position: relative; width: 100%; max-width: 720px;
-  background: #fbf6ee; transform-origin: top center;
-  border: 3px solid #2b2b2b; border-radius: 4px; overflow: hidden;
-  box-shadow: 0 4px 24px rgba(0,0,0,0.12); touch-action: none; flex-shrink: 0;
+.board-stage {
+  position: relative; width: 100%; max-width: 720px; box-sizing: border-box;
+  transform-origin: top center; flex-shrink: 0;
 }
+.board-stage.dims { max-width: 812px; padding: 46px; }   /* 外圍留給尺寸線 */
+.board {
+  position: relative; width: 100%;
+  background: #fbf6ee;
+  border: 3px solid #2b2b2b; border-radius: 4px; overflow: hidden;
+  box-shadow: 0 4px 24px rgba(0,0,0,0.12); touch-action: none;
+}
+.board.has-walls { border: 0; border-radius: 0; }   /* 有真實牆體就不用外框當牆 */
 .grid {
   position: absolute; inset: 0;
   background-image:
@@ -478,13 +513,20 @@ const boardAspect = computed(() => {
     linear-gradient(to bottom, rgba(120,90,60,0.08) 1px, transparent 1px);
   background-size: 20% 20%;
 }
-.door {
-  position: absolute; bottom: -3px; left: 45%; width: 10%; height: 6px;
-  background: #fbf6ee; border-bottom: 3px solid #bfae95;
+
+/* 尺寸標示模式：家具尺寸與到牆距離 */
+.node-size {
+  position: absolute; left: 50%; bottom: 2px; transform: translateX(-50%);
+  font-size: 10px; line-height: 1; padding: 1px 3px; border-radius: 2px;
+  background: rgba(255,255,255,0.85); color: #5a4a36; white-space: nowrap; pointer-events: none;
 }
-.window {
-  position: absolute; top: -3px; left: 40%; width: 20%; height: 6px;
-  background: #c0daf8; border: 1.5px solid #2e6ab5;
+.gap { position: absolute; pointer-events: none; }
+.gap-h { height: 0; border-top: 1px dashed #c0392b; }
+.gap-v { width: 0; border-left: 1px dashed #c0392b; }
+.gap-lab {
+  position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%);
+  padding: 0 3px; font-size: 10px; line-height: 1.3; border-radius: 2px;
+  background: #fff; color: #c0392b; white-space: nowrap;
 }
 
 /* 外框點擊熱區——貼著內側邊緣，board 本身 overflow:hidden 所以不能用負值往外伸 */

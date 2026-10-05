@@ -1,5 +1,6 @@
 import { ref, computed, watch } from 'vue'
 import { useImageField } from '@/composables/useImageField'
+import { buildRoomGeometry } from '@/utils/roomGeometry'
 
 /**
  * 整條設計流程共用的模組層級狀態。
@@ -257,6 +258,12 @@ export const cadPlanResult = ref(null)     // /api/generate-room-plan 的完整�
 // 回來時還原，這樣同一間房不會因為切去別間又切回來而遺失進度。
 export const cadActiveRoomId  = ref(null)          // 目前正在設計的房間 id
 export const cadRoomStatus    = ref({})            // { [roomId]: 'active' | 'done' }
+// 目前這間房的牆厚／門／窗（從整層結果換算，不另外存——快照還原也會自動對上）。非 CAD 路徑沒有資料就是 null。
+export const roomGeometry = computed(() => {
+  if (planSource.value !== 'cad' || !cadActiveRoomId.value) return null
+  const room = cadPlanResult.value?.rooms?.find(r => r.id === cadActiveRoomId.value)
+  return buildRoomGeometry(room, cadPlanResult.value)
+})
 export const cadBatch = ref({})                // 批次生成進行中：{ [roomId]: { status: 'queued'|'running'|'failed', error } }，不存草稿
 export const cadBatchRunning = ref(false)
 export const cadRoomSnapshots = ref({})            // { [roomId]: { roomW, roomD, roomTypeForPlan, editPlacements, floorPlanPath, floorPlanUrl, sceneGraph, layoutRenderConfig, result, lastGeneratedImage } }
