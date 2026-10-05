@@ -6,6 +6,7 @@ import {
   cadPlanResult, cadRoomStatus, cadRoomSnapshots, cadBatch, cadBatchRunning,
 } from './state'
 import { uploadFile } from './common'
+import { buildRoomGeometry } from '@/utils/roomGeometry'
 
 /* ══ 把目前這間房的設定套用到其他房間，一次生成 ═══════════════
    入口：渲染完成頁的「套用到其他房間」（ApplyToRooms.vue）。
@@ -61,7 +62,7 @@ async function buildBase() {
 
 async function renderOne(room, base, run) {
   const editorType = CAD_ROOM_TYPE_TO_EDITOR[room.room_type] || 'living_room'
-  const placements = cadDefaultPlacements(editorType, room.w, room.h)
+  const placements = cadDefaultPlacements(editorType, room.w, room.h, buildRoomGeometry(room, cadPlanResult.value))
 
   const fp = await post('/api/render-floor-plan', {
     furniture_placements: placements, room_w: room.w, room_d: room.h, room_type: editorType,

@@ -70,3 +70,58 @@ export function sideSegments(geometry, side, len) {
   if (len - cur > 1e-6) segs.push({ type: 'wall', len: len - cur })
   return segs
 }
+
+const DOOR_CLEARANCE_M = 0.6   // 不往這間房開的門，門口前仍要留的通道深度
+
+/**
+ * 門「會碰到」的範圍（歸一化座標，家具不可進入）：
+ *  · 往這間房開的門：方形，邊長 = 門寬，剛好包住 90° 開門弧
+ *  · 往隔壁開的門：門口前 60cm 的通道，不然家具堵在門口出不去
+ */
+export function doorKeepouts(geometry, W, D) {
+  return (geometry?.openings || []).filter(o => o.type === 'door').map(o => {
+    const horiz = o.side === 'top' || o.side === 'bottom'
+    const L = horiz ? W : D
+    const a = (o.frac * L - o.width / 2) / L, aw = o.width / L           // 沿牆方向
+    const d = Math.min(1, (o.swingIn ? o.width : DOOR_CLEARANCE_M) / (horiz ? D : W))   // 往房內方向
+    if (o.side === 'top') return { x: a, y: 0, w: aw, h: d }
+    if (o.side === 'bottom') return { x: a, y: 1 - d, w: aw, h: d }
+    if (o.side === 'left') return { x: 0, y: a, w: d, h: aw }
+    return { x: 1 - d, y: a, w: d, h: aw }
+  })
+}
+
+const overlap = (a, b) => a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y
+const clamp01 = (v, lo, hi) => Math.max(lo, Math.min(hi, v))
+
+/**
+ * 把壓在門範圍裡的家具推到最近的空位（優先不跟別的家具重疊）。沒有可行的位置就維持原樣。
+ * 沒有任何改動時回傳同一個陣列（呼叫端可以用 === 判斷要不要更新）。
+ * 預設擺法、門被拖動、房間改尺寸、旋轉之後都靠它收斂。
+ */
+export function settlePlacements(items, keepouts, isFloor) {
+  if (!keepouts.length) return items
+  const out = items.map(it => ({ ...it }))
+  const hitsKeep = (r) => keepouts.some(k => overlap(r, k))
+  const hitsItem = (r, id) => out.some(o => o.id !== id && !isFloor(o.type) && overlap(r, o))
+  let changed = false
+  for (const it of out) {
+    if (isFloor(it.type) || !hitsKeep(it)) continue
+    // 逐格找離原位最近、不碰任何門範圍的位置（優先也不跟別的家具重疊）
+    const STEP = 0.02
+    let free = null, clear = null, fd = Infinity, cd = Infinity
+    for (let x = 0; x <= 1 - it.w + 1e-9; x += STEP) {
+      for (let y = 0; y <= 1 - it.h + 1e-9; y += STEP) {
+        const c = { x: Math.min(x, 1 - it.w), y: Math.min(y, 1 - it.h) }
+        const r = { ...it, ...c }
+        if (hitsKeep(r)) continue
+        const d = Math.hypot(c.x - it.x, c.y - it.y)
+        if (d < fd) { fd = d; free = c }
+        if (d < cd && !hitsItem(r, it.id)) { cd = d; clear = c }
+      }
+    }
+    const best = clear || free
+    if (best) { it.x = best.x; it.y = best.y; changed = true }
+  }
+  return changed ? out : items
+}

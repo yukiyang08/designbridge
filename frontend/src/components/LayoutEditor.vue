@@ -1,8 +1,9 @@
 <script setup>
-import { ref, computed } from 'vue'
+import { ref, computed, watch } from 'vue'
 import { Icon } from '@iconify/vue'
 import RoomWalls from '@/components/RoomWalls.vue'
 import RoomDims from '@/components/RoomDims.vue'
+import { doorKeepouts as doorKeepoutsOf, settlePlacements } from '@/utils/roomGeometry'
 import {
   furnitureLabel, furnitureIcon, furnitureDefaultSize,
   ROOM_OPTIONS, FURNITURE_BY_ROOM,
@@ -31,22 +32,13 @@ const isFloor = (t) => FLOOR_TYPES.has(t)
 function rectsOverlap(a, b) {
   return a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y
 }
-// 門的開啟範圍（往這間房開的門，方形包住 90° 弧）：家具不能放進去。
-// `from` 是這次拖曳開始前的位置——本來就壓在範圍裡的家具（預設擺法）仍可被拖出來，不會卡死。
-const doorKeepouts = computed(() => {
-  const W = roomW.value, D = roomD.value
-  return (props.geometry?.openings || []).filter(o => o.type === 'door' && o.swingIn).map(o => {
-    const horiz = o.side === 'top' || o.side === 'bottom'
-    const L = horiz ? W : D
-    const u0 = o.frac * L - o.width / 2
-    const a = u0 / L, aw = o.width / L                 // 沿牆方向
-    const d = o.width / (horiz ? D : W)                // 往房內方向
-    if (o.side === 'top') return { x: a, y: 0, w: aw, h: d }
-    if (o.side === 'bottom') return { x: a, y: 1 - d, w: aw, h: d }
-    if (o.side === 'left') return { x: 0, y: a, w: d, h: aw }
-    return { x: 1 - d, y: a, w: d, h: aw }
-  })
-})
+// 門會碰到的範圍：家具不能放進去（見 utils/roomGeometry 的 doorKeepouts / settlePlacements）。
+const doorKeepouts = computed(() => doorKeepoutsOf(props.geometry, roomW.value, roomD.value))
+// 預設擺法、門被拖動、房間改尺寸、撤銷之後，只要有家具壓在範圍裡就自動推到最近的空位。
+watch([doorKeepouts, () => props.placements], () => {
+  const next = settlePlacements(props.placements, doorKeepouts.value, isFloor)
+  if (next !== props.placements) emit('update:placements', next)
+}, { immediate: true })
 function collidesWithOthers(rect, type, excludeId, from = null) {
   if (isFloor(type)) return false
   if (doorKeepouts.value.some((k) => rectsOverlap(rect, k) && !(from && rectsOverlap(from, k)))) return true
@@ -433,6 +425,11 @@ const boardAspect = computed(() => {
           <div class="frame-hit frame-right"  title="調整房間尺寸" @pointerdown.stop="selectRoom"></div>
 
           <div
+            v-for="(k, i) in doorKeepouts" :key="`k${i}`" class="keepout"
+            :style="{ left: pct(k.x), top: pct(k.y), width: pct(k.w), height: pct(k.h) }"
+          ></div>
+
+          <div
             v-for="item in items"
             :key="item.id"
             class="node"
@@ -609,6 +606,10 @@ const boardAspect = computed(() => {
   position: absolute; left: 50%; bottom: 2px; transform: translateX(-50%);
   font-size: 10px; line-height: 1; padding: 1px 3px; border-radius: 2px;
   background: rgba(255,255,255,0.85); color: #5a4a36; white-space: nowrap; pointer-events: none;
+}
+.keepout {
+  position: absolute; pointer-events: none;
+  background: rgba(224, 138, 30, 0.10); border: 1px dashed rgba(224, 138, 30, 0.55);
 }
 .props-note { margin: 0; font-size: 0.74rem; color: #a08a6f; }
 .gap { position: absolute; pointer-events: none; }

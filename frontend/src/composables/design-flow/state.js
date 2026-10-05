@@ -1,6 +1,6 @@
 import { ref, computed, watch } from 'vue'
 import { useImageField } from '@/composables/useImageField'
-import { buildRoomGeometry } from '@/utils/roomGeometry'
+import { buildRoomGeometry, doorKeepouts, settlePlacements } from '@/utils/roomGeometry'
 import { furnitureRealSize } from '@/config/furniture'
 
 /**
@@ -104,6 +104,15 @@ const CAD_DEFAULT_LAYOUT = {
     put('wardrobe', 0.05, D - 0.65)              // 衣櫃靠下牆
   },
   living_dining: (W, D, put) => {
+    if (W * D < 18) {                            // 單獨的餐廳（客餐廳合一的房間都比這大）：只擺餐桌椅
+      const cx = W / 2, cy = D / 2
+      put('dining_table', cx - 0.7, cy - 0.4)
+      put('chair', cx - 0.55, cy - 0.9)
+      put('chair', cx + 0.1, cy - 0.9)
+      put('chair', cx - 0.55, cy + 0.45)
+      put('chair', cx + 0.1, cy + 0.45)
+      return
+    }
     const lx = W * 0.3, dx = W * 0.74            // 客廳在左、餐廳在右
     put('tv_unit', lx - 0.8, 0.05)
     put('coffee_table', lx - 0.5, 1.3)
@@ -129,7 +138,7 @@ const CAD_DEFAULT_LAYOUT = {
   },
 }
 
-export function cadDefaultPlacements(editorRoomType, roomW = 5, roomD = 4) {
+export function cadDefaultPlacements(editorRoomType, roomW = 5, roomD = 4, geometry = null) {
   const build = CAD_DEFAULT_LAYOUT[editorRoomType]
   if (!build) return []
   const out = [], seen = {}
@@ -144,7 +153,8 @@ export function cadDefaultPlacements(editorRoomType, roomW = 5, roomD = 4) {
     })
   }
   build(roomW, roomD, put)
-  return out
+  // 門會碰到的範圍不擺家具
+  return settlePlacements(out, doorKeepouts(geometry, roomW, roomD), (t) => t === 'rug' || t === 'carpet')
 }
 
 export const ASPECT_OPTIONS = [

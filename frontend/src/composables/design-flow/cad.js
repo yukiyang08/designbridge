@@ -3,7 +3,7 @@ import {
   requestState, cadDefaultPlacements, CAD_ROOM_TYPE_TO_EDITOR,
   error, loading, loadingMsg, result,
   cadCounts, cadTotalPing, cadExtraRooms, cadPlanResult,
-  cadActiveRoomId, cadRoomStatus, cadRoomSnapshots, cadBatch, openingEdits,
+  cadActiveRoomId, cadRoomStatus, cadRoomSnapshots, cadBatch, openingEdits, roomGeometry,
   roomW, roomD, roomTypeForPlan, editPlacements,
   floorPlanPath, floorPlanUrl, sceneGraph, layoutRenderConfig, lastGeneratedImage,
   uploadedPlanUrl, panoUrl, panoError,
@@ -132,7 +132,7 @@ export async function handleCadRoomSelected(room, requestId = ++requestState.cur
     roomD.value = room.h
     roomTypeForPlan.value = CAD_ROOM_TYPE_TO_EDITOR[room.room_type] || 'living_room'
     sceneGraph.value = null
-    editPlacements.value = cadDefaultPlacements(roomTypeForPlan.value, roomW.value, roomD.value)
+    editPlacements.value = cadDefaultPlacements(roomTypeForPlan.value, roomW.value, roomD.value, roomGeometry.value)
 
     const res = await jsonFetch('/api/render-floor-plan', {
       furniture_placements: editPlacements.value,
