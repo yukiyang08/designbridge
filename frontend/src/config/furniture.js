@@ -191,6 +191,29 @@ export const FURNITURE_DEFAULT_SIZE = {
   default: [0.12, 0.10],
 }
 
-export function furnitureDefaultSize(type) {
-  return FURNITURE_DEFAULT_SIZE[type] || FURNITURE_DEFAULT_SIZE.default
+// 真實尺寸（公尺，寬 × 深）。上面 FURNITURE_DEFAULT_SIZE 是「房間比例」，同一件家具在大房間會
+// 變大、小房間變小，跟真實尺寸的門（90cm）、牆放在一起就會顯得不協調；預設擺法一律改用這張表。
+export const FURNITURE_REAL_SIZE_M = {
+  sofa: [2.0, 0.9], armchair: [0.8, 0.8], chair: [0.45, 0.45],
+  coffee_table: [1.0, 0.5], side_table: [0.45, 0.45], dining_table: [1.4, 0.8],
+  desk: [1.2, 0.6], tv_unit: [1.6, 0.4], bed: [1.5, 2.0],
+  nightstand: [0.45, 0.4], wardrobe: [1.8, 0.6], bookshelf: [0.9, 0.3],
+  cabinet: [0.9, 0.5], dresser: [1.0, 0.45], shelf: [0.9, 0.3],
+  plant: [0.4, 0.4], lamp: [0.3, 0.3], rug: [2.0, 1.4],
+  bathtub: [1.6, 0.75], shower: [0.9, 0.9], toilet: [0.4, 0.7],
+  sink: [0.6, 0.45], vanity: [0.8, 0.5], towel_rack: [0.6, 0.15],
+  stove: [0.75, 0.5], fridge: [0.7, 0.7], mirror: [0.6, 0.1],
+  toy_storage: [0.9, 0.4], study_chair: [0.45, 0.45], bean_bag: [0.7, 0.7],
+  washer: [0.6, 0.6], drying_rack: [1.2, 0.4], balcony_cabinet: [0.8, 0.4], mop_sink: [0.5, 0.45],
+  default: [0.6, 0.6],
+}
+export function furnitureRealSize(type) {
+  return FURNITURE_REAL_SIZE_M[type] || FURNITURE_REAL_SIZE_M.default
+}
+
+// 新增家具用：真實尺寸換成這間房的歸一化 w/h（夾在 [0.04, 0.9]，太小的房間至少看得到、不會比房間大）。
+export function furnitureDefaultSize(type, roomW = 5, roomD = 4) {
+  const [w, d] = furnitureRealSize(type)
+  const c = (v) => Math.max(0.04, Math.min(0.9, v))
+  return [c(w / roomW), c(d / roomD)]
 }

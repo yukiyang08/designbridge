@@ -1,6 +1,7 @@
 import { ref, computed, watch } from 'vue'
 import { useImageField } from '@/composables/useImageField'
 import { buildRoomGeometry } from '@/utils/roomGeometry'
+import { furnitureRealSize } from '@/config/furniture'
 
 /**
  * 整條設計流程共用的模組層級狀態。
@@ -92,43 +93,58 @@ export const CAD_ROOM_TYPE_TO_EDITOR = {
 // washer 這些新家具類型不在裡面，LLM 排出來也會被當成未知類型整個丟掉（見
 // layout_agent.py 的 _call_llm_layout），排版一定失敗、退回 living_room 預設，
 // 對衛浴／陽台反而是錯的結果。
+// 每種房型一個 builder：用公尺貼牆擺（真實家具尺寸，見 config/furniture.js），再換成歸一化座標。
+// 門／窗位置沒有納入考量——開門範圍內預設就有家具也沒關係，編輯器允許把它拖出來（見 LayoutEditor 的 doorKeepouts）。
 const CAD_DEFAULT_LAYOUT = {
-  bedroom: [
-    { type: 'bed', x: 0.30, y: 0.28, w: 0.22, h: 0.28 },
-    { type: 'wardrobe', x: 0.08, y: 0.08, w: 0.18, h: 0.08 },
-    { type: 'nightstand', x: 0.24, y: 0.58, w: 0.07, h: 0.07 },
-  ],
-  living_dining: [
-    { type: 'sofa', x: 0.08, y: 0.55, w: 0.30, h: 0.13 },
-    { type: 'coffee_table', x: 0.16, y: 0.42, w: 0.15, h: 0.10 },
-    { type: 'tv_unit', x: 0.08, y: 0.08, w: 0.22, h: 0.07 },
-    { type: 'dining_table', x: 0.58, y: 0.55, w: 0.20, h: 0.15 },
-    { type: 'chair', x: 0.58, y: 0.42, w: 0.08, h: 0.08 },
-    { type: 'chair', x: 0.68, y: 0.42, w: 0.08, h: 0.08 },
-    { type: 'chair', x: 0.58, y: 0.72, w: 0.08, h: 0.08 },
-    { type: 'chair', x: 0.68, y: 0.72, w: 0.08, h: 0.08 },
-  ],
-  kitchen: [
-    { type: 'cabinet', x: 0.05, y: 0.05, w: 0.30, h: 0.08 },
-    { type: 'shelf', x: 0.60, y: 0.05, w: 0.18, h: 0.05 },
-  ],
-  bathroom: [
-    { type: 'bathtub', x: 0.05, y: 0.05, w: 0.30, h: 0.14 },
-    { type: 'sink', x: 0.60, y: 0.10, w: 0.10, h: 0.08 },
-    { type: 'toilet', x: 0.60, y: 0.60, w: 0.09, h: 0.12 },
-  ],
-  balcony: [
-    { type: 'washer', x: 0.08, y: 0.08, w: 0.16, h: 0.16 },
-    { type: 'drying_rack', x: 0.40, y: 0.10, w: 0.20, h: 0.06 },
-  ],
+  bedroom: (W, D, put) => {
+    const bx = (W - 1.5) / 2
+    put('bed', bx, 0.05)                         // 床頭靠上牆、置中
+    put('nightstand', bx - 0.5, 0.05)
+    put('nightstand', bx + 1.55, 0.05)
+    put('wardrobe', 0.05, D - 0.65)              // 衣櫃靠下牆
+  },
+  living_dining: (W, D, put) => {
+    const lx = W * 0.3, dx = W * 0.74            // 客廳在左、餐廳在右
+    put('tv_unit', lx - 0.8, 0.05)
+    put('coffee_table', lx - 0.5, 1.3)
+    put('sofa', lx - 1.0, 2.2)
+    put('dining_table', dx - 0.7, D / 2 - 0.4)
+    put('chair', dx - 0.55, D / 2 - 0.9)
+    put('chair', dx + 0.1, D / 2 - 0.9)
+    put('chair', dx - 0.55, D / 2 + 0.45)
+    put('chair', dx + 0.1, D / 2 + 0.45)
+  },
+  kitchen: (W, D, put) => {
+    put('cabinet', 0.05, 0.05, 2.4, 0.6)         // 流理台沿上牆
+    put('shelf', 0.05, D - 0.35)
+  },
+  bathroom: (W, D, put) => {
+    put('bathtub', 0.05, 0.05)
+    put('sink', 0.05, D - 0.5)
+    put('toilet', W - 0.45, D - 0.75)
+  },
+  balcony: (W, D, put) => {
+    put('washer', 0.05, 0.05)
+    put('drying_rack', Math.max(0.05, (W - 1.2) / 2), Math.min(2.0, D - 0.5))
+  },
 }
 
-export function cadDefaultPlacements(editorRoomType) {
-  const seen = {}
-  return (CAD_DEFAULT_LAYOUT[editorRoomType] || []).map((f) => {
-    seen[f.type] = (seen[f.type] || 0) + 1
-    return { id: `${f.type}_${seen[f.type]}`, type: f.type, x: f.x, y: f.y, w: f.w, h: f.h, rotation: 0 }
-  })
+export function cadDefaultPlacements(editorRoomType, roomW = 5, roomD = 4) {
+  const build = CAD_DEFAULT_LAYOUT[editorRoomType]
+  if (!build) return []
+  const out = [], seen = {}
+  const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v))
+  const put = (type, xm, ym, wm, dm) => {
+    const [rw, rd] = furnitureRealSize(type)
+    const w = clamp((wm ?? rw) / roomW, 0.04, 0.9), h = clamp((dm ?? rd) / roomD, 0.04, 0.9)
+    seen[type] = (seen[type] || 0) + 1
+    out.push({
+      id: `${type}_${seen[type]}`, type, rotation: 0, w, h,
+      x: clamp(xm / roomW, 0, 1 - w), y: clamp(ym / roomD, 0, 1 - h),
+    })
+  }
+  build(roomW, roomD, put)
+  return out
 }
 
 export const ASPECT_OPTIONS = [

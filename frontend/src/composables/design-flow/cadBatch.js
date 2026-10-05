@@ -61,7 +61,7 @@ async function buildBase() {
 
 async function renderOne(room, base, run) {
   const editorType = CAD_ROOM_TYPE_TO_EDITOR[room.room_type] || 'living_room'
-  const placements = cadDefaultPlacements(editorType)
+  const placements = cadDefaultPlacements(editorType, room.w, room.h)
 
   const fp = await post('/api/render-floor-plan', {
     furniture_placements: placements, room_w: room.w, room_d: room.h, room_type: editorType,

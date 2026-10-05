@@ -132,7 +132,7 @@ export async function handleCadRoomSelected(room, requestId = ++requestState.cur
     roomD.value = room.h
     roomTypeForPlan.value = CAD_ROOM_TYPE_TO_EDITOR[room.room_type] || 'living_room'
     sceneGraph.value = null
-    editPlacements.value = cadDefaultPlacements(roomTypeForPlan.value)
+    editPlacements.value = cadDefaultPlacements(roomTypeForPlan.value, roomW.value, roomD.value)
 
     const res = await jsonFetch('/api/render-floor-plan', {
       furniture_placements: editPlacements.value,

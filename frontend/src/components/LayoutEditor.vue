@@ -284,7 +284,7 @@ function findFreeSpot(w, h, type) {
 }
 
 function addItem(type) {
-  const [w, h] = furnitureDefaultSize(type)
+  const [w, h] = furnitureDefaultSize(type, roomW.value, roomD.value)
   const id = `${type}_${Date.now().toString(36)}`
   const { x, y } = findFreeSpot(w, h, type)
   const item = { id, type, w, h, x, y, rotation: 0, locked: false }
