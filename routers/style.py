@@ -27,18 +27,29 @@ def search_styles(
     style_id: str = "",
     top_k: int = 3,
     diverse: bool = False,
+    anchor_image_url: str = "",
 ):
     """向量搜尋最相似的風格參考圖，回傳多筆候選供使用者選擇。
 
     diverse=True（前端在使用者沒填風格描述、也沒手動選風格時傳入）：每個風格各取一張，
     避免通用 fallback 查詢字（房型中文字/"interior design"）只集中命中一兩種風格。
+
+    anchor_image_url（前端「找相似風格」按鈕傳入）：query 是空的，這時不要 fallback 成
+    style_id 本身的英文字（"modern"）去 embedding——那只是「同分類裡隨便幾張」，不是真的
+    跟使用者選的那張圖相似。改成撈出那張圖自己的 style_kb（description+tags）當查詢字，
+    這樣才是真的用那張圖的內容去找最近鄰。
     """
-    from designbridge.style.style_supabase import _STYLE_PROMPTS
+    from designbridge.style.style_supabase import _STYLE_PROMPTS, _compose_style_kb_text, query_style_image_by_url
     from style_kb.styles import STYLES
     style_name_map = {sid: sname for sid, sname in STYLES}
 
     sid = style_id.strip() or ""
-    q = query.strip() or sid or "interior design"
+    q = query.strip()
+    if not q and anchor_image_url.strip():
+        anchor_rows = query_style_image_by_url(anchor_image_url.strip())
+        if anchor_rows and anchor_rows[0].style_kb:
+            q = _compose_style_kb_text({"style_kb": anchor_rows[0].style_kb})
+    q = q or sid or "interior design"
     try:
         from designbridge.style.style_supabase import query_style_images_supabase, query_style_images_diverse
 

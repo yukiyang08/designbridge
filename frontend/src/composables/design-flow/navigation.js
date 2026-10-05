@@ -1,3 +1,4 @@
+import { cancelCadBatch } from './cadBatch'
 import {
   steps, stepIndex, error, planSource,
   floorPlanUrl, floorPlanPath, sceneGraph, editPlacements, layoutViewMode, layoutRenderConfig,
@@ -50,6 +51,7 @@ export function resetFlow() {
   cadActiveRoomId.value = null
   cadRoomStatus.value = {}
   cadRoomSnapshots.value = {}
+  cancelCadBatch()
   spacePhoto.remove()
   spacePhotoPath.value = ''
   spaceImage.remove()

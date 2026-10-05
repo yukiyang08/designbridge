@@ -27,7 +27,7 @@ const {
   steps, stepIndex, currentStep, goStep,
   loading, loadingMsg, error,
   editPlacements, floorPlanUrl, spacePhotoPath, lastGeneratedImage, planSource,
-  detectedRooms, cadPlanResult, cadRoomStatus, cadActiveRoomId, jumpToCadRoom,
+  detectedRooms, cadPlanResult, cadRoomStatus, cadActiveRoomId, jumpToCadRoom, abandonCadRoom,
   fetchStyleOptions, fetchStyleDemoImages, resetFlow,
 } = flow
 
@@ -132,6 +132,7 @@ onMounted(() => {
         :active-room-id="cadActiveRoomId"
         :active-placements="editPlacements"
         @select-room="jumpToCadRoom"
+        @abandon="abandonCadRoom"
       />
     </div>
   </div>

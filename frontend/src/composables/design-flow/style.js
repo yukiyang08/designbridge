@@ -3,7 +3,7 @@ import {
   STYLE_PAGE_SIZE, ROOM_TYPE_LABEL, timers,
   styleRefImage, extraPrompt, roomTypeForPlan, selectedStyle,
   styleOptions, styleLoading, styleError,
-  styleCandidates, styleCandidatePool, candidatesLoading, candidatesSearched,
+  styleCandidates, styleCandidatePool, candidatesLoading, candidatesError, candidatesSearched,
   confirmedStyle, matchedStylePreview, styleDemoImages,
 } from './state'
 
@@ -62,12 +62,18 @@ export async function fetchStyleDemoImages() {
 
 /* ══ 風格搜尋（沿用舊 HomeView 的錨定／輪替行為） ══════════ */
 
+// 搜尋流水號：連續觸發（打字、連按「找相似」）時，舊請求回來不能蓋掉新結果，
+// 也不能把「搜尋中」狀態提早關掉。
+let searchSeq = 0
+
 export async function fetchStyleCandidates({ anchorSelected = false } = {}) {
-  if (styleRefImage.file) return
+  const seq = ++searchSeq
+  if (styleRefImage.file) { candidatesLoading.value = false; return }
   const anchor = anchorSelected ? confirmedStyle.value : null
   const q = anchor ? '' : (extraPrompt.value.trim() || ROOM_TYPE_LABEL[roomTypeForPlan.value] || '')
   const sid = anchor ? anchor.style_id : (selectedStyle.value !== 'auto' ? selectedStyle.value : '')
   if (!q && !sid) {
+    candidatesLoading.value = false
     styleCandidates.value = []
     candidatesSearched.value = false
     confirmedStyle.value = null
@@ -75,13 +81,19 @@ export async function fetchStyleCandidates({ anchorSelected = false } = {}) {
     return
   }
   candidatesLoading.value = true
+  candidatesError.value = ''
   const diverse = !anchor && !extraPrompt.value.trim() && !sid
+  // 空 query + 有 anchor：讓後端用那張圖自己的 description/tags 當查詢字，
+  // 而不是 fallback 成 style_id 英文字（見 routers/style.py 的註解）。
+  const anchorParam = anchor ? `&anchor_image_url=${encodeURIComponent(anchor.image_url)}` : ''
   try {
     const res = await fetch(
-      apiUrl(`/api/style-search?query=${encodeURIComponent(q)}&style_id=${encodeURIComponent(sid)}&top_k=24${diverse ? '&diverse=true' : ''}`),
+      apiUrl(`/api/style-search?query=${encodeURIComponent(q)}&style_id=${encodeURIComponent(sid)}&top_k=24${diverse ? '&diverse=true' : ''}${anchorParam}`),
     )
-    if (res.ok) {
+    if (!res.ok) throw new Error(String(res.status))
+    {
       const data = await res.json()
+      if (seq !== searchSeq) return
       let pool = (Array.isArray(data) ? data : [])
         .slice().sort((a, b) => Number(b?.similarity ?? 0) - Number(a?.similarity ?? 0))
       if (anchor) pool = [anchor, ...pool.filter(c => c.image_url !== anchor.image_url)]
@@ -94,8 +106,11 @@ export async function fetchStyleCandidates({ anchorSelected = false } = {}) {
       const keep = confirmedStyle.value && sorted.find(c => c.image_url === confirmedStyle.value.image_url)
       confirmedStyle.value = keep || (!diverse && sorted[0]) || null
     }
-  } catch {}
-  finally { candidatesLoading.value = false; candidatesSearched.value = true }
+  } catch {
+    if (seq === searchSeq) candidatesError.value = '風格搜尋失敗，請檢查網路或後端是否正常運作'
+  } finally {
+    if (seq === searchSeq) { candidatesLoading.value = false; candidatesSearched.value = true }
+  }
 }
 
 export function showNextRound() {
@@ -108,6 +123,11 @@ export function showNextRound() {
 
 export function scheduleSearch() {
   clearTimeout(timers.search)
+  searchSeq++   // 還在飛的舊搜尋作廢
+  // 防抖那 600ms 就要顯示「搜尋中」：原本 loading 要等請求真的送出才變 true，
+  // 這段時間 showSuggestions 是 false，整個推薦區塊會消失再冒出來。
+  candidatesLoading.value = !styleRefImage.file
+  candidatesError.value = ''
   styleCandidates.value = []
   styleCandidatePool.value = []
   candidatesSearched.value = false

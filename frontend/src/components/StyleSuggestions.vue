@@ -8,10 +8,11 @@ const props = defineProps({
   candidates:  { type: Array,  default: () => [] },
   confirmed:   { type: Object, default: null },       // 使用者選中的那筆
   loading:     { type: Boolean, default: false },
+  error:       { type: String, default: '' },
   apiBase: { type: String, default: 'http://localhost:8000' },
 })
 
-const emit = defineEmits(['confirm', 'clear', 'next-round', 'similar'])
+const emit = defineEmits(['confirm', 'clear', 'next-round', 'similar', 'retry'])
 
 // 每個風格一張卡，數量交給後端（diverse 模式 = 風格總數），前端不再砍到固定 6 張。
 const topCandidates = computed(() => {
@@ -108,7 +109,7 @@ function cancelClosePopover() { clearTimeout(closeTimer) }
     </div>
 
     <!-- 骨架載入 -->
-    <div v-if="loading" class="rail">
+    <div v-if="loading" class="rail" role="status" aria-label="搜尋風格中">
       <div v-for="i in 5" :key="i" class="card skeleton">
         <div class="card-img-wrap skeleton-img"></div>
       </div>
@@ -116,14 +117,18 @@ function cancelClosePopover() { clearTimeout(closeTimer) }
 
     <!-- 無結果 -->
     <div v-else-if="!topCandidates.length" class="empty-state">
-      找不到相符的風格參考，請嘗試更換關鍵字或選擇特定風格
+      <template v-if="error">
+        <p class="empty-error">⚠ {{ error }}</p>
+        <button type="button" class="search-btn" @click="emit('retry')"><Icon icon="mdi:refresh" width="15" />重試</button>
+      </template>
+      <template v-else>找不到相符的風格參考，請嘗試更換關鍵字或選擇特定風格</template>
     </div>
 
     <!-- 候選卡片：單列橫向捲動 + 左右箭頭 -->
     <div v-else-if="topCandidates.length" class="rail-wrap">
       <button type="button" class="rail-arrow left" aria-label="往左捲動" @click="scrollRail(-1)">‹</button>
       <div ref="railRef" class="rail" role="listbox" aria-label="風格參考圖候選清單">
-        <div v-for="c in topCandidates" :key="c.image_url" class="card-slot">
+        <div v-for="(c, i) in topCandidates" :key="c.image_url" class="card-slot" :style="{ '--i': i }">
           <div
             class="card"
             :class="{ selected: confirmed?.image_url === c.image_url }"
@@ -302,6 +307,8 @@ function cancelClosePopover() { clearTimeout(closeTimer) }
 
 /* slot 負責 rail 裡的寬度與吸附；ⓘ 按鈕是 .card 的兄弟節點，不放在 role=option 裡面 */
 .card-slot {
+  animation: card-in 0.35s both;
+  animation-delay: calc(var(--i, 0) * 35ms);   /* 換一批／搜尋完成時依序浮現，看得出內容換了 */
   position: relative;
   flex: 0 0 clamp(210px, 26%, 320px);
   scroll-snap-align: start;
@@ -521,12 +528,18 @@ function cancelClosePopover() { clearTimeout(closeTimer) }
 .clear-btn:hover { background: rgba(117, 109, 102, 0.12); color: #5c3d24; }
 
 /* Skeleton */
-.skeleton { pointer-events: none; }
+.skeleton { pointer-events: none; flex: 0 0 clamp(210px, 26%, 320px); }   /* 寬度原本在 .card 上，搬到 .card-slot 後骨架要自己帶 */
 .skeleton-img {
   background: linear-gradient(90deg, #f5e8d8 25%, #e8d4b8 50%, #f5e8d8 75%);
   background-size: 200% 100%;
   animation: shimmer 1.4s infinite;
 }
+@keyframes card-in {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: none; }
+}
+.empty-error { margin: 0 0 0.75rem; color: var(--db-danger, #a03030); }
+@media (prefers-reduced-motion: reduce) { .card-slot { animation: none; } }
 @keyframes shimmer {
   0%   { background-position: 200% 0; }
   100% { background-position: -200% 0; }

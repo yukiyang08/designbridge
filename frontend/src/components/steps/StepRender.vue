@@ -3,18 +3,19 @@
  * Step 3D渲染圖 — Figma MacBook Air - 13（輸入）/ 15（結果）/ 18（環景）
  *
  * 與設計稿的差異：
- *  · 360° 環景不獨立成一步。它要跑 30–60 秒且不是每次都想看，所以沿用舊版做法，
- *    留在這一步、按了才生成，看完再往下走。
+ *  · 360° 環景不獨立成一步，也不放在頁面下方：直接做在渲染圖上，滑鼠移上去才出現
+ *    「360° 環景模式」，生成後圖上方出現「單圖／360°」分頁來回切。它要跑 30–60 秒，按了才生成。
  *  · 風格推薦用既有的 StyleSuggestions（10 張、相似度標籤、ⓘ 資訊卡、換一批／找相似），
  *    不是設計稿的三張靜態縮圖。
  *  · 裝潢風格下拉、風格參考圖上傳、不套用風格收進進階設定。
  */
-import { ref, computed, defineAsyncComponent } from 'vue'
+import { ref, computed, watch, defineAsyncComponent } from 'vue'
 import AdvancedPanel from '@/components/shell/AdvancedPanel.vue'
 import FengshuiPicker from '@/components/FengshuiPicker.vue'
 import StyleSuggestions from '@/components/StyleSuggestions.vue'
 import ImageUpload from '@/components/ImageUpload.vue'
 import DesignDetails from '@/components/steps/DesignDetails.vue'
+import ApplyToRooms from '@/components/steps/ApplyToRooms.vue'
 import { useDesignFlow, ASPECT_OPTIONS } from '@/composables/useDesignFlow'
 import { API_BASE } from '@/config/api'
 
@@ -26,14 +27,14 @@ const {
   planSource, extraPrompt, outputAspect, fengshuiRules, roomTypeForPlan,
   selectedStyle, noStyleReference, styleRefImage,
   styleOptions, styleLoading, styleError, fetchStyleOptions,
-  styleCandidates, candidatesLoading, confirmedStyle, showSuggestions,
+  styleCandidates, candidatesLoading, candidatesError, confirmedStyle, showSuggestions,
   confirmStyle, clearConfirmedStyle, fetchStyleCandidates, showNextRound, scheduleSearch,
   result, loading, submit3D, nextStep, prevStep,
   swappingStyle, swapStyle, styleSwapCache, styleDemoImages,
   panoLoading, panoUrl, panoError, generatePanorama,
 } = useDesignFlow()
 
-const showPano = ref(false)
+const viewMode = ref('image')   // 'image' | 'pano'
 const showDetails = ref(false)
 
 const imageUrl = computed(() => result.value?.generated_image_url || '')
@@ -61,16 +62,20 @@ function onPromptInput() { scheduleSearch() }
 function goEditPrompt() { prevStep() }
 
 function regenerate() {
-  showPano.value = false
+  viewMode.value = 'image'
   result.value = null
   styleSwapCache.value = {}   // 房間/描述可能都要重打了，舊風格版本的快取跟著失效
   scheduleSearch()
 }
 
-function onPanoClick() {
-  if (panoUrl.value) showPano.value = !showPano.value
-  else generatePanorama().then(() => { showPano.value = !!panoUrl.value })
+// 沒有環景時 viewMode 即使是 'pano' 也顯示單圖（例如切到另一間房）
+const showingPano = computed(() => viewMode.value === 'pano' && !!panoUrl.value)
+async function startPano() {
+  await generatePanorama()
+  if (panoUrl.value) viewMode.value = 'pano'   // 生成完直接帶使用者過去
 }
+// 換了一張圖（換房間、重新生成）就回到單圖
+watch(() => result.value?.task_id, () => { viewMode.value = 'image' })
 </script>
 
 <template>
@@ -105,10 +110,12 @@ function onPanoClick() {
           :candidates="styleCandidates"
           :confirmed="confirmedStyle"
           :loading="candidatesLoading"
+          :error="candidatesError"
           :api-base="API_BASE"
           @confirm="confirmStyle"
           @clear="clearConfirmedStyle"
           @next-round="showNextRound"
+          @retry="fetchStyleCandidates()"
           @similar="fetchStyleCandidates({ anchorSelected: true })"
         />
       </section>
@@ -174,9 +181,40 @@ function onPanoClick() {
 
     <!-- ══ 已生成：結果 + 360° 環景 ══ -->
     <template v-else>
+      <!-- 單圖／360° 分頁：有環景（或正在生成）才出現 -->
+      <div v-if="panoUrl || panoLoading" class="view-tabs" role="tablist" aria-label="檢視模式">
+        <button type="button" role="tab" :aria-selected="!showingPano" :class="{ active: !showingPano }" @click="viewMode = 'image'">單圖</button>
+        <button
+          type="button" role="tab" :aria-selected="showingPano" :class="{ active: showingPano }"
+          :disabled="!panoUrl" @click="viewMode = 'pano'"
+        >360° 環景<span v-if="panoLoading" class="tab-note">生成中…</span></button>
+      </div>
+
       <div class="result-stage" :class="{ 'is-swapping': swappingStyle }">
-        <img v-if="imageUrl" :src="imageUrl" alt="生成的 3D 渲染圖" class="result-img" />
-        <p v-else class="no-img">生成完成，但沒有取得圖片 URL。</p>
+        <PanoramaViewer v-if="showingPano" :image-url="panoUrl" class="stage-pano" />
+        <div v-else class="stage-img-wrap">
+          <img v-if="imageUrl" :src="imageUrl" alt="生成的 3D 渲染圖" class="result-img" />
+          <p v-else class="no-img">生成完成，但沒有取得圖片 URL。</p>
+
+          <!-- 滑鼠移到圖上才出現（觸控裝置沒有 hover，常駐顯示） -->
+          <button
+            v-if="imageUrl && result.task_id && !panoUrl && !panoLoading"
+            type="button" class="pano-cta" :disabled="swappingStyle" @click="startPano"
+          >
+            <span class="cta-title">360° 環景模式</span>
+            <span class="cta-sub">AI 依這張圖推測周圍空間，約 30–60 秒</span>
+          </button>
+
+          <div v-if="panoLoading" class="pano-overlay" role="status">
+            <div class="pano-spinner"></div>
+            <p>正在生成 360° 環景…約 30–60 秒</p>
+          </div>
+
+          <div v-if="panoError && !panoLoading" class="pano-fail" role="alert">
+            <span>⚠ {{ panoError }}</span>
+            <button type="button" class="pano-retry" @click="startPano">重試</button>
+          </div>
+        </div>
       </div>
 
       <!-- 一鍵換風格：沿用同一個房間佈局／視角，只重換風格 LoRA 重繪。
@@ -210,26 +248,8 @@ function onPanoClick() {
         <p v-if="swappingStyle" class="pano-hint">換風格中，沿用同一個房間佈局重新生成…</p>
       </section>
 
-      <!-- 360° 環景：設計稿是獨立步驟，這裡改回同頁按需生成 -->
-      <section class="pano">
-        <div class="pano-head">
-          <h3 class="sub-title">360° 環景</h3>
-          <button
-            class="db-btn db-btn--sm"
-            :disabled="panoLoading || !result.task_id"
-            @click="onPanoClick"
-          >
-            <span v-if="panoLoading">生成中，約 30–60 秒…</span>
-            <span v-else-if="panoUrl">{{ showPano ? '收合環景' : '查看 360° 環景' }}</span>
-            <span v-else>生成 360° 環景</span>
-          </button>
-        </div>
-        <p v-if="panoError" class="db-error">⚠ {{ panoError }}</p>
-        <p v-else-if="!panoUrl && !panoLoading" class="pano-hint">
-          以這張渲染圖生成可拖曳環顧的全景圖，需要額外運算時間，按了才會跑。
-        </p>
-        <PanoramaViewer v-if="panoUrl && showPano" :image-url="panoUrl" />
-      </section>
+      <!-- 整層流程：把這間的設定套用到其他房間，一次生成 -->
+      <ApplyToRooms />
 
       <!-- 設計詳情（結構化需求 / 風格參數 / 點雲 / raw JSON） -->
       <div class="details-toggle-wrap">
@@ -371,6 +391,111 @@ function onPanoClick() {
   box-shadow: var(--db-shadow-soft);
 }
 .no-img { color: var(--db-text-soft); }
+
+/* 單圖／360° 分頁 */
+.view-tabs {
+  display: inline-flex;
+  align-self: center;
+  padding: 3px;
+  margin-top: 0.5rem;
+  border: 1px solid #e2ddd0;
+  border-radius: var(--db-radius-pill);
+  background: var(--db-chip-soft);
+}
+.view-tabs button {
+  padding: 0.4rem 1.1rem;
+  border: none;
+  border-radius: var(--db-radius-pill);
+  background: none;
+  color: var(--db-text-soft);
+  font-family: var(--db-font-body);
+  font-size: 0.9rem;
+  cursor: pointer;
+  transition: background 0.16s, color 0.16s;
+}
+.view-tabs button:not(.active):not(:disabled):hover { background: rgba(255, 255, 255, 0.7); color: var(--db-text); }
+.view-tabs button.active { background: var(--db-accent); color: var(--db-on-accent); cursor: default; }
+.view-tabs button:disabled { opacity: 0.6; cursor: not-allowed; }
+.tab-note { margin-left: 0.4rem; font-size: 0.75rem; opacity: 0.8; }
+
+.result-stage > .stage-pano { width: 100%; }
+.stage-img-wrap { position: relative; display: inline-block; max-width: 100%; line-height: 0; }
+
+/* 圖上的「360° 環景模式」：平常隱藏，hover／鍵盤聚焦才出現；觸控裝置常駐 */
+.pano-cta {
+  position: absolute;
+  left: 50%;
+  bottom: 1rem;
+  transform: translate(-50%, 6px);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.1rem;
+  padding: 0.6rem 1.3rem;
+  border: none;
+  border-radius: var(--db-radius-pill);
+  background: rgba(20, 18, 14, 0.78);
+  color: #fff;
+  line-height: 1.3;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.18s, transform 0.18s, background 0.15s;
+}
+.stage-img-wrap:hover .pano-cta,
+.pano-cta:focus-visible { opacity: 1; transform: translate(-50%, 0); }
+.pano-cta:hover:not(:disabled) { background: rgba(20, 18, 14, 0.92); }
+.pano-cta:disabled { cursor: not-allowed; }
+.cta-title { font-size: 0.95rem; font-weight: 600; }
+.cta-sub { font-size: 0.72rem; opacity: 0.75; }
+@media (hover: none) { .pano-cta { opacity: 1; transform: translate(-50%, 0); } }
+
+.pano-overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.6rem;
+  border-radius: 8px;
+  background: rgba(20, 18, 14, 0.6);
+  color: #fff;
+  font-size: 0.9rem;
+  line-height: 1.4;
+}
+.pano-overlay p { margin: 0; }
+.pano-spinner {
+  width: 38px; height: 38px;
+  border: 3px solid rgba(255, 255, 255, 0.25);
+  border-top-color: #fff;
+  border-radius: 50%;
+  animation: pano-spin 0.8s linear infinite;
+}
+@keyframes pano-spin { to { transform: rotate(360deg); } }
+
+.pano-fail {
+  position: absolute;
+  left: 0.75rem; right: 0.75rem; bottom: 0.75rem;
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.5rem 0.9rem;
+  border-radius: var(--db-radius-chip);
+  background: rgba(255, 255, 255, 0.95);
+  color: var(--db-danger);
+  font-size: 0.85rem;
+  line-height: 1.4;
+}
+.pano-retry {
+  margin-left: auto;
+  padding: 0.25rem 0.9rem;
+  border: 1px solid currentColor;
+  border-radius: var(--db-radius-pill);
+  background: none;
+  color: inherit;
+  cursor: pointer;
+}
+@media (prefers-reduced-motion: reduce) { .pano-spinner { animation: none; } }
 .result-stage.is-swapping .result-img { opacity: 0.5; transition: opacity 0.16s; }
 
 .style-swap { margin-top: 0.5rem; }
@@ -417,15 +542,6 @@ function onPanoClick() {
 .swap-card.active .swap-label { color: var(--db-text); font-weight: 600; }
 .swap-card:disabled { opacity: 0.6; cursor: not-allowed; }
 
-.pano { margin-top: 0.75rem; }
-.pano-head {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 1rem;
-  margin-bottom: 0.75rem;
-}
-.pano-head .db-btn { margin-left: auto; }
 .pano-hint { margin: 0; color: var(--db-text-soft); font-size: 0.86rem; }
 
 .details-toggle-wrap { margin-top: 1.5rem; }
@@ -451,6 +567,5 @@ function onPanoClick() {
 @media (max-width: 900px) {
   .actions { flex-direction: column-reverse; }
   .actions .db-btn { width: 100%; }
-  .pano-head .db-btn { margin-left: 0; width: 100%; }
 }
 </style>

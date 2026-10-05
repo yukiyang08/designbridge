@@ -14,6 +14,7 @@
 import { computed } from 'vue'
 import { Icon } from '@iconify/vue'
 import { FENGSHUI_OPTIONS } from '@/composables/useDesignFlow'
+import { FENGSHUI_DIAGRAMS } from './fengshuiDiagrams'
 
 const props = defineProps({
   /** 目前的房型，用來決定哪些規則排在前面（可不給，不給就全部視為相關）。 */
@@ -92,11 +93,11 @@ function clearAll() {
         :aria-pressed="rules.includes(opt.value)"
         @click="toggle(opt.value)"
       >
-        <Icon :icon="opt.icon" class="fs-icon" aria-hidden="true" />
+        <span v-if="FENGSHUI_DIAGRAMS[opt.value]" class="fs-diagram" aria-hidden="true" v-html="FENGSHUI_DIAGRAMS[opt.value]" />
+        <Icon v-else :icon="opt.icon" class="fs-icon" aria-hidden="true" />
         <span class="fs-text">
           <span class="fs-label">{{ opt.label }}</span>
           <span class="fs-desc">{{ opt.desc }}</span>
-          <span class="fs-fix">{{ opt.fix }}</span>
         </span>
         <Icon
           :icon="rules.includes(opt.value) ? 'mdi:check-circle' : 'mdi:circle-outline'"
@@ -122,7 +123,8 @@ function clearAll() {
           :aria-pressed="rules.includes(opt.value)"
           @click="toggle(opt.value)"
         >
-          <Icon :icon="opt.icon" class="fs-icon" aria-hidden="true" />
+          <span v-if="FENGSHUI_DIAGRAMS[opt.value]" class="fs-diagram" aria-hidden="true" v-html="FENGSHUI_DIAGRAMS[opt.value]" />
+          <Icon v-else :icon="opt.icon" class="fs-icon" aria-hidden="true" />
           <span class="fs-text">
             <span class="fs-label">{{ opt.label }}</span>
             <span class="fs-desc">{{ opt.desc }}</span>
@@ -212,6 +214,9 @@ function clearAll() {
 
 .fs-icon { flex: none; width: 22px; height: 22px; margin-top: 2px; color: var(--db-text-soft); }
 .fs-card.is-active .fs-icon { color: var(--db-text); }
+.fs-diagram { flex: none; width: 64px; height: 48px; color: var(--db-text-soft); }
+.fs-diagram :deep(svg) { display: block; width: 100%; height: 100%; }
+.fs-card.is-active .fs-diagram { color: var(--db-text); }
 
 .fs-text { display: flex; flex-direction: column; gap: 0.15rem; min-width: 0; flex: 1; }
 .fs-label {

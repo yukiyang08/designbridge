@@ -17,12 +17,19 @@ const props = defineProps({
   activeRoomId:     { type: String, default: null },
   activePlacements: { type: Array, default: () => [] },    // 目前這間房的 editPlacements，即時反映在縮圖上
 })
-const emit = defineEmits(['select-room'])
+const emit = defineEmits(['select-room', 'abandon'])
 
 const collapsed = ref(false)
 const boardRef = ref(null)
 const modalBoardRef = ref(null)
 const expanded = ref(false)   // 點縮圖 → 彈出大卡片，在裡面選其他空間
+const confirmingAbandon = ref(false)   // 兩段式確認，避免誤點就清掉一間房的進度
+function onAbandon() {
+  if (!confirmingAbandon.value) { confirmingAbandon.value = true; return }
+  confirmingAbandon.value = false
+  expanded.value = false
+  emit('abandon')
+}
 let cleanupFns = []
 
 const totalCount = computed(() => props.plan?.rooms?.length || 0)
@@ -55,6 +62,17 @@ function paintBoard(board) {
     g.classList.toggle('is-active', isActive)
     g.classList.toggle('is-done', isDone)
     g.classList.toggle('is-clickable', clickable)
+
+    // 被擋住的房間：游標移上去說明原因，不要讓人以為壞了
+    const locked = !isActive && !activeIsDone.value
+    g.classList.toggle('is-locked', locked)
+    g.querySelector(':scope > title.lock-tip')?.remove()
+    if (locked) {
+      const tip = document.createElementNS('http://www.w3.org/2000/svg', 'title')
+      tip.setAttribute('class', 'lock-tip')
+      tip.textContent = '請先完成目前這間房的渲染'
+      g.prepend(tip)
+    }
 
     if (clickable) {
       const room = (props.plan.rooms || []).find(r => r.id === roomId)
@@ -146,6 +164,12 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey))
       </div>
       <div ref="boardRef" class="minimap-board" v-html="plan?.svg_markup || ''"></div>
       <button type="button" class="minimap-expand" @click="expanded = true">放大並選擇其他空間</button>
+      <button
+        v-if="!activeIsDone"
+        type="button"
+        class="minimap-abandon"
+        @click="onAbandon" @blur="confirmingAbandon = false"
+      >{{ confirmingAbandon ? '確定放棄？進度會清除' : '放棄這間房，改選其他' }}</button>
       <p v-if="doneCount >= totalCount && totalCount > 0" class="minimap-hint minimap-hint--done">
         全部房間都完成了 🎉 點任一間可以再看一次渲染圖
       </p>
@@ -160,8 +184,14 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey))
             <button type="button" class="modal-close" aria-label="關閉" @click="expanded = false">✕</button>
           </div>
           <p class="modal-hint">
-            {{ activeIsDone ? '點選其他房間切換過去編輯' : '目前這間房完成渲染後，才能切換到其他房間' }}
+            {{ activeIsDone ? '點選其他房間切換過去編輯' : '目前這間房完成渲染後，才能切換到其他房間；如果一直渲染失敗，可以放棄這間房。' }}
           </p>
+          <button
+            v-if="!activeIsDone"
+            type="button"
+            class="minimap-abandon modal-abandon"
+            @click="onAbandon" @blur="confirmingAbandon = false"
+          >{{ confirmingAbandon ? '確定放棄？進度會清除' : '放棄這間房，改選其他' }}</button>
           <div ref="modalBoardRef" class="minimap-board modal-board" v-html="plan?.svg_markup || ''"></div>
         </div>
       </div>
@@ -196,6 +226,22 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey))
   cursor: pointer;
 }
 .minimap-expand:hover { border-color: var(--db-accent); background: #f7f6f3; }
+
+.minimap-abandon {
+  display: block;
+  width: 100%;
+  margin-top: 0.4rem;
+  padding: 0.4rem;
+  border: none;
+  border-radius: var(--db-radius-pill);
+  background: none;
+  color: var(--db-text-soft);
+  font-size: 0.76rem;
+  text-decoration: underline;
+  cursor: pointer;
+}
+.minimap-abandon:hover { color: var(--db-danger); }
+.modal-abandon { width: auto; margin: 0 0 0.8rem; padding: 0.2rem 0; }
 
 .minimap-modal {
   position: fixed;
@@ -261,6 +307,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey))
 .minimap-board :deep(svg) { width: 100%; height: auto; display: block; }
 
 .minimap-board :deep(.room-rect.is-clickable) { cursor: pointer; }
+.minimap-board :deep(.room-rect.is-locked) { cursor: not-allowed; }
 .minimap-board :deep(.room-rect .room-floor) { transition: fill 0.15s, stroke 0.15s; }
 .minimap-board :deep(.room-rect.is-clickable:hover .room-floor) {
   fill: var(--db-accent-soft);

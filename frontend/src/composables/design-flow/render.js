@@ -174,6 +174,7 @@ export async function swapStyle(styleId) {
 export async function generatePanorama() {
   const r = result.value
   if (!r?.task_id || !r?.generated_image_path) return
+  const taskId = r.task_id
   panoLoading.value = true
   panoError.value = ''
   try {
@@ -188,6 +189,7 @@ export async function generatePanorama() {
       throw new Error(err.detail || `HTTP ${res.status}`)
     }
     const data = await res.json()
+    if (result.value?.task_id !== taskId) return   // 生成途中已經換房間／重新生成，這張環景不屬於現在這張圖
     panoUrl.value = data.room_panorama_url
   } catch (e) {
     panoError.value = e.message

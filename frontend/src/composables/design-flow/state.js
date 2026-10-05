@@ -257,6 +257,8 @@ export const cadPlanResult = ref(null)     // /api/generate-room-plan 的完整�
 // 回來時還原，這樣同一間房不會因為切去別間又切回來而遺失進度。
 export const cadActiveRoomId  = ref(null)          // 目前正在設計的房間 id
 export const cadRoomStatus    = ref({})            // { [roomId]: 'active' | 'done' }
+export const cadBatch = ref({})                // 批次生成進行中：{ [roomId]: { status: 'queued'|'running'|'failed', error } }，不存草稿
+export const cadBatchRunning = ref(false)
 export const cadRoomSnapshots = ref({})            // { [roomId]: { roomW, roomD, roomTypeForPlan, editPlacements, floorPlanPath, floorPlanUrl, sceneGraph, layoutRenderConfig, result, lastGeneratedImage } }
 
 // ── 佈局編輯 ──
@@ -293,6 +295,7 @@ export const styleError          = ref('')
 export const styleCandidates     = ref([])
 export const styleCandidatePool  = ref([])
 export const candidatesLoading   = ref(false)
+export const candidatesError     = ref('')   // 搜尋失敗的訊息；空字串 = 沒有錯誤
 export const candidatesSearched  = ref(false)
 export const confirmedStyle      = ref(null)
 export const matchedStylePreview = ref(null)
@@ -361,6 +364,7 @@ const DRAFT_KEY = 'db.flow'
 const DRAFT_FIELDS = {
   planSource, roomType, spaceSizePing, customRoomW, customRoomD, furnitureItems, furnitureQty,
   extraPrompt, fengshuiRules, outputAspect, selectedStyle, noStyleReference, styleMethod,
+  cadCounts, cadTotalPing, cadExtraRooms,   // 整層房型表單（幾房幾廳＋坪數），重整後不用重填
 }
 
 export function saveDraft() {
@@ -381,3 +385,35 @@ try {
 } catch { /* 壞掉的草稿直接忽略 */ }
 
 watch(Object.values(DRAFT_FIELDS), saveDraft, { deep: true })
+
+/* ── 整層（cad）進度：另存一份 ──
+   逐間設計要花很久，重整就全沒了太傷。跟上面的草稿分開存：房間分區圖與每間房的快照
+   體積大，不要每打一個字就跟著重寫一次。
+   只還原「渲染完成」的房間，並回到「選擇房間」步驟——沒渲染完的那間，畫面上的編輯沒存下來，
+   當作還沒開始；其餘步驟的暫存狀態（編輯器、遮罩…）同樣不還原。
+   ponytail: 靠 sessionStorage，容量滿了就不留進度（下方 catch），升級路徑是存到後端。 */
+const CAD_KEY = 'db.cad'
+function saveCadProgress() {
+  try {
+    if (!cadPlanResult.value) { sessionStorage.removeItem(CAD_KEY); return }
+    sessionStorage.setItem(CAD_KEY, JSON.stringify({
+      plan: cadPlanResult.value, status: cadRoomStatus.value, snapshots: cadRoomSnapshots.value,
+    }))
+  } catch {
+    try { sessionStorage.removeItem(CAD_KEY) } catch { /* 沒有儲存空間就算了 */ }
+  }
+}
+
+try {
+  const d = JSON.parse(sessionStorage.getItem(CAD_KEY) || 'null')
+  if (d?.plan && planSource.value === 'cad') {
+    cadPlanResult.value = d.plan
+    cadRoomStatus.value = Object.fromEntries(Object.entries(d.status || {}).filter(([, v]) => v === 'done'))
+    cadRoomSnapshots.value = Object.fromEntries(
+      Object.entries(d.snapshots || {}).filter(([id]) => cadRoomStatus.value[id]),
+    )
+    stepIndex.value = Math.max(0, steps.value.findIndex(s => s.key === 'roomPick'))
+  }
+} catch { /* 壞掉的進度直接忽略 */ }
+
+watch([cadPlanResult, cadRoomStatus, cadRoomSnapshots], saveCadProgress, { deep: true })

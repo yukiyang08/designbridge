@@ -22,13 +22,14 @@ import {
   planSource, stepIndex, steps, currentStep, isLastStep,
   floorPlanUrl, floorPlanPath, sceneGraph, floorPlanUpload, uploadedPlanUrl, detectedRooms,
   cadCounts, cadTotalPing, cadExtraRooms, cadPlanResult, cadActiveRoomId, cadRoomStatus,
+  cadBatch, cadBatchRunning,
   editPlacements, roomW, roomD, roomTypeForPlan, layoutViewMode, layoutRenderConfig,
   roomType, spaceSizePing, customRoomW, customRoomD,
   furnitureItems, furnitureQty, extraPrompt, fengshuiRules, outputAspect,
   spacePhoto, spacePhotoPath,
   selectedStyle, noStyleReference, styleMethod, styleRefImage,
   styleOptions, styleLoading, styleError,
-  styleCandidates, candidatesLoading, candidatesSearched, confirmedStyle, matchedStylePreview,
+  styleCandidates, candidatesLoading, candidatesError, candidatesSearched, confirmedStyle, matchedStylePreview,
   styleDemoImages,
   showSuggestions,
   result, loading, loadingMsg, error, submitKey, swappingStyle, styleSwapCache,
@@ -48,7 +49,8 @@ import {
 import {
   submitLayout, useUploadedPlan, handleRoomSelected, onEditorChange, updateFloorPlan,
 } from './design-flow/layout'
-import { submitRoomProgram, handleCadRoomSelected, jumpToCadRoom } from './design-flow/cad'
+import { applyToRooms, cancelCadBatch } from './design-flow/cadBatch'
+import { submitRoomProgram, handleCadRoomSelected, jumpToCadRoom, abandonCadRoom } from './design-flow/cad'
 import { submitPhoto, submit3D, swapStyle, generatePanorama } from './design-flow/render'
 import { handleMaskReady, submitRefine } from './design-flow/refine'
 import { fetchQuotation, toggleFavoriteDesign } from './design-flow/quotation'
@@ -63,7 +65,8 @@ export function useDesignFlow() {
     detectedRooms, handleRoomSelected,
     // CAD 房型生成
     cadCounts, cadTotalPing, cadExtraRooms, cadPlanResult, submitRoomProgram, handleCadRoomSelected,
-    cadActiveRoomId, cadRoomStatus, jumpToCadRoom,
+    cadActiveRoomId, cadRoomStatus, jumpToCadRoom, abandonCadRoom,
+    cadBatch, cadBatchRunning, applyToRooms, cancelCadBatch,
     // 佈局
     editPlacements, roomW, roomD, roomTypeForPlan, layoutViewMode, layoutRenderConfig,
     onEditorChange, updateFloorPlan,
@@ -75,7 +78,7 @@ export function useDesignFlow() {
     // 風格
     selectedStyle, noStyleReference, styleMethod, styleRefImage,
     styleOptions, styleLoading, styleError,
-    styleCandidates, candidatesLoading, candidatesSearched, confirmedStyle, matchedStylePreview,
+    styleCandidates, candidatesLoading, candidatesError, candidatesSearched, confirmedStyle, matchedStylePreview,
     styleDemoImages, fetchStyleDemoImages,
     showSuggestions, fetchStyleOptions, fetchStyleCandidates, showNextRound, scheduleSearch,
     confirmStyle, clearConfirmedStyle,
