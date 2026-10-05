@@ -13,7 +13,7 @@ import { useDesignFlow } from '@/composables/useDesignFlow'
 const {
   textPrompt, brushSize, eraserSize, drawMode,
   spaceImage, baseImagePreview, refineCanvasRef,
-  loading, submitRefine, nextStep, prevStep,
+  loading, submitRefine, undoRefine, canUndoRefine, nextStep, prevStep,
 } = useDesignFlow()
 
 const hasBase = computed(() => !!baseImagePreview.value)
@@ -98,6 +98,10 @@ const activeBrushSize = computed(() => drawMode.value === 'erase' ? eraserSize.v
 
     <div class="actions">
       <button class="db-btn db-btn--ghost db-btn--sm" @click="prevStep">← 上一步</button>
+      <button
+        v-if="canUndoRefine" class="db-btn db-btn--ghost db-btn--sm"
+        title="回到微調前的圖片" @click="undoRefine"
+      >↶ 還原上一版</button>
       <button class="db-btn db-btn--ghost" :disabled="loading || !hasBase" @click="submitRefine">
         生成新圖
       </button>

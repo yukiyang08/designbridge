@@ -52,7 +52,7 @@ import {
 import { applyToRooms, cancelCadBatch } from './design-flow/cadBatch'
 import { submitRoomProgram, handleCadRoomSelected, jumpToCadRoom, abandonCadRoom } from './design-flow/cad'
 import { submitPhoto, submit3D, swapStyle, generatePanorama } from './design-flow/render'
-import { handleMaskReady, submitRefine } from './design-flow/refine'
+import { handleMaskReady, submitRefine, undoRefine, canUndoRefine } from './design-flow/refine'
 import { fetchQuotation, toggleFavoriteDesign } from './design-flow/quotation'
 
 export function useDesignFlow() {
@@ -94,6 +94,6 @@ export function useDesignFlow() {
     // 收藏
     favoriteLoading, favoriteError, toggleFavoriteDesign,
     // 動作
-    uploadFile, submitLayout, useUploadedPlan, submitPhoto, submit3D, submitRefine,
+    uploadFile, submitLayout, useUploadedPlan, submitPhoto, submit3D, submitRefine, undoRefine, canUndoRefine,
   }
 }

@@ -7,7 +7,7 @@ import {
   spacePhoto, spacePhotoPath, spaceImage, styleRefImage,
   result, loading,
   styleCandidates, styleCandidatePool, candidatesSearched, confirmedStyle, matchedStylePreview,
-  lastGeneratedImage, manualMaskPath, textPrompt,
+  lastGeneratedImage, manualMaskPath, refineHistory, textPrompt,
   panoUrl, panoError, panoLoading, quotationError,
   timers, saveDraft,
 } from './state'
@@ -66,6 +66,7 @@ export function resetFlow() {
   matchedStylePreview.value = null
   lastGeneratedImage.value = null
   manualMaskPath.value = ''
+  refineHistory.value = []
   textPrompt.value = ''
   panoUrl.value = null
   panoError.value = ''

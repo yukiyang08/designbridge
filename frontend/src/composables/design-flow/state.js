@@ -319,6 +319,9 @@ export const timers = { search: null, floorPlanUpdate: null }
 export const spaceImage         = useImageField()
 export const lastGeneratedImage = ref(null)
 export const manualMaskPath     = ref('')
+// 微調復原堆疊：[{ from: {path,url}, to: 微調後的 path }]。只有 `to` 等於目前圖片時才算可復原，
+// 換房間／重新生成後舊的項目自然失效，不用到處清。
+export const refineHistory      = ref([])
 export const brushSize          = ref(32)   // 畫筆直徑（px）
 export const eraserSize          = ref(32)   // 橡皮擦直徑（px）——獨立於畫筆，兩個工具可以各自調大小
 export const drawMode           = ref('draw')
