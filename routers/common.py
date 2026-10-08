@@ -72,6 +72,7 @@ class DesignRequest(BaseModel):
     mask_image_path: Optional[str] = None  # 手繪遮罩路徑（refine 模式選填）
     fengshui_rules: List[str] = []
     style_method: str = "ai_analysis"
+    seed: Optional[int] = None   # 指定渲染 seed；沒給時換風格會沿用 plan 裡上一輪的 seed
     floor_plan_path: Optional[str] = None   # 由 Step 1 產生的 2D 平面圖路徑
     scene_graph: Optional[dict] = None     # 由 Step 1 產生的完整 scene_graph（含家具座標）
     # /api/plan-layout 回傳的結果，原樣回傳給 /api/generate 就能跳過重跑 RA/vision/layout_agent，
@@ -117,6 +118,8 @@ def _build_user_input(request: DesignRequest) -> dict:
         user_input["fengshui_rules"] = request.fengshui_rules
     if request.style_method:
         user_input["style_method"] = request.style_method
+    if request.seed is not None:
+        user_input["seed"] = request.seed
     render_overrides = {
         k: v for k, v in {
             "controlnet_model": request.controlnet_model_override,

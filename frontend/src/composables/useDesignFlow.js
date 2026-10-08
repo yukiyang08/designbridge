@@ -17,6 +17,7 @@
  */
 
 export { STEP_FLOWS, ASPECT_OPTIONS, FENGSHUI_OPTIONS } from './design-flow/state'
+export { ORIGINAL_STYLE_KEY } from './design-flow/render'
 
 import {
   planSource, stepIndex, steps, currentStep, isLastStep,
@@ -52,7 +53,7 @@ import {
 } from './design-flow/layout'
 import { applyToRooms, cancelCadBatch } from './design-flow/cadBatch'
 import { submitRoomProgram, handleCadRoomSelected, jumpToCadRoom, abandonCadRoom, setOpeningEdit } from './design-flow/cad'
-import { submitPhoto, submit3D, swapStyle, generatePanorama } from './design-flow/render'
+import { submitPhoto, submit3D, swapStyle, restoreOriginal, generatePanorama } from './design-flow/render'
 import { handleMaskReady, submitRefine, undoRefine, canUndoRefine } from './design-flow/refine'
 import { fetchQuotation, toggleFavoriteDesign } from './design-flow/quotation'
 
@@ -84,7 +85,7 @@ export function useDesignFlow() {
     showSuggestions, fetchStyleOptions, fetchStyleCandidates, showNextRound, scheduleSearch,
     confirmStyle, clearConfirmedStyle,
     // 結果
-    result, loading, loadingMsg, error, submitKey, swappingStyle, styleSwapCache, swapStyle,
+    result, loading, loadingMsg, error, submitKey, swappingStyle, styleSwapCache, swapStyle, restoreOriginal,
     // 微調
     spaceImage, lastGeneratedImage, manualMaskPath, brushSize, eraserSize, drawMode,
     textPrompt, refineCanvasRef, baseImagePreview, handleMaskReady,

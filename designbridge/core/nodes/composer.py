@@ -94,6 +94,7 @@ def composer_node(state: DesignBridgeState) -> dict[str, Any]:
     # its own naive style concatenation — that's exactly the part this node replaces.
     base_prompt = _build_imagen_prompt_from_requirement(
         req, style_params=None, user_text_prompt=user_text_prompt, is_style_swap=is_style_swap,
+        style_id_override=(style_params.get("style_profile_id") or None) if is_style_swap else None,
     )
 
     style_name = (style_params.get("style_profile_id") or "unspecified").strip()

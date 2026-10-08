@@ -110,6 +110,7 @@ def _build_imagen_prompt_from_requirement(
     style_params: dict[str, Any] | None = None,
     user_text_prompt: str | None = None,
     is_style_swap: bool = False,
+    style_id_override: str | None = None,
 ) -> str:
     """Build an English text prompt for image generation from structured_requirement and style params.
 
@@ -154,6 +155,10 @@ def _build_imagen_prompt_from_requirement(
         room_type = meta.get("room_type", "living_room").replace("_", " ")
         if style_params and style_params.get("style_profile_id"):
             style_id = style_params["style_profile_id"].lower()
+        elif style_id_override:
+            # composer 刻意傳 style_params=None（風格由它自己合併），但換風格時不能退回
+            # structured_requirement 裡「原本」的風格——那會讓新風格的提示詞開頭寫著舊風格。
+            style_id = style_id_override.lower()
         else:
             raw_style = style_prefs.get("primary_style") or ""
             style_id = STYLE_NAME_TO_ID.get(raw_style) or raw_style.lower()

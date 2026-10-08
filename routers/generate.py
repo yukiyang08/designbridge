@@ -13,6 +13,7 @@ from routers.common import (
     API_PUBLIC_URL, DesignRequest, _artifact_url, _build_user_input, _get_graph,
     _is_artifact_file, _layout_render_config, _require_artifact_file,
 )
+from designbridge.core.config import Config
 from routers.history import _save_history
 
 router = APIRouter()
@@ -108,9 +109,28 @@ def generate_design(request: DesignRequest):
             # 低強度重繪，取代整條 depth ControlNet 分支（見 renderer.py 的
             # img2img_base 判斷）。欄位名稱不同（plan 用回應格式的
             # generated_image_path，state 用 graph 內部的 generated_image）要轉換。
+            # 沿用上一輪的 seed：條件圖（家具深度/邊緣）由 scene_graph 決定、本來就一樣，
+            # seed 也一樣，換風格時房間構圖與家具位置才不會整個重抽。
+            prev_seed = ((request.plan.get("render_result") or {}).get("generation_params") or {}).get("seed")
+            if prev_seed is not None and request.seed is None:
+                user_input["seed"] = int(prev_seed)
             prev_image = request.plan.get("generated_image_path")
             if prev_image and Path(prev_image).is_file():
                 initial_state["generated_image"] = prev_image
+                # 換風格（有上一張圖）：預設丟掉「上一輪補跑的估計深度」與投影深度，讓 renderer 跟第一次生成
+                # 走同一條 layout ControlNet 分支。實測前者在窗戶/遠牆等平坦區域是雜訊，會讓窗戶出現龜裂紋、
+                # 家具黏在一起；後者乾淨很多（seed 一樣、構圖仍大致沿用）。真實照片的深度不動。
+                # Config.STYLE_SWAP_DEPTH_LOCK=true 可切回舊行為。
+                vf = initial_state.get("vision_features") or {}
+                if not Config.STYLE_SWAP_DEPTH_LOCK and vf.get("depth_source") == "post_estimate":
+                    initial_state["vision_features"] = {
+                        k: v for k, v in vf.items() if k not in ("depth", "depth_source", "segmentation")
+                    }
+                    sg = initial_state.get("scene_graph")
+                    if sg:
+                        initial_state["scene_graph"] = {
+                            k: v for k, v in sg.items() if k not in ("projected_depth_path", "projected_seg_path")
+                        }
 
         # 執行工作流
         t0 = time.perf_counter()

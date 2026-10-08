@@ -15,8 +15,9 @@ import FengshuiPicker from '@/components/FengshuiPicker.vue'
 import StyleSuggestions from '@/components/StyleSuggestions.vue'
 import ImageUpload from '@/components/ImageUpload.vue'
 import DesignDetails from '@/components/steps/DesignDetails.vue'
-import ApplyToRooms from '@/components/steps/ApplyToRooms.vue'
-import { useDesignFlow, ASPECT_OPTIONS } from '@/composables/useDesignFlow'
+// 「套用到其他房間」暫時停用：恢復時取消下面這行與 template 裡 <ApplyToRooms /> 的註解
+// import ApplyToRooms from '@/components/steps/ApplyToRooms.vue'
+import { useDesignFlow, ASPECT_OPTIONS, ORIGINAL_STYLE_KEY } from '@/composables/useDesignFlow'
 import { API_BASE } from '@/config/api'
 
 // PanoramaViewer 吃 three.js（約 700KB）：只有真的要看環景時才下載，
@@ -30,7 +31,7 @@ const {
   styleCandidates, candidatesLoading, candidatesError, confirmedStyle, showSuggestions,
   confirmStyle, clearConfirmedStyle, fetchStyleCandidates, showNextRound, scheduleSearch,
   result, loading, submit3D, nextStep, prevStep,
-  swappingStyle, swapStyle, styleSwapCache, styleDemoImages,
+  swappingStyle, swapStyle, restoreOriginal, styleSwapCache, styleDemoImages,
   panoLoading, panoUrl, panoError, generatePanorama,
 } = useDesignFlow()
 
@@ -43,6 +44,9 @@ const isSkipPath = computed(() => planSource.value === 'skip')
 // 不保證換成別的風格），一鍵換風格只列有固定 LoRA 對應的實際風格。
 const swapStyleOptions = computed(() => styleOptions.value.filter(opt => opt.value !== 'auto'))
 const activeStyleId = computed(() => result.value?.style_params?.style_profile_id)
+// 原圖卡是不是目前正顯示的那張：直接比物件參照，restoreOriginal/submit3D 都是把
+// result 設成 styleSwapCache 裡存的同一個物件，參照相等就代表現在看的就是它。
+const isOriginalActive = computed(() => !!result.value && result.value === styleSwapCache.value[ORIGINAL_STYLE_KEY])
 
 /**
  * 整層房屋（cad）與上傳平面圖（upload）這兩條路徑沒有「空間設定」那一步，
@@ -225,6 +229,20 @@ watch(() => result.value?.task_id, () => { viewMode.value = 'image' })
         <h3 class="sub-title">一鍵換風格</h3>
         <div class="swap-row">
           <button
+            v-if="styleSwapCache[ORIGINAL_STYLE_KEY]"
+            type="button"
+            class="swap-card"
+            :class="{ active: isOriginalActive, generated: true }"
+            :disabled="swappingStyle"
+            title="回到最一開始生成的那張"
+            @click="restoreOriginal"
+          >
+            <span class="swap-thumb">
+              <img :src="styleSwapCache[ORIGINAL_STYLE_KEY].generated_image_url" alt="原圖">
+            </span>
+            <span class="swap-label">原圖</span>
+          </button>
+          <button
             v-for="opt in swapStyleOptions"
             :key="opt.value"
             type="button"
@@ -249,7 +267,7 @@ watch(() => result.value?.task_id, () => { viewMode.value = 'image' })
       </section>
 
       <!-- 整層流程：把這間的設定套用到其他房間，一次生成 -->
-      <ApplyToRooms />
+      <!-- <ApplyToRooms /> -->
 
       <!-- 設計詳情（結構化需求 / 風格參數 / 點雲 / raw JSON） -->
       <div class="details-toggle-wrap">
@@ -500,13 +518,14 @@ watch(() => result.value?.task_id, () => { viewMode.value = 'image' })
 
 .style-swap { margin-top: 0.5rem; }
 .style-swap .sub-title { margin-bottom: 0.6rem; }
-.swap-row { display: flex; flex-wrap: wrap; gap: 0.7rem; }
+.swap-row { display: flex; gap: 0.5rem; }   /* 不換行：卡片平分整排寬度，跟圖片區同寬 */
 .swap-card {
   display: flex;
   flex-direction: column;
   align-items: center;
   gap: 0.4rem;
-  width: 84px;
+  flex: 1 1 0;
+  min-width: 0;
   padding: 0;
   border: none;
   background: none;
@@ -516,8 +535,8 @@ watch(() => result.value?.task_id, () => { viewMode.value = 'image' })
 .swap-thumb {
   display: grid;
   place-items: center;
-  width: 84px;
-  height: 84px;
+  width: 100%;
+  aspect-ratio: 1;
   border-radius: 12px;
   overflow: hidden;
   border: 2px solid #ececec;

@@ -355,6 +355,7 @@ def _render_flux_controlnet_depth_fal(
     extra_controls: list[dict] | None = None,
     loras: list[dict] | None = None,
     controlnet_model: str | None = None,
+    seed: int | None = None,
 ) -> bool:
     """Generate image via fal.ai FLUX-general + a true depth ControlNet.
 
@@ -443,6 +444,8 @@ def _render_flux_controlnet_depth_fal(
             "image_size": image_size,
             "controlnets": controlnets,
         }
+        if seed is not None:
+            arguments["seed"] = int(seed)
         lora_signature = tuple(sorted(
             (str(lora.get("path", "")), str(lora.get("scale", 1)))
             for lora in (loras or [])
@@ -512,6 +515,7 @@ def _render_flux_depth_controlnet_fal(
     guidance_scale: float = 3.5,
     output_size: tuple[int, int] = (1024, 1024),
     loras: list[dict] | None = None,
+    seed: int | None = None,
 ) -> bool:
     """Generate via fal.ai FLUX-general + a FLUX ControlNet Union.
 
@@ -581,6 +585,8 @@ def _render_flux_depth_controlnet_fal(
             "image_size": image_size,
             "controlnet_unions": [controlnet_union],
         }
+        if seed is not None:
+            arguments["seed"] = int(seed)   # 同 seed + 同條件圖 → 換風格時構圖大致不變
         if loras:
             arguments["loras"] = loras
             print(f"[lora] {', '.join(l['path'].rsplit('/', 1)[-1] for l in loras)}")

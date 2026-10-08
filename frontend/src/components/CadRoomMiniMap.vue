@@ -207,7 +207,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey))
 .cad-minimap {
   position: sticky;
   top: 24px;
-  padding: 0.85rem;
+  padding: 1.1rem;
   border-radius: var(--db-radius-chip);
   background: var(--db-chip-soft);
 }

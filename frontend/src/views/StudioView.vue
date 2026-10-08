@@ -178,7 +178,7 @@ onMounted(() => {
    不是另外浮一個獨立的白卡在旁邊。 */
 .studio-card.has-minimap {
   display: grid;
-  grid-template-columns: 1fr 240px;
+  grid-template-columns: 1fr clamp(300px, 26vw, 460px);   /* 整層進度縮圖：窄螢幕 300、寬螢幕最大 460 */
   align-items: start;
   gap: clamp(1.25rem, 2.5vw, 2rem);
 }

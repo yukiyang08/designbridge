@@ -188,6 +188,10 @@ class Config:
     # 還不像鄉村風），還把耗時從 14s 拉到 54s（fal 下載/合併 LoRA 權重的開銷）。先關掉，
     # LoRA 重新微調過、確認有幫助之後再打開。ControlNet 路徑的 LoRA 不受此影響。
     IMG2IMG_USE_LORA: bool = os.getenv("DESIGNBRIDGE_IMG2IMG_USE_LORA", "false").lower() in ("1", "true", "yes")
+    # 換風格時用「上一張生成圖的估計深度」鎖構圖（舊行為）。實測這份深度在窗戶/遠牆等平坦區域是雜訊，
+    # 會讓窗戶出現龜裂紋、家具黏在一起；預設關閉，換風格改走跟第一次生成相同的 layout ControlNet
+    # 分支（同 seed，構圖大致沿用）。設 DESIGNBRIDGE_STYLE_SWAP_DEPTH_LOCK=true 可切回舊行為。
+    STYLE_SWAP_DEPTH_LOCK: bool = os.getenv("DESIGNBRIDGE_STYLE_SWAP_DEPTH_LOCK", "false").lower() in ("1", "true", "yes")
     PROJECTED_DEPTH_MAX_CONDITIONING_SCALE: float = float(
         os.getenv("DESIGNBRIDGE_PROJECTED_DEPTH_MAX_CONDITIONING_SCALE", "0.3")
     )

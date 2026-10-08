@@ -15,6 +15,11 @@ import { uploadFile } from './common'
 import { updateFloorPlan } from './layout'
 import { snapshotCurrentCadRoom } from './cad'
 
+// 原圖（submit3D 第一次生成的那張）在 styleSwapCache 裡的固定 key——跟真正的
+// style_profile_id 分開存，這樣就算原圖沒套風格（no_style_reference / 風格搜尋落空，
+// style_profile_id 是 undefined）也一定留得住，不會因為沒有 style id 可當 key 就存不進去。
+export const ORIGINAL_STYLE_KEY = '__original__'
+
 /* ══ Step: 上傳空間照片 ════════════════════════════════════
    照片走 /api/generate 的 initial_image_path：visual_preprocessing 會抽視覺特徵、
    requirement agent 會把照片一起餵給 Gemini，所以不需要新的後端端點。 */
@@ -73,9 +78,12 @@ export async function submit3D() {
     // 欄位可以承載（DesignRequest 沒有 room_type / space_size）。折進 text_prompt，
     // 使用者在第一步選的東西才真的會影響生成結果，而不是選了等於沒選。
     const noSpatialInput = !editedSceneGraph && !floorPlanPath.value && !spacePhotoPath.value
+    // 有平面圖／scene_graph 的流程（含整層 CAD 逐間設計）同樣沒有欄位承載房型，不寫進描述的話 AI 會自己
+    // 猜——實測客餐廳被猜成臥室、沙發畫成床。所以非照片流程一律把房型帶進描述。
+    const roomLabel = ROOM_TYPE_LABEL[roomTypeForPlan.value] || ''
     const spacePreamble = noSpatialInput
-      ? `${ROOM_TYPE_LABEL[roomTypeForPlan.value] || ''}，約 ${spaceSizePing.value} 坪。`
-      : ''
+      ? `${roomLabel}，約 ${spaceSizePing.value} 坪。`
+      : (!spacePhotoPath.value && roomLabel ? `${roomLabel}。` : '')
 
     const res = await jsonFetch('/api/generate', {
       text_prompt:      (spacePreamble + extraPrompt.value).trim(),
@@ -98,8 +106,10 @@ export async function submit3D() {
     if (requestId === requestState.current) {
       result.value = data
       // 新的一輪生成（房間/描述可能都變了），舊風格版本快取失效；用這次的結果重新起頭。
+      // 原圖一定存進 ORIGINAL_STYLE_KEY（不管有沒有套風格），style_profile_id 另外多存一份
+      // 純粹是讓「這個風格已經生成過」的縮圖判斷（swapStyle 的 cache 命中）也認得出原圖本身。
       const styleId = data.style_params?.style_profile_id
-      styleSwapCache.value = styleId ? { [styleId]: data } : {}
+      styleSwapCache.value = { [ORIGINAL_STYLE_KEY]: data, ...(styleId ? { [styleId]: data } : {}) }
       if (data.generated_image_path) {
         lastGeneratedImage.value = { path: data.generated_image_path, url: data.generated_image_url || null }
       }
@@ -166,6 +176,16 @@ export async function swapStyle(styleId) {
     if (requestId === requestState.current) error.value = `換風格失敗：${e.message}`
   } finally {
     if (requestId === requestState.current) swappingStyle.value = false
+  }
+}
+
+// 換回最一開始生成的那張（不管當初有沒有套風格），純讀快取，不重打 API。
+export function restoreOriginal() {
+  const cached = styleSwapCache.value[ORIGINAL_STYLE_KEY]
+  if (!cached) return
+  result.value = cached
+  if (cached.generated_image_path) {
+    lastGeneratedImage.value = { path: cached.generated_image_path, url: cached.generated_image_url || null }
   }
 }
 

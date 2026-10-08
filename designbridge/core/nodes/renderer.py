@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import secrets
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
@@ -354,6 +355,13 @@ def renderer(state: DesignBridgeState) -> dict[str, Any]:
         "composer_used": bool(composed_prompt),
         "composer_includes_furniture": composed_includes_furniture,
     }
+    # 同一個房間換風格時沿用上一輪的 seed（由 API 從 plan 帶進 user_input），第一次生成才隨機；
+    # 記進 generation_params 讓下一輪找得到。
+    seed = user_input.get("seed")
+    if seed is None:
+        seed = secrets.randbelow(2**31)
+    seed = int(seed)
+    generation_params["seed"] = seed
     backend = "placeholder"
 
     style_loras = resolve_style_loras(style_params.get("style_profile_id"))
@@ -611,6 +619,7 @@ def renderer(state: DesignBridgeState) -> dict[str, Any]:
             extra_controls=_extra_controls,
             loras=style_loras,
             controlnet_model=_cn_model,
+            seed=seed,
         ):
             backend = "flux_controlnet_depth_fal"
             generation_params["model"] = f"fal-ai/flux-general + {_cn_model}"
@@ -718,6 +727,7 @@ def renderer(state: DesignBridgeState) -> dict[str, Any]:
                 guidance_scale=Config.FAL_DEPTH_GUIDANCE,
                 output_size=output_size,
                 loras=style_loras,
+                seed=seed,
             ):
                 backend = "flux_depth_controlnet_fal"
                 generation_params["model"] = Config.FAL_DEPTH_CONTROLNET_MODEL
@@ -817,7 +827,7 @@ def renderer(state: DesignBridgeState) -> dict[str, Any]:
                 run_depth_estimation,
                 path_str, model_name=Config.DEPTH_MODEL, out_dir=render_dir / "conditions",
             )
-            result["vision_features"] = {**vision, "depth": new_depth_path}
+            result["vision_features"] = {**vision, "depth": new_depth_path, "depth_source": "post_estimate"}
             print(f"[renderer] 這輪沒有 depth 輸入，已對生成結果補跑深度估計供下次換風格鎖定結構：{new_depth_path}")
         except Exception as e:
             print(f"[renderer] 補跑深度估計失敗（{e}），下次換風格仍不會有結構鎖定")
