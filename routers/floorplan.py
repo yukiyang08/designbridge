@@ -185,7 +185,7 @@ def parse_floor_plan(request: ParseFloorPlanRequest):
     _require_artifact_file(request.image_path)
 
     try:
-        from designbridge.layout.layout_agent import parse_floor_plan_image
+        from designbridge.layout.floorplan_parse import parse_floor_plan_image
 
         if request.room_w and request.room_d:
             width, depth = round(request.room_w, 1), round(request.room_d, 1)
@@ -243,7 +243,7 @@ def detect_rooms(request: DetectRoomsRequest):
     _require_artifact_file(request.image_path)
 
     try:
-        from designbridge.layout.layout_agent import detect_rooms_in_floor_plan
+        from designbridge.layout.floorplan_parse import detect_rooms_in_floor_plan
 
         rooms = detect_rooms_in_floor_plan(request.image_path)
         return {"rooms": rooms or []}
@@ -302,7 +302,8 @@ def render_floor_plan(request: FloorPlanRenderRequest):
     """Re-render the 2D floor plan PNG from (edited) furniture placements."""
     import uuid as _uuid
     try:
-        from designbridge.layout.layout_agent import FurnitureItem, _generate_floor_plan
+        from designbridge.layout.layout_items import FurnitureItem
+        from designbridge.layout.floorplan_render import _generate_floor_plan
 
         items: list = []
         for i, p in enumerate(request.furniture_placements):

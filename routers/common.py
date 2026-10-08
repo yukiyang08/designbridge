@@ -44,7 +44,7 @@ def _layout_render_config() -> dict:
     preview — same numbers scene_graph_to_depth.py already uses to rasterize the
     ControlNet depth map, so the 3D preview and the actual generation stay in sync."""
     from designbridge.core.config import Config
-    from designbridge.layout.layout_agent import FURNITURE_COLORS
+    from designbridge.layout.layout_items import FURNITURE_COLORS
     from designbridge.layout.scene_graph_to_depth import FURNITURE_HEIGHTS
 
     return {

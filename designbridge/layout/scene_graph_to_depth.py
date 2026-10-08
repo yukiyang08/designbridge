@@ -292,7 +292,7 @@ _SHELL_COLORS: dict[str, tuple[int, int, int]] = {
 
 
 def _furniture_color(ftype: str) -> tuple[int, int, int]:
-    from designbridge.layout.layout_agent import FURNITURE_COLORS
+    from designbridge.layout.layout_items import FURNITURE_COLORS
     if ftype in FURNITURE_COLORS:
         return FURNITURE_COLORS[ftype]
     return FURNITURE_COLORS.get(normalize_furniture_type(ftype), FURNITURE_COLORS["default"])

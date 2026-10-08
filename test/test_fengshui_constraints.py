@@ -12,7 +12,7 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
-from designbridge.layout.layout_agent import FurnitureItem, _normalize_ftype
+from designbridge.layout.layout_items import FurnitureItem, _normalize_ftype
 from designbridge.layout.special_constraints import (
     _ENFORCERS,
     _VERIFIERS,
