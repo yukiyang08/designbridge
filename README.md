@@ -50,22 +50,6 @@ start_app.bat
 
 它會自動開兩個視窗，分別啟動 FastAPI 與 Vue。
 
-## 舊版啟動（Streamlit）
-
-若仍需使用舊測試介面，可在專案根目錄執行：
-
-```bash
-streamlit run app.py
-```
-
-若指令無效，可改用：
-
-```bash
-python -m streamlit run app.py
-```
-
-啟動後瀏覽器開 `http://localhost:8501`。
-
 ## API 設定（Gemini）
 
 Requirement Analyzer 會優先用 **Google Gemini API** 解析需求；若未設定或失敗，會自動 fallback 到規則式解析。
@@ -171,7 +155,6 @@ LLM routing 的優勢：能理解語意模糊的請求（「讓客廳更有質�
 ```
 designbridge/
 ├── api.py                      # FastAPI 後端
-├── app.py                      # Streamlit 測試 UI（舊版）
 ├── start_app.bat               # Windows 一鍵啟動
 ├── .env                        # API Keys（不進 git）
 ├── requirements.txt
@@ -261,14 +244,3 @@ DESIGNBRIDGE_TEXT2ROOM_STEPS_PER_SIDE=3
 **Q：動態 routing 沒有作用**
 → 確認 `.env` 有 `DESIGNBRIDGE_ENABLE_DYNAMIC_ROUTING=true`，且 terminal 輸出有 `[design_director] LLM router: ...`
 
----
-
-## 舊版 Streamlit 介面
-
-```bash
-streamlit run app.py
-# 或
-python -m streamlit run app.py
-```
-
-開啟 `http://localhost:8501`
