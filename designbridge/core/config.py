@@ -51,8 +51,6 @@ class Config:
     # Inpainting model (SD 1.5-based; runwayml/stable-diffusion-inpainting is publicly available)
     INPAINT_MODEL: str = os.getenv("DESIGNBRIDGE_INPAINT_MODEL", "runwayml/stable-diffusion-inpainting")
 
-    FLUX_STEPS: int = int(os.getenv("DESIGNBRIDGE_FLUX_STEPS", "4"))
-    ENABLE_FLUX_FALLBACK: bool = os.getenv("DESIGNBRIDGE_ENABLE_FLUX_FALLBACK", "true").lower() in ("1", "true", "yes")
 
     # fal.ai Inference API (cloud inpainting via FLUX.1-Fill)
     FAL_KEY: str | None = os.getenv("FAL_KEY")

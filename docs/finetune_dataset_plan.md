@@ -47,7 +47,6 @@ Finetuned LoRA → 生成符合台灣室設美學品質的日式客廳（同樣�
 - `style_kb/collection/quality_filter.py` — 本地圖片品質篩選
 - `style_kb/extraction/extract_style_kb.py` — Gemini 生成 style_kb JSON（含 caption）
 - `style_kb/extraction/label_space_supabase.py` — 空間類型標記
-- `style_kb/vector/embed_supabase.py` — 向量 embedding
 - `style_kb/migration/migrate_neoclassic_storage.py` — ✅ neoclassic → classic 搬移腳本（已執行）
 
 ---

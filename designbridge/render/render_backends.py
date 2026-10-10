@@ -5,13 +5,11 @@ from __future__ import annotations
 
 import threading
 from pathlib import Path
-from typing import Any
 
 from designbridge.core.config import Config
 
 # ── Model caches (loaded once, reused) ────────────────────────────────────────
 
-_flux_pipeline: Any = None
 _fal_unavailable_loras: set[tuple[tuple[str, str], ...]] = set()
 _fal_unavailable_loras_lock = threading.Lock()
 
@@ -33,25 +31,6 @@ def _depth_instruction(depth_conditioning_scale: float) -> str:
     if depth_conditioning_scale >= 0.45:
         return "generally follow the spatial layout and camera perspective"
     return "use as loose spatial reference"
-
-
-# ── Pipeline loaders ──────────────────────────────────────────────────────────
-
-def _get_flux_pipeline():
-    """Load Flux.1 pipeline once and cache it."""
-    global _flux_pipeline
-    if _flux_pipeline is not None:
-        return _flux_pipeline
-    from diffusers import FluxPipeline
-    import torch
-    device = "cuda" if torch.cuda.is_available() else "cpu"
-    kwargs: dict[str, Any] = {
-        "torch_dtype": torch.bfloat16 if device == "cuda" else torch.float32,
-    }
-    if Config.HF_TOKEN:
-        kwargs["token"] = Config.HF_TOKEN
-    _flux_pipeline = FluxPipeline.from_pretrained(Config.FLUX_MODEL, **kwargs).to(device)
-    return _flux_pipeline
 
 
 # ── Cloud backends ─────────────────────────────────────────────────────────────
@@ -628,28 +607,3 @@ def _render_flux_depth_controlnet_fal(
         traceback.print_exc()
         return False
 
-
-# ── Local backends ─────────────────────────────────────────────────────────────
-
-def _render_flux(prompt: str, out_path: Path) -> bool:
-    """Generate image with local Flux pipeline. Returns True on success."""
-    try:
-        import torch
-        device = "cuda" if torch.cuda.is_available() else "cpu"
-        steps = Config.FLUX_STEPS
-        out_path.parent.mkdir(parents=True, exist_ok=True)
-        pipe = _get_flux_pipeline()
-        generator = torch.Generator(device=device).manual_seed(torch.randint(0, 2**32, (1,)).item())
-        image = pipe(
-            prompt=prompt,
-            num_inference_steps=steps,
-            guidance_scale=0.0,
-            generator=generator,
-        ).images[0]
-        image.save(str(out_path))
-        return True
-    except Exception as e:
-        import traceback
-        print(f"⚠️ Render failed ({type(e).__name__}: {e})")
-        traceback.print_exc()
-        return False
