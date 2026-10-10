@@ -23,6 +23,16 @@ const {
 
 const quotation = computed(() => result.value?.quotation_result || null)
 
+// 通常這一步進來之前，微調編輯那一步就已經主動估過價了；這裡再保險檢查一次
+// （例如使用者跳過微調直接到這一步），避免又要使用者自己按按鈕才看得到報價。
+watch(
+  () => [result.value?.generated_image_path, result.value?.task_id],
+  () => {
+    if (result.value?.generated_image_path && !quotation.value && !quotationLoading.value) fetchQuotation()
+  },
+  { immediate: true },
+)
+
 // 每件家具目前選中的候選 index
 const selectedCandidates = reactive({})
 watch(
@@ -119,7 +129,7 @@ function toFavoriteItem(item, c) {
     </template>
 
     <p v-else-if="!quotationLoading" class="hint">
-      點擊「取得家具報價」辨識畫面中的家具並推薦 IKEA 商品（約需 30 秒）。
+      尚未有可估價的生成圖，請先回到上一步完成生成。
     </p>
 
     <!-- 整個流程走完，最後留一個收藏這次設計的地方——它其實一直都在

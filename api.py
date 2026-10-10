@@ -118,6 +118,11 @@ class DesignRequest(BaseModel):
     refine_mode: bool = False  # 細部微調模式：強制 routing 到 design_adjuster
     output_aspect: str = "auto"  # 輸出長寬比：auto | 1:1 | 4:3 | 3:4 | 16:9 | 9:16
     mask_image_path: Optional[str] = None  # 手繪遮罩路徑（refine 模式選填）
+    # 商品置換：使用者從 IKEA KB candidate 卡片點了「換成這個」，帶著該商品的
+    # 圖片/名稱/類別過來，取代手動畫遮罩 + 打字描述的舊流程。
+    target_label: Optional[str] = None                    # 要被換掉的家具類別，例如 "sofa"
+    reference_product_image_url: Optional[str] = None      # 該 IKEA 商品的圖片 URL
+    reference_product_name: Optional[str] = None            # 該 IKEA 商品的名稱（塞進 prompt 用）
     family_needs: List[str] = []
     fengshui_rules: List[str] = []
     style_method: str = "ai_analysis"
@@ -175,6 +180,12 @@ def _build_user_input(request: DesignRequest) -> dict:
         user_input["refine_mode"] = True
     if request.mask_image_path:
         user_input["mask_image"] = request.mask_image_path
+    if request.target_label:
+        user_input["target_label"] = request.target_label
+    if request.reference_product_image_url:
+        user_input["reference_product_image_url"] = request.reference_product_image_url
+    if request.reference_product_name:
+        user_input["reference_product_name"] = request.reference_product_name
     if request.family_needs:
         user_input["family_needs"] = request.family_needs
     if request.fengshui_rules:

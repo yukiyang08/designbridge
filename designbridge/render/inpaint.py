@@ -822,6 +822,95 @@ def run_fal_inpainting(
         return False
 
 
+def run_fal_product_composite(
+    image_path: str,
+    mask: Any,
+    reference_image_url: str,
+    prompt: str,
+    out_path: Path,
+    mask_path: str | None = None,
+    num_steps: int = 30,
+    guidance_scale: float = 2.5,
+    strength: float = 0.88,
+) -> bool:
+    """
+    使用 fal.ai FLUX Kontext（reference_image_url 模式）把一張指定的商品參考圖
+    融合進遮罩區域，取代 run_fal_inpainting 純文字重新生成的做法——用於「選了某個
+    真實 IKEA 商品要換上去」的情境，而不是「文字描述一個新家具長怎樣」。
+
+    Args:
+        reference_image_url: 要融合進場景的商品圖片 URL（例如 IKEA KB 的 image_url，
+            已經是可公開存取的 URL，不需要再轉 data URL）。
+        其餘參數同 run_fal_inpainting。
+    """
+    if not Config.FAL_KEY:
+        return False
+    try:
+        import base64
+        import io
+        import os
+        import urllib.request
+        import fal_client
+        from PIL import Image
+
+        os.environ.setdefault("FAL_KEY", Config.FAL_KEY)
+
+        original = Image.open(image_path).convert("RGB")
+        orig_size = original.size
+
+        if mask_path and Path(mask_path).is_file():
+            mask_img = Image.open(mask_path).convert("L")
+        else:
+            mask_img = mask.convert("L") if hasattr(mask, "convert") else mask
+        if mask_img.size != orig_size:
+            mask_img = mask_img.resize(orig_size, Image.NEAREST)
+
+        _debug_dir = out_path.parent / "fal_debug"
+        _debug_dir.mkdir(parents=True, exist_ok=True)
+        original.save(str(_debug_dir / "input_image.png"))
+        mask_img.save(str(_debug_dir / "input_mask.png"))
+
+        def _to_data_url(img: Any) -> str:
+            buf = io.BytesIO()
+            img.save(buf, format="PNG")
+            b64 = base64.b64encode(buf.getvalue()).decode()
+            return f"data:image/png;base64,{b64}"
+
+        print(f"[fal-product-composite] prompt: {prompt[:100]}")
+        print(f"[fal-product-composite] reference_image_url: {reference_image_url[:100]}")
+        result = fal_client.subscribe(
+            Config.FAL_PRODUCT_COMPOSITE_MODEL,
+            arguments={
+                "prompt": prompt,
+                "image_url": _to_data_url(original),
+                "mask_url": _to_data_url(mask_img),
+                "reference_image_url": reference_image_url,
+                "num_inference_steps": num_steps,
+                "guidance_scale": guidance_scale,
+                "strength": strength,
+                "num_images": 1,
+                "output_format": "png",
+            },
+        )
+
+        images = result.get("images") or []
+        if not images:
+            print("⚠️  fal.ai product composite returned no images")
+            return False
+
+        result_url = images[0]["url"]
+        print(f"✅  fal.ai product composite success → {result_url[:60]}...")
+        out_path.parent.mkdir(parents=True, exist_ok=True)
+        urllib.request.urlretrieve(result_url, str(out_path))
+        return True
+
+    except Exception as e:
+        import traceback
+        print(f"⚠️  fal.ai product composite failed ({type(e).__name__}: {e})")
+        traceback.print_exc()
+        return False
+
+
 # ---------------------------------------------------------------------------
 # Outpainting helpers
 # ---------------------------------------------------------------------------

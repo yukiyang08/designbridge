@@ -956,6 +956,48 @@ async function submitRefine() {
   }
 }
 
+// 商品置換：從報價候選卡片點「換成這個」觸發，帶著該 IKEA 商品的圖片/名稱/類別
+// 直接打 /api/generate，不需要使用者手繪遮罩或打字描述——後端會用 target_label
+// 對應到 segmentation 抓到的物件位置，並把 reference_product_image_url 融合進去。
+async function submitProductReplace(targetLabel, productImageUrl, productName) {
+  const requestId = ++currentRequestId
+  error.value = ''
+  loading.value = true
+  loadingMsg.value = { title: `換成「${productName || targetLabel}」中`, sub: 'AI 正在把這個商品融合進畫面' }
+  try {
+    const initial_image_path = lastGeneratedImage.value?.path
+      || spacePhotoPath.value
+      || (spaceImage.file ? await uploadFile(spaceImage.file) : undefined)
+
+    const res = await fetch(apiUrl('/api/generate'), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        initial_image_path,
+        no_style_reference: true,
+        refine_mode: true,
+        output_aspect: outputAspect.value,
+        target_label: targetLabel,
+        reference_product_image_url: productImageUrl,
+        reference_product_name: productName,
+      }),
+    })
+    if (!res.ok) throw new Error(`${res.status}`)
+    const data = await res.json()
+    if (requestId === currentRequestId) {
+      result.value = { ...(result.value || {}), ...data }
+      if (data.generated_image_path) {
+        lastGeneratedImage.value = { path: data.generated_image_path, url: data.generated_image_url || null }
+      }
+      if (planSource.value === 'cad' && cadActiveRoomId.value) snapshotCurrentCadRoom()
+    }
+  } catch (e) {
+    if (requestId === currentRequestId) error.value = `商品置換失敗：${e.message}`
+  } finally {
+    if (requestId === currentRequestId) loading.value = false
+  }
+}
+
 /* ══ Step: 預算估計 ══════════════════════════════════════ */
 
 async function fetchQuotation() {
@@ -1046,6 +1088,6 @@ export function useDesignFlow() {
     // 收藏
     favoriteLoading, favoriteError, toggleFavoriteDesign,
     // 動作
-    uploadFile, submitLayout, useUploadedPlan, submitPhoto, submit3D, submitRefine,
+    uploadFile, submitLayout, useUploadedPlan, submitPhoto, submit3D, submitRefine, submitProductReplace,
   }
 }

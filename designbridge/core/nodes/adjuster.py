@@ -20,6 +20,7 @@ from designbridge.render.inpaint import (
     run_inpainting,
     run_hf_inpainting,
     run_fal_inpainting,
+    run_fal_product_composite,
     load_mask_from_path,
 )
 
@@ -154,6 +155,13 @@ def adjuster_agent_stub(state: DesignBridgeState) -> dict[str, Any]:
     image_path = user_input.get("initial_image", "")
     manual_mask_path = user_input.get("mask_image")   # 手繪遮罩路徑（選填）
 
+    # 商品置換模式：使用者從 IKEA KB 選了一個具體商品要換上去，而不是打字描述新家具
+    # 長怎樣。target_label 是該商品所屬的家具類別（例如 "sofa"），用來直接定位要換
+    # 掉的物件，略過 analyze_edit_intent 那次額外的 LLM 呼叫。
+    reference_product_image_url = (user_input.get("reference_product_image_url") or "").strip()
+    reference_product_name = (user_input.get("reference_product_name") or "").strip()
+    target_label = (user_input.get("target_label") or "").strip().lower()
+
     # 沒有原圖就無法 inpaint，跳過
     if not image_path or not Path(image_path).is_file():
         return {
@@ -255,6 +263,20 @@ def adjuster_agent_stub(state: DesignBridgeState) -> dict[str, Any]:
                 mask = drawn_mask
                 mask_source = "manual_drawing"
                 seg_labels = []
+    elif target_label and reference_product_image_url:
+        # 商品置換模式：類別已知（使用者點的那張候選卡本身就有 category），
+        # 不用再花一次 Gemini Vision 呼叫去猜要換哪個物件。
+        edit_action  = "replace"
+        seg_labels   = [target_label]
+        replace_with = reference_product_name or target_label
+        effective_labels = seg_labels
+        print(f"[adjuster] product-replace mode: target_label={target_label!r}")
+        if has_seg:
+            mask, seg_matched = mask_from_segmentation(str(seg_path), str(seg_meta), effective_labels, img_size)
+            mask_source = f"segmentation({'+'.join(seg_matched[:3])})" if seg_matched else "fallback_center"
+        else:
+            mask = fallback_center_mask(img_size)
+            mask_source = "fallback_center"
     else:
         # Gemini Vision 判斷意圖：物件目標 + 動作類型
         text_prompt = user_input.get("text_prompt") or ""
@@ -336,7 +358,17 @@ def adjuster_agent_stub(state: DesignBridgeState) -> dict[str, Any]:
     fal_num_steps     = 50  if is_removal else 28
     fal_guidance      = 3.0 if is_removal else 5.0
 
-    if user_text:
+    if reference_product_image_url:
+        # 商品置換模式：prompt 只需要引導 Kontext「用參考圖的商品」，實際外觀
+        # 由 reference_image_url 決定，不需要套用文字自由發揮的模板/翻譯邏輯。
+        prompt = (
+            f"Replace the {target_label or 'object'} with the exact product shown in the "
+            f"reference image{f' ({reference_product_name})' if reference_product_name else ''}. "
+            "Match the room's lighting direction, color temperature, perspective and scale. "
+            "Photorealistic, seamless integration, natural shadows and contact points. "
+            "No text, no writing, no letters, no words, no typography, no signage or wall decals anywhere in the image."
+        )
+    elif user_text:
         # 若 user_text 是純動作詞，補上 segmentation 偵測到的物件名稱 + 背景填補描述
         action_en = None
         for zh_action, template in _ACTION_TEMPLATES.items():
@@ -453,8 +485,14 @@ def adjuster_agent_stub(state: DesignBridgeState) -> dict[str, Any]:
     out_path = Path(Config.ARTIFACTS_DIR) / "render" / f"{task_id}_{render_suffix}.png"
     backend = "placeholder"
 
+    # 0. 商品置換：優先於其他所有 backend，因為文字重新生成（LaMa/FLUX.1-Fill）
+    #    只會畫出「風格相近」的家具，不是使用者選中的那個真實商品。
+    if backend == "placeholder" and reference_product_image_url and Config.FAL_KEY:
+        if run_fal_product_composite(image_path, mask, reference_product_image_url, prompt, out_path):
+            backend = "fal_product_composite"
+
     # 1. LaMa（純移除任務：背景重建最穩定）
-    if is_removal:
+    if backend == "placeholder" and is_removal:
         if run_lama_inpainting(image_path, mask, out_path):
             backend = "lama_inpainting"
 

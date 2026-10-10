@@ -2,6 +2,7 @@
 import { computed, ref, reactive, watch, defineAsyncComponent } from 'vue'
 import { apiUrl } from '@/config/api'
 import { useFurnitureSelection } from '@/composables/useFurnitureSelection'
+import { useDesignFlow } from '@/composables/useDesignFlow'
 import PanoramaViewer from './PanoramaViewer.vue'
 import PointCloudViewer from './PointCloudViewer.vue'
 
@@ -17,6 +18,13 @@ const {
   toggle: toggleFurnitureFavorite,
   isSelected: isFurnitureFavorited,
 } = useFurnitureSelection()
+
+const { submitProductReplace, loading: flowLoading } = useDesignFlow()
+
+function replaceCandidate(item, c) {
+  if (flowLoading.value) return
+  submitProductReplace(item.category, c.product_image_url, c.name)
+}
 
 function candidateToFavoriteItem(item, c) {
   return {
@@ -423,6 +431,14 @@ const styleReferenceImageUrl = computed(() => {
                   相似度 {{ (c.similarity * 100).toFixed(0) }}%
                 </div>
                 <div class="candidate-actions">
+                  <button
+                    v-if="c.product_image_url"
+                    type="button"
+                    class="candidate-replace"
+                    :disabled="flowLoading"
+                    :title="`把畫面中的${item.detected_name}換成這個商品`"
+                    @click.stop="replaceCandidate(item, c)"
+                  >換成這個</button>
                   <a
                     v-if="c.purchase_url"
                     :href="c.purchase_url"
@@ -943,10 +959,25 @@ pre {
 .candidate-actions {
   margin-top: auto;
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
   gap: 0.4rem;
 }
+.candidate-replace {
+  flex: 1 0 100%;
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: #fff;
+  background: var(--primary);
+  border: none;
+  border-radius: 6px;
+  padding: 0.3rem 0.5rem;
+  cursor: pointer;
+  transition: opacity 0.15s;
+}
+.candidate-replace:hover { opacity: 0.85; }
+.candidate-replace:disabled { opacity: 0.5; cursor: not-allowed; }
 .candidate-buy {
   font-size: 0.72rem; font-weight: 700; color: #0058a3;
   text-decoration: none;

@@ -6,7 +6,7 @@
  * px 大小（RefineCanvas 塗跟擦共用同一個圓形筆刷，只是切換 mode 決定畫上去還是
  * 擦掉，所以兩個工具的「大小」是分開的兩個數字，不能共用一個 brushSize）。
  */
-import { computed } from 'vue'
+import { computed, reactive, watch } from 'vue'
 import RefineCanvas from '@/components/RefineCanvas.vue'
 import { useDesignFlow } from '@/composables/useDesignFlow'
 
@@ -14,11 +14,31 @@ const {
   textPrompt, brushSize, eraserSize, drawMode,
   spaceImage, baseImagePreview, refineCanvasRef,
   loading, submitRefine, nextStep, prevStep,
+  result, quotationLoading, quotationError, fetchQuotation, submitProductReplace,
 } = useDesignFlow()
 
 const hasBase = computed(() => !!baseImagePreview.value)
 // RefineCanvas 只吃一個 brush-size：畫筆模式用 brushSize，橡皮擦模式用 eraserSize
 const activeBrushSize = computed(() => drawMode === 'erase' ? eraserSize.value : brushSize.value)
+
+// 一進到這一步、有基底圖可用，就主動偵測家具 + 比對 IKEA 候選，不用使用者
+// 自己按按鈕——這樣「選家具置換」才有東西可以選。task_id 換了（新一輪生成）
+// 才重新估一次，同一輪內不重複打。
+const quotation = computed(() => result.value?.quotation_result || null)
+watch(
+  () => [hasBase.value, result.value?.task_id],
+  () => {
+    if (hasBase.value && !quotation.value && !quotationLoading.value) fetchQuotation()
+  },
+  { immediate: true },
+)
+
+const selectedCandidateIdx = reactive({})
+function pickCandidate(idx, ci) { selectedCandidateIdx[idx] = ci }
+function replaceWithCandidate(item, c) {
+  if (loading.value) return
+  submitProductReplace(item.category, c.product_image_url, c.name)
+}
 </script>
 
 <template>
@@ -69,6 +89,38 @@ const activeBrushSize = computed(() => drawMode === 'erase' ? eraserSize.value :
         <p class="tool-hint">
           不塗抹就整張重繪；塗抹後只重繪塗到的區域。
         </p>
+
+        <!-- 或直接選一個真實 IKEA 商品置換，不用打字描述、不用手繪遮罩——
+             系統會自動偵測畫面裡對應的家具位置。 -->
+        <h3 class="tool-title">或選 IKEA 商品直接置換</h3>
+        <p v-if="quotationLoading" class="tool-hint">偵測家具中…</p>
+        <p v-else-if="quotationError" class="db-error">{{ quotationError }}</p>
+        <template v-else-if="quotation">
+          <div v-for="(item, idx) in quotation.furniture_list" :key="idx" class="furn-row">
+            <div class="furn-label">{{ item.detected_name }}</div>
+            <div class="furn-candidates">
+              <div
+                v-for="(c, ci) in item.candidates"
+                :key="ci"
+                :class="['furn-card', (selectedCandidateIdx[idx] ?? 0) === ci ? 'selected' : '']"
+                @click="pickCandidate(idx, ci)"
+              >
+                <span class="furn-img-wrap">
+                  <img v-if="c.product_image_url" :src="c.product_image_url" :alt="c.name" />
+                  <span v-else class="furn-img-placeholder">無圖片</span>
+                </span>
+                <span class="furn-name">{{ c.name }}</span>
+                <span class="furn-price">NT$ {{ c.price.toLocaleString() }}</span>
+                <button
+                  type="button"
+                  class="furn-replace-btn"
+                  :disabled="loading"
+                  @click.stop="replaceWithCandidate(item, c)"
+                >換成這個</button>
+              </div>
+            </div>
+          </div>
+        </template>
 
         <!-- 沒有基底圖時（例如直接從網址進到這一步）給一個上傳入口 -->
         <div v-if="!hasBase" class="fallback">
@@ -180,6 +232,68 @@ const activeBrushSize = computed(() => drawMode === 'erase' ? eraserSize.value :
   line-height: 1.65;
   color: var(--db-placeholder);
 }
+
+.furn-row { margin-bottom: 1rem; }
+.furn-label {
+  font-size: 0.85rem;
+  color: var(--db-text-soft);
+  margin-bottom: 0.4rem;
+}
+.furn-candidates {
+  display: flex;
+  gap: 0.6rem;
+  overflow-x: auto;
+  padding-bottom: 0.3rem;
+}
+.furn-card {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  flex-shrink: 0;
+  width: 128px;
+  padding: 0.5rem;
+  border: 2px solid #ececec;
+  border-radius: var(--db-radius-chip, 8px);
+  background: #fff;
+  cursor: pointer;
+  transition: border-color 0.16s;
+}
+.furn-card:hover { border-color: var(--db-accent-soft); }
+.furn-card.selected { border-color: var(--db-accent); }
+.furn-img-wrap {
+  display: grid;
+  place-items: center;
+  height: 72px;
+  border-radius: 6px;
+  background: var(--db-chip-soft);
+  overflow: hidden;
+}
+.furn-img-wrap img { max-width: 100%; max-height: 100%; object-fit: contain; }
+.furn-img-placeholder { font-size: 0.65rem; color: var(--db-placeholder); }
+.furn-name {
+  font-size: 0.7rem;
+  line-height: 1.3;
+  color: var(--db-text);
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.furn-price { font-size: 0.78rem; font-weight: 600; color: var(--db-text); }
+.furn-replace-btn {
+  margin-top: 0.15rem;
+  font-size: 0.68rem;
+  font-weight: 700;
+  color: #fff;
+  background: var(--db-accent);
+  border: none;
+  border-radius: 5px;
+  padding: 0.25rem 0.4rem;
+  cursor: pointer;
+}
+.furn-replace-btn:hover { opacity: 0.85; }
+.furn-replace-btn:disabled { opacity: 0.5; cursor: not-allowed; }
 
 .fallback { margin-top: 1.5rem; }
 .mini-drop {

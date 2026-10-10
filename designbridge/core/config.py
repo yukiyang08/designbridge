@@ -29,6 +29,15 @@ class Config:
     # 0 = 關閉 thinking；-1 = 交給模型動態決定；正整數 = 指定 thinking token 上限。
     GEMINI_THINKING_BUDGET: int = int(os.getenv("DESIGNBRIDGE_GEMINI_THINKING_BUDGET", "0"))
 
+    # AMD 提供的雲端 LLM（vLLM，OpenAI 相容 API）。開啟後純文字呼叫走這裡，
+    # 帶圖片的呼叫（gpt-oss 不支援視覺）仍走 Gemini；AMD 端失敗時自動退回 Gemini。
+    ENABLE_AMD_LLM: bool = os.getenv("DESIGNBRIDGE_ENABLE_AMD_LLM", "false").lower() in ("1", "true", "yes")
+    AMD_LLM_BASE_URL: str = os.getenv("DESIGNBRIDGE_AMD_LLM_BASE_URL", "")
+    # 留空 = 啟動後向 /v1/models 查詢，取第一個模型 id
+    AMD_LLM_MODEL: str = os.getenv("DESIGNBRIDGE_AMD_LLM_MODEL", "")
+    AMD_LLM_API_KEY: str = os.getenv("DESIGNBRIDGE_AMD_LLM_API_KEY", "EMPTY")
+    AMD_LLM_TIMEOUT: float = float(os.getenv("DESIGNBRIDGE_AMD_LLM_TIMEOUT", "120"))
+
     # Text embedding model for style retrieval (text-to-text).
     TEXT_EMBEDDING_MODEL: str = os.getenv("DESIGNBRIDGE_TEXT_EMBEDDING_MODEL", "BAAI/bge-m3")
 
@@ -51,6 +60,14 @@ class Config:
     # fal.ai Inference API (cloud inpainting via FLUX.1-Fill)
     FAL_KEY: str | None = os.getenv("FAL_KEY")
     FAL_INPAINT_MODEL: str = os.getenv("DESIGNBRIDGE_FAL_INPAINT_MODEL", "fal-ai/flux-pro/v1/fill")
+
+    # Product-replace compositing: takes image_url (scene) + mask_url + a separate
+    # reference_image_url (the catalog product photo) so a specific real product gets
+    # blended into the masked region, instead of the text-only FAL_INPAINT_MODEL
+    # regenerating something merely similar to a text description.
+    FAL_PRODUCT_COMPOSITE_MODEL: str = os.getenv(
+        "DESIGNBRIDGE_FAL_PRODUCT_COMPOSITE_MODEL", "fal-ai/flux-kontext-lora/inpaint"
+    )
 
     # 3D 場景重建：算圖前先 outpaint 擴圖，填補深度網格旋轉時的破洞
     ENABLE_MESH_OUTPAINT: bool = os.getenv("DESIGNBRIDGE_ENABLE_MESH_OUTPAINT", "false").lower() in ("1", "true", "yes")

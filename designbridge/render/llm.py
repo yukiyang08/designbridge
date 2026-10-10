@@ -4,6 +4,9 @@
 Tries ``GEMINI_API_KEY`` first; if that key fails, it walks through the
 comma-separated extra keys in ``GEMINI_API_KEYS`` in order until one works.
 Raises ``RuntimeError`` if no key is set or every key fails.
+
+When ``DESIGNBRIDGE_ENABLE_AMD_LLM`` is on, text-only ``call_llm`` calls go to the
+AMD-hosted OpenAI-compatible endpoint first and fall back to Gemini on failure.
 """
 
 from __future__ import annotations
@@ -194,6 +197,78 @@ def _no_key_error() -> RuntimeError:
     )
 
 
+# ── AMD cloud LLM (OpenAI-compatible vLLM endpoint) ──────────────────────────
+
+_amd_model_id: str | None = None
+
+
+def _amd_llm_enabled(images) -> bool:
+    """Text-only calls go to the AMD endpoint when it is configured."""
+    return Config.ENABLE_AMD_LLM and bool(Config.AMD_LLM_BASE_URL) and not images
+
+
+def _amd_base_url() -> str:
+    return Config.AMD_LLM_BASE_URL.rstrip("/")
+
+
+def _amd_headers() -> dict:
+    return {"Authorization": f"Bearer {Config.AMD_LLM_API_KEY}"}
+
+
+def _amd_model() -> str:
+    global _amd_model_id
+    if Config.AMD_LLM_MODEL:
+        return Config.AMD_LLM_MODEL
+    if _amd_model_id is None:
+        import requests
+        resp = requests.get(f"{_amd_base_url()}/models", headers=_amd_headers(), timeout=(5, 15))
+        resp.raise_for_status()
+        _amd_model_id = resp.json()["data"][0]["id"]
+    return _amd_model_id
+
+
+def _call_amd_llm(
+    prompt: str,
+    system: str | None,
+    history: list[dict] | None,
+    temperature: float | None,
+    max_tokens: int | None,
+) -> str:
+    import requests
+
+    messages: list[dict] = []
+    if system:
+        messages.append({"role": "system", "content": system})
+    for msg in history or []:
+        content = msg.get("content", "")
+        if not isinstance(content, str):
+            content = "".join(p.get("text", "") for p in content if p.get("type") == "text")
+        messages.append({"role": msg.get("role", "user"), "content": content})
+    messages.append({"role": "user", "content": prompt})
+
+    body: dict = {
+        "model": _amd_model(),
+        "messages": messages,
+        "temperature": Config.GEMINI_TEMPERATURE if temperature is None else temperature,
+    }
+    if max_tokens is not None:
+        # gpt-oss spends tokens on reasoning before the answer; leave it headroom so a
+        # small cap meant for the answer doesn't come back empty.
+        body["max_tokens"] = max_tokens + 1024
+
+    resp = requests.post(
+        f"{_amd_base_url()}/chat/completions",
+        headers=_amd_headers(),
+        json=body,
+        timeout=(5, Config.AMD_LLM_TIMEOUT),  # fail fast on connect so the Gemini fallback isn't stuck waiting
+    )
+    resp.raise_for_status()
+    content = resp.json()["choices"][0]["message"].get("content") or ""
+    if not content.strip():
+        raise RuntimeError("AMD LLM 回傳空內容")
+    return content
+
+
 # ── Public API ───────────────────────────────────────────────────────────────
 
 def call_llm(
@@ -205,7 +280,13 @@ def call_llm(
     temperature: float | None = None,
     max_tokens: int | None = None,
 ) -> str:
-   
+
+    if _amd_llm_enabled(images):
+        try:
+            return _call_amd_llm(prompt, system, history, temperature, max_tokens)
+        except Exception as e:  # noqa: BLE001
+            print(f"[AMD LLM] 呼叫失敗，改用 Gemini：{e}")
+
     keys = _resolve_gemini_api_keys()
     if not keys:
         raise _no_key_error()
