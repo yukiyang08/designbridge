@@ -31,13 +31,21 @@ class Config:
     GOOGLE_CLOUD_PROJECT: str = os.getenv("GOOGLE_CLOUD_PROJECT", "")
     GOOGLE_CLOUD_LOCATION: str = os.getenv("GOOGLE_CLOUD_LOCATION", "global")
 
-    # 消融實驗用：call_llm() 的 provider（gemini | qwen | llama），正式流程固定 gemini
+    # call_llm() 的 provider（gemini | qwen | llama | vllm）；qwen/llama 為消融實驗用
     LLM_PROVIDER: str = os.getenv("DESIGNBRIDGE_LLM_PROVIDER", "gemini")
     DASHSCOPE_API_KEY: str = os.getenv("DASHSCOPE_API_KEY", "")
     DASHSCOPE_BASE_URL: str = os.getenv("DASHSCOPE_BASE_URL", "https://dashscope-intl.aliyuncs.com/compatible-mode/v1")
     QWEN_MODEL: str = os.getenv("DESIGNBRIDGE_QWEN_MODEL", "qwen3-vl-30b-a3b-instruct")
     LLAMA_MODEL: str = os.getenv("DESIGNBRIDGE_LLAMA_MODEL", "meta/llama-4-scout-17b-16e-instruct-maas")
     LLAMA_LOCATION: str = os.getenv("DESIGNBRIDGE_LLAMA_LOCATION", "us-east5")
+    # provider=vllm：AMD 端點，OpenAI 相容。現在指向主辦方雲端 gpt-oss（經 jump-host 通道），
+    # AMD AI PC 上的 Lemonade Server 架好後改 base URL 即可。只吃純文字，帶圖的呼叫仍走 Gemini。
+    VLLM_BASE_URL: str = os.getenv("DESIGNBRIDGE_VLLM_BASE_URL", "http://localhost:46351/v1/")
+    VLLM_MODEL: str = os.getenv("DESIGNBRIDGE_VLLM_MODEL", "")  # 留空＝取 /v1/models 第一個
+    VLLM_API_KEY: str = os.getenv("DESIGNBRIDGE_VLLM_API_KEY", "EMPTY")
+    VLLM_TIMEOUT: float = float(os.getenv("DESIGNBRIDGE_VLLM_TIMEOUT", "120"))
+    # 端點連不上時退回 Gemini；跑消融實驗時關掉，避免結果混到 Gemini
+    VLLM_FALLBACK_TO_GEMINI: bool = _flag("DESIGNBRIDGE_VLLM_FALLBACK_TO_GEMINI", "true")
 
     # ── 出圖後端：fal.ai / Hugging Face ──────────────────────────────────
     FAL_KEY: str | None = os.getenv("FAL_KEY")

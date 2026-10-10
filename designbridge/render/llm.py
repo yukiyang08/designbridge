@@ -444,6 +444,88 @@ def _call_llama_stream(
             yield _clean_llama_content(chunk.choices[0].delta.content)
 
 
+# ── vLLM / AMD backend — OpenAI-compatible endpoint: the organizer's cloud gpt-oss
+# today (reached through the jump-host SSH tunnel), Lemonade Server on an AMD AI PC
+# later — only the base URL changes. gpt-oss is text-only, so call_llm routes calls
+# that carry images to Gemini instead of here.
+_vllm_client: object | None = None
+_vllm_model_id: str | None = None
+
+# gpt-oss reasons before answering and those hidden tokens count against max_tokens;
+# headroom keeps a budget sized for the visible answer from coming back empty.
+_VLLM_REASONING_HEADROOM = 1024
+
+
+def _get_vllm_client():
+    global _vllm_client
+    if _vllm_client is None:
+        from openai import OpenAI
+
+        _vllm_client = OpenAI(
+            api_key=Config.VLLM_API_KEY,
+            base_url=Config.VLLM_BASE_URL,
+            timeout=Config.VLLM_TIMEOUT,
+            max_retries=0,  # tunnel down → fail fast so the Gemini fallback kicks in
+        )
+    return _vllm_client
+
+
+def _vllm_model() -> str:
+    global _vllm_model_id
+    if Config.VLLM_MODEL:
+        return Config.VLLM_MODEL
+    if _vllm_model_id is None:
+        _vllm_model_id = _get_vllm_client().models.list().data[0].id
+    return _vllm_model_id
+
+
+def _vllm_request(system, history, prompt, temperature, max_tokens) -> dict:
+    return dict(
+        model=_vllm_model(),
+        messages=_build_openai_messages(prompt, None, system, history),
+        temperature=temperature if temperature is not None else Config.GEMINI_TEMPERATURE,
+        **({"max_tokens": max_tokens + _VLLM_REASONING_HEADROOM} if max_tokens is not None else {}),
+    )
+
+
+def _call_vllm(
+    prompt: str,
+    *,
+    system: str | None,
+    history: list[dict] | None,
+    temperature: float | None,
+    max_tokens: int | None,
+) -> str:
+    response = _get_vllm_client().chat.completions.create(
+        **_vllm_request(system, history, prompt, temperature, max_tokens)
+    )
+    _record_openai_usage("vllm", response.model, response)
+    content = response.choices[0].message.content or ""
+    if not content.strip():
+        raise RuntimeError("vLLM 回傳空內容（可能是推理 token 用完）")
+    return content
+
+
+def _call_vllm_stream(
+    prompt: str,
+    *,
+    system: str | None,
+    history: list[dict] | None,
+    temperature: float | None,
+    max_tokens: int | None,
+) -> Iterator[str]:
+    stream = _get_vllm_client().chat.completions.create(
+        **_vllm_request(system, history, prompt, temperature, max_tokens),
+        stream=True,
+        stream_options={"include_usage": True},
+    )
+    for chunk in stream:
+        if chunk.usage:
+            _record_openai_usage("vllm", chunk.model, chunk)
+        if chunk.choices and chunk.choices[0].delta.content:
+            yield chunk.choices[0].delta.content
+
+
 # ── Public API ───────────────────────────────────────────────────────────────
 
 def call_llm(
@@ -474,6 +556,16 @@ def call_llm(
             prompt, images=images, system=system, history=history,
             temperature=temperature, max_tokens=max_tokens, json_mode=json_mode,
         )
+    if Config.LLM_PROVIDER == "vllm" and not images:
+        try:
+            return _call_vllm(
+                prompt, system=system, history=history,
+                temperature=temperature, max_tokens=max_tokens,
+            )
+        except Exception as e:  # noqa: BLE001
+            if not Config.VLLM_FALLBACK_TO_GEMINI:
+                raise
+            print(f"[vllm] 呼叫失敗，改用 Gemini：{e}")
 
     keys = _resolve_gemini_api_keys()
     if not keys:
@@ -536,6 +628,14 @@ def call_llm_stream(
         yield from _call_llama_stream(
             prompt, images=images, system=system, history=history,
             temperature=temperature, max_tokens=max_tokens, json_mode=json_mode,
+        )
+        return
+    if Config.LLM_PROVIDER == "vllm" and not images:
+        # No Gemini fallback here: once chunks have streamed out, retrying elsewhere
+        # would duplicate output already sent to the caller.
+        yield from _call_vllm_stream(
+            prompt, system=system, history=history,
+            temperature=temperature, max_tokens=max_tokens,
         )
         return
 

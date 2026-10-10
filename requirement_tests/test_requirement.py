@@ -17,7 +17,7 @@ schema 下的行為，並支援「同一組測試指令 x 多個 LLM backend」�
         JSON 解析成功率、平均延遲，印出比較表並存成 JSON。
 
         ITRI 端點目前只能連到白名單 IP（見申請流程），本機要先開通道：
-            ssh -L 45827:210.61.209.139:45827 <你的帳號>@<jump-host>
+            ssh -L 46351:210.61.209.139:46351 <你的帳號>@<jump-host>
         再執行本腳本，或用 --vllm-base-url / 環境變數指定其他位址。
 """
 
@@ -40,7 +40,7 @@ from designbridge.core.prompts.requirement_analyzer import REQUIREMENT_ANALYZER_
 
 OUTPUT_DIR = Path(__file__).parent / "outputs"
 
-DEFAULT_VLLM_BASE_URL = "http://localhost:45827/v1/"
+DEFAULT_VLLM_BASE_URL = "http://localhost:46351/v1/"
 DEFAULT_VLLM_MODEL = "openai/gpt-oss-120b"
 
 _VALID_ROUTING_DECISIONS = {"design_adjuster", "design"}
