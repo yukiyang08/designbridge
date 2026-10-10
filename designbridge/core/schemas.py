@@ -64,7 +64,7 @@ class RequirementJSON(TypedDict):
     style_preferences: StylePreferences
     layout_constraints: NotRequired[LayoutConstraints]
     priority_weights: PriorityWeights
-    # Routing hints (for Design Director)
+    # 路由提示
     hint_layout: NotRequired[bool]
     hint_style: NotRequired[bool]
     hint_adjuster: NotRequired[bool]

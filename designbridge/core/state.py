@@ -14,7 +14,7 @@ from designbridge.core.schemas import (
     VisionJSON,
 )
 
-# Routing decision: which agent(s) Design Director assigns
+# 路由決定：新設計或局部修改
 RoutingDecision = Literal["design_adjuster", "design"]
 
 

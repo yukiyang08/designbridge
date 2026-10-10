@@ -18,8 +18,7 @@ transformers>=4.45.0  # 4.45+ for Depth-Anything-V2
 torch>=2.2.0
 torchvision>=0.17.0
 
-# Local image generation (SDXL fallback when Imagen not available)
-diffusers>=0.30.0
+# transformers 載入模型輔助
 accelerate>=0.30.0
 
 # fal.ai cloud inference (FLUX text-to-image, Redux, ControlNet, IP-Adapter)

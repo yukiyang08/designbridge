@@ -38,7 +38,7 @@ requirement_analyzer → visual_preprocessing ─┬─ design   → layout_and_
                        clip_evaluator ← renderer ←────────────────────────────────┘
 ```
 
-- Routing (new design vs. local edit) is decided entirely inside `requirement_analyzer`; there is no separate director node any more.
+- Routing (new design vs. local edit) is decided entirely inside `requirement_analyzer`.
 - `composer` only follows the layout path; inpaint edits (`adjuster_agent`) skip it.
 - Quotation is deliberately **not** in the graph (30–40 s, doesn't affect the image); it is a separate `POST /api/quotation` the user triggers.
 

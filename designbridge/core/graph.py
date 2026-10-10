@@ -52,11 +52,7 @@ def build_graph() -> StateGraph:
       -> clip_evaluator -> END
 
     routing_decision（design vs design_adjuster）完全由 requirement_analyzer 決定
-    （RA 語意判斷 → refine_mode 覆蓋 → 都沒有才預設 "design"）。原本這裡有個獨立的
-    design_director 節點負責路由，但它唯一還有作用的兩件事（refine_mode 覆蓋、
-    RA 失敗時的預設值）都已經折進 requirement_analyzer 裡，動態讀 SKILL.md 用 LLM
-    路由那條路徑在實務上從沒真的被觸發過（RA 自己的語意判斷早就取代了它），
-    所以整個節點直接拿掉，不用再多一次 graph hop。
+    （RA 語意判斷 → refine_mode 覆蓋 → 都沒有才預設 "design"）。
 
     composer 只接在 layout_and_style_agent 後面，不接在 adjuster_agent 後面——
     局部編輯（inpaint）改的是既有照片的一小塊區域，prompt 本來就該貼著那個物件講，

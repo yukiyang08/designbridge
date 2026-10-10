@@ -1,12 +1,5 @@
 # designbridge/inpaint.py
-"""Inpainting utilities for the Design Adjuster Agent.
-
-Responsibilities:
-- Pipeline loading & caching
-- Mask generation from segmentation or fallback
-- Prompt construction
-- Inpainting execution
-"""
+"""Design Adjuster 的 inpainting 工具：遮罩產生、prompt 組裝、fal / LaMa 重繪，以及環景用的 outpaint。"""
 
 from __future__ import annotations
 
@@ -16,12 +9,6 @@ from pathlib import Path
 from typing import Any
 
 from designbridge.core.config import Config
-
-# ---------------------------------------------------------------------------
-# Pipeline cache
-# ---------------------------------------------------------------------------
-
-_inpaint_pipeline: Any = None
 
 # ---------------------------------------------------------------------------
 # SAM 2 cache
@@ -58,54 +45,6 @@ def _get_sam2_predictor():
     except Exception as e:
         print(f"[SAM2] failed to load: {e}")
         return None
-
-
-def _resolve_inpaint_size(
-    image_size: tuple[int, int],
-    max_edge: int = 512,
-) -> tuple[int, int]:
-    """
-    計算 inpainting 的目標尺寸：等比縮放至 max_edge，並對齊 64 的倍數。
-    SD 1.5 建議 512×512，最大不超過 768。
-    """
-    w, h = image_size
-    scale = min(max_edge / max(w, h), 1.0)
-    new_w = max(64, round(w * scale / 64) * 64)
-    new_h = max(64, round(h * scale / 64) * 64)
-    return int(new_w), int(new_h)
-
-
-def _is_inpaint_model_cached() -> bool:
-    """檢查 inpainting 模型主要權重是否已在本機完整快取，不觸發下載。"""
-    try:
-        from huggingface_hub import try_to_load_from_cache, _CACHED_NO_EXIST
-        # 檢查 unet 權重檔（最大、最後下載完的檔案）
-        for filename in (
-            "unet/diffusion_pytorch_model.safetensors",
-            "unet/diffusion_pytorch_model.bin",
-        ):
-            result = try_to_load_from_cache(Config.INPAINT_MODEL, filename)
-            if result is not None and result is not _CACHED_NO_EXIST:
-                return True
-        return False
-    except Exception:
-        return False
-
-
-def _get_inpaint_pipeline():
-    """Load SD Inpainting pipeline once and cache it."""
-    global _inpaint_pipeline
-    if _inpaint_pipeline is not None:
-        return _inpaint_pipeline
-    from diffusers import StableDiffusionInpaintPipeline
-    import torch
-
-    device = "cuda" if torch.cuda.is_available() else "cpu"
-    _inpaint_pipeline = StableDiffusionInpaintPipeline.from_pretrained(
-        Config.INPAINT_MODEL,
-        torch_dtype=torch.float16 if device == "cuda" else torch.float32,
-    ).to(device)
-    return _inpaint_pipeline
 
 
 # ---------------------------------------------------------------------------
@@ -644,75 +583,6 @@ def load_mask_from_path(mask_path: str, image_size: tuple[int, int]) -> Any:
     return mask.resize(image_size)
 
 
-def run_inpainting(
-    image_path: str,
-    mask: Any,
-    prompt: str,
-    negative_prompt: str,
-    strength: float,
-    out_path: Path,
-    mask_path: str | None = None,
-) -> bool:
-    """
-    執行 SD inpainting，輸出修改後圖片。
-
-    Args:
-        image_path: 原始圖片路徑
-        mask: PIL.Image 灰階 mask（白=修改，黑=保留）
-        prompt: inpainting positive prompt
-        negative_prompt: inpainting negative prompt
-        strength: 修改幅度 0.4~0.9（越高改動越大）
-        out_path: 輸出圖片路徑
-
-    Returns:
-        True = 成功，False = 失敗
-    """
-    if not _is_inpaint_model_cached():
-        print(f"[SKIP] Inpainting model not cached yet: {Config.INPAINT_MODEL}")
-        return False
-    try:
-        from PIL import Image
-
-        pipe = _get_inpaint_pipeline()
-
-        original = Image.open(image_path).convert("RGB")
-        orig_w, orig_h = original.size
-
-        # 優先使用手繪遮罩，否則用自動生成的 mask
-        if mask_path:
-            mask = load_mask_from_path(mask_path, (orig_w, orig_h))
-
-        # Keep original aspect ratio instead of forcing square output.
-        target_size = _resolve_inpaint_size((orig_w, orig_h))
-        image_resized = original.resize(target_size)
-        mask_resized = mask.resize(target_size).convert("L")
-
-        result = pipe(
-            prompt=prompt,
-            negative_prompt=negative_prompt,
-            image=image_resized,
-            mask_image=mask_resized,
-            strength=strength,
-            num_inference_steps=30,
-            guidance_scale=2.5,
-        ).images[0]
-
-        # 將結果貼回原始解析度（只更新 mask 區域）
-        result_full = original.copy()
-        result_back = result.resize((orig_w, orig_h))
-        mask_full = mask.resize((orig_w, orig_h)).convert("L")
-        result_full.paste(result_back, mask=mask_full)
-
-        out_path.parent.mkdir(parents=True, exist_ok=True)
-        result_full.save(str(out_path))
-        return True
-
-    except Exception as e:
-        import traceback
-        print(f"⚠️  Inpainting failed ({type(e).__name__}: {e})")
-        traceback.print_exc()
-        return False
-
 
 def run_fal_inpainting(
     image_path: str,
@@ -996,60 +866,3 @@ def run_fal_outpainting(
         traceback.print_exc()
         return None
 
-
-def run_hf_inpainting(
-    image_path: str,
-    mask: Any,
-    prompt: str,
-    out_path: Path,
-) -> bool:
-    """
-    使用 Hugging Face Inference API 執行 inpainting（雲端，不需本地模型）。
-
-    Args:
-        image_path: 原始圖片路徑
-        mask: PIL.Image 灰階 mask
-        prompt: inpainting prompt
-        out_path: 輸出路徑
-
-    Returns:
-        True = 成功，False = 失敗
-    """
-    if not Config.HF_TOKEN:
-        return False
-    try:
-        from huggingface_hub import InferenceClient
-        from PIL import Image
-        import io
-
-        client = InferenceClient(api_key=Config.HF_TOKEN)
-
-        original_full = Image.open(image_path).convert("RGB")
-        target_size = _resolve_inpaint_size(original_full.size)
-        original = original_full.resize(target_size)
-        mask_resized = mask.resize(target_size).convert("L")
-
-        # 轉 bytes
-        img_bytes = io.BytesIO()
-        original.save(img_bytes, format="PNG")
-        mask_bytes = io.BytesIO()
-        mask_resized.save(mask_bytes, format="PNG")
-
-        result = client.image_to_image(
-            image=img_bytes.getvalue(),
-            prompt=prompt,
-            model=Config.INPAINT_MODEL,
-        )
-
-        if result is None:
-            return False
-
-        out_path.parent.mkdir(parents=True, exist_ok=True)
-        result.save(str(out_path))
-        return True
-
-    except Exception as e:
-        import traceback
-        print(f"⚠️  HF Inpainting failed ({type(e).__name__}: {e})")
-        traceback.print_exc()
-        return False

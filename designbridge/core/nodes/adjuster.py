@@ -17,8 +17,6 @@ from designbridge.render.inpaint import (
     generate_mask_with_sam2,
     run_lama_inpainting,
     build_inpaint_prompt,
-    run_inpainting,
-    run_hf_inpainting,
     run_fal_inpainting,
     load_mask_from_path,
 )
@@ -465,18 +463,7 @@ def adjuster_agent_stub(state: DesignBridgeState) -> dict[str, Any]:
                               num_steps=fal_num_steps, guidance_scale=fal_guidance):
             backend = "fal_inpainting"
 
-    # 4. HF Inference API
-    if backend == "placeholder" and Config.HF_TOKEN:
-        if run_hf_inpainting(image_path, mask, prompt, out_path):
-            backend = "hf_inpainting"
-
-    # 5. 本地 SD Inpainting
-    if backend == "placeholder":
-        if run_inpainting(image_path, mask, prompt, negative_prompt, strength, out_path,
-                          mask_path=manual_mask_path):
-            backend = "sd_inpainting"
-
-    # 6. Fallback：複製原圖
+    # 3. Fallback：複製原圖
     if backend == "placeholder":
         out_path.parent.mkdir(parents=True, exist_ok=True)
         original_img.save(str(out_path))

@@ -155,9 +155,8 @@ designbridge/
 │   ├── style_apply.py          # 風格參數建立（Supabase pgvector）
 │   ├── style_supabase.py       # Supabase 向量搜尋
 │   ├── vision.py               # 深度估測 + 語意分割
-│   └── inpaint.py              # SD Inpainting 工具
+│   └── inpaint.py              # Inpainting 遮罩與 fal 重繪工具
 ├── skills/                     # Agent 能力文件（SKILL.md）
-│   ├── design-director/
 │   ├── requirement-analyzer/
 │   ├── layout-planner/
 │   ├── style-advisor/
@@ -165,7 +164,6 @@ designbridge/
 │   ├── image-renderer/
 │   └── visual-preprocessor/
 ├── style_kb/                   # 風格知識庫
-│   ├── aggregated/             # 預聚合 JSON（modern / country / luxury）
 │   └── styles.py               # 風格 ID 清單
 ├── frontend/                   # Vue 前端
 └── artifacts/                  # 產出（depth / segmentation / render）

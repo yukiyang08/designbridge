@@ -174,11 +174,7 @@ def requirement_analyzer(state: DesignBridgeState) -> dict[str, Any]:
         if routing_decision:
             print(f"[requirement_analyzer] routing_decision from LLM: {routing_decision}")
 
-    # Routing used to be a separate "design director" node; folded in here since RA
-    # is the only thing that ever actually decided it (dynamic SKILL.md routing was
-    # never exercised in practice — RA's own semantic judgment already covers what it
-    # was for). refine_mode always wins regardless of what RA/LLM decided; a totally
-    # missing decision (RA call failed before it could embed one) defaults to "design".
+    # 路由：refine_mode 一律優先；RA 沒給出決定（呼叫失敗）時預設 "design"
     if user.get("refine_mode"):
         routing_decision = "design_adjuster"
         print("[requirement_analyzer] refine_mode=True → design_adjuster")
