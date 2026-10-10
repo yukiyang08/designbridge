@@ -109,6 +109,8 @@ def _build_imagen_prompt_from_requirement(
     req: dict[str, Any],
     style_params: dict[str, Any] | None = None,
     user_text_prompt: str | None = None,
+    is_style_swap: bool = False,
+    style_id_override: str | None = None,
 ) -> str:
     """Build an English text prompt for image generation from structured_requirement and style params.
 
@@ -118,6 +120,17 @@ def _build_imagen_prompt_from_requirement(
     changes…") rather than an actual room description — which starves the renderer of
     positive room content and lets the ControlNet structure dominate. In that case we
     ignore ``design_description`` and fall back to a concrete room/style prompt.
+
+    ``is_style_swap``: ``design_description`` is written once by requirement_analyzer
+    for the room's *original* style and never regenerated on a style swap (that node
+    is skipped — see routers/generate.py's plan replay). It's saturated with that
+    original style's own adjectives ("modern minimalist, clean lines, sleek
+    surfaces..."), so reusing it verbatim while only appending the new style's
+    style_prompt made every swap read as a minor accent on the old style instead of
+    an actual style change — confirmed by swapped renders coming back visually
+    identical to the source. On a swap we skip straight to the neutral
+    room_type + style template below so the new style's own words aren't fighting an
+    old style's description for dominance.
     """
     _STYLE_ID_TO_EN = {
         "modern": "modern contemporary",
@@ -134,7 +147,7 @@ def _build_imagen_prompt_from_requirement(
     # empty user prompt it is an LLM meta-narrative, not a room — fall through to the
     # room_type + style fallback below instead.
     _user_described = user_text_prompt is None or bool(user_text_prompt.strip())
-    if design_description and _user_described:
+    if design_description and _user_described and not is_style_swap:
         base_prompt = design_description
     else:
         meta = req.get("meta") or {}
@@ -142,6 +155,10 @@ def _build_imagen_prompt_from_requirement(
         room_type = meta.get("room_type", "living_room").replace("_", " ")
         if style_params and style_params.get("style_profile_id"):
             style_id = style_params["style_profile_id"].lower()
+        elif style_id_override:
+            # composer 刻意傳 style_params=None（風格由它自己合併），但換風格時不能退回
+            # structured_requirement 裡「原本」的風格——那會讓新風格的提示詞開頭寫著舊風格。
+            style_id = style_id_override.lower()
         else:
             raw_style = style_prefs.get("primary_style") or ""
             style_id = STYLE_NAME_TO_ID.get(raw_style) or raw_style.lower()
@@ -225,7 +242,11 @@ def _layout_json_to_prompt_text(layout_json: dict[str, Any]) -> str:
 
 OutputAspect = Literal["auto", "1:1", "4:3", "3:4", "16:9", "9:16"]
 _ASPECT_RATIO_MAP: dict[OutputAspect, float] = {
-    "auto": 1.0,
+    # ponytail: only matters for "auto" with no reference photo — _resolve_output_size
+    # below overrides this with the photo's own ratio whenever one is uploaded.
+    # Text-only room creation now defaults to landscape instead of square, matching
+    # how interior shots are normally framed.
+    "auto": 16.0 / 9.0,
     "1:1": 1.0,
     "4:3": 4.0 / 3.0,
     "3:4": 3.0 / 4.0,
@@ -269,30 +290,3 @@ def _resolve_output_size(
     height = _round_to_multiple(height, multiple=64, min_value=min_edge, max_value=max_edge)
     return width, height
 
-
-def _renderer_placeholder_image(
-    out_path: Path,
-    task_id: str,
-    prompt: str,
-    output_size: tuple[int, int],
-) -> None:
-    """Save a placeholder image (PIL) when all generation backends are unavailable."""
-    from PIL import Image, ImageDraw
-
-    width, height = output_size
-    img = Image.new("RGB", (width, height), color=(240, 240, 245))
-    draw = ImageDraw.Draw(img)
-    margin_x = max(30, int(width * 0.1))
-    margin_y = max(30, int(height * 0.1))
-    draw.rectangle(
-        [margin_x, margin_y, width - margin_x, height - margin_y],
-        fill=(255, 255, 255),
-        outline=(180, 180, 190),
-    )
-    text = "DesignBridge\n(placeholder)"
-    try:
-        draw.text((width // 2, height // 2), text, fill=(100, 100, 110), anchor="mm")
-    except Exception:
-        draw.text((margin_x + 10, height // 2), "DesignBridge placeholder", fill=(100, 100, 110))
-    out_path.parent.mkdir(parents=True, exist_ok=True)
-    img.save(out_path)

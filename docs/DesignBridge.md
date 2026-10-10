@@ -12,13 +12,13 @@ LangGraph is used to manage **stateful workflow execution, routing, and iteratio
 User Input  
 → Requirement Analysis  
 → Visual Preprocessing  
-→ Design Director（Task Router）  
+→ 路由（由 Requirement Analysis 決定：新設計或局部修改）  
 → (Layout agent / Style agent / Adjuster agent / Layout+Style 協作)  
 → Rendering  
 → Evaluation  
 → (Stop or Iterate)
 
-**Design Director** 的角色即任務路由：依據 **Requirement Analysis 輸出的 JSON** 與 **Visual Preprocessing 後的結果**，決定要將任務交給 **Layout agent**、**Style agent**、**Adjuster agent**，或是讓 **Layout + Style agent 協作**。工作流支援條件路由與多輪迭代。
+**路由**由 Requirement Analyzer 負責：依據 **Requirement Analysis 輸出的 JSON** 與 **Visual Preprocessing 後的結果**，決定要將任務交給 **Layout agent**、**Style agent**、**Adjuster agent**，或是讓 **Layout + Style agent 協作**。工作流支援條件路由與多輪迭代。
 
 ---
 

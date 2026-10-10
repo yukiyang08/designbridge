@@ -1,0 +1,219 @@
+import { jsonFetch } from '@/config/api'
+import {
+  ROOM_TYPE_LABEL, requestState, timers,
+  error, loading, loadingMsg, result, submitKey, swappingStyle, styleSwapCache,
+  spacePhoto, spacePhotoPath,
+  styleRefImage, confirmedStyle, noStyleReference, selectedStyle, styleMethod,
+  editPlacements, sceneGraph, floorPlanPath,
+  extraPrompt, fengshuiRules, outputAspect, roomTypeForPlan, spaceSizePing,
+  planSource, cadActiveRoomId, cadRoomStatus, lastGeneratedImage,
+  panoLoading, panoUrl, panoError,
+} from './state'
+import { nextStep } from './navigation'
+import { scheduleSearch } from './style'
+import { uploadFile } from './common'
+import { updateFloorPlan } from './layout'
+import { snapshotCurrentCadRoom } from './cad'
+
+// 原圖（submit3D 第一次生成的那張）在 styleSwapCache 裡的固定 key——跟真正的
+// style_profile_id 分開存，這樣就算原圖沒套風格（no_style_reference / 風格搜尋落空，
+// style_profile_id 是 undefined）也一定留得住，不會因為沒有 style id 可當 key 就存不進去。
+export const ORIGINAL_STYLE_KEY = '__original__'
+
+/* ══ Step: 上傳空間照片 ════════════════════════════════════
+   照片走 /api/generate 的 initial_image_path：visual_preprocessing 會抽視覺特徵、
+   requirement agent 會把照片一起餵給 Gemini，所以不需要新的後端端點。 */
+
+export async function submitPhoto() {
+  if (!spacePhoto.file) {
+    error.value = '請先上傳空間照片'
+    return
+  }
+  error.value = ''
+  loading.value = true
+  loadingMsg.value = { title: '上傳空間照片中', sub: '準備分析你的空間' }
+  try {
+    spacePhotoPath.value = await uploadFile(spacePhoto.file)
+    nextStep()
+    scheduleSearch()
+  } catch (e) {
+    error.value = `上傳失敗：${e.message}`
+  } finally {
+    loading.value = false
+  }
+}
+
+/* ══ Step: 3D 渲染 ════════════════════════════════════════ */
+
+export async function submit3D() {
+  if (timers.floorPlanUpdate) {
+    clearTimeout(timers.floorPlanUpdate)
+    timers.floorPlanUpdate = null
+    await updateFloorPlan()
+  }
+  const requestId = ++requestState.current
+  submitKey.value++
+  error.value = ''
+  result.value = null
+  loading.value = true
+  loadingMsg.value = { title: '生成 3D 渲染圖中', sub: 'AI 將平面配置轉為立體室內透視，通常約 30–60 秒' }
+  panoUrl.value = null
+  panoError.value = ''
+  try {
+    let style_reference_image_path
+    if (!noStyleReference.value) {
+      if (styleRefImage.file) style_reference_image_path = await uploadFile(styleRefImage.file)
+      else if (confirmedStyle.value?.image_url) style_reference_image_path = confirmedStyle.value.image_url
+    }
+
+    const editedSceneGraph = editPlacements.value.length
+      ? {
+          ...(sceneGraph.value || {}),
+          furniture_placements: editPlacements.value,
+          floor_plan_path: floorPlanPath.value || sceneGraph.value?.floor_plan_path,
+        }
+      : undefined
+
+    // 跳過排版時沒有 scene_graph、沒有平面圖、也沒有照片，房型與坪數就沒有任何
+    // 欄位可以承載（DesignRequest 沒有 room_type / space_size）。折進 text_prompt，
+    // 使用者在第一步選的東西才真的會影響生成結果，而不是選了等於沒選。
+    const noSpatialInput = !editedSceneGraph && !floorPlanPath.value && !spacePhotoPath.value
+    // 有平面圖／scene_graph 的流程（含整層 CAD 逐間設計）同樣沒有欄位承載房型，不寫進描述的話 AI 會自己
+    // 猜——實測客餐廳被猜成臥室、沙發畫成床。所以非照片流程一律把房型帶進描述。
+    const roomLabel = ROOM_TYPE_LABEL[roomTypeForPlan.value] || ''
+    const spacePreamble = noSpatialInput
+      ? `${roomLabel}，約 ${spaceSizePing.value} 坪。`
+      : (!spacePhotoPath.value && roomLabel ? `${roomLabel}。` : '')
+
+    const res = await jsonFetch('/api/generate', {
+      text_prompt:      (spacePreamble + extraPrompt.value).trim(),
+      style_profile_id: !noStyleReference.value && selectedStyle.value !== 'auto'
+        ? selectedStyle.value
+        : !noStyleReference.value ? confirmedStyle.value?.style_id || undefined : undefined,
+      style_reference_image_path,
+      no_style_reference: noStyleReference.value,
+      refine_mode:        false,
+      output_aspect:      outputAspect.value,
+      style_method:       styleMethod.value,
+      fengshui_rules:     fengshuiRules.value,
+      // 上傳照片路徑：把照片當作生成的起始影像
+      initial_image_path: spacePhotoPath.value || undefined,
+      floor_plan_path:    floorPlanPath.value || undefined,
+      scene_graph:        editedSceneGraph,
+    })
+    if (!res.ok) throw new Error(`${res.status}`)
+    const data = await res.json()
+    if (requestId === requestState.current) {
+      result.value = data
+      // 新的一輪生成（房間/描述可能都變了），舊風格版本快取失效；用這次的結果重新起頭。
+      // 原圖一定存進 ORIGINAL_STYLE_KEY（不管有沒有套風格），style_profile_id 另外多存一份
+      // 純粹是讓「這個風格已經生成過」的縮圖判斷（swapStyle 的 cache 命中）也認得出原圖本身。
+      const styleId = data.style_params?.style_profile_id
+      styleSwapCache.value = { [ORIGINAL_STYLE_KEY]: data, ...(styleId ? { [styleId]: data } : {}) }
+      if (data.generated_image_path) {
+        lastGeneratedImage.value = { path: data.generated_image_path, url: data.generated_image_url || null }
+      }
+      // CAD 多房間流程：這間房的 3D 渲染圖生成完成才算「完成」，縮圖到這裡才會解鎖、
+      // 可以點去別間房（見 jumpToCadRoom）。
+      if (planSource.value === 'cad' && cadActiveRoomId.value) {
+        cadRoomStatus.value = { ...cadRoomStatus.value, [cadActiveRoomId.value]: 'done' }
+        snapshotCurrentCadRoom()
+      }
+    }
+  } catch (e) {
+    if (requestId === requestState.current) error.value = `生成渲染圖失敗：${e.message}`
+  } finally {
+    if (requestId === requestState.current) loading.value = false
+  }
+}
+
+/* ══ 一鍵換風格 ═══════════════════════════════════════════
+   帶著上次 /api/generate 的完整回應當 plan 送回去（見 api.py 的 plan 欄位），
+   讓 requirement/vision/layout 三個節點偵測到已有值而跳過重跑，只有
+   layout_and_style_agent 的風格搜尋 + renderer 會重跑。故意不帶 style_params，
+   帶了的話 layout_and_style_agent 會直接沿用舊風格、新 style_profile_id 等於沒送。
+   text_prompt 在這裡不影響結果：structured_requirement 已經在 plan 裡，
+   requirement_analyzer 會整個跳過，不會重讀 text_prompt。
+
+   styleSwapCache 記住這個房間這一輪每個風格生成過的結果：換過的風格再點一次
+   不用重打 API，直接換圖；同一個房間裡切來切去的版本都留著，不會互相覆蓋掉。 */
+
+export async function swapStyle(styleId) {
+  const prev = result.value
+  if (!prev || swappingStyle.value) return
+
+  const cached = styleSwapCache.value[styleId]
+  if (cached) {
+    result.value = cached
+    if (cached.generated_image_path) {
+      lastGeneratedImage.value = { path: cached.generated_image_path, url: cached.generated_image_url || null }
+    }
+    return
+  }
+
+  const requestId = ++requestState.current
+  error.value = ''
+  swappingStyle.value = true
+  try {
+    const { style_params, ...plan } = prev
+    const res = await jsonFetch('/api/generate', {
+      text_prompt:       extraPrompt.value.trim(),
+      style_profile_id:  styleId,
+      output_aspect:      outputAspect.value,
+      style_method:       styleMethod.value,
+      plan,
+    })
+    if (!res.ok) throw new Error(`${res.status}`)
+    const data = await res.json()
+    if (requestId === requestState.current) {
+      result.value = data
+      styleSwapCache.value = { ...styleSwapCache.value, [data.style_params?.style_profile_id || styleId]: data }
+      if (data.generated_image_path) {
+        lastGeneratedImage.value = { path: data.generated_image_path, url: data.generated_image_url || null }
+      }
+    }
+  } catch (e) {
+    if (requestId === requestState.current) error.value = `換風格失敗：${e.message}`
+  } finally {
+    if (requestId === requestState.current) swappingStyle.value = false
+  }
+}
+
+// 換回最一開始生成的那張（不管當初有沒有套風格），純讀快取，不重打 API。
+export function restoreOriginal() {
+  const cached = styleSwapCache.value[ORIGINAL_STYLE_KEY]
+  if (!cached) return
+  result.value = cached
+  if (cached.generated_image_path) {
+    lastGeneratedImage.value = { path: cached.generated_image_path, url: cached.generated_image_url || null }
+  }
+}
+
+/* ══ Step: 360° 環景 ══════════════════════════════════════ */
+
+export async function generatePanorama() {
+  const r = result.value
+  if (!r?.task_id || !r?.generated_image_path) return
+  const taskId = r.task_id
+  panoLoading.value = true
+  panoError.value = ''
+  try {
+    const res = await jsonFetch('/api/generate-panorama', {
+      task_id: r.task_id,
+      image_path: r.generated_image_path,
+      depth_path: r.vision_features?.depth || null,
+      prompt: r.structured_requirement?.meta?.design_goal || '',
+    })
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}))
+      throw new Error(err.detail || `HTTP ${res.status}`)
+    }
+    const data = await res.json()
+    if (result.value?.task_id !== taskId) return   // 生成途中已經換房間／重新生成，這張環景不屬於現在這張圖
+    panoUrl.value = data.room_panorama_url
+  } catch (e) {
+    panoError.value = e.message
+  } finally {
+    panoLoading.value = false
+  }
+}

@@ -9,7 +9,7 @@
  * 只有目前這間房已經渲染完成（activeRoomId 對應的狀態是 'done'）才能點縮圖上
  * 其他房間切過去——這是使用者明確要的行為，避免設計到一半跳房弄亂進度。
  */
-import { ref, computed, watch, nextTick, onBeforeUnmount } from 'vue'
+import { ref, computed, watch, nextTick, onBeforeUnmount, onMounted } from 'vue'
 
 const props = defineProps({
   plan:             { type: Object, required: true },   // cadPlanResult：{ rooms, svg_markup, ... }
@@ -17,10 +17,19 @@ const props = defineProps({
   activeRoomId:     { type: String, default: null },
   activePlacements: { type: Array, default: () => [] },    // 目前這間房的 editPlacements，即時反映在縮圖上
 })
-const emit = defineEmits(['select-room'])
+const emit = defineEmits(['select-room', 'abandon'])
 
 const collapsed = ref(false)
 const boardRef = ref(null)
+const modalBoardRef = ref(null)
+const expanded = ref(false)   // 點縮圖 → 彈出大卡片，在裡面選其他空間
+const confirmingAbandon = ref(false)   // 兩段式確認，避免誤點就清掉一間房的進度
+function onAbandon() {
+  if (!confirmingAbandon.value) { confirmingAbandon.value = true; return }
+  confirmingAbandon.value = false
+  expanded.value = false
+  emit('abandon')
+}
 let cleanupFns = []
 
 const totalCount = computed(() => props.plan?.rooms?.length || 0)
@@ -32,9 +41,17 @@ function clearHandlers() {
   cleanupFns = []
 }
 
+// 縮圖與彈出的大卡片是同一份 svg_markup，各自一個容器，都要上色 / 掛點擊
+const boards = () => [boardRef.value, modalBoardRef.value].filter(Boolean)
+
 function paint() {
   clearHandlers()
-  const svg = boardRef.value?.querySelector('svg')
+  boards().forEach(paintBoard)
+  paintLiveFurniture()
+}
+
+function paintBoard(board) {
+  const svg = board.querySelector('svg')
   if (!svg) return
   svg.querySelectorAll('.room-rect').forEach((g) => {
     const roomId = g.getAttribute('data-room-id')
@@ -46,16 +63,26 @@ function paint() {
     g.classList.toggle('is-done', isDone)
     g.classList.toggle('is-clickable', clickable)
 
+    // 被擋住的房間：游標移上去說明原因，不要讓人以為壞了
+    const locked = !isActive && !activeIsDone.value
+    g.classList.toggle('is-locked', locked)
+    g.querySelector(':scope > title.lock-tip')?.remove()
+    if (locked) {
+      const tip = document.createElementNS('http://www.w3.org/2000/svg', 'title')
+      tip.setAttribute('class', 'lock-tip')
+      tip.textContent = '請先完成目前這間房的渲染'
+      g.prepend(tip)
+    }
+
     if (clickable) {
       const room = (props.plan.rooms || []).find(r => r.id === roomId)
       if (room) {
-        const onClick = () => emit('select-room', room)
+        const onClick = () => { expanded.value = false; emit('select-room', room) }
         g.addEventListener('click', onClick)
         cleanupFns.push(() => g.removeEventListener('click', onClick))
       }
     }
   })
-  paintLiveFurniture()
 }
 
 // 把目前這間房的預設家具（靜態 SVG 裡的 .room-furniture）換成使用者實際編輯的
@@ -65,8 +92,12 @@ function paint() {
 const SVG_NS = 'http://www.w3.org/2000/svg'
 
 function paintLiveFurniture() {
-  const svg = boardRef.value?.querySelector('svg')
-  if (!svg || !props.activeRoomId) return
+  if (props.activeRoomId) boards().forEach(paintFurnitureOn)
+}
+
+function paintFurnitureOn(board) {
+  const svg = board.querySelector('svg')
+  if (!svg) return
   const g = [...svg.querySelectorAll('.room-rect')].find(
     (el) => el.getAttribute('data-room-id') === props.activeRoomId,
   )
@@ -107,7 +138,7 @@ function paintLiveFurniture() {
 }
 
 watch(
-  () => [props.plan?.svg_markup, props.roomStatus, props.activeRoomId],
+  () => [props.plan?.svg_markup, props.roomStatus, props.activeRoomId, expanded.value],
   () => nextTick(paint),
   { immediate: true, deep: true },
 )
@@ -115,6 +146,9 @@ watch(
 // 只要重畫這間房的家具就好。
 watch(() => props.activePlacements, () => nextTick(paintLiveFurniture), { deep: true })
 onBeforeUnmount(clearHandlers)
+function onKey(e) { if (e.key === 'Escape') expanded.value = false }
+onMounted(() => window.addEventListener('keydown', onKey))
+onBeforeUnmount(() => window.removeEventListener('keydown', onKey))
 </script>
 
 <template>
@@ -129,10 +163,39 @@ onBeforeUnmount(clearHandlers)
         <span class="minimap-count">{{ doneCount }} / {{ totalCount }} 間完成</span>
       </div>
       <div ref="boardRef" class="minimap-board" v-html="plan?.svg_markup || ''"></div>
+      <button type="button" class="minimap-expand" @click="expanded = true">放大並選擇其他空間</button>
+      <button
+        v-if="!activeIsDone"
+        type="button"
+        class="minimap-abandon"
+        @click="onAbandon" @blur="confirmingAbandon = false"
+      >{{ confirmingAbandon ? '確定放棄？進度會清除' : '放棄這間房，改選其他' }}</button>
       <p v-if="doneCount >= totalCount && totalCount > 0" class="minimap-hint minimap-hint--done">
         全部房間都完成了 🎉 點任一間可以再看一次渲染圖
       </p>
     </template>
+
+    <!-- 大卡片：放大的整層平面圖，在這裡點選其他空間（規則同縮圖：目前這間渲染完才能切） -->
+    <Teleport to="body">
+      <div v-if="expanded" class="minimap-modal" @click.self="expanded = false">
+        <div class="modal-card" role="dialog" aria-modal="true" aria-label="整層平面圖">
+          <div class="modal-head">
+            <h3 class="modal-title">整層平面圖 <small>{{ doneCount }} / {{ totalCount }} 間完成</small></h3>
+            <button type="button" class="modal-close" aria-label="關閉" @click="expanded = false">✕</button>
+          </div>
+          <p class="modal-hint">
+            {{ activeIsDone ? '點選其他房間切換過去編輯' : '目前這間房完成渲染後，才能切換到其他房間；如果一直渲染失敗，可以放棄這間房。' }}
+          </p>
+          <button
+            v-if="!activeIsDone"
+            type="button"
+            class="minimap-abandon modal-abandon"
+            @click="onAbandon" @blur="confirmingAbandon = false"
+          >{{ confirmingAbandon ? '確定放棄？進度會清除' : '放棄這間房，改選其他' }}</button>
+          <div ref="modalBoardRef" class="minimap-board modal-board" v-html="plan?.svg_markup || ''"></div>
+        </div>
+      </div>
+    </Teleport>
   </div>
 </template>
 
@@ -144,11 +207,67 @@ onBeforeUnmount(clearHandlers)
 .cad-minimap {
   position: sticky;
   top: 24px;
-  padding: 0.85rem;
+  padding: 1.1rem;
   border-radius: var(--db-radius-chip);
   background: var(--db-chip-soft);
 }
 .cad-minimap.collapsed { padding: 0.5rem; }
+
+.minimap-expand {
+  display: block;
+  width: 100%;
+  margin-top: 0.6rem;
+  padding: 0.45rem;
+  border: 1px solid #e2ddd0;
+  border-radius: var(--db-radius-pill);
+  background: #fff;
+  color: var(--db-text);
+  font-size: 0.8rem;
+  cursor: pointer;
+}
+.minimap-expand:hover { border-color: var(--db-accent); background: #f7f6f3; }
+
+.minimap-abandon {
+  display: block;
+  width: 100%;
+  margin-top: 0.4rem;
+  padding: 0.4rem;
+  border: none;
+  border-radius: var(--db-radius-pill);
+  background: none;
+  color: var(--db-text-soft);
+  font-size: 0.76rem;
+  text-decoration: underline;
+  cursor: pointer;
+}
+.minimap-abandon:hover { color: var(--db-danger); }
+.modal-abandon { width: auto; margin: 0 0 0.8rem; padding: 0.2rem 0; }
+
+.minimap-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: grid;
+  place-items: center;
+  padding: 1.5rem;
+  background: rgba(20, 18, 14, 0.55);
+}
+.modal-card {
+  width: min(1000px, 100%);
+  max-height: 100%;
+  overflow: auto;
+  padding: 1.25rem 1.5rem 1.5rem;
+  border-radius: var(--db-radius-card);
+  background: #fff;
+  box-shadow: var(--db-shadow-card);
+}
+.modal-head { display: flex; align-items: center; justify-content: space-between; gap: 1rem; }
+.modal-title { margin: 0; font-family: var(--db-font-display); font-style: italic; font-weight: 500; font-size: 1.3rem; }
+.modal-title small { margin-left: 0.6rem; font-size: 0.85rem; color: var(--db-text-soft); font-style: normal; }
+.modal-close { border: none; background: var(--db-chip-soft); width: 36px; height: 36px; border-radius: 50%; cursor: pointer; }
+.modal-close:hover { background: var(--db-chip); }
+.modal-hint { margin: 0.4rem 0 0.8rem; font-size: 0.85rem; color: var(--db-text-soft); }
+.modal-board { cursor: default; }
 
 .minimap-toggle {
   display: block;
@@ -188,6 +307,7 @@ onBeforeUnmount(clearHandlers)
 .minimap-board :deep(svg) { width: 100%; height: auto; display: block; }
 
 .minimap-board :deep(.room-rect.is-clickable) { cursor: pointer; }
+.minimap-board :deep(.room-rect.is-locked) { cursor: not-allowed; }
 .minimap-board :deep(.room-rect .room-floor) { transition: fill 0.15s, stroke 0.15s; }
 .minimap-board :deep(.room-rect.is-clickable:hover .room-floor) {
   fill: var(--db-accent-soft);

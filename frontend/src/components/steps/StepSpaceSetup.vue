@@ -6,20 +6,22 @@
  *  · 「描述你想要的空間」併進這一頁。原本描述在下一步，等於先選房型／家具、
  *    翻頁、再打字，而且兩頁綁的是同一個欄位，看起來像被問了兩次。
  *  · 坪數收進「進階設定」：多數情況用預設值就好，擺在主畫面會跟房型搶注意力。
- *  · 其餘設計稿沒畫、但會影響生成結果的欄位（自訂長寬、輸出比例、家具數量、
- *    家庭結構、風水）同樣收在進階設定，一個都沒刪。
+ *  · 其餘設計稿沒畫、但會影響生成結果的欄位（自訂長寬、輸出比例、家具數量）
+ *    同樣收在進階設定，一個都沒刪。
+ *  · 風水禁忌反過來從進階設定拉回主畫面（FengshuiPicker.vue）：它是會真的搬動
+ *    家具的硬約束，跟房型／家具同一個等級，收在摺疊面板裡等於做了沒人用。
  */
 import { ref, computed, watch } from 'vue'
 import { Icon } from '@iconify/vue'
 import AdvancedPanel from '@/components/shell/AdvancedPanel.vue'
-import { ROOM_OPTIONS, FURNITURE_BY_ROOM, furnitureIcon, furnitureLabel } from '@/config/furniture'
-import {
-  useDesignFlow, ASPECT_OPTIONS, FAMILY_OPTIONS, FENGSHUI_OPTIONS,
-} from '@/composables/useDesignFlow'
+import FengshuiPicker from '@/components/FengshuiPicker.vue'
+import SpaceSizeFields from '@/components/steps/SpaceSizeFields.vue'
+import { ROOM_OPTIONS, FURNITURE_BY_ROOM, roomIcon, roomPhoto, furnitureIcon, furnitureLabel } from '@/config/furniture'
+import { useDesignFlow, ASPECT_OPTIONS } from '@/composables/useDesignFlow'
 
 const {
   planSource, roomType, roomTypeForPlan, spaceSizePing, customRoomW, customRoomD, outputAspect,
-  furnitureItems, furnitureQty, extraPrompt, familyNeeds, fengshuiRules,
+  furnitureItems, furnitureQty, extraPrompt, fengshuiRules,
   loading, submitLayout, nextStep, scheduleSearch, startFlow,
 } = useDesignFlow()
 
@@ -35,11 +37,15 @@ const roomChoices = computed(() => {
   return known ? ROOM_OPTIONS : [...ROOM_OPTIONS, { value: roomType.value, label: roomType.value }]
 })
 
+// 每個房型各記一份家具選擇，來回切換不會把選好的清掉
+const roomMemory = {}
 function pickRoom(value) {
   if (roomType.value === value) return
+  roomMemory[roomType.value] = { items: furnitureItems.value, qty: furnitureQty.value }
+  const saved = roomMemory[value]
   roomType.value = value
-  furnitureItems.value = []
-  furnitureQty.value = {}
+  furnitureItems.value = saved?.items ?? []
+  furnitureQty.value = saved?.qty ?? {}
 }
 function applyCustomRoom() {
   const v = customRoomInput.value.trim()
@@ -50,6 +56,7 @@ function applyCustomRoom() {
 }
 
 /* ── 家具 ── */
+const MAX_QTY = 20
 const customFurnitureInput = ref('')
 const showCustomFurniture = ref(false)
 
@@ -71,51 +78,39 @@ function addCustomFurniture() {
   customFurnitureInput.value = ''
   showCustomFurniture.value = false
 }
-function removeFurniture(value) {
-  furnitureItems.value = furnitureItems.value.filter(v => v !== value)
-  const q = { ...furnitureQty.value }; delete q[value]; furnitureQty.value = q
-}
 function qtyOf(value) { return furnitureQty.value[value] || 1 }
 function setQty(value, n) {
-  furnitureQty.value = { ...furnitureQty.value, [value]: Math.max(1, Math.min(20, n)) }
+  furnitureQty.value = { ...furnitureQty.value, [value]: Math.max(1, Math.min(MAX_QTY, n)) }
 }
 
 /* 自訂家具不在 availableFurniture 裡，但要能看到並取消 */
 const extraSelected = computed(
   () => furnitureItems.value.filter(v => !availableFurniture.value.some(o => o.value === v)),
 )
+const furnitureChoices = computed(() => [
+  ...availableFurniture.value,
+  ...extraSelected.value.map(v => ({ value: v, label: furnitureLabel(v) })),
+])
 
-/* ── 坪數 ↔ 自訂長寬連動（沿用舊 SidebarForm 的 @input 做法，避免兩個 watch 互咬）── */
-function recalcRoomSide(filled, other) {
-  if (!filled) return
-  const totalM2 = spaceSizePing.value * 3.306
-  other.value = Math.round((totalM2 / filled) * 10) / 10
-}
-function onCustomRoomWInput() { recalcRoomSide(customRoomW.value, customRoomD) }
-function onCustomRoomDInput() { recalcRoomSide(customRoomD.value, customRoomW) }
-
-/**
- * 由坪數推得的房間長寬，鏡射 api.py generate_layout 的算法
- * （1 坪 = 3.306 m²，長寬比 5:4）。
- */
-const derivedSize = computed(() => {
-  if (customRoomW.value && customRoomD.value) {
-    return { w: customRoomW.value, d: customRoomD.value, custom: true }
+/* ── 範圍檢查：手打的值不受 input 的 min/max 約束，這裡擋住才不會送出奇怪的房間 ── */
+const PING_RANGE = [1, 100]
+const SIDE_RANGE = [1, 30]   // 公尺
+const sizeError = computed(() => {
+  const ping = spaceSizePing.value
+  if (!(ping >= PING_RANGE[0] && ping <= PING_RANGE[1])) {
+    return `坪數需介於 ${PING_RANGE[0]}–${PING_RANGE[1]} 之間`
   }
-  const totalM2 = (spaceSizePing.value || 0) * 3.306
-  if (totalM2 <= 0) return null
-  return {
-    w: Math.round(Math.sqrt(totalM2 * 5 / 4) * 10) / 10,
-    d: Math.round(Math.sqrt(totalM2 * 4 / 5) * 10) / 10,
-    custom: false,
+  for (const [label, v] of [['長', customRoomW.value], ['寬', customRoomD.value]]) {
+    if (v != null && v !== '' && !(v >= SIDE_RANGE[0] && v <= SIDE_RANGE[1])) {
+      return `${label}度需介於 ${SIDE_RANGE[0]}–${SIDE_RANGE[1]} 公尺之間`
+    }
   }
+  if ((customRoomW.value > 0) !== (customRoomD.value > 0)) return '請同時填寫長與寬'
+  return ''
 })
-
-function toggleIn(listRef, value) {
-  listRef.value = listRef.value.includes(value)
-    ? listRef.value.filter(v => v !== value)
-    : [...listRef.value, value]
-}
+const needFurniture = computed(() => !isSkip.value && !furnitureItems.value.length)
+// 按鈕為什麼不能按，直接寫在旁邊，不要等按下去才在卡片底部報錯
+const blockReason = computed(() => (needFurniture.value ? '請先選至少 1 件要擺放的家具' : sizeError.value))
 
 /* 描述改在這一頁輸入，風格推薦是下一步才顯示的，所以打字時就先在背景查好，
    翻頁過去不用再等一次。 */
@@ -135,6 +130,11 @@ function goSkipRender() {
   roomTypeForPlan.value = roomType.value
   planSource.value = 'skip'
   scheduleSearch()
+}
+
+// 跳過之後要能回來：切回排家具路徑，留在同一頁
+function goLayoutMode() {
+  planSource.value = 'generate'
 }
 
 function submit() {
@@ -161,60 +161,76 @@ function submit() {
       </div>
     </div>
 
-    <div class="columns" :class="{ 'one-col': isSkip }">
+    <!-- 空間類型：四張實景照併排一列，一眼比較再選 -->
+    <!-- ── 空間類型 ── -->
+    <section class="room-section">
+      <h2 class="db-col-title">空間類型</h2>
+      <div class="room-grid">
+        <button
+          v-for="opt in roomChoices" :key="opt.value"
+          type="button"
+          :class="['room-card', { 'is-active': roomType === opt.value }]"
+          :aria-pressed="roomType === opt.value"
+          @click="pickRoom(opt.value)"
+        >
+          <img v-if="roomPhoto(opt.value)" :src="roomPhoto(opt.value)" :alt="opt.label" class="room-card-photo" loading="lazy" />
+          <Icon v-else :icon="roomIcon(opt.value)" class="room-card-icon" aria-hidden="true" />
+          <span class="room-card-label">{{ opt.label }}</span>
+          <span v-if="roomType === opt.value" class="room-card-check" aria-hidden="true">✓</span>
+        </button>
 
-      <!-- ── 空間類型 ── -->
-      <section class="col">
-        <h2 class="db-col-title">空間類型</h2>
-        <div class="room-grid">
-          <button
-            v-for="opt in roomChoices" :key="opt.value"
-            type="button"
-            :class="['db-chip', 'db-chip--lg', { 'is-active': roomType === opt.value }]"
-            @click="pickRoom(opt.value)"
-          >{{ opt.label }}</button>
+        <!-- 虛線＋「＋」讓它看起來是「可以新增」而不是「已停用」 -->
+        <button
+          v-if="!showCustomRoom"
+          type="button"
+          class="room-card room-card--add"
+          @click="showCustomRoom = true"
+        >
+          <span class="room-card-icon" aria-hidden="true">＋</span>
+          <span class="room-card-label">自訂</span>
+        </button>
+      </div>
 
-          <!-- 虛線＋「＋」讓它看起來是「可以新增」而不是「已停用」 -->
-          <button
-            v-if="!showCustomRoom"
-            type="button"
-            class="add-chip add-chip--lg"
-            @click="showCustomRoom = true"
-          >＋ 自訂</button>
-        </div>
+      <div v-if="showCustomRoom" class="custom-row">
+        <input
+          v-model="customRoomInput"
+          class="db-input"
+          placeholder="例如：和室、更衣室"
+          autofocus
+          @keydown.enter.prevent="applyCustomRoom"
+          @keydown.esc="showCustomRoom = false"
+        />
+        <button type="button" class="add-btn" title="加入" @click="applyCustomRoom">✓</button>
+        <button type="button" class="cancel-btn" title="取消" @click="showCustomRoom = false">✕</button>
+      </div>
+    </section>
 
-        <div v-if="showCustomRoom" class="custom-row">
-          <input
-            v-model="customRoomInput"
-            class="db-input"
-            placeholder="例如：和室、更衣室"
-            autofocus
-            @keydown.enter.prevent="applyCustomRoom"
-            @keydown.esc="showCustomRoom = false"
-          />
-          <button type="button" class="add-btn" title="加入" @click="applyCustomRoom">✓</button>
-          <button type="button" class="cancel-btn" title="取消" @click="showCustomRoom = false">✕</button>
-        </div>
-      </section>
+
+    <div v-if="!isSkip" class="columns">
 
       <!-- ── 預計擺放家具（不排家具模式不需要）── -->
       <section v-if="!isSkip" class="col">
         <h2 class="db-col-title">預計擺放家具</h2>
+        <p v-if="needFurniture" class="col-hint">至少選 1 件</p>
         <div class="furniture-list">
-          <button
-            v-for="opt in availableFurniture" :key="opt.value"
-            type="button"
-            :class="['db-chip', 'furniture-chip', { 'is-active': furnitureItems.includes(opt.value) }]"
-            @click="toggleFurniture(opt.value)"
-          >
-            <Icon :icon="furnitureIcon(opt.value)" class="chip-icon" aria-hidden="true" />
-            <span>{{ opt.label }}</span>
-            <span v-if="furnitureItems.includes(opt.value) && qtyOf(opt.value) > 1" class="qty-badge">
-              ×{{ qtyOf(opt.value) }}
+          <!-- 選中後 chip 旁出現數量 stepper：數量是主要決定，不該藏在進階設定 -->
+          <div v-for="opt in furnitureChoices" :key="opt.value" class="furn-item">
+            <button
+              type="button"
+              :class="['db-chip', 'furniture-chip', { 'is-active': furnitureItems.includes(opt.value) }]"
+              :aria-pressed="furnitureItems.includes(opt.value)"
+              @click="toggleFurniture(opt.value)"
+            >
+              <Icon :icon="furnitureIcon(opt.value)" class="chip-icon" aria-hidden="true" />
+              <span>{{ opt.label }}</span>
+            </button>
+            <span v-if="furnitureItems.includes(opt.value)" class="furn-qty" role="group" :aria-label="`${opt.label}數量`">
+              <button type="button" class="qty-btn" :aria-label="`減少${opt.label}`" :disabled="qtyOf(opt.value) <= 1" @click="setQty(opt.value, qtyOf(opt.value) - 1)">−</button>
+              <span class="qty-num" aria-live="polite">{{ qtyOf(opt.value) }}</span>
+              <button type="button" class="qty-btn" :aria-label="`增加${opt.label}`" :disabled="qtyOf(opt.value) >= MAX_QTY" @click="setQty(opt.value, qtyOf(opt.value) + 1)">＋</button>
             </span>
-          </button>
+          </div>
 
-          <!-- 自訂家具（設計稿有這顆 chip，但沒給輸入流程）-->
           <button
             v-if="!showCustomFurniture"
             type="button"
@@ -230,21 +246,9 @@ function submit() {
               @keydown.enter.prevent="addCustomFurniture"
               @keydown.esc="showCustomFurniture = false"
             />
-            <button type="button" class="add-btn" title="加入" @click="addCustomFurniture">✓</button>
-            <button type="button" class="cancel-btn" title="取消" @click="showCustomFurniture = false">✕</button>
+            <button type="button" class="add-btn" title="加入" aria-label="加入" @click="addCustomFurniture">✓</button>
+            <button type="button" class="cancel-btn" title="取消" aria-label="取消" @click="showCustomFurniture = false">✕</button>
           </div>
-
-          <!-- 自訂加進來的項目也要能看到／取消 -->
-          <button
-            v-for="v in extraSelected" :key="v"
-            type="button"
-            class="db-chip furniture-chip is-active"
-            @click="removeFurniture(v)"
-          >
-            <Icon :icon="furnitureIcon(v)" class="chip-icon" aria-hidden="true" />
-            <span>{{ furnitureLabel(v) }}</span>
-            <span v-if="qtyOf(v) > 1" class="qty-badge">×{{ qtyOf(v) }}</span>
-          </button>
         </div>
       </section>
 
@@ -254,24 +258,13 @@ function submit() {
            不排家具路徑的坪數只是折進 prompt 的一句話，留在進階設定就好。 -->
       <section v-if="!isSkip" class="col col-size">
         <h2 class="db-col-title">空間大小</h2>
-        <div class="ping-main">
-          <span class="ping-word-lg">約</span>
-          <input
-            v-model.number="spaceSizePing"
-            type="number" min="1" max="100" step="0.5"
-            class="db-input ping-input-lg"
-            aria-label="空間坪數"
-          />
-          <span class="ping-word-lg">坪</span>
-        </div>
-        <p class="ping-hint">≈ {{ Math.round((spaceSizePing || 0) * 3.3) }} m²</p>
-
-        <div v-if="derivedSize" class="size-readout">
-          <span class="readout-label">{{ derivedSize.custom ? '自訂長寬' : '換算約' }}</span>
-          <span class="readout-val">{{ derivedSize.w }} × {{ derivedSize.d }} <small>公尺</small></span>
-        </div>
+        <SpaceSizeFields :error="sizeError" />
       </section>
     </div>
+
+    <!-- ══ 風水禁忌 ══
+         原本收在進階設定裡，但這些是會實際搬動家具的硬約束，不是微調參數。 -->
+    <FengshuiPicker v-model="fengshuiRules" :room-type="roomType" />
 
     <!-- ══ 描述需求：只有不排家具路徑需要在這裡填 ══
          排家具路徑的描述留在下一步（選風格那頁），第一頁專心決定房型／家具／坪數。 -->
@@ -289,41 +282,12 @@ function submit() {
     </section>
 
     <!-- ══ 進階設定 ══ -->
-    <AdvancedPanel hint="坪數・長寬・比例・數量・家庭結構・風水">
+    <AdvancedPanel :hint="isSkip ? '坪數・長寬・比例' : '輸出比例'">
       <div class="adv-grid">
-        <!-- 排家具路徑的坪數已經在主畫面，這裡不重複 -->
-        <div v-if="isSkip" class="adv-field">
-          <label class="field-label" for="ping">空間坪數</label>
-          <div class="ping-row">
-            <span class="ping-word">約</span>
-            <input
-              id="ping"
-              v-model.number="spaceSizePing"
-              type="number" min="1" max="100" step="0.5"
-              class="db-input ping-input"
-            />
-            <span class="ping-word">坪</span>
-          </div>
-          <p v-if="derivedSize" class="field-hint">
-            {{ derivedSize.custom ? '自訂長寬' : '換算約' }}
-            {{ derivedSize.w }} × {{ derivedSize.d }} 公尺
-            （≈ {{ Math.round((spaceSizePing || 0) * 3.3) }} m²）
-          </p>
-        </div>
-
-        <div class="adv-field">
-          <label class="field-label">自訂長寬（公尺，可留空）</label>
-          <div class="pair">
-            <input
-              v-model.number="customRoomW" type="number" min="1" step="0.1"
-              class="db-input" placeholder="長度（自動）" @input="onCustomRoomWInput"
-            />
-            <input
-              v-model.number="customRoomD" type="number" min="1" step="0.1"
-              class="db-input" placeholder="寬度（自動）" @input="onCustomRoomDInput"
-            />
-          </div>
-          <p class="field-hint">填一邊，另一邊會依上面的坪數自動算</p>
+        <!-- 排家具路徑的空間大小已經在主畫面 -->
+        <div v-if="isSkip" class="adv-field adv-span">
+          <label class="field-label">空間大小</label>
+          <SpaceSizeFields :error="sizeError" />
         </div>
 
         <div class="adv-field">
@@ -332,50 +296,19 @@ function submit() {
             <option v-for="opt in ASPECT_OPTIONS" :key="opt.value" :value="opt.value">{{ opt.label }}</option>
           </select>
         </div>
-
-        <div v-if="!isSkip && furnitureItems.length" class="adv-field adv-span">
-          <label class="field-label">已選家具與數量</label>
-          <div class="qty-list">
-            <span v-for="item in furnitureItems" :key="item" class="qty-tag">
-              {{ furnitureLabel(item) }}
-              <button type="button" class="qty-btn" @click="setQty(item, qtyOf(item) - 1)">−</button>
-              <span class="qty-num">{{ qtyOf(item) }}</span>
-              <button type="button" class="qty-btn" @click="setQty(item, qtyOf(item) + 1)">＋</button>
-              <button type="button" class="qty-remove" title="移除" @click="removeFurniture(item)">×</button>
-            </span>
-          </div>
-        </div>
-
-        <div class="adv-field">
-          <label class="field-label">家庭結構</label>
-          <div class="chip-row">
-            <button
-              v-for="opt in FAMILY_OPTIONS" :key="opt.value" type="button"
-              :class="['db-chip', { 'is-active': familyNeeds.includes(opt.value) }]"
-              @click="toggleIn(familyNeeds, opt.value)"
-            >{{ opt.label }}</button>
-          </div>
-        </div>
-
-        <div class="adv-field">
-          <label class="field-label">風水需求</label>
-          <div class="chip-row">
-            <button
-              v-for="opt in FENGSHUI_OPTIONS" :key="opt.value" type="button"
-              :class="['db-chip', { 'is-active': fengshuiRules.includes(opt.value) }]"
-              @click="toggleIn(fengshuiRules, opt.value)"
-            >{{ opt.label }}</button>
-          </div>
-        </div>
       </div>
     </AdvancedPanel>
 
     <div class="actions">
-      <button class="db-btn" :disabled="loading" @click="submit">
+      <button class="db-btn" :disabled="loading || !!blockReason" @click="submit">
         {{ isSkip ? '下一步：選擇風格' : '生成平面圖' }}
       </button>
+      <p v-if="blockReason" class="block-hint" role="status">{{ blockReason }}</p>
       <button v-if="!isSkip" type="button" class="skip-btn" :disabled="loading" @click="goSkipRender">
         跳過排版，直接生成渲染圖 →
+      </button>
+      <button v-else type="button" class="skip-btn" :disabled="loading" @click="goLayoutMode">
+        ← 改為排家具佈局
       </button>
     </div>
   </div>
@@ -413,7 +346,7 @@ function submit() {
   background: none;
   color: var(--db-text-soft);
   font-family: var(--db-font-display);
-  font-style: italic;
+  font-style: normal;
   font-weight: 500;
   font-size: 1rem;
   cursor: pointer;
@@ -432,13 +365,11 @@ function submit() {
    等分會讓內容少的欄下方空一大塊，分隔線又剛好把空白框起來。 */
 .columns {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 280px));
+  grid-template-columns: repeat(2, minmax(0, 340px));
   justify-content: center;
   gap: clamp(1.25rem, 2.5vw, 2.5rem);
   padding-bottom: 1.75rem;
 }
-/* 不排家具路徑只有房型一欄 */
-.columns.one-col { grid-template-columns: minmax(0, 340px); }
 
 /* 欄與欄之間拉一條淡分隔線 */
 .col + .col { border-left: 1px solid #f0f0f0; padding-left: clamp(1.5rem, 3vw, 3rem); }
@@ -458,15 +389,100 @@ function submit() {
   transform: translateX(-50%);
 }
 
-/* 空間類型：2 欄。chip 不拉滿整欄，拉滿會變成一排「列」而不是可選的標籤 */
+/* 空間類型：實景照片卡併排成一列（4 間 + 自訂），標題壓在照片底部的漸層上 */
+.room-section { display: flex; flex-direction: column; align-items: center; padding-bottom: 2rem; }
 .room-grid {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 0.75rem;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 1rem;
   width: 100%;
-  max-width: 320px;
+  max-width: 1000px;
 }
-.room-grid .db-chip { width: 100%; padding-inline: 0.5rem; }
+.room-card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-end;
+  aspect-ratio: 4 / 3;
+  padding: 0;
+  overflow: hidden;
+  border: 3px solid transparent;
+  border-radius: var(--db-radius-chip);
+  background: var(--db-chip-soft);
+  color: var(--db-text);
+  cursor: pointer;
+  transition: border-color 0.16s, transform 0.12s, box-shadow 0.16s;
+}
+.room-card:hover { border-color: var(--db-accent); transform: translateY(-2px); }
+.room-card:focus-visible { outline: 3px solid var(--db-accent-deep); outline-offset: 2px; }
+.room-card.is-active {
+  border-color: var(--db-accent);
+  box-shadow: 0 0 0 2px var(--db-ink), var(--db-shadow-soft);
+}
+.room-card-photo {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  transition: transform 0.4s ease, filter 0.2s;
+}
+.room-card:hover .room-card-photo { transform: scale(1.04); }
+/* 沒選中的照片略微壓暗，選中的那張最亮，視線自然落在它身上 */
+.room-card:not(.is-active) .room-card-photo { filter: saturate(0.7); }
+.room-card-icon { font-size: 3rem; line-height: 1; margin-bottom: auto; margin-top: 1.5rem; }
+.room-card-label {
+  position: relative;
+  width: 100%;
+  padding: 1.6rem 0.5rem 0.65rem;
+  background: linear-gradient(to top, rgba(49, 49, 49, 0.78), transparent);
+  color: #fff;
+  font-family: var(--db-font-display);
+  font-style: normal;
+  font-weight: 500;
+  font-size: 1.25rem;
+  text-align: center;
+  text-shadow: 0 1px 6px rgba(0, 0, 0, 0.4);
+}
+/* 有照片時：文字置中放大當主角，照片只當壓暗的背景點綴 */
+.room-card-photo + .room-card-label {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.5rem;
+  background: rgba(35, 35, 35, 0.55);
+  font-size: 2rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-shadow: 0 2px 12px rgba(0, 0, 0, 0.6);
+}
+.room-card:not(.is-active) .room-card-photo + .room-card-label { transition: background 0.16s; }
+.room-card:hover .room-card-photo + .room-card-label { background: rgba(35, 35, 35, 0.45); }
+.room-card.is-active .room-card-photo + .room-card-label { background: rgba(201, 196, 187, 0.8); color: #222; text-shadow: none; }
+.room-card.is-active .room-card-label { background: linear-gradient(to top, rgba(201, 196, 187, 0.95), transparent); color: var(--db-on-accent); text-shadow: none; }
+.room-card-check {
+  position: absolute;
+  top: 0.55rem;
+  right: 0.55rem;
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: var(--db-accent);
+  color: var(--db-on-accent);
+  font-size: 0.95rem;
+  box-shadow: var(--db-shadow-soft);
+}
+.room-card--add { border: 2px dashed #c9c4bb; background: transparent; color: var(--db-text-soft); justify-content: center; }
+.room-card--add .room-card-icon { margin: 0; }
+.room-card--add .room-card-label { background: none; color: var(--db-text-soft); text-shadow: none; padding: 0.4rem; }
+@media (prefers-reduced-motion: reduce) {
+  .room-card:hover, .room-card:hover .room-card-photo { transform: none; }
+}
 
 /* 家具：設計稿是單欄直排 */
 .furniture-list {
@@ -483,14 +499,6 @@ function submit() {
   padding: 0.55rem 1rem;
 }
 .chip-icon { font-size: 1.15rem; flex-shrink: 0; }
-
-.qty-badge {
-  margin-left: auto;
-  font-family: var(--db-font-body);
-  font-style: normal;
-  font-size: 0.8rem;
-  opacity: 0.9;
-}
 
 /* 「＋ 自訂」：虛線外框 = 這格還是空的、可以自己填，不是被停用 */
 .add-chip {
@@ -513,7 +521,7 @@ function submit() {
 .add-chip:hover {
   border-color: var(--db-accent);
   color: var(--db-text);
-  background: #fbfaf6;
+  background: #f7f6f3;
 }
 
 .custom-row {
@@ -537,58 +545,6 @@ function submit() {
 .add-btn:hover { background: var(--db-accent-deep); }
 .cancel-btn { background: var(--db-chip); color: var(--db-text-soft); }
 .cancel-btn:hover { background: #cfcfcf; }
-
-/* ── 空間大小（主畫面版）── */
-.ping-main {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 0.7rem;
-}
-.ping-word-lg {
-  font-family: var(--db-font-display);
-  font-style: italic;
-  font-size: 1.4rem;
-  color: var(--db-text);
-}
-/* 白底 + 外框，看起來才像可以打字的欄位 */
-.ping-input-lg {
-  width: 120px;
-  height: 58px;
-  border: 2px solid var(--db-chip);
-  border-radius: 8px;
-  background: #fff;
-  text-align: center;
-  font-size: 1.5rem;
-  font-variant-numeric: tabular-nums;
-}
-.ping-input-lg:focus { border-color: var(--db-accent); background: #fff; }
-
-.ping-hint {
-  margin: 0.6rem 0 0;
-  text-align: center;
-  font-size: 0.85rem;
-  color: var(--db-text-soft);
-}
-
-.size-readout {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 0.25rem;
-  margin-top: 1.1rem;
-  padding: 0.7rem 1rem;
-  border-radius: var(--db-radius-chip);
-  background: var(--db-chip-soft);
-}
-.readout-label { font-size: 0.75rem; color: var(--db-text-soft); }
-.readout-val {
-  font-family: var(--db-font-display);
-  font-size: 1.1rem;
-  color: var(--db-text);
-  font-variant-numeric: tabular-nums;
-}
-.readout-val small { font-size: 0.78rem; color: var(--db-text-soft); }
 
 /* ── 描述需求 ── */
 .describe {
@@ -614,7 +570,6 @@ function submit() {
   gap: 1.25rem 1.5rem;
 }
 .adv-span { grid-column: 1 / -1; }
-.pair { display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem; }
 
 .field-label {
   display: block;
@@ -623,48 +578,36 @@ function submit() {
   font-weight: 500;
   color: var(--db-text-soft);
 }
-.field-hint {
-  margin: 0.4rem 0 0;
-  font-size: 0.78rem;
-  color: var(--db-placeholder);
-}
-
-.ping-row { display: flex; align-items: center; gap: 0.6rem; }
-.ping-word { font-size: 0.95rem; color: var(--db-text-soft); }
-.ping-input {
-  width: 110px;
-  text-align: center;
-  font-variant-numeric: tabular-nums;
-}
-
 .chip-row { display: flex; flex-wrap: wrap; gap: 0.5rem; }
 .chip-row .db-chip { font-size: 0.92rem; padding: 0.4rem 0.9rem; }
 
-.qty-list { display: flex; flex-wrap: wrap; gap: 0.5rem; }
-.qty-tag {
+/* 家具列：chip 在左、數量 stepper 在右 */
+.furn-item { display: flex; align-items: center; gap: 0.4rem; }
+.furn-item .furniture-chip { flex: 1; min-width: 0; }
+.furn-qty {
   display: inline-flex;
   align-items: center;
-  gap: 0.35rem;
-  padding: 0.3rem 0.5rem 0.3rem 0.75rem;
+  gap: 0.2rem;
+  padding: 3px;
   border-radius: var(--db-radius-pill);
   background: var(--db-chip-soft);
-  font-size: 0.88rem;
 }
 .qty-btn {
-  width: 22px; height: 22px;
+  width: 28px; height: 28px;
   border: none; border-radius: 50%;
   background: #fff;
   color: var(--db-text);
-  cursor: pointer;
+  font-size: 1rem;
   line-height: 1;
+  cursor: pointer;
 }
-.qty-btn:hover { background: var(--db-accent); color: var(--db-on-accent); }
-.qty-num { min-width: 1.1em; text-align: center; font-variant-numeric: tabular-nums; }
-.qty-remove {
-  border: none; background: none; cursor: pointer;
-  color: var(--db-placeholder); font-size: 1rem; line-height: 1;
-}
-.qty-remove:hover { color: var(--db-danger); }
+.qty-btn:hover:not(:disabled) { background: var(--db-accent); color: var(--db-on-accent); }
+.qty-btn:disabled { opacity: 0.35; cursor: not-allowed; }
+.qty-btn:focus-visible { outline: 2px solid var(--db-accent-deep); outline-offset: 1px; }
+.qty-num { min-width: 1.6em; text-align: center; font-variant-numeric: tabular-nums; }
+
+.col-hint { margin: -0.3rem 0 0.7rem; font-size: 0.8rem; color: var(--db-text-soft); }
+.block-hint { margin: 0; font-size: 0.85rem; color: var(--db-danger); text-align: center; }
 
 .actions {
   display: flex;
@@ -690,13 +633,12 @@ function submit() {
 .skip-btn:hover:not(:disabled) {
   border-color: var(--db-accent);
   color: var(--db-text);
-  background: #fbfaf6;
+  background: #f7f6f3;
 }
 .skip-btn:disabled { opacity: 0.5; cursor: not-allowed; }
 
 @media (max-width: 900px) {
-  .columns,
-  .columns.one-col { grid-template-columns: 1fr; }
+  .columns { grid-template-columns: 1fr; }
   .col + .col { border-left: none; padding-left: 0; padding-top: 1.5rem; border-top: 1px solid #f0f0f0; }
   .actions .db-btn { min-width: 0; width: 100%; }
   .mode-toggle-wrap { align-items: flex-start; width: 100%; }

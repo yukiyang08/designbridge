@@ -2,27 +2,23 @@
 langgraph>=1.0.0
 langchain-core>=0.1.0
 typing-extensions>=4.0.0
-streamlit>=1.30.0
 
 # Gemini API (text/vision)
 google-generativeai>=0.3.0
 # Imagen image generation (optional; uses same GEMINI_API_KEY)
 google-genai>=1.0.0
+openai>=1.0.0
 python-multipart
 requests>=2.31.0
 # Local vision inference (Depth Anything V2 + Segmentation)
 numpy>=1.24.0
 pillow>=10.0.0
 scipy>=1.11.0
-cairosvg>=2.7.0
-svglib>=1.5.0
-reportlab>=4.0.0
 transformers>=4.45.0  # 4.45+ for Depth-Anything-V2
 torch>=2.2.0
 torchvision>=0.17.0
 
-# Local image generation (SDXL fallback when Imagen not available)
-diffusers>=0.30.0
+# transformers 載入模型輔助
 accelerate>=0.30.0
 
 # fal.ai cloud inference (FLUX text-to-image, Redux, ControlNet, IP-Adapter)
@@ -32,7 +28,6 @@ fastapi
 uvicorn
 pydantic>=2.0.0
 python-dotenv>=1.0.0
-python-multipart
 
 # 3D room mesh export (GLB for the 360° panorama / 3D viewer)
 trimesh>=4.0.0
@@ -41,6 +36,5 @@ trimesh>=4.0.0
 supabase>=2.4.0
 httpx>=0.27.0
 
-# Vector store (Style KB)
-chromadb>=0.5.0
+# 向量模型（風格檢索用 bge-m3、報價用 CLIP）
 sentence-transformers>=3.0.0

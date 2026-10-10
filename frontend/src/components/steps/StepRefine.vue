@@ -13,12 +13,12 @@ import { useDesignFlow } from '@/composables/useDesignFlow'
 const {
   textPrompt, brushSize, eraserSize, drawMode,
   spaceImage, baseImagePreview, refineCanvasRef,
-  loading, submitRefine, nextStep, prevStep,
+  loading, submitRefine, undoRefine, canUndoRefine, nextStep, prevStep,
 } = useDesignFlow()
 
 const hasBase = computed(() => !!baseImagePreview.value)
 // RefineCanvas 只吃一個 brush-size：畫筆模式用 brushSize，橡皮擦模式用 eraserSize
-const activeBrushSize = computed(() => drawMode === 'erase' ? eraserSize.value : brushSize.value)
+const activeBrushSize = computed(() => drawMode.value === 'erase' ? eraserSize.value : brushSize.value)
 </script>
 
 <template>
@@ -98,6 +98,10 @@ const activeBrushSize = computed(() => drawMode === 'erase' ? eraserSize.value :
 
     <div class="actions">
       <button class="db-btn db-btn--ghost db-btn--sm" @click="prevStep">← 上一步</button>
+      <button
+        v-if="canUndoRefine" class="db-btn db-btn--ghost db-btn--sm"
+        title="回到微調前的圖片" @click="undoRefine"
+      >↶ 還原上一版</button>
       <button class="db-btn db-btn--ghost" :disabled="loading || !hasBase" @click="submitRefine">
         生成新圖
       </button>
@@ -153,7 +157,7 @@ const activeBrushSize = computed(() => drawMode === 'erase' ? eraserSize.value :
   background: var(--db-secondary-2);
   color: #fff;                     /* 底色是灰的，不吃 --db-on-accent */
   font-family: var(--db-font-display);
-  font-style: italic;
+  font-style: normal;
   font-size: 0.98rem;
   cursor: pointer;
   transition: background 0.16s, border-color 0.16s;

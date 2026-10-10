@@ -59,6 +59,10 @@ FURNITURE_HEIGHTS: dict[str, float] = {
     "cat_tree": 1.40,
     "dog_bed": 0.20,
     "litter_box": 0.30,
+    "stove": 0.90,
+    "toilet": 0.75,
+    "sink": 0.85,
+    "fridge": 1.80,
     "default": 0.80,
 }
 
@@ -84,6 +88,18 @@ _TYPE_SYNONYMS: dict[str, str] = {
     "bookcase": "bookshelf",
     "work_desk": "desk",
     "study_desk": "desk",
+    "cooktop": "stove",
+    "stovetop": "stove",
+    "gas_stove": "stove",
+    "kitchen_stove": "stove",
+    "wc": "toilet",
+    "water_closet": "toilet",
+    "kitchen_sink": "sink",
+    "washbasin": "sink",
+    "wash_basin": "sink",
+    "mop_sink": "sink",
+    "refrigerator": "fridge",
+    "freezer": "fridge",
 }
 
 # 從天花板吊掛或貼在牆上的物件沒有地板 footprint，不能當成從地板長上來的盒子。
@@ -276,7 +292,7 @@ _SHELL_COLORS: dict[str, tuple[int, int, int]] = {
 
 
 def _furniture_color(ftype: str) -> tuple[int, int, int]:
-    from designbridge.layout.layout_agent import FURNITURE_COLORS
+    from designbridge.layout.layout_items import FURNITURE_COLORS
     if ftype in FURNITURE_COLORS:
         return FURNITURE_COLORS[ftype]
     return FURNITURE_COLORS.get(normalize_furniture_type(ftype), FURNITURE_COLORS["default"])

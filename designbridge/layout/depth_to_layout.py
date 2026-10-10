@@ -375,7 +375,7 @@ def _make_recommendation(
 
 
 def _routing_hint(metrics: dict) -> str:
-    """給 Design Director 的路由建議。"""
+    """路由建議（由 complexity / openness 推導）。"""
     if metrics["complexity_score"] > 0.10 and metrics["openness_score"] < 0.35:
         return "layout_and_style"
     if metrics["complexity_score"] > 0.08:

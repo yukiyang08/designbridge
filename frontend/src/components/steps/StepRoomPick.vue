@@ -8,6 +8,7 @@
  * 用 planSource 決定要哪一種 picker，兩邊各自的資料完全不同格式（見
  * RoomPicker.vue vs RoomPickerCad.vue 的 props）。
  */
+import { computed, ref } from 'vue'
 import { useDesignFlow } from '@/composables/useDesignFlow'
 import RoomPicker from '@/components/RoomPicker.vue'
 import RoomPickerCad from '@/components/RoomPickerCad.vue'
@@ -15,13 +16,35 @@ import RoomPickerCad from '@/components/RoomPickerCad.vue'
 const {
   planSource, detectedRooms, uploadedPlanUrl, handleRoomSelected,
   cadPlanResult, handleCadRoomSelected,
+  cadActiveRoomId, cadRoomStatus, abandonCadRoom,
 } = useDesignFlow()
+
+// 有一間做到一半（還沒渲染完）：這時選別間會被擋，把原因和出口直接擺在畫面上
+const pendingRoom = computed(() => {
+  const id = cadActiveRoomId.value
+  if (planSource.value !== 'cad' || !id || cadRoomStatus.value[id] === 'done') return null
+  return cadPlanResult.value?.rooms?.find(r => r.id === id) || null
+})
+const confirmingAbandon = ref(false)   // 兩段式確認，跟歷史紀錄的刪除一致
+function onAbandon() {
+  if (!confirmingAbandon.value) { confirmingAbandon.value = true; return }
+  confirmingAbandon.value = false
+  abandonCadRoom()
+}
 </script>
 
 <template>
   <div class="room-pick-step">
     <div class="panel-head">
       <h2 class="panel-title">選擇要生成的房間</h2>
+    </div>
+
+    <div v-if="pendingRoom" class="pending-bar" role="status">
+      <span class="pending-text">「{{ pendingRoom.label_zh }}」還沒完成渲染，完成後才能換下一間。</span>
+      <button type="button" class="db-btn db-btn--sm" @click="handleCadRoomSelected(pendingRoom)">繼續編輯</button>
+      <button type="button" class="db-btn db-btn--ghost db-btn--sm" @click="onAbandon" @blur="confirmingAbandon = false">
+        {{ confirmingAbandon ? '確定放棄？進度會清除' : '放棄這間，改選其他' }}
+      </button>
     </div>
 
     <RoomPickerCad
@@ -49,6 +72,19 @@ const {
   gap: 1rem;
   margin-bottom: 1rem;
 }
+
+.pending-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.6rem;
+  margin-bottom: 1rem;
+  padding: 0.7rem 1rem;
+  border-radius: var(--db-radius-chip);
+  background: var(--db-chip-soft);
+  font-size: 0.9rem;
+}
+.pending-text { flex: 1 1 14rem; color: var(--db-text); }
 
 /* 跟 StepFloorPlan.vue 同一套面板標題列樣式，維持步驟之間視覺一致 */
 .panel-title {

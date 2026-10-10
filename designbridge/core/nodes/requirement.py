@@ -145,9 +145,9 @@ def requirement_analyzer(state: DesignBridgeState) -> dict[str, Any]:
                 "priority_weights": {"layout_rationality": 0.4, "style_consistency": 0.4, "user_preference": 0.2},
             }
 
-        # Merge family needs and feng shui rules into structured_requirement
-        # Must run before the layout agent reads windows/doors, and before the special
-        # constraints (wheelchair clearance, child safety) look for door positions.
+        # Merge feng shui rules into structured_requirement.
+        # Must run before the layout agent reads windows/doors, and before the feng shui
+        # constraints (door sightlines, headboard walls) look for opening positions.
         _normalize_space_info(structured_requirement)
         _si = structured_requirement["space_info"]
         print(
@@ -156,11 +156,10 @@ def requirement_analyzer(state: DesignBridgeState) -> dict[str, Any]:
             f"windows={len(_si['windows'])}, doors={len(_si['doors'])}"
         )
 
-        family_needs   = user.get("family_needs")   or []
         fengshui_rules = user.get("fengshui_rules") or []
-        if family_needs or fengshui_rules:
+        if fengshui_rules:
             from designbridge.layout.special_constraints import enrich_requirement
-            structured_requirement = enrich_requirement(structured_requirement, family_needs, fengshui_rules)
+            structured_requirement = enrich_requirement(structured_requirement, fengshui_rules)
 
         # If the user explicitly selected a style from the dropdown, override whatever
         # Gemini / rule-based inferred from the text so the whole pipeline stays consistent.
@@ -175,11 +174,7 @@ def requirement_analyzer(state: DesignBridgeState) -> dict[str, Any]:
         if routing_decision:
             print(f"[requirement_analyzer] routing_decision from LLM: {routing_decision}")
 
-    # Routing used to be a separate "design director" node; folded in here since RA
-    # is the only thing that ever actually decided it (dynamic SKILL.md routing was
-    # never exercised in practice — RA's own semantic judgment already covers what it
-    # was for). refine_mode always wins regardless of what RA/LLM decided; a totally
-    # missing decision (RA call failed before it could embed one) defaults to "design".
+    # 路由：refine_mode 一律優先；RA 沒給出決定（呼叫失敗）時預設 "design"
     if user.get("refine_mode"):
         routing_decision = "design_adjuster"
         print("[requirement_analyzer] refine_mode=True → design_adjuster")
@@ -229,7 +224,7 @@ def _call_llm_requirement_analyzer(
     if style_reference_image and _is_valid_image_path(style_reference_image):
         images.append(style_reference_image)
 
-    text = call_llm(prompt, images=images or None)
+    text = call_llm(prompt, images=images or None, json_mode=True)
     text = text.strip()
 
     # Strip markdown code fences

@@ -1,6 +1,9 @@
 <script setup>
-import { ref, computed } from 'vue'
+import { ref, computed, watch } from 'vue'
 import { Icon } from '@iconify/vue'
+import RoomWalls from '@/components/RoomWalls.vue'
+import RoomDims from '@/components/RoomDims.vue'
+import { doorKeepouts as doorKeepoutsOf, settlePlacements } from '@/utils/roomGeometry'
 import {
   furnitureLabel, furnitureIcon, furnitureDefaultSize,
   ROOM_OPTIONS, FURNITURE_BY_ROOM,
@@ -14,8 +17,9 @@ import {
 const props = defineProps({
   placements: { type: Array, default: () => [] },
   roomType: { type: String, default: 'living_room' },  // 家具面板預設分類
+  geometry: { type: Object, default: null },            // 這間房的牆厚／門／窗（CAD 路徑才有，見 utils/roomGeometry）
 })
-const emit = defineEmits(['update:placements', 'room-size-changed'])
+const emit = defineEmits(['update:placements', 'room-size-changed', 'opening-change'])
 
 // 公尺，點畫布外框可直接調整（雙向綁定回父層，3D 預覽/最終渲染跟著用同一組數字）
 const roomW = defineModel('roomW', { default: 5 })
@@ -28,8 +32,16 @@ const isFloor = (t) => FLOOR_TYPES.has(t)
 function rectsOverlap(a, b) {
   return a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y
 }
-function collidesWithOthers(rect, type, excludeId) {
+// 門會碰到的範圍：家具不能放進去（見 utils/roomGeometry 的 doorKeepouts / settlePlacements）。
+const doorKeepouts = computed(() => doorKeepoutsOf(props.geometry, roomW.value, roomD.value))
+// 預設擺法、門被拖動、房間改尺寸、撤銷之後，只要有家具壓在範圍裡就自動推到最近的空位。
+watch([doorKeepouts, () => props.placements], () => {
+  const next = settlePlacements(props.placements, doorKeepouts.value, isFloor)
+  if (next !== props.placements) emit('update:placements', next)
+}, { immediate: true })
+function collidesWithOthers(rect, type, excludeId, from = null) {
   if (isFloor(type)) return false
+  if (doorKeepouts.value.some((k) => rectsOverlap(rect, k) && !(from && rectsOverlap(from, k)))) return true
   return items.value.some((it) => (
     it.id !== excludeId && !isFloor(it.type) && rectsOverlap(rect, it)
   ))
@@ -109,13 +121,13 @@ function onMove(e) {
       const x = clamp(drag.ox + dx, 0, 1 - it.w)
       const y = clamp(drag.oy + dy, 0, 1 - it.h)
       // 撞到別的家具（非地毯類）：卡在目前位置，不繼續往那個方向移動
-      if (collidesWithOthers({ x, y, w: it.w, h: it.h }, it.type, it.id)) return it
+      if (collidesWithOthers({ x, y, w: it.w, h: it.h }, it.type, it.id, { x: drag.ox, y: drag.oy, w: it.w, h: it.h })) return it
       return { ...it, x, y }
     }
     // resize from bottom-right corner
     const w = clamp(drag.ow + dx, MIN, 1 - drag.ox)
     const h = clamp(drag.oh + dy, MIN, 1 - drag.oy)
-    if (collidesWithOthers({ x: drag.ox, y: drag.oy, w, h }, it.type, it.id)) return it
+    if (collidesWithOthers({ x: drag.ox, y: drag.oy, w, h }, it.type, it.id, { x: drag.ox, y: drag.oy, w: drag.ow, h: drag.oh })) return it
     return { ...it, w, h }
   })
   commit(next)
@@ -133,7 +145,7 @@ function onUp() {
       if (y < SNAP) y = 0
       if (y + h > 1 - SNAP) y = 1 - h
       // 貼牆會撞到別的家具的話，維持原位不貼牆
-      if ((x !== ox || y !== oy) && collidesWithOthers({ x, y, w, h }, it.type, it.id)) return it
+      if ((x !== ox || y !== oy) && collidesWithOthers({ x, y, w, h }, it.type, it.id, { x: drag.ox, y: drag.oy, w, h })) return it
       return { ...it, x, y }
     })
     commit(next)
@@ -148,6 +160,61 @@ function onUp() {
   window.removeEventListener('pointermove', onMove)
   window.removeEventListener('pointerup', onUp)
 }
+
+// ── 門窗：點選、沿牆拖曳、改寬度 ───────────────────────────────────
+const OP_PREFIX = 'op:'
+const selectedOpening = computed(
+  () => props.geometry?.openings.find((o) => OP_PREFIX + o.id === selectedId.value) || null,
+)
+const opLen = (o) => (o.side === 'top' || o.side === 'bottom' ? roomW.value : roomD.value)
+const OP_MARGIN = 0.1   // 門窗離牆角至少 10cm
+function clampFrac(o, frac, width = o.width) {
+  const L = opLen(o), m = (width / 2 + OP_MARGIN) / L
+  return m >= 0.5 ? 0.5 : clamp(frac, m, 1 - m)
+}
+let opDrag = null
+function onOpeningDown(o, e) {
+  selectedId.value = OP_PREFIX + o.id
+  const horiz = o.side === 'top' || o.side === 'bottom'
+  const el = boardRef.value
+  opDrag = {
+    id: o.id, startX: e.clientX, startY: e.clientY, frac0: o.frac, horiz,
+    px: (horiz ? el.clientWidth : el.clientHeight) * zoom.value,   // 畫面上這條牆有多少 px（含縮放）
+  }
+  window.addEventListener('pointermove', onOpeningMove)
+  window.addEventListener('pointerup', onOpeningUp)
+}
+function onOpeningMove(e) {
+  if (!opDrag) return
+  const o = props.geometry.openings.find((x) => x.id === opDrag.id)
+  if (!o) return
+  const delta = (opDrag.horiz ? e.clientX - opDrag.startX : e.clientY - opDrag.startY) / opDrag.px
+  emit('opening-change', o.id, { frac: clampFrac(o, opDrag.frac0 + delta) })
+}
+function onOpeningUp() {
+  opDrag = null
+  window.removeEventListener('pointermove', onOpeningMove)
+  window.removeEventListener('pointerup', onOpeningUp)
+}
+// 面板：寬度、離牆角距離（公分）
+const opWidthCm = computed({
+  get: () => (selectedOpening.value ? Math.round(selectedOpening.value.width * 100) : 0),
+  set: (cm) => {
+    const o = selectedOpening.value
+    if (!o || !(cm >= 40)) return
+    const width = Math.min(cm / 100, opLen(o) - 2 * OP_MARGIN)
+    emit('opening-change', o.id, { width, frac: clampFrac(o, o.frac, width) })
+  },
+})
+const opOffsetCm = computed({
+  get: () => (selectedOpening.value ? Math.round((selectedOpening.value.frac * opLen(selectedOpening.value) - selectedOpening.value.width / 2) * 100) : 0),
+  set: (cm) => {
+    const o = selectedOpening.value
+    if (!o || !Number.isFinite(cm)) return
+    emit('opening-change', o.id, { frac: clampFrac(o, (cm / 100 + o.width / 2) / opLen(o)) })
+  },
+})
+const OP_SIDE = { top: '上牆', bottom: '下牆', left: '左牆', right: '右牆' }
 
 // ── Item ops ────────────────────────────────────────────────────
 // 90° 增量旋轉：交換 footprint 的 w/h（保持中心點不變）。後端的碰撞偵測/深度投影只讀
@@ -209,7 +276,7 @@ function findFreeSpot(w, h, type) {
 }
 
 function addItem(type) {
-  const [w, h] = furnitureDefaultSize(type)
+  const [w, h] = furnitureDefaultSize(type, roomW.value, roomD.value)
   const id = `${type}_${Date.now().toString(36)}`
   const { x, y } = findFreeSpot(w, h, type)
   const item = { id, type, w, h, x, y, rotation: 0, locked: false }
@@ -259,6 +326,21 @@ const lockedModel = computed({
 const paletteRoomType = ref(props.roomType)
 const paletteCatalog = computed(() => FURNITURE_BY_ROOM[paletteRoomType.value] || [])
 
+// ── 尺寸標示模式 ─────────────────────────────────────────────────
+// 開啟後：畫布外圍顯示總長與門窗尺寸鏈、每件家具標寬×深、選取家具時標出它到四面牆的距離。
+const showDims = ref(false)
+const cmOf = (frac, meters) => Math.round(frac * meters * 100)
+const gaps = computed(() => {
+  const it = selectedItem.value
+  if (!showDims.value || !it) return []
+  return [
+    { k: 'l', cls: 'gap-h', style: { left: 0, top: pct(it.y + it.h / 2), width: pct(it.x) }, cm: cmOf(it.x, roomW.value) },
+    { k: 'r', cls: 'gap-h', style: { left: pct(it.x + it.w), top: pct(it.y + it.h / 2), width: pct(1 - it.x - it.w) }, cm: cmOf(1 - it.x - it.w, roomW.value) },
+    { k: 't', cls: 'gap-v', style: { top: 0, left: pct(it.x + it.w / 2), height: pct(it.y) }, cm: cmOf(it.y, roomD.value) },
+    { k: 'b', cls: 'gap-v', style: { top: pct(it.y + it.h), left: pct(it.x + it.w / 2), height: pct(1 - it.y - it.h) }, cm: cmOf(1 - it.y - it.h, roomD.value) },
+  ].filter(g => g.cm > 0)
+})
+
 // ── Zoom ───────────────────────────────────────────────────────
 const zoom = ref(1)
 function zoomIn() { zoom.value = Math.min(2, Math.round((zoom.value + 0.2) * 10) / 10) }
@@ -291,6 +373,9 @@ const boardAspect = computed(() => {
       <button class="tool-btn" @click="zoomOut" title="縮小">
         <Icon icon="mdi:magnify-minus-outline" width="16" /><span>縮小</span>
       </button>
+      <button class="tool-btn" :class="{ active: showDims }" :aria-pressed="showDims" @click="showDims = !showDims" title="顯示／隱藏尺寸標示">
+        <Icon icon="mdi:ruler" width="16" /><span>尺寸</span>
+      </button>
       <button class="tool-btn" :disabled="!selectedItem" @click="removeItem(selectedItem)" title="刪除">
         <Icon icon="mdi:trash-can-outline" width="16" /><span>刪除</span>
       </button>
@@ -322,18 +407,27 @@ const boardAspect = computed(() => {
 
       <!-- ── 畫布 ── -->
       <div class="board-viewport">
-        <div ref="boardRef" class="board"
-             :style="{ transform: `scale(${zoom})`, aspectRatio: boardAspect }"
+        <div class="board-stage" :class="{ dims: showDims }" :style="{ transform: `scale(${zoom})`, '--z': zoom }">
+        <RoomDims v-if="showDims" :room-w="roomW" :room-d="roomD" :geometry="geometry" />
+        <div ref="boardRef" class="board" :class="{ 'has-walls': !!geometry }"
+             :style="{ aspectRatio: boardAspect }"
              @pointerdown="selectedId = null">
           <div class="grid"></div>
-          <div class="door" title="門"></div>
-          <div class="window" title="窗"></div>
+          <RoomWalls
+            v-if="geometry" :room-w="roomW" :room-d="roomD" :geometry="geometry"
+            :selected-id="selectedOpening?.id || ''" @pick="onOpeningDown"
+          />
 
           <!-- 點外框可選取「房間」，調整整體長寬（見下方家具設定面板的房間分支） -->
           <div class="frame-hit frame-top"    title="調整房間尺寸" @pointerdown.stop="selectRoom"></div>
           <div class="frame-hit frame-bottom" title="調整房間尺寸" @pointerdown.stop="selectRoom"></div>
           <div class="frame-hit frame-left"   title="調整房間尺寸" @pointerdown.stop="selectRoom"></div>
           <div class="frame-hit frame-right"  title="調整房間尺寸" @pointerdown.stop="selectRoom"></div>
+
+          <div
+            v-for="(k, i) in doorKeepouts" :key="`k${i}`" class="keepout"
+            :style="{ left: pct(k.x), top: pct(k.y), width: pct(k.w), height: pct(k.h) }"
+          ></div>
 
           <div
             v-for="item in items"
@@ -345,6 +439,7 @@ const boardAspect = computed(() => {
           >
             <Icon :icon="iconOf(item.type)" class="node-icon" />
             <span class="node-label">{{ labelOf(item.type) }}</span>
+            <span v-if="showDims" class="node-size">{{ cmOf(item.w, roomW) }}×{{ cmOf(item.h, roomD) }}</span>
             <Icon v-if="item.locked" icon="mdi:lock-outline" class="node-lock" />
 
             <template v-if="selectedId === item.id && !item.locked">
@@ -359,6 +454,12 @@ const boardAspect = computed(() => {
               <div class="handle" @pointerdown="onDown($event, item, 'resize')"></div>
             </template>
           </div>
+
+          <!-- 選取家具 → 到四面牆的距離 -->
+          <div v-for="g in gaps" :key="g.k" class="gap" :class="g.cls" :style="g.style">
+            <span class="gap-lab">{{ g.cm }}</span>
+          </div>
+        </div>
         </div>
       </div>
 
@@ -385,6 +486,21 @@ const boardAspect = computed(() => {
           <input type="checkbox" v-model="lockedModel" class="switch-input" />
         </label>
       </aside>
+      <aside class="props-panel" v-else-if="selectedOpening">
+        <div class="props-header">
+          <Icon :icon="selectedOpening.type === 'door' ? 'mdi:door' : 'mdi:window-closed-variant'" width="20" />
+          <span>{{ selectedOpening.type === 'door' ? (selectedOpening.entry ? '大門' : '門') : '窗' }}（{{ OP_SIDE[selectedOpening.side] }}）</span>
+        </div>
+        <label class="props-field">
+          <span>寬度 (cm)</span>
+          <input type="number" v-model.number="opWidthCm" min="40" />
+        </label>
+        <label class="props-field">
+          <span>{{ selectedOpening.side === 'top' || selectedOpening.side === 'bottom' ? '離左側牆角 (cm)' : '離上側牆角 (cm)' }}</span>
+          <input type="number" v-model.number="opOffsetCm" min="0" />
+        </label>
+        <p class="props-note">也可以直接在畫布上沿牆拖動</p>
+      </aside>
       <aside class="props-panel" v-else-if="selectedId === ROOM_SEL">
         <div class="props-header">
           <Icon icon="mdi:floor-plan" width="20" />
@@ -405,7 +521,7 @@ const boardAspect = computed(() => {
       </aside>
     </div>
 
-    <span class="hint">拖動移動 · 右下角縮放 · ⟳ 旋轉 · 靠牆自動吸附 · 點選外框可調整房間尺寸</span>
+    <span class="hint">拖動移動 · 右下角縮放 · ⟳ 旋轉 · 靠牆自動吸附 · 點選外框可調整房間尺寸 · 「尺寸」可顯示標註</span>
   </div>
 </template>
 
@@ -424,7 +540,7 @@ const boardAspect = computed(() => {
   font-family: inherit; font-weight: 600; cursor: pointer; transition: all 0.15s;
 }
 .tool-btn:hover:not(:disabled) { background: #f7efe3; }
-.tool-btn.active { background: #8B5E3C; color: #fff; }
+.tool-btn.active { background: #756d66; color: #fff; }
 .tool-btn:disabled { opacity: 0.35; cursor: default; }
 .tool-sep { width: 1px; height: 24px; background: #e7dcc9; margin: 0 0.2rem; }
 .hint { font-size: 0.74rem; color: #a08a6f; text-align: center; }
@@ -457,7 +573,7 @@ const boardAspect = computed(() => {
 .palette-item-label { line-height: 1.15; }
 .palette-item-add {
   position: absolute; top: 0.2rem; right: 0.2rem;
-  color: #8B5E3C; font-size: 0.8rem;
+  color: #756d66; font-size: 0.8rem;
 }
 .palette-hint { font-size: 0.68rem; color: #a08a6f; margin: 0; text-align: center; }
 
@@ -465,12 +581,18 @@ const boardAspect = computed(() => {
   flex: 1; min-width: 420px; max-height: 720px; overflow: auto;
   display: flex; justify-content: center;
 }
-.board {
-  position: relative; width: 100%; max-width: 720px;
-  background: #fbf6ee; transform-origin: top center;
-  border: 3px solid #2b2b2b; border-radius: 4px; overflow: hidden;
-  box-shadow: 0 4px 24px rgba(0,0,0,0.12); touch-action: none; flex-shrink: 0;
+.board-stage {
+  position: relative; width: 100%; max-width: 720px; box-sizing: border-box;
+  transform-origin: top center; flex-shrink: 0;
 }
+.board-stage.dims { max-width: 812px; padding: 46px; }   /* 外圍留給尺寸線 */
+.board {
+  position: relative; width: 100%;
+  background: #fbf6ee;
+  border: 3px solid #2b2b2b; border-radius: 4px; overflow: hidden;
+  box-shadow: 0 4px 24px rgba(0,0,0,0.12); touch-action: none;
+}
+.board.has-walls { border: 0; border-radius: 0; }   /* 有真實牆體就不用外框當牆 */
 .grid {
   position: absolute; inset: 0;
   background-image:
@@ -478,13 +600,25 @@ const boardAspect = computed(() => {
     linear-gradient(to bottom, rgba(120,90,60,0.08) 1px, transparent 1px);
   background-size: 20% 20%;
 }
-.door {
-  position: absolute; bottom: -3px; left: 45%; width: 10%; height: 6px;
-  background: #fbf6ee; border-bottom: 3px solid #bfae95;
+
+/* 尺寸標示模式：家具尺寸與到牆距離 */
+.node-size {
+  position: absolute; left: 50%; bottom: 2px; transform: translateX(-50%);
+  font-size: 10px; line-height: 1; padding: 1px 3px; border-radius: 2px;
+  background: rgba(255,255,255,0.85); color: #5a4a36; white-space: nowrap; pointer-events: none;
 }
-.window {
-  position: absolute; top: -3px; left: 40%; width: 20%; height: 6px;
-  background: #c0daf8; border: 1.5px solid #2e6ab5;
+.keepout {
+  position: absolute; pointer-events: none;
+  background: rgba(224, 138, 30, 0.10); border: 1px dashed rgba(224, 138, 30, 0.55);
+}
+.props-note { margin: 0; font-size: 0.74rem; color: #a08a6f; }
+.gap { position: absolute; pointer-events: none; }
+.gap-h { height: 0; border-top: 1px dashed #c0392b; }
+.gap-v { width: 0; border-left: 1px dashed #c0392b; }
+.gap-lab {
+  position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%);
+  padding: 0 3px; font-size: 10px; line-height: 1.3; border-radius: 2px;
+  background: #fff; color: #c0392b; white-space: nowrap;
 }
 
 /* 外框點擊熱區——貼著內側邊緣，board 本身 overflow:hidden 所以不能用負值往外伸 */
@@ -498,14 +632,14 @@ const boardAspect = computed(() => {
 
 .node {
   position: absolute; box-sizing: border-box;
-  border: 1.5px solid #7a5c3a; background: rgba(180,140,100,0.32);
+  border: 1.5px solid #7a5c3a; background: rgba(163, 155, 148,0.32);
   border-radius: 3px; cursor: grab; display: flex; flex-direction: column;
   align-items: center; justify-content: center; gap: 1px;
   user-select: none; transition: box-shadow 0.12s;
 }
 .node:active { cursor: grabbing; }
 .node.floor { background: rgba(160,160,160,0.20); border: 1.5px dashed #999; z-index: 0; }
-.node.selected { box-shadow: 0 0 0 2px #8B5E3C, 0 3px 12px rgba(0,0,0,0.2); z-index: 5; }
+.node.selected { box-shadow: 0 0 0 2px #756d66, 0 3px 12px rgba(0,0,0,0.2); z-index: 5; }
 .node.locked { cursor: default; opacity: 0.85; }
 .node-icon { font-size: 1rem; line-height: 1; pointer-events: none; }
 .node-label {
@@ -525,7 +659,7 @@ const boardAspect = computed(() => {
 .node-btn.del { top: -22px; right: -6px; background: #c0392b; }
 .handle {
   position: absolute; right: -6px; bottom: -6px; width: 13px; height: 13px;
-  background: #8B5E3C; border: 2px solid #fff; border-radius: 3px;
+  background: #756d66; border: 2px solid #fff; border-radius: 3px;
   cursor: nwse-resize;
 }
 
@@ -552,5 +686,5 @@ const boardAspect = computed(() => {
   display: flex; align-items: center; justify-content: space-between;
   font-size: 0.78rem; color: #5c4630; font-weight: 600;
 }
-.switch-input { width: 36px; height: 20px; accent-color: #8B5E3C; cursor: pointer; }
+.switch-input { width: 36px; height: 20px; accent-color: #756d66; cursor: pointer; }
 </style>

@@ -10,6 +10,9 @@ export const FURNITURE_LABEL_ZH = {
   cabinet: '櫃子', dresser: '梳妝台',
   lamp: '立燈', plant: '盆栽', rug: '地毯',
   cat_tree: '貓跳台', dog_bed: '狗窩', litter_box: '貓砂盆',
+  // 風水規則的標的：沒有這幾件家具，開門不見灶／水火不相容／鏡不照床就永遠不會觸發，
+  // 所以它們同時進了後端的 FURNITURE_SIZES 與這裡的選單。
+  stove: '爐灶', fridge: '冰箱', mirror: '鏡子',
   // 浴室／兒童房（Figma 有這兩個房型）。後端 FURNITURE_SIZES 沒收錄這些 type，
   // 會落到 default 尺寸，但名稱仍會進 prompt，渲染時看得出來。
   bathtub: '浴缸', shower: '淋浴間', toilet: '馬桶', sink: '洗手台',
@@ -37,6 +40,7 @@ export const FURNITURE_ICON_MAP = {
   cabinet: 'mdi:cupboard', dresser: 'mdi:dresser',
   lamp: 'mdi:floor-lamp', plant: 'mdi:flower', rug: 'mdi:rug',
   cat_tree: 'mdi:cat', dog_bed: 'mdi:dog', litter_box: 'mdi:tray-full',
+  stove: 'mdi:stove', fridge: 'mdi:fridge', mirror: 'mdi:mirror',
   bathtub: 'mdi:bathtub-outline', shower: 'mdi:shower', toilet: 'mdi:toilet',
   sink: 'mdi:sink', vanity: 'mdi:cupboard-outline', towel_rack: 'mdi:hanger',
   toy_storage: 'mdi:toy-brick-outline', study_chair: 'mdi:seat-outline',
@@ -62,6 +66,27 @@ export const ROOM_OPTIONS = [
   { value: 'study',       label: '書房' },
 ]
 
+// 空間類型卡片用的大圖示；自訂房型沒有對應就用 roomIcon() 的預設
+const ROOM_ICONS = {
+  dining: 'mdi:silverware-fork-knife', living_room: 'mdi:sofa', bedroom: 'mdi:bed-king', kitchen: 'mdi:stove', study: 'mdi:desk',
+}
+import livingRoomPhoto from '@/assets/rooms/living_room.jpg'
+import bedroomPhoto from '@/assets/rooms/bedroom.jpg'
+import kitchenPhoto from '@/assets/rooms/kitchen.jpg'
+import studyPhoto from '@/assets/rooms/study.jpg'
+import livingDiningPhoto from '@/assets/rooms/living_dining.jpg'
+import bathroomPhoto from '@/assets/rooms/bathroom.jpg'
+import balconyPhoto from '@/assets/rooms/balcony.jpg'
+import diningPhoto from '@/assets/rooms/dining.jpg'
+
+// 空間類型卡片的實景照；自訂房型沒有照片，卡片退回圖示
+const ROOM_PHOTOS = {
+  living_room: livingRoomPhoto, bedroom: bedroomPhoto, kitchen: kitchenPhoto, study: studyPhoto,
+  living_dining: livingDiningPhoto, bathroom: bathroomPhoto, balcony: balconyPhoto, dining: diningPhoto,
+}
+export const roomPhoto = (value) => ROOM_PHOTOS[value] || ''
+export const roomIcon = (value) => ROOM_ICONS[value] || 'mdi:home-variant-outline'
+
 export const FURNITURE_BY_ROOM = {
   living_room: [
     { value: 'sofa',          label: '沙發' },
@@ -80,10 +105,14 @@ export const FURNITURE_BY_ROOM = {
     { value: 'desk',          label: '書桌' },
     { value: 'dresser',       label: '梳妝台' },
     { value: 'armchair',      label: '扶手椅' },
+    { value: 'mirror',        label: '鏡子' },
     { value: 'lamp',          label: '燈' },
   ],
   kitchen: [
     { value: 'cabinet',       label: '廚櫃' },
+    { value: 'stove',         label: '爐灶' },
+    { value: 'sink',          label: '水槽' },
+    { value: 'fridge',        label: '冰箱' },
     { value: 'shelf',         label: '層架' },
   ],
   dining_room: [
@@ -106,6 +135,7 @@ export const FURNITURE_BY_ROOM = {
     { value: 'toilet',        label: '馬桶' },
     { value: 'sink',          label: '洗手台' },
     { value: 'vanity',        label: '浴櫃' },
+    { value: 'mirror',        label: '鏡子' },
     { value: 'towel_rack',    label: '毛巾架' },
     { value: 'shelf',         label: '層架' },
   ],
@@ -155,11 +185,35 @@ export const FURNITURE_DEFAULT_SIZE = {
   plant: [0.06, 0.06], lamp: [0.05, 0.05], rug: [0.38, 0.24],
   bathtub: [0.30, 0.14], shower: [0.16, 0.16], toilet: [0.09, 0.12],
   sink: [0.10, 0.08], vanity: [0.14, 0.08], towel_rack: [0.08, 0.03],
+  stove: [0.13, 0.08], fridge: [0.09, 0.09], mirror: [0.12, 0.03],
   toy_storage: [0.14, 0.08], study_chair: [0.07, 0.07], bean_bag: [0.11, 0.11],
   washer: [0.16, 0.16], drying_rack: [0.20, 0.06], balcony_cabinet: [0.14, 0.08], mop_sink: [0.12, 0.10],
   default: [0.12, 0.10],
 }
 
-export function furnitureDefaultSize(type) {
-  return FURNITURE_DEFAULT_SIZE[type] || FURNITURE_DEFAULT_SIZE.default
+// 真實尺寸（公尺，寬 × 深）。上面 FURNITURE_DEFAULT_SIZE 是「房間比例」，同一件家具在大房間會
+// 變大、小房間變小，跟真實尺寸的門（90cm）、牆放在一起就會顯得不協調；預設擺法一律改用這張表。
+export const FURNITURE_REAL_SIZE_M = {
+  sofa: [2.0, 0.9], armchair: [0.8, 0.8], chair: [0.45, 0.45],
+  coffee_table: [1.0, 0.5], side_table: [0.45, 0.45], dining_table: [1.4, 0.8],
+  desk: [1.2, 0.6], tv_unit: [1.6, 0.4], bed: [1.5, 2.0],
+  nightstand: [0.45, 0.4], wardrobe: [1.8, 0.6], bookshelf: [0.9, 0.3],
+  cabinet: [0.9, 0.5], dresser: [1.0, 0.45], shelf: [0.9, 0.3],
+  plant: [0.4, 0.4], lamp: [0.3, 0.3], rug: [2.0, 1.4],
+  bathtub: [1.6, 0.75], shower: [0.9, 0.9], toilet: [0.4, 0.7],
+  sink: [0.6, 0.45], vanity: [0.8, 0.5], towel_rack: [0.6, 0.15],
+  stove: [0.75, 0.5], fridge: [0.7, 0.7], mirror: [0.6, 0.1],
+  toy_storage: [0.9, 0.4], study_chair: [0.45, 0.45], bean_bag: [0.7, 0.7],
+  washer: [0.6, 0.6], drying_rack: [1.2, 0.4], balcony_cabinet: [0.8, 0.4], mop_sink: [0.5, 0.45],
+  default: [0.6, 0.6],
+}
+export function furnitureRealSize(type) {
+  return FURNITURE_REAL_SIZE_M[type] || FURNITURE_REAL_SIZE_M.default
+}
+
+// 新增家具用：真實尺寸換成這間房的歸一化 w/h（夾在 [0.04, 0.9]，太小的房間至少看得到、不會比房間大）。
+export function furnitureDefaultSize(type, roomW = 5, roomD = 4) {
+  const [w, d] = furnitureRealSize(type)
+  const c = (v) => Math.max(0.04, Math.min(0.9, v))
+  return [c(w / roomW), c(d / roomD)]
 }

@@ -6,8 +6,8 @@
  * 自動流程），每件家具有多個候選可切換、可收藏、可開商品頁，總預算跟著選擇即時算。
  * 這些全部保留。
  */
-import { computed, reactive, watch } from 'vue'
-import { RouterLink } from 'vue-router'
+import { computed, reactive, ref, watch, onMounted } from 'vue'
+import { RouterLink, useRouter } from 'vue-router'
 import { useDesignFlow } from '@/composables/useDesignFlow'
 import { useFurnitureSelection } from '@/composables/useFurnitureSelection'
 
@@ -22,6 +22,17 @@ const {
 } = useFurnitureSelection()
 
 const quotation = computed(() => result.value?.quotation_result || null)
+
+// 進到這一步就自動估價（約 30 秒），不要讓使用者面對一頁空白還得自己找按鈕。
+// 已經有報價（回上一步再回來）或正在跑就不重複打。
+onMounted(() => { if (!quotation.value && !quotationLoading.value) fetchQuotation() })
+
+const router = useRouter()
+const confirmingReset = ref(false)
+function startOver() {
+  resetFlow()
+  router.push('/start')
+}
 
 // 每件家具目前選中的候選 index
 const selectedCandidates = reactive({})
@@ -118,8 +129,11 @@ function toFavoriteItem(item, c) {
       </p>
     </template>
 
-    <p v-else-if="!quotationLoading" class="hint">
-      點擊「取得家具報價」辨識畫面中的家具並推薦 IKEA 商品（約需 30 秒）。
+    <p v-else-if="quotationLoading" class="hint" role="status">
+      正在辨識畫面中的家具並比對 IKEA 商品…約需 30 秒
+    </p>
+    <p v-else class="hint">
+      尚未取得報價，點右上角「取得家具報價」重試。
     </p>
 
     <!-- 整個流程走完，最後留一個收藏這次設計的地方——它其實一直都在
@@ -141,7 +155,12 @@ function toFavoriteItem(item, c) {
 
     <div class="actions">
       <button class="db-btn db-btn--ghost db-btn--sm" @click="prevStep">← 回微調編輯</button>
-      <button class="db-btn db-btn--ghost db-btn--sm" @click="resetFlow">開始新的設計</button>
+      <template v-if="confirmingReset">
+        <span class="reset-warn">目前的設計與報價會被清除</span>
+        <button class="db-btn db-btn--ghost db-btn--sm" @click="confirmingReset = false">取消</button>
+        <button class="db-btn db-btn--sm" @click="startOver">確定，重新開始</button>
+      </template>
+      <button v-else class="db-btn db-btn--ghost db-btn--sm" @click="confirmingReset = true">開始新的設計</button>
     </div>
   </div>
 </template>
@@ -213,7 +232,7 @@ function toFavoriteItem(item, c) {
 }
 .row-label {
   font-family: var(--db-font-display);
-  font-style: italic;
+  font-style: normal;
   font-size: 1.05rem;
   color: var(--db-text);
 }
@@ -298,7 +317,7 @@ function toFavoriteItem(item, c) {
 .total-label { color: var(--db-text-soft); font-size: 0.9rem; }
 .total-val {
   font-family: var(--db-font-display);
-  font-style: italic;
+  font-style: normal;
   font-size: 1.6rem;
   color: var(--db-text);
   font-variant-numeric: tabular-nums;
@@ -333,7 +352,7 @@ function toFavoriteItem(item, c) {
   background: #fff;
   color: var(--db-text);
   font-family: var(--db-font-display);
-  font-style: italic;
+  font-style: normal;
   font-weight: 500;
   font-size: 1rem;
   cursor: pointer;
@@ -353,6 +372,7 @@ function toFavoriteItem(item, c) {
   text-underline-offset: 3px;
 }
 .collect-error { margin: 0; width: 100%; text-align: center; }
+.reset-warn { align-self: center; color: var(--db-danger); font-size: 0.85rem; }
 
 .actions {
   display: flex;

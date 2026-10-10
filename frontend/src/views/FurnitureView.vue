@@ -159,6 +159,7 @@ function goHome() {
           <img
             v-if="item.image_url"
             :src="item.image_url"
+            :alt="item.name"
             class="card-img"
             loading="lazy"
             @error="$event.target.style.display='none'"
@@ -208,7 +209,7 @@ function goHome() {
   text-decoration: none;
   padding: 0.3rem 0.8rem;
   border-radius: 999px;
-  background: linear-gradient(135deg, #8B5E3C 0%, #b07845 100%);
+  background: linear-gradient(135deg, #756d66 0%, #b07845 100%);
   font-weight: 700;
 }
 .cart-link:hover { opacity: 0.9; }
@@ -218,7 +219,7 @@ function goHome() {
 .category-tabs { display: flex; gap: 0.5rem; flex-wrap: wrap; margin-bottom: 0.85rem; }
 .cat-tab { padding: 0.35rem 0.9rem; border: 1.5px solid #d8d8d8; border-radius: 999px; background: transparent; color: #444; font-size: 0.82rem; font-weight: 600; cursor: pointer; }
 .cat-tab:hover:not(.active) { background: #f5f5f5; }
-.cat-tab.active { background: linear-gradient(135deg, #8B5E3C 0%, #b07845 100%); border-color: transparent; color: #fff; }
+.cat-tab.active { background: linear-gradient(135deg, #756d66 0%, #b07845 100%); border-color: transparent; color: #fff; }
 
 .price-tabs { display: flex; gap: 0.5rem; flex-wrap: wrap; margin-bottom: 0.85rem; }
 .price-tab { padding: 0.3rem 0.8rem; border: 1.5px solid #d8c8b8; border-radius: 999px; background: #fffaf5; color: #6b4a28; font-size: 0.78rem; font-weight: 600; cursor: pointer; }
@@ -248,7 +249,7 @@ function goHome() {
   transition: border-color 0.15s, box-shadow 0.15s;
 }
 .search-input::placeholder { color: #b39a80; }
-.search-input:focus { border-color: #8B5E3C; box-shadow: 0 0 0 2px rgba(139,94,60,0.15); }
+.search-input:focus { border-color: #756d66; box-shadow: 0 0 0 2px rgba(117, 109, 102,0.15); }
 .search-clear {
   position: absolute;
   top: 50%;
@@ -270,15 +271,15 @@ function goHome() {
 .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 0.75rem; }
 
 .card { border: 1px solid #e8ddd0; border-radius: 10px; overflow: hidden; cursor: pointer; background: #fffaf5; transition: box-shadow 0.15s, border-color 0.15s; }
-.card:hover { box-shadow: 0 4px 18px rgba(139,94,60,0.18); border-color: #d4b89a; }
-.card.checked { border-color: #8B5E3C; box-shadow: 0 0 0 2px #d4b89a; }
+.card:hover { box-shadow: 0 4px 18px rgba(117, 109, 102,0.18); border-color: #c9c4bb; }
+.card.checked { border-color: #756d66; box-shadow: 0 0 0 2px #c9c4bb; }
 
 .card-img-wrap { position: relative; aspect-ratio: 1/1; background: #f5f5f5; overflow: hidden; }
 .card-img { width: 100%; height: 100%; object-fit: cover; display: block; }
 .card-no-img { display: flex; align-items: center; justify-content: center; width: 100%; height: 100%; color: #bbb; font-size: 0.78rem; }
 
 .check-icon { position: absolute; top: 6px; right: 6px; display: flex; align-items: center; justify-content: center; width: 22px; height: 22px; border-radius: 50%; border: 2px solid #fff; background: rgba(255,255,255,0.7); font-size: 0.75rem; font-weight: 700; color: #fff; box-shadow: 0 1px 4px rgba(0,0,0,0.2); }
-.check-icon.checked { background: #8B5E3C; border-color: #8B5E3C; }
+.check-icon.checked { background: #756d66; border-color: #756d66; }
 
 .card-body { padding: 0.5rem 0.6rem; }
 .card-name { font-size: 0.76rem; color: #222; margin: 0 0 0.2rem; line-height: 1.35;
@@ -298,10 +299,10 @@ function goHome() {
 .favorite-btn {
   width: 100%;
   padding: 0.32rem 0;
-  border: 1.5px solid #d4b89a;
+  border: 1.5px solid #c9c4bb;
   border-radius: 999px;
   background: #fff;
-  color: #8B5E3C;
+  color: #756d66;
   font-size: 0.72rem;
   font-weight: 700;
   cursor: pointer;
@@ -309,7 +310,7 @@ function goHome() {
 }
 .favorite-btn:hover { background: #fff0d8; }
 .favorite-btn.favorited {
-  background: linear-gradient(135deg, #8B5E3C 0%, #b07845 100%);
+  background: linear-gradient(135deg, #756d66 0%, #b07845 100%);
   border-color: transparent;
   color: #fff;
 }

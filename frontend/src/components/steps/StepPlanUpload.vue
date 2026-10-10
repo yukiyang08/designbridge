@@ -85,7 +85,7 @@ const {
 .drop-icon { font-size: 2.5rem; }
 .drop-label {
   font-family: var(--db-font-display);
-  font-style: italic;
+  font-style: normal;
   font-size: 1.5rem;
   color: var(--db-text-soft);
 }

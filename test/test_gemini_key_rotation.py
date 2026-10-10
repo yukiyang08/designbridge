@@ -27,6 +27,7 @@ import designbridge.render.llm as llm
 # Config 在 import 時就從環境讀值，這裡直接對齊上面設定的測試值
 Config.GEMINI_API_KEY = "key-a"
 Config.GEMINI_API_KEYS = "key-a,key-b,key-c"
+Config.GOOGLE_GENAI_FORCE_API_KEY = True  # 本機有 service-account.json 會走 Vertex，測試要固定走 API key
 
 
 def test_keys_merged_and_deduped():

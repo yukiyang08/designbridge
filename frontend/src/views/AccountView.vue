@@ -94,7 +94,7 @@ const SECTIONS = [
   border-radius: var(--db-radius-chip);
   color: var(--db-text);
   font-family: var(--db-font-display);
-  font-style: italic;
+  font-style: normal;
   font-size: 1.1rem;
   text-decoration: none;
   transition: background 0.16s, color 0.16s;

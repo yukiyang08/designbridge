@@ -30,9 +30,10 @@ NO_DIRECT_DOOR_PAIRS = frozenset({
 
 # weight: relative share of total area. min_area_m2: floor below which a room can't shrink.
 ROOM_TYPE_SPECS: dict[str, dict] = {
-    "living_dining": {"weight": 3.0, "min_area_m2": 10.0, "label_zh": "客餐廳", "label_en": "LIVING/DINING"},
+    "living_dining": {"weight": 3.0, "min_area_m2": 10.0, "label_zh": "客廳", "label_en": "LIVING"},
     "bedroom_master": {"weight": 2.2, "min_area_m2": 9.0, "label_zh": "主臥室", "label_en": "MASTER BEDROOM"},
     "bedroom": {"weight": 1.6, "min_area_m2": 6.5, "label_zh": "臥室", "label_en": "BEDROOM"},
+    "dining": {"weight": 1.3, "min_area_m2": 6.0, "label_zh": "餐廳", "label_en": "DINING"},
     "kitchen": {"weight": 1.3, "min_area_m2": 4.0, "label_zh": "廚房", "label_en": "KITCHEN"},
     "bathroom": {"weight": 0.8, "min_area_m2": 3.0, "label_zh": "衛浴", "label_en": "BATHROOM"},
     "balcony": {"weight": 0.6, "min_area_m2": 2.0, "label_zh": "陽台", "label_en": "BALCONY"},

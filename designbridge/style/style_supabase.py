@@ -8,12 +8,18 @@ from __future__ import annotations
 
 import hashlib
 import os
+from concurrent.futures import ThreadPoolExecutor, TimeoutError as FutureTimeoutError
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
 _text_embedding_model = None
 _supabase_client = None
+# httpx's timeout=15 only bounds the gap between chunks, not the whole request — a slow
+# host (many of these are scraped source_meta.url sites, not our own CDN) that trickles
+# bytes just under that gap never trips it and can hang the call for minutes. Run the
+# download in a worker thread and give up after a hard wall-clock deadline instead.
+_download_executor = ThreadPoolExecutor(max_workers=4, thread_name_prefix="style-img-dl")
 
 STYLE_REF_DIR = Path(__file__).resolve().parent.parent.parent / "artifacts" / "style_ref"
 
@@ -318,10 +324,14 @@ def download_style_image(image_url: str) -> Path | None:
         return local_path
     try:
         import httpx
-        resp = httpx.get(image_url, timeout=15, follow_redirects=True)
+        future = _download_executor.submit(httpx.get, image_url, timeout=15, follow_redirects=True)
+        resp = future.result(timeout=20)   # 硬上限：卡在慢速/斷續回應的來源站也不會拖垮整個請求
         resp.raise_for_status()
         local_path.write_bytes(resp.content)
         return local_path
+    except FutureTimeoutError:
+        print(f"下載風格參考圖逾時（>20s，來源站太慢）：{image_url}")
+        return None
     except Exception as e:
         print(f"下載風格參考圖失敗：{e}")
         return None
