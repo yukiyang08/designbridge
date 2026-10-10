@@ -51,7 +51,7 @@ requirement_analyzer → visual_preprocessing ─┬─ design   → layout_and_
 
 **Rendering** (`designbridge/render/`, `core/nodes/renderer.py`): backend is chosen by a waterfall of `if backend == "placeholder"` checks (fal.ai FLUX img2img / depth+edge ControlNet, HF Kontext, Imagen, local SDXL). Almost every behaviour is gated by an env-backed flag in `designbridge/core/config.py` — check there before assuming a code path is live. Style swap reuses the previous render's `seed` (stored in `render_result.generation_params`) and, by default, drops the post-estimated depth (`STYLE_SWAP_DEPTH_LOCK`).
 
-**Data:** Supabase (style vector search, storage) plus local Chroma and `designbridge/furniture_kb/ikea_embeddings.npz`. `style_kb/` is the offline pipeline that scrapes, captions, quality-filters and uploads style images; `export_dataset.py` + `train_style_lora.py` train style LoRAs.
+**Data:** Supabase (style vector search via bge-m3 text embeddings, storage) plus `designbridge/furniture_kb/ikea_embeddings.npz` (CLIP, IKEA matching). `style_kb/` is the offline pipeline that scrapes, captions, quality-filters and uploads style images; `export_dataset.py` + `train_style_lora.py` train style LoRAs.
 
 **Frontend** (`frontend/src`): linear wizard `/` → `/start` → `/studio` (direct `/studio` without a draft redirects to `/start`). All wizard state lives in `composables/useDesignFlow.js` composed from `composables/design-flow/*.js`; steps are in `components/steps/`. `/room-plan` is an independent CAD tool unrelated to the wizard.
 

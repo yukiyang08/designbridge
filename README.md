@@ -128,13 +128,9 @@ cd frontend && npm run dev
 全部失敗：回報 render_error，不產圖
 ```
 
-### 風格搜尋優先序
+### 風格搜尋
 
-```
-1. Supabase pgvector 語意搜尋（需 SUPABASE_URL + KEY）
-2. 本地 ChromaDB 向量庫（需先建立索引）
-3. Aggregated JSON fallback（目前只有 modern / country / luxury）
-```
+Supabase pgvector 語意搜尋（需 `SUPABASE_URL` + KEY）；失敗時不帶風格參考生成。
 
 ---
 
@@ -156,7 +152,7 @@ designbridge/
 │   ├── prompts.py              # Prompt 模板
 │   ├── state.py                # LangGraph State schema
 │   ├── schemas.py              # 所有 TypedDict 定義
-│   ├── style_apply.py          # 風格參數建立（Supabase → ChromaDB → JSON）
+│   ├── style_apply.py          # 風格參數建立（Supabase pgvector）
 │   ├── style_supabase.py       # Supabase 向量搜尋
 │   ├── vision.py               # 深度估測 + 語意分割
 │   └── inpaint.py              # SD Inpainting 工具

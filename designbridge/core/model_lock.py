@@ -12,8 +12,7 @@ this has been observed to intermittently raise errors like
 ``cannot import name 'AutoImageProcessor' from 'transformers'``.
 
 All lazy model-loading entry points (SAM 2 predictor, depth/segmentation
-models, CLIP evaluator, text embedding models, Chroma's SentenceTransformer
-embedding function, ...) should acquire ``MODEL_LOAD_LOCK`` around their
+models, CLIP evaluator, text embedding models, ...) should acquire ``MODEL_LOAD_LOCK`` around their
 first-time import + ``from_pretrained``/construction logic so that at most
 one such heavy load can happen process-wide at any given moment.
 """
