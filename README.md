@@ -79,11 +79,6 @@ HF_TOKEN=你的_hf_token
 SUPABASE_URL=https://你的專案.supabase.co
 SUPABASE_SERVICE_ROLE_KEY=你的_service_role_key
 
-# 圖片生成模型：flux | sdxl | sd（預設 sdxl）
-DESIGNBRIDGE_LOCAL_MODEL_TYPE=flux
-
-# 動態 routing（選填，開啟後 design_director 改用 LLM 讀 SKILL.md 決策）
-# DESIGNBRIDGE_ENABLE_DYNAMIC_ROUTING=true
 ```
 
 > **PYTHONUTF8=1 在 Windows 必填**，否則中文 emoji print 會 crash。
@@ -123,21 +118,14 @@ cd frontend && npm run dev
 
 ## 功能說明
 
-### 動態 Routing（SKILL.md 語意調度）
-
-`skills/` 目錄下每個 Agent 都有一份 `SKILL.md`，描述它的能力與適用場景。
-
-- **預設（rule-based）**：根據 `hint_layout`、`hint_style`、`edit_scope` 的數值做 IF-ELSE 判斷
-- **LLM-based**：設定 `DESIGNBRIDGE_ENABLE_DYNAMIC_ROUTING=true` 後，由 Gemini 閱讀 SKILL.md 自行語意判斷
-
-LLM routing 的優勢：能理解語意模糊的請求（「讓客廳更有質感」、英文輸入）、處理 edit_scope 與語意衝突的情況，任何失敗自動 fallback 回 rule-based。
 
 ### 圖片生成後端優先序
 
 ```
-1. HF Inference API（有 HF_TOKEN，雲端，不需下載模型）
-2. 本地 Flux / SDXL / SD（需 GPU，由 DESIGNBRIDGE_LOCAL_MODEL_TYPE 決定）
-3. PIL 佔位圖（開發用 fallback）
+有深度圖：fal.ai FLUX depth ControlNet → HF Kontext
+只有 2D 平面圖：fal.ai 投影深度 ControlNet → HF Kontext（以平面圖當引導）
+純文字：HF Inference → fal.ai FLUX schnell
+全部失敗：回報 render_error，不產圖
 ```
 
 ### 風格搜尋優先序
@@ -240,7 +228,4 @@ DESIGNBRIDGE_TEXT2ROOM_STEPS_PER_SIDE=3
 
 **Q：generated_image 是 placeholder（純白圖）**
 → 確認 `HF_TOKEN` 有設定；或本地有 GPU 且 `DESIGNBRIDGE_ENABLE_SDXL_FALLBACK=true`
-
-**Q：動態 routing 沒有作用**
-→ 確認 `.env` 有 `DESIGNBRIDGE_ENABLE_DYNAMIC_ROUTING=true`，且 terminal 輸出有 `[design_director] LLM router: ...`
 
