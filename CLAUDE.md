@@ -35,7 +35,7 @@ No linter/formatter is configured. `.env` needs `GEMINI_API_KEY`, `FAL_KEY`, `HF
 ```
 requirement_analyzer → visual_preprocessing ─┬─ design   → layout_and_style_agent → composer ─┐
                                               └─ adjust   → adjuster_agent ───────────────────┤
-                       clip_evaluator ← depth_cloud ← renderer ←──────────────────────────────┘
+                       clip_evaluator ← renderer ←────────────────────────────────┘
 ```
 
 - Routing (new design vs. local edit) is decided entirely inside `requirement_analyzer`; there is no separate director node any more.

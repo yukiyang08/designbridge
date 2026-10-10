@@ -143,9 +143,6 @@ def generate_design(request: DesignRequest):
         floor_plan_path = scene_graph.get("floor_plan_path")
         floor_plan_url = _artifact_url(floor_plan_path)
 
-        room_glb_url = _artifact_url(result.get("room_glb_path"))
-        room_panorama_url = _artifact_url(result.get("room_panorama_path"))
-
         response = {
             "status": "success",
             "elapsed_time": f"{elapsed:.2f}s",
@@ -154,8 +151,6 @@ def generate_design(request: DesignRequest):
             "generated_image_url": generated_image_url,
             "floor_plan_path": floor_plan_path,
             "floor_plan_url": floor_plan_url,
-            "room_glb_url": room_glb_url,
-            "room_panorama_url": room_panorama_url,
             "structured_requirement": result.get("structured_requirement"),
             "scene_graph": result.get("scene_graph"),
             "layout_render_config": _layout_render_config() if result.get("scene_graph") else None,

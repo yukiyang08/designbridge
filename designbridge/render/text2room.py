@@ -12,7 +12,6 @@ right extension meets the far edge of the left extension) using both edges as
 context, so the seam is generated content instead of the old mirror-pad.
 Total: 3 fal.ai calls per panorama, regardless of how much width is needed.
 
-Toggle with DESIGNBRIDGE_ENABLE_TEXT2ROOM=true (default: false).
 """
 from __future__ import annotations
 

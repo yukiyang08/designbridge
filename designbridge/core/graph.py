@@ -12,7 +12,6 @@ from designbridge.core.nodes import (
     adjuster_agent_stub,
     clip_evaluator_node,
     composer_node,
-    depth_cloud_node,
     layout_and_style_agent_stub,
     requirement_analyzer,
     renderer,
@@ -50,7 +49,7 @@ def build_graph() -> StateGraph:
     Build DesignBridge workflow:
     START -> requirement_analyzer -> visual_preprocessing
       -> (adjuster_agent | layout_and_style_agent -> composer) -> renderer
-      -> depth_cloud -> clip_evaluator -> END
+      -> clip_evaluator -> END
 
     routing_decision（design vs design_adjuster）完全由 requirement_analyzer 決定
     （RA 語意判斷 → refine_mode 覆蓋 → 都沒有才預設 "design"）。原本這裡有個獨立的
@@ -76,7 +75,6 @@ def build_graph() -> StateGraph:
     graph.add_node("layout_and_style_agent", _timed_node("layout_and_style_agent", layout_and_style_agent_stub))
     graph.add_node("composer", _timed_node("composer", composer_node))
     graph.add_node("renderer", _timed_node("renderer", renderer))
-    graph.add_node("depth_cloud", _timed_node("depth_cloud", depth_cloud_node))
     graph.add_node("clip_evaluator", _timed_node("clip_evaluator", clip_evaluator_node))
 
     graph.add_edge(START, "requirement_analyzer")
@@ -92,8 +90,7 @@ def build_graph() -> StateGraph:
     graph.add_edge("adjuster_agent", "renderer")
     graph.add_edge("layout_and_style_agent", "composer")
     graph.add_edge("composer", "renderer")
-    graph.add_edge("renderer", "depth_cloud")
-    graph.add_edge("depth_cloud", "clip_evaluator")
+    graph.add_edge("renderer", "clip_evaluator")
     graph.add_edge("clip_evaluator", END)
 
     return graph

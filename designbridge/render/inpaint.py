@@ -913,7 +913,6 @@ def run_fal_outpainting(
     try:
         import io
         import os
-        import numpy as np
         import requests
         import fal_client
         from PIL import Image
@@ -996,50 +995,6 @@ def run_fal_outpainting(
         print(f"[outpaint] failed: {e}")
         traceback.print_exc()
         return None
-
-
-def outpaint_for_depth_mesh(
-    image: "Image.Image",
-    border_fraction: float = 0.2,
-    prompt: str | None = None,
-    out_dir: "Path | None" = None,
-) -> "Image.Image | None":
-    """Expand image canvas using AI outpainting to fill rotation holes in depth mesh.
-
-    Returns the expanded PIL Image, or None if outpainting fails (caller should
-    fall back to the original image).
-    """
-    from PIL import Image
-
-    prompt = build_outpaint_prompt() if prompt is None else prompt
-
-    W, H = image.size
-    bx = int(W * border_fraction)
-    by = int(H * border_fraction)
-    new_W, new_H = W + 2 * bx, H + 2 * by
-
-    # Expanded canvas seeded with blurred mirrored edges (see make_context_fill)
-    expanded = make_context_fill(image, left=bx, right=bx, top=by, bottom=by)
-
-    # Mask: white=fill (outpaint area), black=keep (original)
-    mask = Image.new("L", (new_W, new_H), 255)
-    mask.paste(Image.new("L", (W, H), 0), (bx, by))
-
-    print(f"[outpaint] {W}x{H} \u2192 {new_W}x{new_H} (border {border_fraction:.0%} each side)")
-    outpainted = run_fal_outpainting(
-        canvas=expanded, mask=mask, prompt=prompt, out_dir=out_dir, tag="mesh_outpaint"
-    )
-    if outpainted is None:
-        return None
-
-    if out_dir is not None:
-        Path(out_dir).mkdir(parents=True, exist_ok=True)
-        outpainted.save(str(Path(out_dir) / "outpainted.png"))
-        mask.save(str(Path(out_dir) / "outpaint_mask.png"))
-        print(f"[outpaint] saved \u2192 {Path(out_dir) / 'outpainted.png'}")
-
-    print(f"[outpaint] \u2705 done: {outpainted.size}")
-    return outpainted
 
 
 def run_hf_inpainting(

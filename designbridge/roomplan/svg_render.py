@@ -8,7 +8,7 @@ Paint one solid "wall body" rect covering the whole footprint, then paint each r
 from __future__ import annotations
 
 from designbridge.roomplan.constants import EXTERIOR_WALL_THICKNESS_M, INTERIOR_WALL_THICKNESS_M, PING_TO_M2
-from designbridge.roomplan.geometry import is_exterior_edge, room_edges
+from designbridge.roomplan.geometry import is_exterior_edge
 from designbridge.roomplan.schemas import DoorOpening, RoomInstance, WallSegment, WindowOpening
 
 PX_PER_M = 50.0

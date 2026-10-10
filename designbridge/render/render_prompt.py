@@ -290,30 +290,3 @@ def _resolve_output_size(
     height = _round_to_multiple(height, multiple=64, min_value=min_edge, max_value=max_edge)
     return width, height
 
-
-def _renderer_placeholder_image(
-    out_path: Path,
-    task_id: str,
-    prompt: str,
-    output_size: tuple[int, int],
-) -> None:
-    """Save a placeholder image (PIL) when all generation backends are unavailable."""
-    from PIL import Image, ImageDraw
-
-    width, height = output_size
-    img = Image.new("RGB", (width, height), color=(240, 240, 245))
-    draw = ImageDraw.Draw(img)
-    margin_x = max(30, int(width * 0.1))
-    margin_y = max(30, int(height * 0.1))
-    draw.rectangle(
-        [margin_x, margin_y, width - margin_x, height - margin_y],
-        fill=(255, 255, 255),
-        outline=(180, 180, 190),
-    )
-    text = "DesignBridge\n(placeholder)"
-    try:
-        draw.text((width // 2, height // 2), text, fill=(100, 100, 110), anchor="mm")
-    except Exception:
-        draw.text((margin_x + 10, height // 2), "DesignBridge placeholder", fill=(100, 100, 110))
-    out_path.parent.mkdir(parents=True, exist_ok=True)
-    img.save(out_path)

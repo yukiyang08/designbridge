@@ -156,17 +156,3 @@ def depth_to_mesh_glb(
     print(f"[depth_cloud] {n_verts:,} verts {n_faces:,} faces + bg + wings → {out_path}")
     return out_path
 
-
-def generate_depth_mesh_glb(image_path: str, depth_path: str, out_dir: str) -> str | None:
-    """Load image + depth PNG, generate GLB mesh with UV texture."""
-    try:
-        rgb = Image.open(image_path).convert("RGB")
-        depth_png = np.array(Image.open(depth_path).convert("L"), dtype=np.float32)
-        depth_norm = depth_png / 255.0
-
-        out_path = str(Path(out_dir) / "room_mesh.glb")
-        return depth_to_mesh_glb(rgb, depth_norm, out_path)
-    except Exception as e:
-        import logging
-        logging.error(f"[depth_cloud] generate_glb failed: {e}")
-        return None

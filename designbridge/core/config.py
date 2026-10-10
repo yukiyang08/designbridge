@@ -39,12 +39,6 @@ class Config:
     LLAMA_MODEL: str = os.getenv("DESIGNBRIDGE_LLAMA_MODEL", "meta/llama-4-scout-17b-16e-instruct-maas")
     LLAMA_LOCATION: str = os.getenv("DESIGNBRIDGE_LLAMA_LOCATION", "us-east5")
 
-    # Text embedding model for style retrieval (text-to-text).
-    TEXT_EMBEDDING_MODEL: str = os.getenv("DESIGNBRIDGE_TEXT_EMBEDDING_MODEL", "BAAI/bge-m3")
-
-    # Image generation (Imagen) - same API key as Gemini; requires billing
-    IMAGEN_MODEL: str = os.getenv("DESIGNBRIDGE_IMAGEN_MODEL", "imagen-4.0-generate-001")
-
     # Model ID for Flux
     FLUX_MODEL: str = os.getenv("DESIGNBRIDGE_FLUX_MODEL", "black-forest-labs/FLUX.1-schnell")
 
@@ -56,9 +50,6 @@ class Config:
     FAL_KEY: str | None = os.getenv("FAL_KEY")
     FAL_INPAINT_MODEL: str = os.getenv("DESIGNBRIDGE_FAL_INPAINT_MODEL", "fal-ai/flux-pro/v1/fill")
 
-    # 3D 場景重建：算圖前先 outpaint 擴圖，填補深度網格旋轉時的破洞
-    ENABLE_MESH_OUTPAINT: bool = os.getenv("DESIGNBRIDGE_ENABLE_MESH_OUTPAINT", "false").lower() in ("1", "true", "yes")
-    MESH_OUTPAINT_BORDER: float = float(os.getenv("DESIGNBRIDGE_MESH_OUTPAINT_BORDER", "0.2"))
     # Outpaint 專用 endpoint。fal-ai/flux-pro/v1/fill 只吃 9 個參數，沒有 negative_prompt
     # （guidance_scale / num_inference_steps 傳了也會被忽略），無法壓掉 FLUX 從訓練資料
     # 學來的浮水印與招牌文字。flux-general/inpainting 有 negative_prompt，預設走 NAG 生效。
@@ -87,9 +78,6 @@ class Config:
     @classmethod
     def outpaint_negative_prompt(cls) -> str:
         return f"{cls.OUTPAINT_NEGATIVE_TEXT}, {cls.OUTPAINT_NEGATIVE_DUPES}"
-
-    # Text2Room 逐步 outpaint 環景（預設關閉 → 只產單視角 GLB）
-    ENABLE_TEXT2ROOM: bool = os.getenv("DESIGNBRIDGE_ENABLE_TEXT2ROOM", "false").lower() in ("1", "true", "yes")
 
     # Hugging Face Inference API (cloud Flux; no local download). Tried first when HF_TOKEN set.
     ENABLE_HF_INFERENCE: bool = os.getenv("DESIGNBRIDGE_ENABLE_HF_INFERENCE", "true").lower() in ("1", "true", "yes")
