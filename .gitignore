@@ -121,3 +121,7 @@ model/
 dataset_export
 ablation_tests/
 docs/images/controlnet_test/
+
+# 換風格 A/B 實驗（本機用，不進版本控制）
+docs/style_swap_ab/
+scripts/ab_*.py
