@@ -27,7 +27,7 @@ const slow = computed(() => sec.value >= SLOW_AFTER)
 </script>
 
 <template>
-  <div class="loading-state" role="status" aria-live="polite" aria-busy="true">
+  <div class="loading-state" role="status" aria-live="polite" aria-atomic="false" aria-busy="true">
     <svg class="plan" viewBox="0 0 260 170" aria-hidden="true" focusable="false">
       <!-- 圖紙格線 -->
       <defs>

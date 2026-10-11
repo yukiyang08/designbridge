@@ -15,8 +15,7 @@ import FengshuiPicker from '@/components/FengshuiPicker.vue'
 import StyleSuggestions from '@/components/StyleSuggestions.vue'
 import ImageUpload from '@/components/ImageUpload.vue'
 import DesignDetails from '@/components/steps/DesignDetails.vue'
-// 「套用到其他房間」暫時停用：恢復時取消下面這行與 template 裡 <ApplyToRooms /> 的註解
-// import ApplyToRooms from '@/components/steps/ApplyToRooms.vue'
+import ApplyToRooms from '@/components/steps/ApplyToRooms.vue'
 import { useDesignFlow, ASPECT_OPTIONS, ORIGINAL_STYLE_KEY } from '@/composables/useDesignFlow'
 import { API_BASE } from '@/config/api'
 
@@ -267,7 +266,7 @@ watch(() => result.value?.task_id, () => { viewMode.value = 'image' })
       </section>
 
       <!-- 整層流程：把這間的設定套用到其他房間，一次生成 -->
-      <!-- <ApplyToRooms /> -->
+      <ApplyToRooms />
 
       <!-- 設計詳情（結構化需求 / 風格參數 / 點雲 / raw JSON） -->
       <div class="details-toggle-wrap">
