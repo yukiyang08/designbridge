@@ -23,7 +23,7 @@ import {
   planSource, stepIndex, steps, currentStep, isLastStep,
   floorPlanUrl, floorPlanPath, sceneGraph, floorPlanUpload, uploadedPlanUrl, detectedRooms,
   cadCounts, cadTotalPing, cadExtraRooms, cadPlanResult, cadActiveRoomId, cadRoomStatus,
-  cadBatch, cadBatchRunning,
+  cadBatch, cadBatchRunning, cadRoomSnapshots,
   editPlacements, roomW, roomD, roomTypeForPlan, layoutViewMode, layoutRenderConfig,
   roomType, spaceSizePing, customRoomW, customRoomD,
   furnitureItems, furnitureQty, extraPrompt, fengshuiRules, outputAspect,
@@ -68,7 +68,7 @@ export function useDesignFlow() {
     // CAD 房型生成
     cadCounts, cadTotalPing, cadExtraRooms, cadPlanResult, submitRoomProgram, handleCadRoomSelected,
     cadActiveRoomId, cadRoomStatus, jumpToCadRoom, abandonCadRoom,
-    cadBatch, cadBatchRunning, applyToRooms, cancelCadBatch,
+    cadBatch, cadBatchRunning, cadRoomSnapshots, applyToRooms, cancelCadBatch,
     // 佈局
     editPlacements, roomW, roomD, roomTypeForPlan, roomGeometry, setOpeningEdit, layoutViewMode, layoutRenderConfig,
     onEditorChange, updateFloorPlan,

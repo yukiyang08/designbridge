@@ -102,6 +102,13 @@ async function renderOne(room, base, run) {
   }
   cadRoomStatus.value = { ...cadRoomStatus.value, [room.id]: 'done' }
   clearBatch(room.id)
+  return data
+}
+
+// 整層一次生成時沒有「已渲染的那間」可借風格，先挑客廳（沒有就第一間）當基準
+const anchorFirst = (rooms) => {
+  const i = Math.max(0, rooms.findIndex(r => r.room_type === 'living_room'))
+  return [rooms[i], ...rooms.filter((_, j) => j !== i)]
 }
 
 export async function applyToRooms(roomIds) {
@@ -119,7 +126,22 @@ export async function applyToRooms(roomIds) {
     if (run.cancelled) return
     cadBatch.value = { ...cadBatch.value, ...Object.fromEntries(rooms.map(r => [r.id, { status: 'queued' }])) }
 
-    const queue = [...rooms]
+    const queue = anchorFirst(rooms)
+    if (!base.style_params) {
+      // 先單獨跑基準那間，拿到 style_params 後其餘才併行，每間共用同一組色彩/材質
+      const first = queue.shift()
+      setBatch(first.id, { status: 'running', error: '' })
+      try {
+        const data = await renderOne(first, base, run)
+        base.style_params = data?.style_params || null
+      } catch (e) {
+        if (run.cancelled) return
+        setBatch(first.id, { status: 'failed', error: e.message || '生成失敗' })
+        for (const r of queue) clearBatch(r.id)   // 基準失敗就不往下跑，免得每間各選各的風格
+        error.value = `「${first.label_zh}」生成失敗，其餘房間未開始：${e.message}`
+        return
+      }
+    }
     const worker = async () => {
       while (!run.cancelled) {
         const room = queue.shift()

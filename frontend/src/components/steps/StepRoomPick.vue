@@ -12,11 +12,12 @@ import { computed, ref } from 'vue'
 import { useDesignFlow } from '@/composables/useDesignFlow'
 import RoomPicker from '@/components/RoomPicker.vue'
 import RoomPickerCad from '@/components/RoomPickerCad.vue'
+import ApplyToRooms from '@/components/steps/ApplyToRooms.vue'
 
 const {
   planSource, detectedRooms, uploadedPlanUrl, handleRoomSelected,
   cadPlanResult, handleCadRoomSelected,
-  cadActiveRoomId, cadRoomStatus, abandonCadRoom,
+  cadActiveRoomId, cadRoomStatus, abandonCadRoom, extraPrompt, cadBatchRunning,
 } = useDesignFlow()
 
 // 有一間做到一半（還沒渲染完）：這時選別間會被擋，把原因和出口直接擺在畫面上
@@ -53,6 +54,20 @@ function onAbandon() {
       :rooms="cadPlanResult?.rooms || []"
       @select-room="handleCadRoomSelected"
     />
+
+    <!-- 整層一起生成：描述在這裡填一次，所有房間共用 -->
+    <section v-if="planSource === 'cad' && !pendingRoom" class="whole-floor">
+      <label class="whole-label" for="whole-prompt">整戶的風格描述（選填）</label>
+      <textarea
+        id="whole-prompt"
+        v-model="extraPrompt"
+        class="db-textarea"
+        rows="2"
+        :disabled="cadBatchRunning"
+        placeholder="例如：木質感、採光充足的明亮感，整戶統一"
+      />
+      <ApplyToRooms whole />
+    </section>
     <RoomPicker
       v-else
       :imageUrl="uploadedPlanUrl"
@@ -85,6 +100,9 @@ function onAbandon() {
   font-size: 0.9rem;
 }
 .pending-text { flex: 1 1 14rem; color: var(--db-text); }
+
+.whole-floor { margin-top: 1.5rem; padding-top: 1.25rem; border-top: 1px solid #f0f0f0; }
+.whole-label { display: block; margin-bottom: 0.4rem; font-size: 0.88rem; color: var(--db-text-soft); }
 
 /* 跟 StepFloorPlan.vue 同一套面板標題列樣式，維持步驟之間視覺一致 */
 .panel-title {

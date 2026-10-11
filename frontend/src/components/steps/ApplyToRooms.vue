@@ -7,10 +7,13 @@
 import { computed, ref, watch } from 'vue'
 import { useDesignFlow, ASPECT_OPTIONS } from '@/composables/useDesignFlow'
 
+// whole：整層入口（選擇房間步驟），還沒有任何一間先渲染過，風格由第一間決定
+const props = defineProps({ whole: { type: Boolean, default: false } })
+
 const {
   planSource, cadPlanResult, cadRoomStatus, cadActiveRoomId, cadBatch, cadBatchRunning,
   applyToRooms, cancelCadBatch, handleCadRoomSelected,
-  confirmedStyle, result, outputAspect, extraPrompt,
+  confirmedStyle, result, outputAspect, extraPrompt, cadRoomSnapshots,
 } = useDesignFlow()
 
 const CONCURRENCY = 2
@@ -23,6 +26,7 @@ const rooms = computed(() =>
 )
 const isDone = (r) => cadRoomStatus.value[r.id] === 'done'
 const batchOf = (r) => cadBatch.value[r.id]
+const thumbOf = (r) => cadRoomSnapshots.value[r.id]?.lastGeneratedImage?.url || ''
 const pickable = (r) => !isDone(r) && !batchOf(r)
 
 const picked = ref(new Set())
@@ -60,9 +64,14 @@ const STATUS_TEXT = { queued: '等待中', running: '生成中…', failed: '失
 
 <template>
   <section v-if="rooms.length" class="apply-rooms">
-    <h3 class="sub-title">套用到其他房間</h3>
+    <h3 class="sub-title">{{ props.whole ? '整層一起生成' : '套用到其他房間' }}</h3>
     <p class="hint">
-      把這間房的設定套用過去，依平面圖一次生成其他房間的渲染圖。每間先用預設家具擺法，生成後可以再進去微調。
+      <template v-if="props.whole">
+        先生成客廳定下整戶的色彩與材質，其餘房間沿用同一組風格，同時生成。每間先用預設家具擺法，完成後可以點進去微調。
+      </template>
+      <template v-else>
+        把這間房的設定套用過去，依平面圖一次生成其他房間的渲染圖。每間先用預設家具擺法，生成後可以再進去微調。
+      </template>
     </p>
     <p class="settings">
       <span v-for="s in settingLabels" :key="s" class="setting-chip">{{ s }}</span>
@@ -75,6 +84,7 @@ const STATUS_TEXT = { queued: '等待中', running: '生成中…', failed: '失
           <span>{{ r.label_zh }}</span>
         </label>
         <span v-else class="room-name">{{ r.label_zh }}</span>
+        <img v-if="thumbOf(r)" :src="thumbOf(r)" :alt="r.label_zh" class="room-thumb" />
 
         <span v-if="isDone(r)" class="badge badge-done">✓ 已完成</span>
         <span v-else-if="batchOf(r)" class="badge" :class="`badge-${batchOf(r).status}`">
@@ -93,12 +103,12 @@ const STATUS_TEXT = { queued: '等待中', running: '生成中…', failed: '失
       <button
         v-if="!cadBatchRunning" type="button" class="db-btn db-btn--sm"
         :disabled="!chosen.length" @click="applyToRooms(chosen.map(r => r.id))"
-      >生成 {{ chosen.length }} 間的渲染圖</button>
+      >{{ props.whole ? `整層生成（${chosen.length} 間）` : `生成 ${chosen.length} 間的渲染圖` }}</button>
       <template v-else>
         <span class="progress">生成中，剩 {{ total }} 間</span>
         <button type="button" class="db-btn db-btn--ghost db-btn--sm" @click="cancelCadBatch">取消</button>
       </template>
-      <span v-if="!cadBatchRunning && chosen.length" class="estimate">預估約 {{ estimate }}（同時生成 {{ CONCURRENCY }} 間）</span>
+      <span v-if="!cadBatchRunning && chosen.length" class="estimate">預估約 {{ estimate }}（<template v-if="props.whole">先 1 間定風格，再</template>同時 {{ CONCURRENCY }} 間）</span>
       <span v-if="!cadBatchRunning && failedCount" class="estimate">{{ failedCount }} 間失敗，可個別重試</span>
     </div>
   </section>
@@ -120,6 +130,7 @@ const STATUS_TEXT = { queued: '等待中', running: '生成中…', failed: '失
 .room-row.is-busy { opacity: 0.8; }
 .room-check { display: flex; align-items: center; gap: 0.5rem; cursor: pointer; min-width: 7rem; }
 .room-name { min-width: 7rem; color: var(--db-text-soft); }
+.room-thumb { width: 64px; height: 44px; object-fit: cover; border-radius: 6px; }
 
 .badge { font-size: 0.8rem; color: var(--db-text-soft); }
 .badge-done { color: var(--db-accent-deep); font-weight: 600; }
