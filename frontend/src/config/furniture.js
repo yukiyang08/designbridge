@@ -23,6 +23,14 @@ export const FURNITURE_LABEL_ZH = {
   default: '家具',
 }
 
+// 自訂家具輸入：中文標籤對回英文 type（後端 _normalize_ftype 會濾掉非 a-z 字元，中文會變 default 尺寸）。
+// 表裡沒有的中文原樣保留，至少名稱還能進 prompt。
+const ZH_TO_TYPE = Object.fromEntries(Object.entries(FURNITURE_LABEL_ZH).map(([k, v]) => [v, k]))
+export function furnitureKeyFromInput(raw) {
+  const s = String(raw || '').trim()
+  return ZH_TO_TYPE[s] || s.toLowerCase().replace(/\s+/g, '_')
+}
+
 // type 不在表裡時的保底：底線換空格的英文原字（至少不是空白），呼叫端可再自行覆蓋。
 export function furnitureLabel(type) {
   return FURNITURE_LABEL_ZH[type] || String(type || '').replace(/_/g, ' ')

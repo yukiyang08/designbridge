@@ -16,7 +16,7 @@ import { Icon } from '@iconify/vue'
 import AdvancedPanel from '@/components/shell/AdvancedPanel.vue'
 import FengshuiPicker from '@/components/FengshuiPicker.vue'
 import SpaceSizeFields from '@/components/steps/SpaceSizeFields.vue'
-import { ROOM_OPTIONS, FURNITURE_BY_ROOM, roomIcon, roomPhoto, furnitureIcon, furnitureLabel } from '@/config/furniture'
+import { ROOM_OPTIONS, FURNITURE_BY_ROOM, roomIcon, roomPhoto, furnitureIcon, furnitureLabel, furnitureKeyFromInput } from '@/config/furniture'
 import { useDesignFlow, ASPECT_OPTIONS } from '@/composables/useDesignFlow'
 
 const {
@@ -70,7 +70,7 @@ function toggleFurniture(value) {
   }
 }
 function addCustomFurniture() {
-  const val = customFurnitureInput.value.trim().toLowerCase().replace(/\s+/g, '_')
+  const val = furnitureKeyFromInput(customFurnitureInput.value)
   if (val && !furnitureItems.value.includes(val)) {
     furnitureItems.value = [...furnitureItems.value, val]
     furnitureQty.value = { ...furnitureQty.value, [val]: 1 }
@@ -241,7 +241,7 @@ function submit() {
             <input
               v-model="customFurnitureInput"
               class="db-input"
-              placeholder="家具名稱（英文）"
+              placeholder="家具名稱，如：書櫃 / bookshelf" aria-label="自訂家具名稱"
               autofocus
               @keydown.enter.prevent="addCustomFurniture"
               @keydown.esc="showCustomFurniture = false"
