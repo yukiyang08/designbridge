@@ -67,6 +67,7 @@ function goNext() {
         :scene-graph="editSceneGraph"
         :render-config="layoutRenderConfig"
         :space-info="editSpaceInfo"
+        :geometry="roomGeometry"
         editable
         @layout-changed="onEditorChange"
       />

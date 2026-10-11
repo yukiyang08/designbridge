@@ -45,6 +45,7 @@ const props = defineProps({
   sceneGraph: { type: Object, default: null },   // { furniture_placements: [...] }
   renderConfig: { type: Object, default: null },  // { furniture_heights, furniture_colors, camera }
   spaceInfo: { type: Object, default: null },     // { estimated_size: { width, depth } }（選填）
+  geometry: { type: Object, default: null },      // { wallT, openings }（CAD 路徑才有，見 utils/roomGeometry）
   editable: { type: Boolean, default: false },    // true 時可拖曳家具調整位置
 })
 
@@ -96,6 +97,19 @@ const FURNITURE_MATERIAL = {
   plant:   { roughness: 0.7,  metalness: 0.0 },
   storage: { roughness: 0.5,  metalness: 0.05 },
   box:     { roughness: 0.75, metalness: 0.0 },
+}
+
+// 後端沒給 furniture_heights（CAD 路徑）時的實際高度（公尺）；不然全部 0.8m 椅子跟衣櫃一樣高
+const DEFAULT_HEIGHT = {
+  sofa: 0.85, loveseat: 0.85, armchair: 0.85, chair: 0.9,
+  coffee_table: 0.42, dining_table: 0.75, desk: 0.75, side_table: 0.5, nightstand: 0.5,
+  bed: 0.9, bunk_bed: 1.7, wardrobe: 2.0, bookshelf: 1.8, shelf: 1.2, cabinet: 0.9, dresser: 0.85,
+  lamp: 1.5, plant: 1.0,
+}
+// 白模色：以米白為主，只有木質（桌/櫃）跟植物帶很淡的色，不追求跟之後的渲染同色
+const CLAY_COLOR = {
+  seating: 0xe8e4dd, table: 0xdcc8aa, bed: 0xf0ece5, lamp: 0xdad6cd,
+  plant: 0xb7cbb0, storage: 0xd9c6a8, box: 0xe2ded6,
 }
 
 function buildFurnitureMesh(type, w, height, d, colorHex) {
@@ -235,7 +249,7 @@ function makeLabel(text) {
   ctx.fillText(text, 128, 42)
   const texture = new THREE.CanvasTexture(canvas)
   const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: texture, depthTest: false }))
-  sprite.scale.set(0.8, 0.2, 1)
+  sprite.scale.set(0.5, 0.125, 1)
   return sprite
 }
 
@@ -267,7 +281,6 @@ function buildScene() {
   if (!container || !items || !items.length) return
 
   const heights = props.renderConfig?.furniture_heights || {}
-  const colors = props.renderConfig?.furniture_colors || {}
   const camCfg = props.renderConfig?.camera || {}
   const roomWidth = props.spaceInfo?.estimated_size?.width || 5.0
   const roomDepth = props.spaceInfo?.estimated_size?.depth || 4.0
@@ -276,32 +289,55 @@ function buildScene() {
   const wallHeight = 2.6
 
   scene = new THREE.Scene()
-  scene.background = new THREE.Color(0xf3ede3)
+  scene.background = new THREE.Color(0xf1f0ee)
 
   // 地板
   const floor = new THREE.Mesh(
     new THREE.PlaneGeometry(roomWidth, roomDepth),
-    new THREE.MeshStandardMaterial({ color: 0xe0d4c0, side: THREE.DoubleSide, roughness: 0.85 }),
+    new THREE.MeshStandardMaterial({ color: 0xe6e4e0, side: THREE.DoubleSide, roughness: 0.85 }),
   )
   floor.rotation.x = -Math.PI / 2
   floor.position.set(0, 0, roomDepth / 2)
   floor.receiveShadow = true
   scene.add(floor)
 
-  // 簡易牆面（純視覺參考，不是精確幾何）
-  const wallMat = new THREE.MeshStandardMaterial({
-    color: 0xffffff, side: THREE.DoubleSide, transparent: true, opacity: 0.55,
-  })
-  const backWall = new THREE.Mesh(new THREE.PlaneGeometry(roomWidth, wallHeight), wallMat)
-  backWall.position.set(0, wallHeight / 2, roomDepth)
-  scene.add(backWall)
-  const leftWall = new THREE.Mesh(new THREE.PlaneGeometry(roomDepth, wallHeight), wallMat)
-  leftWall.rotation.y = Math.PI / 2
-  leftWall.position.set(-roomWidth / 2, wallHeight / 2, roomDepth / 2)
-  scene.add(leftWall)
-  const rightWall = leftWall.clone()
-  rightWall.position.set(roomWidth / 2, wallHeight / 2, roomDepth / 2)
-  scene.add(rightWall)
+  // 牆：有 geometry 時依牆厚、門窗開洞；牆都蓋在房間外側，不吃掉家具可用面積。
+  // 近相機那面（bottom）不畫，不然擋住視線
+  const geo = props.geometry || { wallT: { top: 0.1, left: 0.1, right: 0.1, bottom: 0.1 }, openings: [] }
+  const wallMat = new THREE.MeshStandardMaterial({ color: 0xf5f4f2, roughness: 0.95 })
+  const glassMat = new THREE.MeshStandardMaterial({ color: 0xbfd8e8, transparent: true, opacity: 0.35 })
+  const DOOR_H = 2.0, SILL = 0.9, WIN_TOP = 2.1
+  for (const side of ['top', 'left', 'right']) {
+    const t = geo.wallT?.[side] ?? 0.1
+    const horiz = side === 'top'
+    const L = horiz ? roomWidth : roomDepth
+    // 沿牆方向 [a,b]（公尺，從 top 牆左端 / 左右牆的遠牆端起算）、高度 [y0,y1] 的一塊牆
+    const addBox = (a, b, y0, y1, mat = wallMat) => {
+      if (b - a < 1e-4 || y1 - y0 < 1e-4) return
+      const m = new THREE.Mesh(new THREE.BoxGeometry(horiz ? b - a : t, y1 - y0, horiz ? t : b - a), mat)
+      const mid = (a + b) / 2
+      if (horiz) m.position.set(mid - roomWidth / 2, (y0 + y1) / 2, roomDepth + t / 2)
+      else m.position.set((side === 'left' ? -1 : 1) * (roomWidth / 2 + t / 2), (y0 + y1) / 2, roomDepth - mid)
+      m.castShadow = true
+      m.receiveShadow = true
+      scene.add(m)
+    }
+    const ops = (geo.openings || []).filter((o) => o.side === side)
+      .map((o) => ({ ...o, a: Math.max(0, o.frac * L - o.width / 2), b: Math.min(L, o.frac * L + o.width / 2) }))
+      .sort((p, q) => p.a - q.a)
+    let cur = 0
+    for (const o of ops) {
+      addBox(cur, o.a, 0, wallHeight)
+      if (o.type === 'door') addBox(o.a, o.b, DOOR_H, wallHeight)
+      else {
+        addBox(o.a, o.b, 0, SILL)
+        addBox(o.a, o.b, WIN_TOP, wallHeight)
+        addBox(o.a, o.b, SILL, WIN_TOP, glassMat)
+      }
+      cur = Math.max(cur, o.b)
+    }
+    addBox(cur, L, 0, wallHeight)
+  }
 
   // Hemisphere（暖色天光/冷色地面反光）取代純白 ambient，物件在不同角度才有自然的
   // 色溫差異，不是整個場景被同一種死白光打平
@@ -324,8 +360,8 @@ function buildScene() {
   // floor-plan x∈[0,1] 左→右，y∈[0,1] 遠牆→近相機側；(x,y) 是左上角。
   furnitureMeshes.length = 0
   for (const item of items) {
-    const height = heights[item.type] ?? heights.default ?? 0.8
-    const colorHex = colors[item.type] ?? colors.default ?? '#96c896'
+    const height = heights[item.type] ?? DEFAULT_HEIGHT[item.type] ?? heights.default ?? 0.8
+    const colorHex = CLAY_COLOR[FURNITURE_CATEGORY[item.type] || 'box']
     const w = Math.max(item.w || 0.1, 0.02) * roomWidth
     const d = Math.max(item.h || 0.1, 0.02) * roomDepth
     const furnitureGroup = buildFurnitureMesh(item.type, w, height, d, colorHex)
@@ -339,11 +375,12 @@ function buildScene() {
 
     const label = makeLabel(furnitureLabel(item.type))
     label.position.set(0, height + 0.15, 0)
+    label.visible = false   // hover 才顯示，平常標籤會蓋住家具
     label.userData.dragRoot = furnitureGroup   // 加在 buildFurnitureMesh 的 traverse 之後才 add，要補標記
     furnitureGroup.add(label)
 
     scene.add(furnitureGroup)
-    furnitureMeshes.push({ mesh: furnitureGroup, item: { ...item } })
+    furnitureMeshes.push({ mesh: furnitureGroup, item: { ...item }, label })
   }
 
   // 相機：hfov_deg 是水平視角，PerspectiveCamera 吃垂直視角，換算一下
@@ -431,9 +468,14 @@ function onPointerDown(event) {
 }
 
 function onPointerMove(event) {
-  if (!draggedEntry) return
   setPointerNDC(event)
   raycaster.setFromCamera(pointerNDC, camera)
+  if (!draggedEntry) {
+    const hit = raycaster.intersectObjects(furnitureMeshes.map((f) => f.mesh), true)[0]
+    const root = hit?.object.userData.dragRoot
+    for (const f of furnitureMeshes) f.label.visible = f.mesh === root
+    return
+  }
   const hitPoint = new THREE.Vector3()
   if (!raycaster.ray.intersectPlane(dragPlane, hitPoint)) return
 
@@ -509,8 +551,8 @@ watch(() => props.sceneGraph, () => {
   aspect-ratio: 4 / 3;
   border-radius: 12px;
   overflow: hidden;
-  background: #f3ede3;
-  border: 1px solid #ddd0c0;
+  background: #f1f0ee;
+  border: 1px solid #dcdad6;
 }
 .layout-3d-hint {
   font-size: 0.72rem;
