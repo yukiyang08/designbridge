@@ -105,10 +105,9 @@ def generate_design(request: DesignRequest):
                 if request.plan.get(key) is not None:
                     initial_state[key] = request.plan[key]
             # 一鍵換風格（swapStyle 帶著上一輪完整回應當 plan 回來，見 render.js）：
-            # renderer 偵測到這裡已經有上一輪的生成結果，會直接拿它當 img2img 起始圖
-            # 低強度重繪，取代整條 depth ControlNet 分支（見 renderer.py 的
-            # img2img_base 判斷）。欄位名稱不同（plan 用回應格式的
-            # generated_image_path，state 用 graph 內部的 generated_image）要轉換。
+            # renderer/composer 以 state 內已有 generated_image 判斷「這是換風格」。
+            # 欄位名稱不同（plan 用回應格式的 generated_image_path，
+            # state 用 graph 內部的 generated_image）要轉換。
             # 沿用上一輪的 seed：條件圖（家具深度/邊緣）由 scene_graph 決定、本來就一樣，
             # seed 也一樣，換風格時房間構圖與家具位置才不會整個重抽。
             prev_seed = ((request.plan.get("render_result") or {}).get("generation_params") or {}).get("seed")

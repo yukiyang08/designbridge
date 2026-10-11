@@ -38,7 +38,6 @@ _BACKENDS = {
     "_render_hf_kontext": "hf_kontext",
     "_render_flux_controlnet_depth_fal": "flux_controlnet_depth_fal",
     "_render_flux_depth_controlnet_fal": "flux_depth_controlnet_fal",
-    "_render_flux_img2img_fal": "flux_img2img_fal",
     "_render_flux_fal": "flux_fal",
 }
 

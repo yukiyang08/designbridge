@@ -197,24 +197,6 @@
       <button class="ghost small" id="addLoraBtn" type="button">+ 加一筆 LoRA</button>
     </div>
 
-    <div class="card">
-      <h2>進階：Image-to-Image 覆寫</h2>
-      <div class="tag-hint" style="margin-bottom:8px;">
-        img2img 實測後換風格跟原圖看不出明顯差異，正式的「一鍵換風格」已經改回走
-        ControlNet／Kontext 分支（見 renderer.py），不會自動用這條路徑。這裡留空 = 不覆寫，
-        照正式邏輯跑；填了起始圖才會強制測試 img2img 本身（例如重新評估要不要之後再啟用）。
-      </div>
-
-      <label>起始圖（img2img base，伺服器路徑或 URL）</label>
-      <div class="row">
-        <input type="text" id="img2imgBase" placeholder="例如 artifacts/render/xxx.png">
-        <button class="ghost small" id="useLastResultBtn" type="button" style="flex:none;">用上次生成結果</button>
-      </div>
-
-      <label>strength（0 = 完全保留原圖，1 = 完全重畫，預設 0.5）</label>
-      <div class="row"><input type="range" id="img2imgStrength" min="0.05" max="1" step="0.05" value="0.5"><span class="scaleval" id="img2imgStrengthVal">0.5</span></div>
-    </div>
-
     <button class="primary" id="submitBtn">送出 → /api/generate</button>
     <div id="status"></div>
 
@@ -293,7 +275,6 @@ function bindSlider(rangeId, outId) {
 // bindSlider('#editScope', '#editScopeVal');  // edit_scope UI 拿掉，見上方 HTML 註解
 bindSlider('#cnScale', '#cnScaleVal');
 bindSlider('#cnControlEnd', '#cnControlEndVal');
-bindSlider('#img2imgStrength', '#img2imgStrengthVal');
 
 function bindOverrideToggle(checkboxId, ...fieldIds) {
   const cb = $(checkboxId);
@@ -494,12 +475,6 @@ function buildPayload() {
   if ($('#disableEdgeControl').checked) payload.disable_edge_control = true;
   if ($('#disableLora').checked) payload.disable_lora = true;
 
-  const img2imgBase = $('#img2imgBase').value.trim();
-  if (img2imgBase) {
-    payload.img2img_base_image_override = img2imgBase;
-    payload.img2img_strength_override = parseFloat($('#img2imgStrength').value);
-  }
-
   const loras = [];
   document.querySelectorAll('.lora-row').forEach(row => {
     const path = row.querySelector('.lora-path').value.trim();
@@ -563,15 +538,6 @@ $('#submitBtn').addEventListener('click', async () => {
 
 // ── 批次比較：同一個 plan，只換 override 參數，逐筆打 /api/generate ──────────
 let lastFullResponse = null;
-
-$('#useLastResultBtn').addEventListener('click', () => {
-  if (!lastFullResponse || !lastFullResponse.generated_image_path) {
-    $('#status').className = 'err';
-    $('#status').textContent = '❌ 還沒有上次生成結果，先送出一次一般請求。';
-    return;
-  }
-  $('#img2imgBase').value = lastFullResponse.generated_image_path;
-});
 
 async function runBatch() {
   const btn = $('#runBatchBtn'), status = $('#batchStatus'), grid = $('#batchGrid');
@@ -675,7 +641,6 @@ function jsonBlock(title, obj) {
 
 // backend 名稱 → 這條路徑實際代表什麼（幫助判斷「走哪個 route」）
 const BACKEND_DESC = {
-  flux_img2img_fal: 'fal-ai/flux-general/image-to-image：debug-console 測試專用（實測換風格效果不夠明顯，正式路徑已改回 ControlNet）',
   flux_controlnet_depth_fal: '真 Depth ControlNet（fal-ai/flux-general）：深度圖嚴格鎖定幾何結構',
   hf_kontext: 'FLUX Kontext + depth-fusion LoRA：較鬆散的深度參考（非嚴格 ControlNet）',
   flux_depth_controlnet_fal: '純文字→設計流程：2D 平面圖投影出的深度/邊緣 ControlNet',

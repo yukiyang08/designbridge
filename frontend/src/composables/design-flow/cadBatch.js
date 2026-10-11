@@ -19,7 +19,7 @@ import { buildRoomGeometry } from '@/utils/roomGeometry'
    風格一致性：除了送出跟目前這間房相同的風格輸入（風格 id / 參考圖），還把它回傳的
    style_params 用 plan 帶過去——後端看到已有 style_params 就不會重新搜尋風格
    （layout_and_style.py），每間房用同一組色彩/材質。故意不帶 plan 的其他欄位，
-   尤其是 generated_image_path：後端會把它當 img2img 起始圖，每間房都會長得像這一間。
+   尤其是 generated_image_path：後端看到它會當成「換風格」，行為會變。
    ponytail: 一致性只靠共用 style_params，渲染 seed 是隨機的（render_backends.py）；
    不夠一致時，升級路徑是讓後端接受固定 seed。 */
 

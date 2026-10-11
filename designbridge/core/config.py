@@ -131,8 +131,6 @@ class Config:
     EDGE_CONDITIONING_SCALE: float = float(os.getenv("DESIGNBRIDGE_EDGE_CONDITIONING_SCALE", "0.3"))
 
     # ── 換風格 / 微調 ───────────────────────────────────────────────────
-    # 風格 LoRA 套在 img2img 換風格上：A/B 顯示沒幫助且 14s→54s，先關（ControlNet 路徑不受影響）
-    IMG2IMG_USE_LORA: bool = _flag("DESIGNBRIDGE_IMG2IMG_USE_LORA", "false")
     # 換風格是否沿用上一張圖補算的深度（舊行為）：該深度在窗戶/遠牆是雜訊，預設關
     STYLE_SWAP_DEPTH_LOCK: bool = _flag("DESIGNBRIDGE_STYLE_SWAP_DEPTH_LOCK", "false")
     ADJUSTER_INPAINT_STRENGTH: float = float(os.getenv("DESIGNBRIDGE_ADJUSTER_INPAINT_STRENGTH", "0.85"))

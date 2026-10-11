@@ -22,7 +22,6 @@ from designbridge.render.render_backends import (
     _render_hf_kontext,
     _render_flux_controlnet_depth_fal,
     _render_flux_depth_controlnet_fal,
-    _render_flux_img2img_fal,
     _render_flux_fal,
 )
 from designbridge.style.style_apply import resolve_style_loras
@@ -484,31 +483,6 @@ def renderer(state: DesignBridgeState) -> dict[str, Any]:
         # 實測 >=0.85 會把平坦深度區（遠牆）畫成雜訊，原因見 config.REAL_PHOTO_DEPTH_MAX_CONDITIONING_SCALE
         depth_conditioning_scale = min(depth_conditioning_scale, Config.REAL_PHOTO_DEPTH_MAX_CONDITIONING_SCALE)
     effective_depth_path = depth_path if depth_conditioning_scale >= 0.20 else None
-
-    # img2img 只給 debug-console 手動測試（render_overrides.img2img_base_image），不自動接手換風格：
-    # 實測換風格後風格差異不明顯，改走下方 ControlNet/Kontext 重新生成。
-    _img2img_base = render_overrides.get("img2img_base_image")
-    if backend == "placeholder" and Config.FAL_KEY and _img2img_base:
-        _img2img_strength = render_overrides.get("img2img_strength")
-        _img2img_strength = 0.5 if _img2img_strength is None else max(0.01, min(1.0, float(_img2img_strength)))
-        # 風格 LoRA 對 img2img 沒幫助且變慢，預設不套用（見 config.IMG2IMG_USE_LORA）；
-        # debug-console 明確指定 loras 時照放行
-        _img2img_loras = style_loras if (Config.IMG2IMG_USE_LORA or render_overrides.get("loras") is not None) else []
-        if timed_call(
-            "renderer.flux_img2img_fal", task_id,
-            _render_flux_img2img_fal,
-            prompt, str(_img2img_base), out_path,
-            strength=_img2img_strength,
-            loras=_img2img_loras,
-        ):
-            backend = "flux_img2img_fal"
-            generation_params["model"] = "fal-ai/flux-general/image-to-image"
-            generation_params["img2img_strength"] = _img2img_strength
-            generation_params["img2img_base_image"] = str(_img2img_base)
-            generation_params["img2img_source"] = "debug_override" if render_overrides.get("img2img_base_image") else "style_swap"
-            if _img2img_loras:
-                generation_params["loras"] = _img2img_loras
-            controlnet_inputs["img2img_base"] = str(_img2img_base)
 
     # FLUX depth ControlNet（需 FAL_KEY）：約束力遠強於 Kontext LoRA，讓投影深度控制家具擺位
     if (
