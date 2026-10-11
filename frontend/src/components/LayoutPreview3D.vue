@@ -47,10 +47,11 @@ const props = defineProps({
   spaceInfo: { type: Object, default: null },     // { estimated_size: { width, depth } }（選填）
   geometry: { type: Object, default: null },      // { wallT, openings }（CAD 路徑才有，見 utils/roomGeometry）
   editable: { type: Boolean, default: false },    // true 時可拖曳家具調整位置
+  highlightId: { type: String, default: '' },     // 外部指定要標示的家具 id（顯示它的標籤）
 })
 
 // 拖曳結束後回傳更新過的 furniture_placements（跟 sceneGraph.furniture_placements 同格式）
-const emit = defineEmits(['layout-changed'])
+const emit = defineEmits(['layout-changed', 'hover-item'])
 
 const canvasWrap = ref(null)
 let renderer = null
@@ -69,6 +70,7 @@ const raycaster = new THREE.Raycaster()
 const pointerNDC = new THREE.Vector2()
 const dragPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0)
 let draggedEntry = null
+let lastHoverId = ''
 let dragOffset = new THREE.Vector3()
 
 // 家具長什麼樣：不用外部模型（授權/下載/比對尺寸都是額外工作量），純用幾何形狀組
@@ -440,6 +442,11 @@ function buildScene() {
     renderer.render(scene, camera)
   }
   animate()
+  applyHighlight()
+}
+
+function applyHighlight() {
+  for (const f of furnitureMeshes) f.label.visible = !!props.highlightId && f.item.id === props.highlightId
 }
 
 function setPointerNDC(event) {
@@ -474,6 +481,8 @@ function onPointerMove(event) {
     const hit = raycaster.intersectObjects(furnitureMeshes.map((f) => f.mesh), true)[0]
     const root = hit?.object.userData.dragRoot
     for (const f of furnitureMeshes) f.label.visible = f.mesh === root
+    const hoverId = furnitureMeshes.find((f) => f.mesh === root)?.item.id ?? ''
+    if (hoverId !== lastHoverId) { lastHoverId = hoverId; emit('hover-item', hoverId) }
     return
   }
   const hitPoint = new THREE.Vector3()
@@ -523,6 +532,8 @@ onBeforeUnmount(() => {
   resizeObserver?.disconnect()
   disposeScene()
 })
+
+watch(() => props.highlightId, applyHighlight)
 
 watch(() => props.sceneGraph, () => {
   disposeScene()
