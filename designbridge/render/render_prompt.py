@@ -105,6 +105,19 @@ def _analyze_style_image_with_gemini(image_path: str) -> str:
         return ""
 
 
+# 換風格時給 ControlNet 的具體視覺詞
+_STYLE_LOOK = {
+    "modern": "clean lines, white grey and black palette, glossy surfaces, minimal furniture, glass and chrome accents",
+    "country": "rustic farmhouse, warm weathered wood, floral fabrics, cream and sage green, wrought iron details, vintage decor",
+    "classic": "traditional European, ornate crown molding, wainscoting, rich walnut wood, deep burgundy and gold, tufted upholstery, crystal chandelier",
+    "nordic": "Scandinavian, light birch wood, white walls, soft grey and pale blue, wool textiles, cozy hygge, natural daylight",
+    "industrial": "exposed concrete walls, exposed red brick, black steel frames, dark leather sofa, reclaimed dark wood, Edison bulb pendant lights, moody dim lighting",
+    "japanese": "Japandi, light oak and bamboo, low furniture, shoji screen, tatami, beige and muted earth tones, calm minimalist, soft diffused light",
+    "american": "American transitional, warm wood, plaid and linen textiles, navy and cream, shaker cabinetry, comfortable overstuffed seating",
+    "luxury": "luxury high-end, polished marble, gold and brass accents, velvet upholstery, crystal chandelier, dark wood paneling, dramatic warm lighting",
+}
+
+
 def _build_imagen_prompt_from_requirement(
     req: dict[str, Any],
     style_params: dict[str, Any] | None = None,
@@ -165,10 +178,17 @@ def _build_imagen_prompt_from_requirement(
         primary_style = _STYLE_ID_TO_EN.get(style_id, style_id) or "interior"
         color_palette = style_prefs.get("color_palette") or []
         colors = ", ".join(str(c) for c in color_palette[:3]) if color_palette else "neutral tones"
-        base_prompt = (
-            f"Interior design visualization: a {room_type}, {primary_style} style, "
-            f"colors {colors}. Photorealistic, well-lit, high quality."
-        )
+        look = _STYLE_LOOK.get(style_id) if is_style_swap else None
+        if look:
+            base_prompt = (
+                f"Interior design visualization: a {room_type}, {primary_style} style, "
+                f"{look}. Photorealistic, high quality."
+            )
+        else:
+            base_prompt = (
+                f"Interior design visualization: a {room_type}, {primary_style} style, "
+                f"colors {colors}. Photorealistic, well-lit, high quality."
+            )
 
     if not style_params:
         return base_prompt
