@@ -7,6 +7,7 @@ import { ref, computed, onMounted, onBeforeUnmount } from 'vue'
 import { useRouter } from 'vue-router'
 import AppNav from '@/components/shell/AppNav.vue'
 import StoryPlan from '@/components/home/StoryPlan.vue'
+import PlanPrecision from '@/components/home/PlanPrecision.vue'
 import CompareSlider from '@/components/home/CompareSlider.vue'
 import StyleDial from '@/components/home/StyleDial.vue'
 import StyleDeck from '@/components/home/StyleDeck.vue'
@@ -124,6 +125,7 @@ const caretOn = computed(() => playing.value && !hovering.value)
       </section>
 
       <StoryPlan />
+      <PlanPrecision />
       <CompareSlider />
       <StyleDial />
       <StyleDeck />
