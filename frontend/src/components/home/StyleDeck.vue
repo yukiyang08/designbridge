@@ -107,6 +107,7 @@ const stage = ref(null)
 const bar = ref(null)
 const design = ref(null)
 const cursorEl = ref(null)
+const flowEl = ref(null)
 const tagEls = ref([])
 const stageW = ref(640)
 const cardW = ref(150)
@@ -198,7 +199,7 @@ async function runLibrary(id) {
   flowOn.value = true; barOn.value = false     // 開場只有流動的圖
   phase.value = 'stack'
   cards.value = []
-  await pace(3800)
+  await pace(1200)
   if (!alive(id)) return
   barOn.value = true                           // 輸入條出現，8 張風格卡從流動的圖裡拉出來；兩者不同時存在
   flowOn.value = false
@@ -206,12 +207,46 @@ async function runLibrary(id) {
   await nextTick()
   await pace(500)
   phase.value = 'fan'
-  await pace(3600)
+  await pace(2200)
   if (!alive(id)) return
   phase.value = 'stack'
-  await pace(900)
+  await pace(500)
   libraryDone = true
 }
+
+/* 快打完時：6 張卡各自從流動的圖裡「抓出」一張小圖，放大飛到扇形位置，被抓走的小圖淡出 */
+async function grabFromFlow(sc) {
+  phase.value = 'fan'
+  cards.value = sc.cards.map((c) => ({ ...c }))
+  await nextTick()
+  const fr = flowEl.value.getBoundingClientRect()
+  const sr = stage.value.getBoundingClientRect()
+  // 每排取中間區（遮罩淡出的兩端不取）左右各一張，共 6 張，依 x 排序對應扇形由左到右，飛行路線才不會交叉
+  const picks = [...flowEl.value.querySelectorAll('.row')].flatMap((row) => {
+    const ok = [...row.querySelectorAll('i')].filter((t) => {
+      const r = t.getBoundingClientRect()
+      const cx = r.left + r.width / 2
+      return cx > fr.left + fr.width * 0.2 && cx < fr.right - fr.width * 0.2
+    })
+    return [ok[Math.floor(ok.length * 0.25)], ok[Math.floor(ok.length * 0.75)]].filter(Boolean)
+  }).map((t) => ({ t, r: t.getBoundingClientRect() })).sort((a, b) => a.r.left - b.r.left)
+  if (!picks.length) return
+  const jobs = [...stage.value.querySelectorAll('.slot')].map((el, i) => {
+    const src = picks[Math.min(i, picks.length - 1)]
+    // transform 動畫會整個蓋掉 slot 的 translate(--x,--y)，所以起點要用「未位移」的原位（offset*）算
+    const dx = src.r.left + src.r.width / 2 - (sr.left + el.offsetLeft + el.offsetWidth / 2)
+    const dy = src.r.top + src.r.height / 2 - (sr.top + el.offsetTop + el.offsetHeight / 2)
+    const delay = i * 90
+    src.t.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 300, delay, fill: 'forwards' })
+    return el.animate([
+      { transform: `translate(${dx}px, ${dy}px) scale(0.5)`, transformOrigin: '50% 50%', opacity: 0 },
+      { opacity: 1, offset: 0.2 },
+    ], { duration: 950, delay, easing: 'cubic-bezier(0.2, 0.9, 0.25, 1)', fill: 'backwards' }).finished
+  })
+  await Promise.all(jobs.map((j) => j.catch(() => {})))
+}
+// 被抓走而淡出的小圖（只有 <i> 上的動畫；.track 的捲動動畫不能取消）
+const restoreTiles = () => flowEl.value?.getAnimations({ subtree: true }).forEach((a) => { if (a.effect?.target?.tagName === 'I') a.cancel() })
 
 async function runScene(si, id) {
   const sc = SCENES[si]
@@ -219,6 +254,7 @@ async function runScene(si, id) {
   barOn.value = true
   // 重置
   step.value = 0; pickId.value = null; appliedName.value = ''; typed.value = ''
+  restoreTiles()
   flyShow.value = false; flyTags.value = []; cursorShow.value = false
   if (baseImg.value !== original) await swapDesign(original, 500)
   phase.value = 'stack'
@@ -230,19 +266,19 @@ async function runScene(si, id) {
   // 1 說出想法
   step.value = 1
   const chars = [...sc.q]
+  let grab = null
   for (const [k, ch] of chars.entries()) {
     if (!alive(id)) return
     typed.value += ch
-    if (k === chars.length - 3) cards.value = sc.cards.map((c) => ({ ...c }))   // 快打完：卡片先疊在原處
-    await pace(75)
+    if (k === chars.length - 4) grab = grabFromFlow(sc)   // 快打完：開始從流動的圖裡一張張抓出來
+    await pace(50)
   }
-  if (!alive(id)) return
-  // 2 從流動的圖裡抓出相近的 6 張
+  // 2 6 張都抓出來後，流動的圖淡出
   step.value = 2
+  await grab
+  if (!alive(id)) return
   flowOn.value = false
-  await nextTick()
-  phase.value = 'fan'
-  await pace(1500)
+  await pace(700)
   if (!alive(id)) return
   // 3 游標點牌
   step.value = 3
@@ -373,7 +409,7 @@ function startCount() {
 
     <div ref="wrap" class="wrap" aria-hidden="true" @mouseenter="hovering = true" @mouseleave="hovering = false">
       <div class="left">
-        <div class="flow" :class="{ on: flowOn, still: hovering || !visible }">
+        <div ref="flowEl" class="flow" :class="{ on: flowOn, still: hovering || !visible }">
           <div v-for="(row, r) in FLOW" :key="r" class="row" :class="{ rev: r % 2 }" :style="{ '--dur': 26 + r * 7 + 's' }">
             <div class="track">
               <i v-for="t in [...row, ...row]" :key="t.k + (t === row[0] ? '' : '')" :style="{ backgroundImage: `url(${t.img})`, transform: `rotate(${t.rot}deg)` }"></i>
