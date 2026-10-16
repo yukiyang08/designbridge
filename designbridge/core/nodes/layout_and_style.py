@@ -34,7 +34,7 @@ def layout_and_style_agent_stub(state: DesignBridgeState) -> dict[str, Any]:
     layout_intermediate: dict[str, Any] = {}
     existing_scene_graph = state.get("scene_graph")
     if existing_scene_graph:
-        from designbridge.layout.layout_agent import reproject_scene_graph
+        from designbridge.layout.projected_depth import reproject_scene_graph
         from designbridge.render.render_prompt import _resolve_output_size
 
         output_size = _resolve_output_size(

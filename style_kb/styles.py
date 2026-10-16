@@ -3,13 +3,13 @@
 
 # (資料夾名, 中文名稱)
 STYLES = [
-    ("modern", "現代"),
-    ("country", "鄉村"),
-    ("classic", "古典"),
-    ("nordic", "北歐"),
-    ("industrial", "工業"),
-    ("japanese", "日式"),
-    ("american", "美式"),
-    ("luxury", "奢華"),
+    ("modern", "現代簡約"),
+    ("country", "奶油溫馨"),
+    ("classic", "無印生活"),
+    ("nordic", "北歐自然"),
+    ("industrial", "現代工業"),
+    ("japanese", "日式禪意"),
+    ("american", "美式暖居"),
+    ("luxury", "現代輕奢"),
     ("other", "其他"),
 ]

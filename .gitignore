@@ -8,6 +8,8 @@ service-account.json
 .gcp/
 *-service-account.json
 trained_loras.json
+# R2 upload script — has hardcoded credentials, never commit
+localtor2.py
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
@@ -118,3 +120,6 @@ style_kb/raw
 model/
 dataset_export
 ablation_tests/
+docs/images/controlnet_test/
+
+

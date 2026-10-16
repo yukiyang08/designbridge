@@ -1,7 +1,6 @@
 """Render a multi-room floor plan as an SVG string.
 
-Generalizes the technique from layout_agent.py's dead `_build_floor_plan_svg`: paint one
-solid "wall body" rect covering the whole footprint, then paint each room's floor polygon
+Paint one solid "wall body" rect covering the whole footprint, then paint each room's floor polygon
 (inset by half its wall thickness per edge) on top — the leftover gaps between insets
 *become* the interior/exterior walls, so no separate wall-polygon rendering is needed.
 """
@@ -9,7 +8,7 @@ solid "wall body" rect covering the whole footprint, then paint each room's floo
 from __future__ import annotations
 
 from designbridge.roomplan.constants import EXTERIOR_WALL_THICKNESS_M, INTERIOR_WALL_THICKNESS_M, PING_TO_M2
-from designbridge.roomplan.geometry import is_exterior_edge, room_edges
+from designbridge.roomplan.geometry import is_exterior_edge
 from designbridge.roomplan.schemas import DoorOpening, RoomInstance, WallSegment, WindowOpening
 
 PX_PER_M = 50.0

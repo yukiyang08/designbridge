@@ -2,10 +2,11 @@
 
 from __future__ import annotations
 
-import re
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Optional
+
+from designbridge.layout._skill_frontmatter import parse_skill_frontmatter
 
 
 @dataclass
@@ -27,17 +28,8 @@ class LayoutConstraintRegistry:
         self._cache: Optional[list[LayoutConstraintCard]] = None
 
     def _parse_skill_md(self, skill_id: str) -> Optional[LayoutConstraintCard]:
-        path = self._root / skill_id / "SKILL.md"
-        if not path.is_file():
-            return None
-        text = path.read_text(encoding="utf-8")
-        fm_match = re.match(r"^---\s*\n(.*?)\n---", text, re.DOTALL)
-        if not fm_match:
-            return None
-        try:
-            import yaml
-            fm = yaml.safe_load(fm_match.group(1))
-        except Exception:
+        fm = parse_skill_frontmatter(self._root / skill_id / "SKILL.md")
+        if fm is None:
             return None
         return LayoutConstraintCard(
             name=str(fm.get("name", skill_id)),

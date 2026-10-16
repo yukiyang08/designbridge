@@ -16,7 +16,7 @@ from pathlib import Path
 # 讓 Python 找得到 designbridge 套件
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from designbridge.layout.layout_agent import detect_rooms_in_floor_plan
+from designbridge.layout.floorplan_parse import detect_rooms_in_floor_plan
 
 OUT_DIR = Path(__file__).resolve().parent / "artifacts" / "detect_rooms"
 

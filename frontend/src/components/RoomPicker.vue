@@ -54,8 +54,8 @@ function labelOf(roomType) {
 
 .room-box {
   position: absolute;
-  border: 2px solid var(--db-accent, #cdc5ac);
-  background: color-mix(in srgb, var(--db-accent, #cdc5ac) 20%, transparent);
+  border: 2px solid var(--db-accent, #c9c4bb);
+  background: color-mix(in srgb, var(--db-accent, #c9c4bb) 20%, transparent);
   cursor: pointer;
   display: flex;
   align-items: flex-start;
@@ -63,8 +63,8 @@ function labelOf(roomType) {
   transition: background 0.15s, border-color 0.15s;
 }
 .room-box:hover {
-  background: color-mix(in srgb, var(--db-accent-soft, #e4dfd0) 70%, transparent);
-  border-color: var(--db-accent-deep, #b7ad8c);
+  background: color-mix(in srgb, var(--db-accent-soft, #e6e3dd) 70%, transparent);
+  border-color: var(--db-accent-deep, #a39b94);
 }
 
 .room-box.disabled {

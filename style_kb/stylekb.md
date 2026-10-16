@@ -50,12 +50,7 @@
 
 ## 4. Supabase 失敗時 fallback
 
-`build_style_params()` 仍保留多層容錯：
-
-1. Supabase 向量檢索
-2. 本地 Chroma 向量庫
-3. aggregated JSON（需要對應 `style_profile_id`）
-4. 全部失敗則回傳 `None`（僅用基礎 prompt 生成）
+`build_style_params()` 只走 Supabase 向量檢索；失敗則回傳 `None`（僅用基礎 prompt 生成）。
 
 ---
 

@@ -4,9 +4,8 @@ Shifts cold-load cost from the first style search or first pipeline run to serve
 Controlled by ``DESIGNBRIDGE_STARTUP_WARMUP``:
 
 - ``off`` / ``0`` / ``false``: skip warmup
-- ``min`` (default): local Chroma + MiniLM if the vector store exists,
-  pipeline CLIP (transformers), the text-to-text style embedder (e.g. bge-m3),
-  SAM 2, and the depth + segmentation models
+- ``min`` (default): pipeline CLIP (transformers), the text-to-text style embedder
+  (e.g. bge-m3), SAM 2, and the depth + segmentation models
 
 Each step is isolated: a failure in one step does not block the others.
 """
@@ -30,11 +29,6 @@ def run_startup_warmup() -> None:
             print(f"  ✓ {name}", flush=True)
         except Exception as e:
             print(f"  ⚠ {name} skipped: {e}", flush=True)
-
-    def _warm_chroma() -> None:
-        from designbridge.style.style_vector import warmup_vector_collection
-
-        warmup_vector_collection()
 
     def _warm_clip_eval() -> None:
         from designbridge.render.clip_evaluator import _load_model
@@ -67,7 +61,6 @@ def run_startup_warmup() -> None:
         if Config.ENABLE_SEGMENTATION:
             _load_upernet(Config.SEGMENTATION_MODEL)
 
-    _step("Local Chroma vector store (if ready)", _warm_chroma)
     _step("Pipeline CLIP evaluator (transformers)", _warm_clip_eval)
     _step("Text-to-text style embedder (sentence-transformers)", _warm_text_embedder)
     _step("SAM 2 instance segmentation predictor", _warm_sam2)

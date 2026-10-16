@@ -10,11 +10,10 @@
 |-------|------|------|----------|
 | **Requirement Analyzer (RA)** | 使用者 Raw Input（text_prompt, edit_scope, initial_image）；（可選）Vision JSON | **Requirement JSON** | 使用者 Raw Input；若要防錯可依賴 Vision JSON 交叉驗證門窗/家具 |
 | **Vision Preprocessor (VP)** | 原始影像（非 JSON） | **Vision JSON** | 原始影像（非 JSON） |
-| **Design Director (DD)** | Requirement JSON + Vision JSON | **Task/Plan JSON** + `routing_decision` | Requirement JSON（edit_scope / priority / constraints）+ Vision JSON（不可改區、物件分布） |
-| **Space Planner (SP)** | Requirement JSON + Vision JSON + Task/Plan JSON | **Layout Problem JSON**（中間產物）+ **Scene Graph JSON**（佈局解） | Vision JSON（空間/不可動/可用區）+ Requirement JSON（must_keep/must_add/edit_scope） |
-| **Style Designer (SD)** | Requirement JSON + Vision JSON + Task/Plan JSON | **Style Params JSON**（風格控制參數） | Requirement JSON（style_preferences + priority_weights + edit_scope）+ Vision JSON（結構保留/不可改區） |
-| **Design Adjuster (DA)** | Requirement JSON + Vision JSON + Task/Plan JSON + Render Result JSON | **Adjust Plan JSON**（inpaint 計畫/遮罩/強度） | Vision JSON（mask/區域/不可改區）+ Task/Plan（修改目標）+ Requirement（scope 限制） |
-| **Renderer (R)** | Task/Plan JSON + Style Params JSON +（Scene Graph JSON 或 Adjust Plan JSON）+（可選）Vision JSON | **Render Result JSON**（結果索引 + 參數紀錄） | Task/Plan（走哪種生成路徑）+ Style Params（生成條件）+ Scene Graph/Adjust Plan（結構或局部控制） |
+| **Space Planner (SP)** | Requirement JSON + Vision JSON | **Layout Problem JSON**（中間產物）+ **Scene Graph JSON**（佈局解） | Vision JSON（空間/不可動/可用區）+ Requirement JSON（must_keep/must_add/edit_scope） |
+| **Style Designer (SD)** | Requirement JSON + Vision JSON | **Style Params JSON**（風格控制參數） | Requirement JSON（style_preferences + priority_weights + edit_scope）+ Vision JSON（結構保留/不可改區） |
+| **Design Adjuster (DA)** | Requirement JSON + Vision JSON + Render Result JSON | **Adjust Plan JSON**（inpaint 計畫/遮罩/強度） | Vision JSON（mask/區域/不可改區）+ Requirement（scope 限制） |
+| **Renderer (R)** | Style Params JSON +（Scene Graph JSON 或 Adjust Plan JSON）+（可選）Vision JSON | **Render Result JSON**（結果索引 + 參數紀錄） | Style Params（生成條件）+ Scene Graph/Adjust Plan（結構或局部控制） |
 | **Evaluator (E)** | Requirement JSON + Render Result JSON +（可選）Scene Graph JSON + Vision JSON | **Eval/Feedback JSON** | Requirement JSON（評估標準）+ Render Result（被評結果）+ priority_weights（加權） |
 
 ---
@@ -22,7 +21,7 @@
 ## 1. Requirement JSON（需求規格）
 
 **產出者**：Requirement Analyzer  
-**消費者**：Design Director, Space Planner, Style Designer, Design Adjuster, Evaluator
+**消費者**：Space Planner, Style Designer, Design Adjuster, Evaluator
 
 ### 欄位表
 
@@ -45,14 +44,14 @@
 | | `must_remove` | array | ✕ | 使用者 | 一定要移除的物件 |
 | | `immutable_regions` | array | ✕ | Vision/使用者 | 不可改動區域（門窗、樑柱） |
 | | `functional_zones` | array | ✕ | 使用者 | 功能分區（工作/休息） |
-| `edit_scope` | `scope_value` | float (0–1) | ✓ | 使用者 | 改動強度，Design Director 路由依據 |
+| `edit_scope` | `scope_value` | float (0–1) | ✓ | 使用者 | 改動強度，路由依據 |
 | | `allowed_operations` | array | ✕ | 系統推導 | 可允許操作（inpaint / layout / style） |
 | `priority_weights` | `layout_rationality` | float | ✓ | 使用者/預設 | 偏好空間合理性 |
 | | `style_consistency` | float | ✓ | 使用者/預設 | 偏好風格一致性 |
 | | `novelty` | float | ✓ | 使用者/預設 | 偏好創新程度 |
-| _(top-level)_ | `hint_layout` | bool | ✕ | 系統推導 | 供 Design Director 路由用 |
-| _(top-level)_ | `hint_style` | bool | ✕ | 系統推導 | 供 Design Director 路由用 |
-| _(top-level)_ | `hint_adjuster` | bool | ✕ | 系統推導 | 供 Design Director 路由用 |
+| _(top-level)_ | `hint_layout` | bool | ✕ | 系統推導 | 供路由用 |
+| _(top-level)_ | `hint_style` | bool | ✕ | 系統推導 | 供路由用 |
+| _(top-level)_ | `hint_adjuster` | bool | ✕ | 系統推導 | 供路由用 |
 
 ### 範例
 
@@ -103,7 +102,7 @@
 ## 2. Vision JSON
 
 **產出者**：Vision Preprocessor  
-**消費者**：Design Director, Space Planner, Style Designer, Design Adjuster, Renderer, Evaluator
+**消費者**：Space Planner, Style Designer, Design Adjuster, Renderer, Evaluator
 
 ### 欄位
 
@@ -132,36 +131,7 @@
 
 ---
 
-## 3. Task/Plan JSON
-
-**產出者**：Design Director  
-**消費者**：Space Planner, Style Designer, Design Adjuster, Renderer
-
-### 欄位
-
-- `assigned_agents`: 分配給哪些 agent（["layout", "style"] 或 ["adjuster"]）
-- `generation_mode`: "layout_and_style" | "style_only" | "layout_only" | "inpaint"
-- `constraints_summary`: 約束摘要（從 Requirement + Vision 提取）
-- `priority_order`: 優先順序（可選）
-
-### 範例
-
-```json
-{
-  "assigned_agents": ["layout", "style"],
-  "generation_mode": "layout_and_style",
-  "constraints_summary": {
-    "must_keep": ["沙發"],
-    "immutable_regions": ["window_1"],
-    "edit_scope": 0.6
-  },
-  "priority_order": ["layout", "style"]
-}
-```
-
----
-
-## 4. Style Params JSON
+## 3. Style Params JSON
 
 **產出者**：Style Designer  
 **消費者**：Renderer
@@ -190,7 +160,7 @@
 
 ---
 
-## 5. Scene Graph JSON
+## 4. Scene Graph JSON
 
 **產出者**：Space Planner  
 **消費者**：Renderer
@@ -220,7 +190,7 @@
 
 ---
 
-## 6. Adjust Plan JSON
+## 5. Adjust Plan JSON
 
 **產出者**：Design Adjuster  
 **消費者**：Renderer
@@ -251,7 +221,7 @@
 
 ---
 
-## 7. Render Result JSON
+## 6. Render Result JSON
 
 **產出者**：Renderer  
 **消費者**：Evaluator
@@ -285,10 +255,10 @@
 
 ---
 
-## 8. Eval/Feedback JSON
+## 7. Eval/Feedback JSON
 
 **產出者**：Evaluator  
-**消費者**：Design Director（迭代控制）
+**消費者**：歷史頁顯示
 
 ### 欄位
 

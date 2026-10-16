@@ -2,8 +2,9 @@
 import { ref } from 'vue'
 
 /**
- * 設計稿的白卡容不下舊版側欄的全部欄位，但那些欄位（長寬比、自訂長寬、家庭結構、
- * 風水、風格參考圖、styleMethod…）都是實際會影響生成結果的參數，不能刪。
+ * 設計稿的白卡容不下舊版側欄的全部欄位，但那些欄位（長寬比、自訂長寬、家具數量、
+ * 風格參考圖、styleMethod…）都是實際會影響生成結果的參數，不能刪。
+ * 風水禁忌是例外：它會實際搬動家具，已經拉回主畫面（FengshuiPicker.vue）。
  * 統一收進這個預設摺疊的區塊：第一眼維持設計稿的乾淨，進階使用者展開就拿得到全部。
  */
 defineProps({
@@ -50,7 +51,7 @@ const open = ref(false)
   background: none;
   color: var(--db-text-soft);
   font-family: var(--db-font-display);
-  font-style: italic;
+  font-style: normal;
   font-size: 1.05rem;
   cursor: pointer;
   transition: background 0.16s, color 0.16s;

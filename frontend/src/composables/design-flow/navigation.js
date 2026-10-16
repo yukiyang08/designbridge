@@ -1,14 +1,15 @@
+import { cancelCadBatch } from './cadBatch'
 import {
   steps, stepIndex, error, planSource,
   floorPlanUrl, floorPlanPath, sceneGraph, editPlacements, layoutViewMode, layoutRenderConfig,
   floorPlanUpload, uploadedPlanUrl, uploadedPlanPath, detectedRooms,
-  cadPlanResult, cadActiveRoomId, cadRoomStatus, cadRoomSnapshots,
+  cadPlanResult, cadActiveRoomId, cadRoomStatus, cadRoomSnapshots, openingEdits,
   spacePhoto, spacePhotoPath, spaceImage, styleRefImage,
   result, loading,
   styleCandidates, styleCandidatePool, candidatesSearched, confirmedStyle, matchedStylePreview,
-  lastGeneratedImage, manualMaskPath, textPrompt,
+  lastGeneratedImage, manualMaskPath, refineHistory, textPrompt,
   panoUrl, panoError, panoLoading, quotationError,
-  timers,
+  timers, saveDraft,
 } from './state'
 
 export function goStep(i) {
@@ -28,6 +29,7 @@ export function startFlow(source) {
   resetFlow()
   planSource.value = source
   stepIndex.value = 0
+  saveDraft()   // 路由守衛靠它判斷「是從入口頁進來的」
 }
 
 export function resetFlow() {
@@ -49,6 +51,8 @@ export function resetFlow() {
   cadActiveRoomId.value = null
   cadRoomStatus.value = {}
   cadRoomSnapshots.value = {}
+  openingEdits.value = {}
+  cancelCadBatch()
   spacePhoto.remove()
   spacePhotoPath.value = ''
   spaceImage.remove()
@@ -63,6 +67,7 @@ export function resetFlow() {
   matchedStylePreview.value = null
   lastGeneratedImage.value = null
   manualMaskPath.value = ''
+  refineHistory.value = []
   textPrompt.value = ''
   panoUrl.value = null
   panoError.value = ''

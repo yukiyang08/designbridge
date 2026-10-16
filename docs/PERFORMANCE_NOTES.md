@@ -23,7 +23,6 @@
 | `visual_preprocessing`（無照片） | 0.00s | 沒傳 `initial_image` 時直接跳過 |
 | `visual_preprocessing.depth_estimation`（**有**照片） | ⚠️ 未實測——本次對話所有 log 都是無照片情境，一律 0.00s，沒有真實樣本 | 本地跑 `Depth-Anything-V2-Large-hf`（[config.py:84](../designbridge/core/config.py#L84)），[`vision.py:48`](../designbridge/layout/vision.py#L48) 用 `@lru_cache` 快取模型，但**沒有像 CLIP evaluator 一樣在 startup 就預熱**（[warmup.py](../designbridge/core/warmup.py) 沒有涵蓋），所以該 server process 第一次收到帶照片的請求時，要多付一次模型載入（甚至下載）成本，之後才會變快 |
 | `visual_preprocessing.depth_to_layout`（**有**照片） | ⚠️ 未實測，預期快（純 NumPy/OpenCV 對深度圖做 blob 偵測，[`depth_to_layout.py`](../designbridge/layout/depth_to_layout.py)，不呼叫任何 API） | — |
-| `design_director` | 0.00s | 路由決定已由 requirement_analyzer 的 LLM 輸出帶出，不重跑 |
 | `layout_and_style.style_search` | 0~17s（首次 53.6s，冷啟動離群值） | Supabase pgvector 查詢，一般網路延遲 |
 | `layout_and_style.layout_agent`（僅 `hint_layout=True` 才執行） | 75~134s | 每輪未收斂就重呼叫一次 Gemini；家具數量多時單輪 LLM 輸出量大，即使 1 輪收斂仍可達 84.77s |
 | `layout_and_style_agent`（節點總計） | 0s（`hint_layout=False`）／53~137s（`hint_layout=True`） | = style_search + layout_agent（如有執行） |

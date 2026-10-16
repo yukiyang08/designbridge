@@ -7,7 +7,6 @@ from designbridge.core.schemas import (
     RenderResultJSON,
     SceneGraphJSON,
     StyleParamsJSON,
-    TaskPlanJSON,
     VisionJSON,
 )
 from designbridge.core.state import DesignBridgeState, RoutingDecision, UserInput
@@ -18,7 +17,6 @@ __all__ = [
     "UserInput",
     "RequirementJSON",
     "VisionJSON",
-    "TaskPlanJSON",
     "StyleParamsJSON",
     "SceneGraphJSON",
     "RenderResultJSON",

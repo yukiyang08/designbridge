@@ -44,7 +44,6 @@ FLUX ControlNet / Kontext 風格化渲染
 ```
 requirement_analyzer
    └─ visual_preprocessing          Depth-Anything 跑輸入照片 → depth.png
-   └─ design_director               路由
    └─ layout_and_style_agent        ★ 現在會真的規劃佈局（原本是 stub）
           run_layout_agent()
             ├─ LLM 產生家具座標 → 硬/軟約束迭代 → best_items

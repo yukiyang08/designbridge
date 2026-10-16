@@ -16,21 +16,25 @@
  * 呼叫端（各 Step 元件）不用改。
  */
 
-export { STEP_FLOWS, ASPECT_OPTIONS, FAMILY_OPTIONS, FENGSHUI_OPTIONS } from './design-flow/state'
+export { STEP_FLOWS, ASPECT_OPTIONS, FENGSHUI_OPTIONS } from './design-flow/state'
+export { ORIGINAL_STYLE_KEY } from './design-flow/render'
 
 import {
   planSource, stepIndex, steps, currentStep, isLastStep,
   floorPlanUrl, floorPlanPath, sceneGraph, floorPlanUpload, uploadedPlanUrl, detectedRooms,
-  cadCounts, cadTotalPing, cadPlanResult, cadActiveRoomId, cadRoomStatus,
+  cadCounts, cadTotalPing, cadExtraRooms, cadPlanResult, cadActiveRoomId, cadRoomStatus,
+  cadBatch, cadBatchRunning, cadRoomSnapshots,
   editPlacements, roomW, roomD, roomTypeForPlan, layoutViewMode, layoutRenderConfig,
   roomType, spaceSizePing, customRoomW, customRoomD,
-  furnitureItems, furnitureQty, extraPrompt, familyNeeds, fengshuiRules, outputAspect,
+  furnitureItems, furnitureQty, extraPrompt, fengshuiRules, outputAspect,
   spacePhoto, spacePhotoPath,
   selectedStyle, noStyleReference, styleMethod, styleRefImage,
   styleOptions, styleLoading, styleError,
-  styleCandidates, candidatesLoading, candidatesSearched, confirmedStyle, matchedStylePreview,
+  styleCandidates, candidatesLoading, candidatesError, candidatesSearched, confirmedStyle, matchedStylePreview,
+  styleDemoImages,
   showSuggestions,
-  result, loading, loadingMsg, error, submitKey,
+  result, loading, loadingMsg, error, submitKey, swappingStyle, styleSwapCache,
+  roomGeometry, openingEdits,
   spaceImage, lastGeneratedImage, manualMaskPath, brushSize, eraserSize, drawMode,
   textPrompt, refineCanvasRef, baseImagePreview,
   panoLoading, panoUrl, panoError,
@@ -42,14 +46,15 @@ import { goStep, nextStep, prevStep, startFlow, resetFlow } from './design-flow/
 import { uploadFile } from './design-flow/common'
 import {
   fetchStyleOptions, fetchStyleCandidates, showNextRound, scheduleSearch,
-  confirmStyle, clearConfirmedStyle,
+  confirmStyle, clearConfirmedStyle, fetchStyleDemoImages,
 } from './design-flow/style'
 import {
   submitLayout, useUploadedPlan, handleRoomSelected, onEditorChange, updateFloorPlan,
 } from './design-flow/layout'
-import { submitRoomProgram, handleCadRoomSelected, jumpToCadRoom } from './design-flow/cad'
-import { submitPhoto, submit3D, generatePanorama } from './design-flow/render'
-import { handleMaskReady, submitRefine } from './design-flow/refine'
+import { applyToRooms, cancelCadBatch } from './design-flow/cadBatch'
+import { submitRoomProgram, handleCadRoomSelected, jumpToCadRoom, abandonCadRoom, setOpeningEdit } from './design-flow/cad'
+import { submitPhoto, submit3D, swapStyle, restoreOriginal, generatePanorama } from './design-flow/render'
+import { handleMaskReady, submitRefine, undoRefine, canUndoRefine } from './design-flow/refine'
 import { fetchQuotation, toggleFavoriteDesign } from './design-flow/quotation'
 
 export function useDesignFlow() {
@@ -61,24 +66,26 @@ export function useDesignFlow() {
     floorPlanUrl, floorPlanPath, sceneGraph, floorPlanUpload, uploadedPlanUrl,
     detectedRooms, handleRoomSelected,
     // CAD 房型生成
-    cadCounts, cadTotalPing, cadPlanResult, submitRoomProgram, handleCadRoomSelected,
-    cadActiveRoomId, cadRoomStatus, jumpToCadRoom,
+    cadCounts, cadTotalPing, cadExtraRooms, cadPlanResult, submitRoomProgram, handleCadRoomSelected,
+    cadActiveRoomId, cadRoomStatus, jumpToCadRoom, abandonCadRoom,
+    cadBatch, cadBatchRunning, cadRoomSnapshots, applyToRooms, cancelCadBatch,
     // 佈局
-    editPlacements, roomW, roomD, roomTypeForPlan, layoutViewMode, layoutRenderConfig,
+    editPlacements, roomW, roomD, roomTypeForPlan, roomGeometry, setOpeningEdit, layoutViewMode, layoutRenderConfig,
     onEditorChange, updateFloorPlan,
     // 空間設定
     roomType, spaceSizePing, customRoomW, customRoomD,
-    furnitureItems, furnitureQty, extraPrompt, familyNeeds, fengshuiRules, outputAspect,
+    furnitureItems, furnitureQty, extraPrompt, fengshuiRules, outputAspect,
     // 空間照片
     spacePhoto, spacePhotoPath,
     // 風格
     selectedStyle, noStyleReference, styleMethod, styleRefImage,
     styleOptions, styleLoading, styleError,
-    styleCandidates, candidatesLoading, candidatesSearched, confirmedStyle, matchedStylePreview,
+    styleCandidates, candidatesLoading, candidatesError, candidatesSearched, confirmedStyle, matchedStylePreview,
+    styleDemoImages, fetchStyleDemoImages,
     showSuggestions, fetchStyleOptions, fetchStyleCandidates, showNextRound, scheduleSearch,
     confirmStyle, clearConfirmedStyle,
     // 結果
-    result, loading, loadingMsg, error, submitKey,
+    result, loading, loadingMsg, error, submitKey, swappingStyle, styleSwapCache, swapStyle, restoreOriginal,
     // 微調
     spaceImage, lastGeneratedImage, manualMaskPath, brushSize, eraserSize, drawMode,
     textPrompt, refineCanvasRef, baseImagePreview, handleMaskReady,
@@ -89,6 +96,6 @@ export function useDesignFlow() {
     // 收藏
     favoriteLoading, favoriteError, toggleFavoriteDesign,
     // 動作
-    uploadFile, submitLayout, useUploadedPlan, submitPhoto, submit3D, submitRefine,
+    uploadFile, submitLayout, useUploadedPlan, submitPhoto, submit3D, submitRefine, undoRefine, canUndoRefine,
   }
 }

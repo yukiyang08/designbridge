@@ -1,0 +1,296 @@
+{
+  "layout": {
+    "constraints_met": {
+      "collision_free": true,
+      "must_add_satisfied": true,
+      "must_keep_satisfied": true,
+      "must_remove_satisfied": true,
+      "semantic_gaps_met": true,
+      "wall_anchored": false
+    },
+    "feasible": true,
+    "layout_prompt": "",
+    "placements": [
+      {
+        "h": 0.28,
+        "id": "bed_1",
+        "rotation": 0.0,
+        "type": "bed",
+        "w": 0.22,
+        "x": 0.4351,
+        "y": 0.53
+      },
+      {
+        "h": 0.08,
+        "id": "wardrobe_1",
+        "rotation": 0.0,
+        "type": "wardrobe",
+        "w": 0.18,
+        "x": 0.02,
+        "y": 0.0948
+      },
+      {
+        "h": 0.09,
+        "id": "desk_1",
+        "rotation": 0.0,
+        "type": "desk",
+        "w": 0.16,
+        "x": 0.6521,
+        "y": 0.89
+      },
+      {
+        "h": 0.07,
+        "id": "nightstand_1",
+        "rotation": 0.0,
+        "type": "nightstand",
+        "w": 0.07,
+        "x": 0.4176,
+        "y": 0.02
+      }
+    ],
+    "projection_mode": "synthetic",
+    "soft_scores": {
+      "balance": 0.799,
+      "circulation": 0.833,
+      "ergonomics": 0.833,
+      "focal_point": 0.857,
+      "natural_light": 1.0
+    },
+    "weighted_score": 0.846
+  },
+  "renderer": {
+    "layout_no_depth_all_ok": {
+      "backend": "flux_depth_controlnet_fal",
+      "calls": [
+        {
+          "backend": "flux_depth_controlnet_fal",
+          "kwargs": {
+            "conditioning_scale": 0.3,
+            "depth_control_end": 0.4,
+            "edge_conditioning_scale": 0.35,
+            "edge_control_end": 0.55,
+            "edge_path": "<path>",
+            "guidance_scale": 4.2,
+            "loras": [],
+            "num_steps": 42,
+            "output_size": [
+              1024,
+              576
+            ]
+          }
+        }
+      ],
+      "controlnet_inputs": [
+        "layout_depth",
+        "layout_footprint_edges"
+      ],
+      "params": {
+        "composer_includes_furniture": false,
+        "composer_used": false,
+        "furniture_layout_injected": "a fabric upholstered sofa in the center, front of the room; a low coffee table in the center, middle of the room; a TV media console with a wall-mounted flat TV above it in the center, back of the room, against the back wall",
+        "layout_control_source": "2d_plan_footprint+depth",
+        "layout_depth_conditioning_scale": 0.3,
+        "layout_depth_control_end": 0.4,
+        "layout_edge_conditioning_scale": 0.35,
+        "layout_edge_control_end": 0.55,
+        "layout_semantic_shapes": true,
+        "model": "<path>",
+        "negative_prompt_preview": "people, person, human, man, woman, child, hands, face, animal, pet, cat, dog, bird, text, watermark, signature, logo, embossed texture, relief carving, engraved pattern, corrugated surface, bumpy wall texture, mosaic screen, pixelated glitch",
+        "output_aspect": "auto",
+        "output_size": {
+          "height": 576,
+          "width": 1024
+        },
+        "provider": "fal-ai/flux-general"
+      },
+      "prompt": "a cozy modern living room with warm wood tones"
+    },
+    "photo_depth_all_ok": {
+      "backend": "flux_controlnet_depth_fal",
+      "calls": [
+        {
+          "backend": "flux_controlnet_depth_fal",
+          "kwargs": {
+            "conditioning_scale": 0.6,
+            "control_end": 0.7,
+            "controlnet_model": "Shakker-Labs/FLUX.1-dev-ControlNet-Depth",
+            "extra_controls": [],
+            "guidance_scale": 3.5,
+            "loras": [],
+            "num_steps": 20,
+            "output_size": [
+              1024,
+              576
+            ]
+          }
+        }
+      ],
+      "controlnet_inputs": [
+        "depth"
+      ],
+      "params": {
+        "composer_includes_furniture": false,
+        "composer_used": false,
+        "controlnet_control_end": 0.7,
+        "controlnet_guidance": 3.5,
+        "controlnet_steps": 20,
+        "depth_conditioning_scale": 0.6,
+        "model": "<path>",
+        "negative_prompt_preview": "people, person, human, man, woman, child, hands, face, animal, pet, cat, dog, bird, text, watermark, signature, logo, embossed texture, relief carving, engraved pattern, corrugated surface, bumpy wall texture, mosaic screen, pixelated glitch",
+        "output_aspect": "auto",
+        "output_size": {
+          "height": 576,
+          "width": 1024
+        }
+      },
+      "prompt": "a cozy modern living room with warm wood tones"
+    },
+    "photo_depth_controlnet_fails": {
+      "backend": "hf_kontext",
+      "calls": [
+        {
+          "backend": "flux_controlnet_depth_fal",
+          "kwargs": {
+            "conditioning_scale": 0.6,
+            "control_end": 0.7,
+            "controlnet_model": "Shakker-Labs/FLUX.1-dev-ControlNet-Depth",
+            "extra_controls": [],
+            "guidance_scale": 3.5,
+            "loras": [],
+            "num_steps": 20,
+            "output_size": [
+              1024,
+              576
+            ]
+          }
+        },
+        {
+          "backend": "hf_kontext",
+          "kwargs": {
+            "depth_conditioning_scale": 0.6
+          }
+        }
+      ],
+      "controlnet_inputs": [
+        "depth"
+      ],
+      "params": {
+        "composer_includes_furniture": false,
+        "composer_used": false,
+        "depth_conditioning_scale": 0.6,
+        "model": "<path>",
+        "negative_prompt_preview": "people, person, human, man, woman, child, hands, face, animal, pet, cat, dog, bird, text, watermark, signature, logo, embossed texture, relief carving, engraved pattern, corrugated surface, bumpy wall texture, mosaic screen, pixelated glitch",
+        "output_aspect": "auto",
+        "output_size": {
+          "height": 576,
+          "width": 1024
+        },
+        "provider": "fal-ai"
+      },
+      "prompt": "a cozy modern living room with warm wood tones"
+    },
+    "text_all_fail": {
+      "backend": "placeholder",
+      "calls": [
+        {
+          "backend": "hf_inference",
+          "kwargs": {
+            "model": "black-forest-labs/FLUX.1-schnell",
+            "output_size": [
+              1024,
+              576
+            ]
+          }
+        },
+        {
+          "backend": "flux_fal",
+          "kwargs": {
+            "output_size": [
+              1024,
+              576
+            ]
+          }
+        }
+      ],
+      "controlnet_inputs": [],
+      "params": {
+        "composer_includes_furniture": false,
+        "composer_used": false,
+        "negative_prompt_preview": "people, person, human, man, woman, child, hands, face, animal, pet, cat, dog, bird, text, watermark, signature, logo, embossed texture, relief carving, engraved pattern, corrugated surface, bumpy wall texture, mosaic screen, pixelated glitch",
+        "output_aspect": "auto",
+        "output_size": {
+          "height": 576,
+          "width": 1024
+        },
+        "render_error": "所有雲端後端皆失敗"
+      },
+      "prompt": "a cozy modern living room with warm wood tones"
+    },
+    "text_all_ok": {
+      "backend": "hf_inference",
+      "calls": [
+        {
+          "backend": "hf_inference",
+          "kwargs": {
+            "model": "black-forest-labs/FLUX.1-schnell",
+            "output_size": [
+              1024,
+              576
+            ]
+          }
+        }
+      ],
+      "controlnet_inputs": [],
+      "params": {
+        "composer_includes_furniture": false,
+        "composer_used": false,
+        "model": "black-forest-labs/FLUX.1-schnell",
+        "negative_prompt_preview": "people, person, human, man, woman, child, hands, face, animal, pet, cat, dog, bird, text, watermark, signature, logo, embossed texture, relief carving, engraved pattern, corrugated surface, bumpy wall texture, mosaic screen, pixelated glitch",
+        "output_aspect": "auto",
+        "output_size": {
+          "height": 576,
+          "width": 1024
+        },
+        "provider": "hf-inference"
+      },
+      "prompt": "a cozy modern living room with warm wood tones"
+    },
+    "text_hf_fails": {
+      "backend": "flux_fal",
+      "calls": [
+        {
+          "backend": "hf_inference",
+          "kwargs": {
+            "model": "black-forest-labs/FLUX.1-schnell",
+            "output_size": [
+              1024,
+              576
+            ]
+          }
+        },
+        {
+          "backend": "flux_fal",
+          "kwargs": {
+            "output_size": [
+              1024,
+              576
+            ]
+          }
+        }
+      ],
+      "controlnet_inputs": [],
+      "params": {
+        "composer_includes_furniture": false,
+        "composer_used": false,
+        "model": "fal-ai/flux/schnell",
+        "negative_prompt_preview": "people, person, human, man, woman, child, hands, face, animal, pet, cat, dog, bird, text, watermark, signature, logo, embossed texture, relief carving, engraved pattern, corrugated surface, bumpy wall texture, mosaic screen, pixelated glitch",
+        "output_aspect": "auto",
+        "output_size": {
+          "height": 576,
+          "width": 1024
+        }
+      },
+      "prompt": "a cozy modern living room with warm wood tones"
+    }
+  }
+}

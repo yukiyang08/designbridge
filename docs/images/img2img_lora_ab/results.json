@@ -1,0 +1,21 @@
+{
+  "prompt": "Interior design visualization: a bedroom, country rustic farmhouse style, colors neutral tones. Photorealistic, well-lit, high quality. Style profile: country rustic farmhouse (strength 0.85). Palette: primary #F8F5E3 (beige), secondary #B4C8D4 (silver), accent #E0B0B0 (blush pink). A cozy and inviting interior design, featuring soft pastel color palettes, natural wood elements, upholstered furniture with gentle curves and rolled arms, delicate floral patterns, patterned ceramic tiles, warm ambient lighting, and a comfortable, lived-in atmosphere.",
+  "loras": [
+    {
+      "path": "https://huggingface.co/MovingForward/designbridge-flux-lora/resolve/main/flux1dev/designbridge_v5_flux1dev_country.safetensors",
+      "scale": 1.0
+    }
+  ],
+  "results": [
+    {
+      "label": "with_lora",
+      "ok": true,
+      "elapsed_s": 54.1
+    },
+    {
+      "label": "without_lora",
+      "ok": true,
+      "elapsed_s": 14.2
+    }
+  ]
+}

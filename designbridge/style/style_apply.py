@@ -1,4 +1,4 @@
-"""Style-application helpers — Supabase pgvector first, local ChromaDB fallback."""
+"""Style-application helpers — Supabase pgvector 風格搜尋。"""
 
 from __future__ import annotations
 
@@ -61,9 +61,7 @@ def build_style_params(
     """
     建立 Renderer 可用的風格參數。
 
-    優先順序：
-    1. Supabase pgvector 語義搜尋
-    2. 本地 ChromaDB（若 Supabase 不可用）
+    Supabase pgvector 語義搜尋；失敗回傳 None（renderer 以無風格參考生成）。
     """
     if (user_input or {}).get("no_style_reference"):
         return None
@@ -99,26 +97,6 @@ def build_style_params(
         if results:
             return blend_style_params_supabase(results)
     except Exception as e:
-        print(f"⚠️  Supabase 向量搜尋失敗，嘗試本地向量庫：{e}")
-
-    # ── 2. 本地 ChromaDB 搜尋 ─────────────────────────────────────────────────
-    try:
-        from designbridge.style.style_vector import (
-            is_vector_store_ready,
-            query_style_images,
-            blend_style_params,
-        )
-        if is_vector_store_ready():
-            results_local = query_style_images(
-                text_query=query,
-                style_id=style_profile_id,
-                top_k=3,
-            )
-            if results_local:
-                params = blend_style_params(results_local)
-                print(f"✅ 本地向量搜尋：top-1 [{results_local[0].doc_id}] score={results_local[0].similarity_score}")
-                return params
-    except Exception as e:
-        print(f"⚠️  本地向量庫查詢失敗：{e}")
+        print(f"⚠️  Supabase 向量搜尋失敗：{e}")
 
     return None

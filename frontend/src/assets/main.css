@@ -1,40 +1,27 @@
-@import './base.css';
 @import './theme.css';
 
-:root {
-  --primary:        #8B5E3C;
-  --primary-light:  #f7f0e8;
-  --primary-hover:  #714c2e;
-  --primary-border: #d4b89a;
-  --primary-subtle: rgba(139, 94, 60, 0.07);
-
-  --text-1: #1c1c1e;
-  --text-2: #3d3d3f;
-  --text-3: #a07850;
-  --text-4: #c8a882;
-
-  --surface:        rgba(255, 250, 245, 0.85);
-  --surface-border: rgba(180, 140, 100, 0.22);
-
-  --radius-sm: 6px;
-  --radius-md: 10px;
-  --radius-lg: 14px;
-
-  --shadow-sm:  0 1px 4px rgba(100, 60, 20, 0.07);
-  --shadow-md:  0 4px 16px rgba(139, 94, 60, 0.13);
-  --shadow-lg:  0 10px 32px rgba(139, 94, 60, 0.18);
-  --shadow-xl:  0 20px 48px rgba(139, 94, 60, 0.22);
+/* 全站只有一套 token（theme.css 的 --db-*）。原本的 base.css（Vue 樣板、半套深色模式）
+   與棕色 --primary 系列已無人使用，一併移除。 */
+*, *::before, *::after {
+  box-sizing: border-box;
+  margin: 0;
+  font-weight: normal;   /* 沿用原 base.css 的重置，各元件的版面都是照這個寫的 */
 }
 
-*, *::before, *::after { box-sizing: border-box; }
-
 body {
-  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  margin: 0;
+  min-height: 100vh;
+  background: var(--db-paper);
+  color: var(--db-text);
+  font-family: var(--db-font-body);
+  font-size: 15px;
+  line-height: 1.6;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
 #app {
   width: 100%;
   min-height: 100vh;
-  padding: 0;
-  margin: 0;
 }

@@ -231,13 +231,3 @@ def list_furniture(
             continue
         results.append(item)
     return results
-
-
-# ── 工具 ────────────────────────────────────────────────────────────────────────
-
-def reload_kb() -> None:
-    """強制重新載入 KB 與 embedding 快取。"""
-    global _kb_cache, _emb_cache
-    _kb_cache = _emb_cache = None
-    _load_local_kb()
-    _load_embeddings()

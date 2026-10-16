@@ -87,7 +87,7 @@ def _resolve_camera(
     """Build the camera to render with.
 
     If the caller already pinned ``cam_kwargs`` to a concrete pose (as
-    ``renderer.py`` does, so depth/edge/base/seg stay geometrically consistent
+    ``renderer.py`` does, so depth/edge stay geometrically consistent
     for one render job), use it directly — no rescoring. Otherwise run the same
     occlusion-based candidate selection ``scene_graph_to_depth`` uses.
     """
@@ -107,52 +107,6 @@ def _resolve_camera(
             f"fov_v={chosen.fov_v_deg:.0f}°（分數 {picked['score']:.3f}）"
         )
     return picked["cam"]
-
-
-# ── Semantic region (segmentation-style) colours ───────────────────────────────
-# Distinct, roughly ADE20K-aligned colours per furniture class. Used to render a
-# flat per-object region map: each piece fills its footprint with ONE solid colour,
-# giving the model an explicit "this whole area = a sofa" signal — a stronger spatial
-# prior than a grey depth blob. Room shell uses ADE wall/floor/ceiling colours.
-_SEG_COLORS: dict[str, tuple[int, int, int]] = {
-    "_wall": (120, 120, 120), "_floor": (80, 50, 50), "_ceiling": (120, 120, 80),
-    "sofa": (11, 102, 255), "loveseat": (11, 102, 255), "armchair": (8, 255, 214),
-    "chair": (204, 255, 4), "stool": (204, 255, 4),
-    "coffee_table": (255, 6, 82), "side_table": (255, 6, 82), "dining_table": (255, 6, 82),
-    "table": (255, 6, 82), "desk": (214, 255, 8),
-    "tv_unit": (255, 163, 0), "tv": (0, 163, 255),
-    "bed": (204, 5, 255), "bunk_bed": (204, 5, 255),
-    "wardrobe": (0, 41, 255), "bookshelf": (235, 12, 255), "shelf": (235, 12, 255),
-    "cabinet": (224, 5, 255), "dresser": (255, 173, 0), "nightstand": (255, 220, 0),
-    "plant": (4, 250, 7), "lamp": (255, 5, 153), "floor_lamp": (255, 5, 153),
-    "rug": (150, 150, 150), "carpet": (150, 150, 150),
-    "default": (200, 200, 200),
-}
-
-# Plausible material tones per class — for the img2img BASE image (a believable
-# coloured 3D block-out that low-denoise img2img refines into a real render while
-# furniture positions stay locked). Unlike the garish seg colours, these read as real
-# materials, so low strength keeps a sensible interior instead of neon blocks.
-_MATERIAL_COLORS: dict[str, tuple[int, int, int]] = {
-    "_wall": (236, 232, 226), "_floor": (198, 168, 128), "_ceiling": (245, 243, 240),
-    "sofa": (176, 170, 160), "loveseat": (176, 170, 160), "armchair": (166, 160, 150),
-    "chair": (150, 138, 118), "stool": (150, 138, 118),
-    "coffee_table": (150, 110, 72), "side_table": (150, 110, 72),
-    "dining_table": (150, 110, 72), "table": (150, 110, 72), "desk": (150, 110, 72),
-    "tv_unit": (120, 86, 56), "tv": (32, 32, 36),
-    "bed": (224, 214, 194), "bunk_bed": (200, 180, 150),
-    "wardrobe": (172, 142, 112), "bookshelf": (160, 130, 100), "shelf": (160, 130, 100),
-    "cabinet": (172, 142, 112), "dresser": (172, 142, 112), "nightstand": (182, 152, 122),
-    "plant": (72, 120, 60), "lamp": (214, 202, 180), "floor_lamp": (214, 202, 180),
-    "rug": (212, 206, 196), "carpet": (212, 206, 196),
-    "default": (182, 176, 166),
-}
-
-
-def _color_of(ftype: str, palette: dict[str, tuple[int, int, int]]) -> tuple[int, int, int]:
-    if ftype.startswith("_"):
-        return palette.get(ftype, palette["default"])
-    return palette.get((ftype or "").lower(), palette["default"])
 
 
 def render_layout_depth_map(
@@ -210,126 +164,6 @@ def render_layout_depth_map(
         import traceback
 
         print(f"⚠️  layout depth projection failed: {e}")
-        traceback.print_exc()
-        return None
-
-
-def render_layout_base_image(
-    furniture_placements: list[dict[str, Any]],
-    task_id: str,
-    *,
-    room_w: float = 4.0,
-    room_d: float = 4.0,
-    room_h: float = _DEFAULT_ROOM_HEIGHT,
-    img_w: int = 1024,
-    img_h: int = 1024,
-    semantic_shapes: bool = True,
-    cam_kwargs: dict | None = None,
-    out_dir: Path | None = None,
-) -> str | None:
-    """Render a believable, shaded, material-coloured 3D block-out of the layout.
-
-    Intended as the INIT image for low-denoise img2img: furniture sits at exact plan
-    positions in plausible material tones, so the render keeps coordinates locked while
-    img2img only adds texture, lighting and detail. Returns the PNG path.
-    """
-    if not furniture_placements:
-        return None
-    try:
-        from PIL import Image
-
-        room_w = float(room_w) if room_w and room_w > 0 else 4.0
-        room_d = float(room_d) if room_d and room_d > 0 else 4.0
-        room_h = float(room_h) if room_h and room_h > 0 else _DEFAULT_ROOM_HEIGHT
-        img_w = max(256, int(img_w))
-        img_h = max(256, int(img_h))
-
-        cam = _resolve_camera(
-            room_w, room_d, img_w, img_h, furniture_placements,
-            semantic_shapes=semantic_shapes, cam_kwargs=cam_kwargs,
-        )
-        tagged, id_to_type = build_tagged_scene(
-            furniture_placements, room_w, room_d, room_h, semantic_shapes=semantic_shapes,
-        )
-        _zbuf, idbuf = rasterize_ids(tagged, cam)
-        rgb = np.zeros((img_h, img_w, 3), dtype=np.uint8)
-        for oid, ftype in id_to_type.items():
-            mask = idbuf == oid
-            if mask.any():
-                rgb[mask] = _color_of(ftype, _MATERIAL_COLORS)
-
-        base = out_dir or (Path(Config.ARTIFACTS_DIR) / "layout")
-        base.mkdir(parents=True, exist_ok=True)
-        out = base / f"{task_id}_layout_base.png"
-        Image.fromarray(rgb, mode="RGB").save(str(out))
-        print(
-            f"[layout_projection] eye-level material block-out: {out.name} "
-            f"({img_w}x{img_h}, {len(furniture_placements)} items)"
-        )
-        return str(out)
-    except Exception as e:  # pragma: no cover - defensive
-        import traceback
-        print(f"⚠️  layout base-image projection failed: {e}")
-        traceback.print_exc()
-        return None
-
-
-def render_layout_segmentation_map(
-    furniture_placements: list[dict[str, Any]],
-    task_id: str,
-    *,
-    room_w: float = 4.0,
-    room_d: float = 4.0,
-    room_h: float = _DEFAULT_ROOM_HEIGHT,
-    img_w: int = 1024,
-    img_h: int = 1024,
-    semantic_shapes: bool = True,
-    cam_kwargs: dict | None = None,
-    out_dir: Path | None = None,
-) -> str | None:
-    """Render an eye-level flat per-object region (segmentation-style) map.
-
-    Each furniture piece fills its silhouette with one solid semantic colour, so the
-    model gets an explicit "this whole region is a <class>" prior — a stronger spatial
-    signal for precise placement than the grey depth blob alone. Returns the PNG path.
-    """
-    if not furniture_placements:
-        return None
-    try:
-        from PIL import Image
-
-        room_w = float(room_w) if room_w and room_w > 0 else 4.0
-        room_d = float(room_d) if room_d and room_d > 0 else 4.0
-        room_h = float(room_h) if room_h and room_h > 0 else _DEFAULT_ROOM_HEIGHT
-        img_w = max(256, int(img_w))
-        img_h = max(256, int(img_h))
-
-        cam = _resolve_camera(
-            room_w, room_d, img_w, img_h, furniture_placements,
-            semantic_shapes=semantic_shapes, cam_kwargs=cam_kwargs,
-        )
-        tagged, id_to_type = build_tagged_scene(
-            furniture_placements, room_w, room_d, room_h, semantic_shapes=semantic_shapes,
-        )
-        _zbuf, idbuf = rasterize_ids(tagged, cam)
-        rgb = np.zeros((img_h, img_w, 3), dtype=np.uint8)
-        for oid, ftype in id_to_type.items():
-            mask = idbuf == oid
-            if mask.any():
-                rgb[mask] = _color_of(ftype, _SEG_COLORS)
-
-        base = out_dir or (Path(Config.ARTIFACTS_DIR) / "layout")
-        base.mkdir(parents=True, exist_ok=True)
-        out = base / f"{task_id}_layout_seg.png"
-        Image.fromarray(rgb, mode="RGB").save(str(out))
-        print(
-            f"[layout_projection] eye-level region map: {out.name} "
-            f"({img_w}x{img_h}, {len(furniture_placements)} items)"
-        )
-        return str(out)
-    except Exception as e:  # pragma: no cover - defensive
-        import traceback
-        print(f"⚠️  layout segmentation projection failed: {e}")
         traceback.print_exc()
         return None
 

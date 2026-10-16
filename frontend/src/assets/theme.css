@@ -4,11 +4,12 @@
    ══════════════════════════════════════════════════════════════ */
 :root {
   /* 主色：所有主要行動按鈕、進行中步驟 */
-  --db-accent:        #cdc5ac;
-  --db-accent-deep:   #b7ad8c;   /* hover，設計稿沒給，取 accent 壓暗 12% */
-  --db-accent-soft:   #e4dfd0;   /* 淡底，設計稿沒給，取 accent 提亮 */
+  --db-accent:        #c9c4bb;
+  --db-accent-deep:   #a39b94;   /* hover／邊框，灰褐 */
+  --db-accent-soft:   #e6e3dd;
+  --db-accent-ink:    #756d66;   /* 灰褐文字／強調線，白底上 ~5:1 */
 
-  /* 壓在主色上的文字。設計稿用白色，但 #fff on #cdc5ac 只有 1.66:1，
+  /* 壓在主色上的文字。設計稿用白色，但 #fff on #c9c4bb 只有 1.66:1，
      遠低於 WCAG AA 對大字的 3:1，所以改用設計稿自己的 ink 色：7.9:1，
      底色仍是設計稿的米色，品牌感不變。要回到設計稿原樣就改回 #fff。 */
   --db-on-accent:     #313131;
@@ -17,6 +18,7 @@
   --db-ink:           #313131;   /* 首頁 hero 底 */
   --db-fog:           #bebbbb;   /* 流程頁底 */
   --db-card:          #ffffff;
+  --db-paper:         #f1efeb;   /* 非 scene 頁面（歷史／收藏…）的底，accent-soft 再淡一階 */
 
   /* 互動元件 */
   --db-chip:          #d9d9d9;   /* 空間類型 chip */
@@ -79,38 +81,53 @@
   box-shadow: var(--db-shadow-card);
 }
 
-/* 主行動按鈕（生成平面圖 / 生成渲染圖 / 下一步…） */
+/* 主行動按鈕（生成平面圖 / 生成渲染圖 / 下一步…）：深色膠囊 + 白字，
+   hover 轉主色並微微浮起；次要按鈕（--ghost）是白底細框，不跟主按鈕搶視線。 */
 .db-btn {
   display: inline-flex;
   align-items: center;
   justify-content: center;
   gap: 0.5rem;
-  min-height: 58px;
-  padding: 0.75rem 2rem;
-  border: none;
-  border-radius: 4px;
-  background: var(--db-accent);
-  color: var(--db-on-accent);
+  min-height: 52px;
+  padding: 0.7rem 2.1rem;
+  border: 1.5px solid var(--db-ink);
+  border-radius: var(--db-radius-pill);
+  background: var(--db-ink);
+  color: #fff;
   font-family: var(--db-font-display);
   font-style: italic;
   font-weight: 500;
-  font-size: 1.35rem;
+  font-size: 1.15rem;
+  letter-spacing: 0.04em;
   line-height: 1.2;
   cursor: pointer;
-  transition: background 0.18s, transform 0.12s, box-shadow 0.18s;
+  transition: background 0.18s, color 0.18s, border-color 0.18s, transform 0.12s, box-shadow 0.18s;
 }
 .db-btn:hover:not(:disabled) {
-  background: var(--db-accent-deep);
+  background: var(--db-accent);
+  border-color: var(--db-accent);
+  color: var(--db-on-accent);
   box-shadow: var(--db-shadow-soft);
+  transform: translateY(-1px);
 }
-.db-btn:active:not(:disabled) { transform: translateY(1px); }
-.db-btn:disabled { opacity: 0.45; cursor: not-allowed; }
+.db-btn:active:not(:disabled) { transform: translateY(1px); box-shadow: none; }
+.db-btn:focus-visible { outline: 3px solid var(--db-accent-deep); outline-offset: 2px; }
+.db-btn:disabled { opacity: 0.4; cursor: not-allowed; }
 
 .db-btn--ghost {
-  background: var(--db-secondary);
-  color: #fff;                     /* 底色是灰的，不吃 --db-on-accent */
+  background: #fff;
+  border-color: #cfcbc4;
+  color: var(--db-text);
 }
-.db-btn--ghost:hover:not(:disabled) { background: #646464; }
+.db-btn--ghost:hover:not(:disabled) {
+  background: #f7f6f3;
+  border-color: var(--db-ink);
+  color: var(--db-text);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .db-btn:hover:not(:disabled), .db-btn:active:not(:disabled) { transform: none; }
+}
 
 .db-btn--sm {
   min-height: 42px;
