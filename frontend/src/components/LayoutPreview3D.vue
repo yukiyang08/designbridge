@@ -318,8 +318,10 @@ function buildScene() {
       if (b - a < 1e-4 || y1 - y0 < 1e-4) return
       const m = new THREE.Mesh(new THREE.BoxGeometry(horiz ? b - a : t, y1 - y0, horiz ? t : b - a), mat)
       const mid = (a + b) / 2
-      if (horiz) m.position.set(mid - roomWidth / 2, (y0 + y1) / 2, roomDepth + t / 2)
-      else m.position.set((side === 'left' ? -1 : 1) * (roomWidth / 2 + t / 2), (y0 + y1) / 2, roomDepth - mid)
+      // 跟下面家具的 worldX 用同一套鏡像（見那裡的註解），牆跟門窗洞才會對得上
+      // 鏡像後的左右，不會牆在左家具卻跑到右邊。
+      if (horiz) m.position.set(roomWidth / 2 - mid, (y0 + y1) / 2, roomDepth + t / 2)
+      else m.position.set((side === 'left' ? 1 : -1) * (roomWidth / 2 + t / 2), (y0 + y1) / 2, roomDepth - mid)
       m.castShadow = true
       m.receiveShadow = true
       scene.add(m)
@@ -370,10 +372,15 @@ function buildScene() {
 
     const cx = (item.x || 0) + (item.w || 0) / 2
     const cy = (item.y || 0) + (item.h || 0) / 2
-    const worldX = (cx - 0.5) * roomWidth
+    // 相機站在近牆看向房間深處（eye.z 比 target.z 更負），OrbitControls 算出來的
+    // 螢幕右 = world -X，不是直覺的 +X——不翻轉的話，平面圖左邊的家具會跑到
+    // 3D 畫面右邊。這裡直接把 X 鏡像回來，讓左右對應視覺上的左右，不去動相機
+    // 本身（距離/俯仰角跟生圖的投影相機要對齊，不能改）。
+    const worldX = (0.5 - cx) * roomWidth
     const worldZ = (1 - cy) * roomDepth
     furnitureGroup.position.set(worldX, 0, worldZ)
-    furnitureGroup.rotation.y = -THREE.MathUtils.degToRad(item.rotation || 0)
+    // X 鏡像會讓旋轉方向也跟著反過來，角度正負號要一起翻才會跟平面圖一致。
+    furnitureGroup.rotation.y = THREE.MathUtils.degToRad(item.rotation || 0)
 
     const label = makeLabel(furnitureLabel(item.type))
     label.position.set(0, height + 0.15, 0)
@@ -495,8 +502,8 @@ function onPointerMove(event) {
 function onPointerUp() {
   if (!draggedEntry) return
   const { item, mesh } = draggedEntry
-  // 世界座標換回正規化 floor-plan 座標（buildScene 那段轉換的反運算）
-  const cx = mesh.position.x / roomWidthRef + 0.5
+  // 世界座標換回正規化 floor-plan 座標（buildScene 那段鏡像轉換的反運算）
+  const cx = 0.5 - mesh.position.x / roomWidthRef
   const cy = 1 - mesh.position.z / roomDepthRef
   item.x = Number((cx - (item.w || 0) / 2).toFixed(4))
   item.y = Number((cy - (item.h || 0) / 2).toFixed(4))

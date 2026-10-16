@@ -10,7 +10,6 @@ import {
   panoLoading, panoUrl, panoError,
 } from './state'
 import { nextStep } from './navigation'
-import { scheduleSearch } from './style'
 import { uploadFile } from './common'
 import { updateFloorPlan } from './layout'
 import { snapshotCurrentCadRoom } from './cad'
@@ -34,8 +33,11 @@ export async function submitPhoto() {
   loadingMsg.value = { title: '上傳空間照片中', sub: '準備分析你的空間' }
   try {
     spacePhotoPath.value = await uploadFile(spacePhoto.file)
+    // 描述跟風格推薦都已經在這頁打完/選完了（見 StepPhotoUpload.vue 的
+    // @input="scheduleSearch"），不用再經過一個只為了選風格存在的中繼頁，
+    // 直接進結果頁生成渲染圖。
     nextStep()
-    scheduleSearch()
+    await submit3D()
   } catch (e) {
     error.value = `上傳失敗：${e.message}`
   } finally {

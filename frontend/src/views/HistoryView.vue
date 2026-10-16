@@ -163,7 +163,7 @@ function modelBadge(r) {
   <div class="history-page">
     <header class="history-header">
       <button class="back-btn" @click="router.push('/')">← 返回</button>
-      <h1>生成歷史 <span class="count" v-if="records.length">{{ records.length }} 筆</span></h1>
+      <h1>歷史紀錄 <span class="count" v-if="records.length">{{ records.length }} 筆</span></h1>
       <div class="header-actions">
         <template v-if="batchMode">
           <button class="action-btn select-all" @click="toggleAll">

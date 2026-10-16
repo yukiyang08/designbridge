@@ -7,12 +7,16 @@
  */
 import AdvancedPanel from '@/components/shell/AdvancedPanel.vue'
 import FengshuiPicker from '@/components/FengshuiPicker.vue'
+import StyleSuggestions from '@/components/StyleSuggestions.vue'
 import { ROOM_OPTIONS } from '@/config/furniture'
 import { useDesignFlow, ASPECT_OPTIONS } from '@/composables/useDesignFlow'
+import { API_BASE } from '@/config/api'
 
 const {
-  spacePhoto, roomType, spaceSizePing, outputAspect,
-  fengshuiRules, loading, submitPhoto,
+  spacePhoto, roomType, spaceSizePing, outputAspect, extraPrompt,
+  fengshuiRules, loading, submitPhoto, scheduleSearch,
+  showSuggestions, styleCandidates, candidatesLoading, candidatesError, confirmedStyle,
+  confirmStyle, clearConfirmedStyle, fetchStyleCandidates, showNextRound,
 } = useDesignFlow()
 </script>
 
@@ -37,6 +41,37 @@ const {
       :room-type="roomType"
       hint="這條路徑不排家具，勾選的項目會寫進生成效果圖的描述裡。"
     />
+
+    <!-- ══ 描述需求：跟其他路徑一樣直接在這一頁打字、背景跑風格推薦，
+         不用先點「下一步」翻頁才看得到結果。 ══ -->
+    <section class="describe">
+      <h2 class="db-col-title">描述你想要的空間</h2>
+      <textarea
+        v-model="extraPrompt"
+        class="db-textarea"
+        rows="3"
+        placeholder="例如：木質感、採光充足的明亮感…"
+        @input="scheduleSearch"
+      />
+      <p class="describe-hint">
+        這段描述會用來搜尋風格參考圖，也會直接影響生成的效果圖。
+      </p>
+
+      <section v-if="showSuggestions" class="suggest">
+        <StyleSuggestions
+          :candidates="styleCandidates"
+          :confirmed="confirmedStyle"
+          :loading="candidatesLoading"
+          :error="candidatesError"
+          :api-base="API_BASE"
+          @confirm="confirmStyle"
+          @clear="clearConfirmedStyle"
+          @next-round="showNextRound"
+          @retry="fetchStyleCandidates()"
+          @similar="fetchStyleCandidates({ anchorSelected: true })"
+        />
+      </section>
+    </section>
 
     <AdvancedPanel hint="房型・坪數・比例">
       <div class="adv-grid">
@@ -63,7 +98,7 @@ const {
 
     <div class="actions">
       <button class="db-btn" :disabled="loading || !spacePhoto.preview" @click="submitPhoto">
-        下一步：輸入需求
+        生成渲染圖
       </button>
     </div>
   </div>
@@ -122,6 +157,45 @@ const {
   cursor: pointer;
 }
 .clear-btn:hover { background: rgba(0, 0, 0, 0.75); }
+
+/* ── 描述需求 ── */
+.describe {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding-top: 1.75rem;
+  border-top: 1px solid #f0f0f0;
+}
+.db-col-title {
+  position: relative;
+  margin: 0 0 1rem;
+  padding-bottom: 0.7rem;
+  font-family: var(--db-font-display);
+  font-style: italic;
+  font-weight: 500;
+  font-size: 1.3rem;
+  color: var(--db-text);
+}
+.db-col-title::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  bottom: 0;
+  width: 34px;
+  height: 3px;
+  border-radius: 2px;
+  background: var(--db-accent);
+  transform: translateX(-50%);
+}
+.describe .db-textarea { max-width: 720px; width: 100%; }
+.describe-hint {
+  margin: 0.55rem 0 0;
+  max-width: 720px;
+  width: 100%;
+  font-size: 0.8rem;
+  color: var(--db-placeholder);
+}
+.suggest { width: 100%; margin-top: 1.5rem; }
 
 .adv-grid {
   display: grid;

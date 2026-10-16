@@ -14,9 +14,7 @@ import StepPlanUpload from '@/components/steps/StepPlanUpload.vue'
 import StepRoomProgram from '@/components/steps/StepRoomProgram.vue'
 import StepRoomPick from '@/components/steps/StepRoomPick.vue'
 import StepFloorPlan from '@/components/steps/StepFloorPlan.vue'
-import StepRender from '@/components/steps/StepRender.vue'
-import StepRefine from '@/components/steps/StepRefine.vue'
-import StepBudget from '@/components/steps/StepBudget.vue'
+import StepResult from '@/components/steps/StepResult.vue'
 import CadRoomMiniMap from '@/components/CadRoomMiniMap.vue'
 import { useDesignFlow } from '@/composables/useDesignFlow'
 import sceneBg from '@/assets/figma/room-bg.png'
@@ -26,14 +24,14 @@ const flow = useDesignFlow()
 const {
   steps, stepIndex, currentStep, goStep,
   loading, loadingMsg, error,
-  editPlacements, floorPlanUrl, spacePhotoPath, lastGeneratedImage, planSource,
+  editPlacements, floorPlanUrl, spacePhotoPath, planSource,
   detectedRooms, cadPlanResult, cadRoomStatus, cadActiveRoomId, jumpToCadRoom, abandonCadRoom,
   fetchStyleOptions, fetchStyleDemoImages, resetFlow,
 } = flow
 
 // 右上角縮圖只在 CAD 多房間流程、且已經進到逐一設計房間（plan 之後）的步驟才顯示——
-// roomProgram/roomPick 本身就是整層/選房間的畫面，不需要再疊一個縮圖。
-const MINIMAP_STEPS = new Set(['plan', 'render', 'refine', 'budget'])
+// roomProgram 本身就是整層/選房間的畫面，不需要再疊一個縮圖。
+const MINIMAP_STEPS = new Set(['plan', 'result'])
 const showCadMiniMap = computed(
   () => planSource.value === 'cad' && !!cadPlanResult.value && MINIMAP_STEPS.has(currentStep.value),
 )
@@ -52,9 +50,7 @@ const STEP_COMPONENTS = {
   roomProgram: StepRoomProgram,
   roomPick:    StepRoomPick,
   plan:        StepFloorPlan,
-  render:      StepRender,
-  refine:      StepRefine,
-  budget:      StepBudget,
+  result:      StepResult,
 }
 
 /**
@@ -65,7 +61,6 @@ const maxReached = computed(() => {
   const keys = steps.value.map(s => s.key)
   const hasPlan   = editPlacements.value.length > 0 || !!floorPlanUrl.value
   const hasBase   = planSource.value === 'skip' || hasPlan || !!spacePhotoPath.value
-  const hasRender = !!lastGeneratedImage.value
 
   const hasRooms = detectedRooms.value.length > 0 || (cadPlanResult.value?.rooms?.length > 0)
 
@@ -75,9 +70,7 @@ const maxReached = computed(() => {
       i === 0 ? true :
       k === 'roomPick' ? hasRooms :
       k === 'plan'   ? hasPlan :
-      k === 'render' ? hasBase :
-      k === 'refine' ? hasRender :
-      k === 'budget' ? hasRender : false
+      k === 'result' ? hasBase : false
     if (ok && i === reachable + 1) reachable = i
   })
   return reachable

@@ -16,13 +16,17 @@ import { Icon } from '@iconify/vue'
 import AdvancedPanel from '@/components/shell/AdvancedPanel.vue'
 import FengshuiPicker from '@/components/FengshuiPicker.vue'
 import SpaceSizeFields from '@/components/steps/SpaceSizeFields.vue'
+import StyleSuggestions from '@/components/StyleSuggestions.vue'
 import { ROOM_OPTIONS, FURNITURE_BY_ROOM, roomIcon, roomPhoto, furnitureIcon, furnitureLabel, furnitureKeyFromInput } from '@/config/furniture'
 import { useDesignFlow, ASPECT_OPTIONS } from '@/composables/useDesignFlow'
+import { API_BASE } from '@/config/api'
 
 const {
   planSource, roomType, roomTypeForPlan, spaceSizePing, customRoomW, customRoomD, outputAspect,
   furnitureItems, furnitureQty, extraPrompt, fengshuiRules,
-  loading, submitLayout, nextStep, scheduleSearch, startFlow,
+  loading, submitLayout, nextStep, scheduleSearch, startFlow, submit3D,
+  showSuggestions, styleCandidates, candidatesLoading, candidatesError, confirmedStyle,
+  confirmStyle, clearConfirmedStyle, fetchStyleCandidates, showNextRound,
 } = useDesignFlow()
 
 const isSkip = computed(() => planSource.value === 'skip')
@@ -139,10 +143,11 @@ function goLayoutMode() {
 
 function submit() {
   if (isSkip.value) {
-    // 不排家具：這頁沒有東西要送後端，直接進下一步選風格
+    // 不排家具：描述跟風格推薦都已經在這頁打完/選完了（見上面的 watch(extraPrompt)），
+    // 不用再經過一個只為了選風格存在的中繼頁，直接進結果頁生成渲染圖。
     roomTypeForPlan.value = roomType.value
-    scheduleSearch()
     nextStep()
+    submit3D()
     return
   }
   submitLayout()
@@ -279,6 +284,24 @@ function submit() {
       <p class="describe-hint">
         這段描述會用來搜尋風格參考圖，也會直接影響生成的效果圖。
       </p>
+
+      <!-- 打字就直接在背景查（上面的 watch(extraPrompt, ...)），這裡跟著顯示結果，
+           不用像以前那樣要先點「下一步」翻到下一頁才看得到推薦。
+           StyleSuggestions 自己有「AI 推薦風格參考」標題，這裡不再重複一層。 -->
+      <section v-if="showSuggestions" class="suggest">
+        <StyleSuggestions
+          :candidates="styleCandidates"
+          :confirmed="confirmedStyle"
+          :loading="candidatesLoading"
+          :error="candidatesError"
+          :api-base="API_BASE"
+          @confirm="confirmStyle"
+          @clear="clearConfirmedStyle"
+          @next-round="showNextRound"
+          @retry="fetchStyleCandidates()"
+          @similar="fetchStyleCandidates({ anchorSelected: true })"
+        />
+      </section>
     </section>
 
     <!-- ══ 進階設定 ══ -->
@@ -301,7 +324,7 @@ function submit() {
 
     <div class="actions">
       <button class="db-btn" :disabled="loading || !!blockReason" @click="submit">
-        {{ isSkip ? '下一步：選擇風格' : '生成平面圖' }}
+        {{ isSkip ? '生成渲染圖' : '生成平面圖' }}
       </button>
       <p v-if="blockReason" class="block-hint" role="status">{{ blockReason }}</p>
       <button v-if="!isSkip" type="button" class="skip-btn" :disabled="loading" @click="goSkipRender">
@@ -562,6 +585,7 @@ function submit() {
   font-size: 0.8rem;
   color: var(--db-placeholder);
 }
+.suggest { width: 100%; margin-top: 1.5rem; }
 
 /* ── 進階設定內部 ── */
 .adv-grid {

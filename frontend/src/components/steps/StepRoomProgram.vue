@@ -1,16 +1,43 @@
 <script setup>
 /**
- * Step: 房型設定（CAD 入口）— 輸入幾房幾廳幾衛幾廚幾陽台＋總坪數，交給
- * /api/generate-room-plan 直接切割整層樓的房間配置。表單沿用 RoomPlanView.vue
- * 那顆獨立工具頁的寫法，只是狀態換成 useDesignFlow 的 cadCounts/cadTotalPing，
- * 生成完後由 submitRoomProgram 自動導去下一步（選房間），不在這裡處理導頁。
+ * Step: 房型設定 ＋ 選擇房間（CAD 入口，合併成一頁）— 輸入幾房幾廳幾衛幾廚幾陽台
+ * ＋總坪數，交給 /api/generate-room-plan 直接切割整層樓的房間配置。表單沿用
+ * RoomPlanView.vue 那顆獨立工具頁的寫法，只是狀態換成 useDesignFlow 的
+ * cadCounts/cadTotalPing。
+ *
+ * 生成完（cadPlanResult 有值）後，房間選擇器直接在表單下方展開，不跳頁——
+ * 原本是獨立的「選擇房間」步驟（StepRoomPick 的 cad 分支），合併過來後這裡
+ * 同時擁有兩邊的狀態／邏輯（pendingRoom 兩段式放棄確認、整層一起生成）。
  */
 import { computed, ref } from 'vue'
 import { useDesignFlow } from '@/composables/useDesignFlow'
 import { Icon } from '@iconify/vue'
 import { roomPhoto, roomIcon } from '@/config/furniture'
+import RoomPickerCad from '@/components/RoomPickerCad.vue'
+import ApplyToRooms from '@/components/steps/ApplyToRooms.vue'
+import StyleSuggestions from '@/components/StyleSuggestions.vue'
+import { API_BASE } from '@/config/api'
 
-const { cadCounts, cadTotalPing, cadExtraRooms, loading, submitRoomProgram, startFlow } = useDesignFlow()
+const {
+  cadCounts, cadTotalPing, cadExtraRooms, loading, submitRoomProgram, startFlow,
+  cadPlanResult, cadActiveRoomId, cadRoomStatus, handleCadRoomSelected, abandonCadRoom,
+  extraPrompt, cadBatchRunning,
+  showSuggestions, styleCandidates, candidatesLoading, candidatesError, confirmedStyle,
+  confirmStyle, clearConfirmedStyle, fetchStyleCandidates, showNextRound, scheduleSearch,
+} = useDesignFlow()
+
+// 有一間做到一半（還沒渲染完）：這時選別間會被擋，把原因和出口直接擺在畫面上
+const pendingRoom = computed(() => {
+  const id = cadActiveRoomId.value
+  if (!id || cadRoomStatus.value[id] === 'done') return null
+  return cadPlanResult.value?.rooms?.find(r => r.id === id) || null
+})
+const confirmingAbandon = ref(false)   // 兩段式確認，跟歷史紀錄的刪除一致
+function onAbandon() {
+  if (!confirmingAbandon.value) { confirmingAbandon.value = true; return }
+  confirmingAbandon.value = false
+  abandonCadRoom()
+}
 
 const PING_TO_M2 = 3.305785
 
@@ -45,6 +72,18 @@ function setCount(key, delta) {
     <div class="panel-head">
       <h2 class="panel-title">房型設定</h2>
 
+      <!-- 總坪數：不獨立成一行，折進標題列省垂直空間 -->
+      <div class="ping-inline">
+        <label class="ping-inline-label" for="cad-total-ping">總坪數 約</label>
+        <input
+          id="cad-total-ping"
+          v-model.number="cadTotalPing"
+          type="number" min="1" max="200" step="0.5"
+          class="db-input ping-input"
+        />
+        <span class="ping-inline-suffix">坪 ≈ {{ estimatedM2.toFixed(1) }} m²</span>
+      </div>
+
       <!-- 這一步預設是「整層房屋」（CAD 房型切割）；點「單間」直接切到原本單房間
            2D 平面圖流程（StepSpaceSetup），不用先填整層房型再回頭選。 -->
       <div class="mode-toggle-wrap">
@@ -56,22 +95,8 @@ function setCount(key, delta) {
       </div>
     </div>
 
-    <p class="page-hint">輸入幾房幾廳＋總坪數，自動生成含牆體、門窗與尺寸標註的房間配置平面圖，下一步再選一間房進去編輯家具。</p>
+    <p class="page-hint">輸入幾房幾廳，自動生成含牆體、門窗與尺寸標註的房間配置平面圖，下一步再選一間房進去編輯家具。</p>
 
-    <div class="form-row">
-      <div class="ping-card">
-      <div class="ping-main">
-        <span class="ping-word-lg">總坪數 約</span>
-        <input
-          v-model.number="cadTotalPing"
-          type="number" min="1" max="200" step="0.5"
-          class="db-input ping-input-lg"
-          aria-label="總坪數"
-        />
-        <span class="ping-word-lg">坪</span>
-      </div>
-      <p class="ping-hint">≈ {{ estimatedM2.toFixed(1) }} m²</p>
-      </div>
     <div class="count-grid">
       <div v-for="f in COUNT_FIELDS" :key="f.key" :class="['count-card', { 'is-zero': !cadCounts[f.key] }]">
         <img v-if="roomPhoto(f.room)" :src="roomPhoto(f.room)" :alt="f.label" class="count-photo" loading="lazy" />
@@ -100,9 +125,19 @@ function setCount(key, delta) {
         <span class="count-label">＋ 自訂空間</span>
       </button>
     </div>
+
+    <!-- 生成按鈕緊跟在房間數量卡片下面、靠右放，不再套用全域 sticky 的 .actions
+         樣式——這個合併後的長頁面裡，sticky-bottom 的按鈕會跟下面的選房間區塊
+         搶位置，撐出一大段空白，所以這裡改用一般（非 sticky）的靠右按鈕。 -->
+    <div class="generate-row">
+      <button type="button" class="db-btn" :disabled="loading" @click="submitRoomProgram">
+        {{ cadPlanResult ? '重新生成房型配置' : '生成房型配置' }}
+      </button>
     </div>
 
-    <div class="alt-actions">
+    <!-- 已經生成過配置就不用再提示這個替代入口——那時使用者要的是往下選房間，
+         不是重新選一條路，留著只會把平面圖往下擠。 -->
+    <div v-if="!cadPlanResult" class="alt-actions">
       <span class="alt-divider">或者</span>
       <button type="button" class="upload-card" :disabled="loading" @click="startFlow('upload')">
         <span class="upload-icon" aria-hidden="true">📐</span>
@@ -113,9 +148,58 @@ function setCount(key, delta) {
         <span class="upload-arrow" aria-hidden="true">→</span>
       </button>
     </div>
-    <div class="actions">
-      <button class="db-btn" :disabled="loading" @click="submitRoomProgram">生成房型配置</button>
-    </div>
+
+    <!-- 生成完成後，房間選擇器直接在表單下方展開——原本是獨立的「選擇房間」步驟，
+         合併過來後不用再跳頁，使用者點房間就直接進平面圖編輯。 -->
+    <section v-if="cadPlanResult" class="room-pick">
+      <h3 class="room-pick-title">選擇要生成的房間</h3>
+
+      <div v-if="pendingRoom" class="pending-bar" role="status">
+        <span class="pending-text">「{{ pendingRoom.label_zh }}」還沒完成渲染，完成後才能換下一間。</span>
+        <button type="button" class="db-btn db-btn--sm" @click="handleCadRoomSelected(pendingRoom)">繼續編輯</button>
+        <button type="button" class="db-btn db-btn--ghost db-btn--sm" @click="onAbandon" @blur="confirmingAbandon = false">
+          {{ confirmingAbandon ? '確定放棄？進度會清除' : '放棄這間，改選其他' }}
+        </button>
+      </div>
+
+      <RoomPickerCad
+        :svg-markup="cadPlanResult.svg_markup || ''"
+        :rooms="cadPlanResult.rooms || []"
+        @select-room="handleCadRoomSelected"
+      />
+
+      <!-- 整層一起生成：描述在這裡填一次，所有房間共用 -->
+      <div v-if="!pendingRoom" class="whole-floor">
+        <label class="whole-label" for="whole-prompt">描述你理想中的整戶房屋風格</label>
+        <textarea
+          id="whole-prompt"
+          v-model="extraPrompt"
+          class="db-textarea"
+          rows="2"
+          :disabled="cadBatchRunning"
+          placeholder="例如：木質感、採光充足的明亮感，整戶統一"
+          @input="scheduleSearch"
+        />
+
+        <!-- StyleSuggestions 自己有「AI 推薦風格參考」標題，這裡不再重複一層 -->
+        <section v-if="showSuggestions" class="suggest">
+          <StyleSuggestions
+            :candidates="styleCandidates"
+            :confirmed="confirmedStyle"
+            :loading="candidatesLoading"
+            :error="candidatesError"
+            :api-base="API_BASE"
+            @confirm="confirmStyle"
+            @clear="clearConfirmedStyle"
+            @next-round="showNextRound"
+            @retry="fetchStyleCandidates()"
+            @similar="fetchStyleCandidates({ anchorSelected: true })"
+          />
+        </section>
+
+        <ApplyToRooms whole />
+      </div>
+    </section>
 
   </div>
 </template>
@@ -141,6 +225,31 @@ function setCount(key, delta) {
   font-style: italic;
   font-weight: 500;
   font-size: 1.25rem;
+}
+
+/* 總坪數：折進標題列，不再獨立佔一整行 */
+.ping-inline {
+  display: flex;
+  align-items: baseline;
+  gap: 0.5rem;
+  margin-right: auto;   /* 緊跟標題，跟右邊的單間/整層切換保持距離 */
+}
+.ping-inline-label {
+  font-size: 0.88rem;
+  color: var(--db-text-soft);
+}
+.ping-input {
+  width: 72px;
+  height: 36px;
+  padding: 0 0.4rem;
+  text-align: center;
+  font-size: 1rem;
+  font-variant-numeric: tabular-nums;
+}
+.ping-inline-suffix {
+  font-size: 0.82rem;
+  color: var(--db-placeholder);
+  white-space: nowrap;
 }
 
 /* 單間／整層房屋——加大字級/圖示/邊框，跟其他次要控制項區分開，一眼看出這是
@@ -188,14 +297,13 @@ function setCount(key, delta) {
 }
 
 .page-hint {
-  margin: 0 0 1.75rem;
+  margin: 0 0 1rem;
   text-align: center;
   color: var(--db-text-soft);
   font-size: 0.92rem;
 }
 
-/* 上：五種房間的實景照卡，照片上直接調數量（0 間的卡片變暗）｜下：總坪數 */
-.form-row { display: flex; flex-direction: column; gap: 1.5rem; }
+/* 五種房間的實景照卡，照片上直接調數量（0 間的卡片變暗） */
 .count-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
@@ -274,54 +382,19 @@ function setCount(key, delta) {
   font-variant-numeric: tabular-nums;
   font-size: 1.35rem;
 }
-.ping-card {
-  align-self: center;
+.generate-row {
   display: flex;
-  flex-direction: column;
-  align-items: center;
-  padding: 1.25rem 2.5rem;
-  border-radius: var(--db-radius-chip);
-  background: var(--db-chip-soft);
-}
-
-.ping-main {
-  display: flex;
-  align-items: center;
   justify-content: center;
-  flex-wrap: wrap;
-  gap: 0.7rem;
-}
-.ping-word-lg {
-  font-family: var(--db-font-display);
-  font-style: normal;
-  font-size: 1.2rem;
-  color: var(--db-text);
-}
-.ping-input-lg {
-  width: 120px;
-  height: 58px;
-  border: 2px solid var(--db-chip);
-  border-radius: 8px;
-  background: #fff;
-  text-align: center;
-  font-size: 1.5rem;
-  font-variant-numeric: tabular-nums;
-}
-.ping-input-lg:focus { border-color: var(--db-accent); background: #fff; }
-.ping-hint {
-  margin: 0.6rem 0 0;
-  text-align: center;
-  font-size: 0.85rem;
-  color: var(--db-text-soft);
+  margin-top: 0.85rem;
 }
 
 .alt-actions {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 0.9rem;
-  margin-top: 1.75rem;
-  padding-top: 1.5rem;
+  gap: 0.6rem;
+  margin-top: 0.75rem;
+  padding-top: 0.85rem;
   border-top: 1px solid #ececec;
 }
 .alt-divider {
@@ -384,6 +457,37 @@ function setCount(key, delta) {
   color: var(--db-accent-deep, var(--db-accent));
   font-size: 1.2rem;
 }
+
+.room-pick {
+  margin-top: 1rem;
+  padding-top: 1rem;
+  border-top: 1px solid #ececec;
+}
+.room-pick-title {
+  margin: 0 0 0.6rem;
+  font-family: var(--db-font-display);
+  font-style: italic;
+  font-weight: 500;
+  font-size: 1.1rem;
+  color: var(--db-text);
+}
+
+.pending-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.6rem;
+  margin-bottom: 1rem;
+  padding: 0.7rem 1rem;
+  border-radius: var(--db-radius-chip);
+  background: var(--db-chip-soft);
+  font-size: 0.9rem;
+}
+.pending-text { flex: 1 1 14rem; color: var(--db-text); }
+
+.whole-floor { margin-top: 1.5rem; padding-top: 1.25rem; border-top: 1px solid #f0f0f0; }
+.whole-label { display: block; margin-bottom: 0.4rem; font-size: 0.88rem; color: var(--db-text-soft); }
+.suggest { margin-top: 1rem; }
 
 @media (max-width: 640px) {
   .count-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }

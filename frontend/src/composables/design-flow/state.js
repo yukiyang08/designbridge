@@ -26,23 +26,17 @@ export const STEP_FLOWS = {
   generate: [
     { key: 'space',  label: '空間設定' },
     { key: 'plan',   label: '繪製平面圖' },
-    { key: 'render', label: '3D渲染圖' },
-    { key: 'refine', label: '微調編輯' },
-    { key: 'budget', label: '預算估計' },
+    { key: 'result', label: '生成設計' },
   ],
   // 上傳現有空間照片
   photo: [
     { key: 'photo',  label: '空間照片上傳' },
-    { key: 'render', label: '3D渲染圖' },
-    { key: 'refine', label: '微調編輯' },
-    { key: 'budget', label: '預算估計' },
+    { key: 'result', label: '生成設計' },
   ],
   // 從零開始，直接描述理想空間
   skip: [
     { key: 'space',  label: '空間設定' },
-    { key: 'render', label: '3D渲染圖' },
-    { key: 'refine', label: '微調編輯' },
-    { key: 'budget', label: '預算估計' },
+    { key: 'result', label: '生成設計' },
   ],
   // 上傳 2D 平面配置圖。整戶圖會先用 Gemini 視覺分割房間，偵測到多間才會經過
   // 「選擇房間」這一步；只有一間就直接跳過，行為等同單純上傳一張房間圖。
@@ -50,20 +44,15 @@ export const STEP_FLOWS = {
     { key: 'planUpload', label: '上傳平面圖' },
     { key: 'roomPick',   label: '選擇房間' },
     { key: 'plan',       label: '繪製平面圖' },
-    { key: 'render',     label: '3D渲染圖' },
-    { key: 'refine',     label: '微調編輯' },
-    { key: 'budget',     label: '預算估計' },
+    { key: 'result',     label: '生成設計' },
   ],
   // CAD 房型生成（designbridge/roomplan）：輸入幾房幾廳＋總坪數，直接切割出整層樓
-  // 的房間配置（牆／門／窗），一定是多房間，所以固定經過「選擇房間」再進編輯器——
-  // 跟 upload 共用 roomPick/plan 這兩個步驟 key，差別只在資料來源（見 StepRoomPick）。
+  // 的房間配置（牆／門／窗）。一定是多房間，但「填房型」跟「選房間」合併成同一頁
+  // （見 StepRoomProgram）：生成配置後房間選擇器直接在表單下方展開，不用再跳頁。
   cad: [
     { key: 'roomProgram', label: '房型設定' },
-    { key: 'roomPick',    label: '選擇房間' },
     { key: 'plan',        label: '繪製平面圖' },
-    { key: 'render',      label: '3D渲染圖' },
-    { key: 'refine',      label: '微調編輯' },
-    { key: 'budget',      label: '預算估計' },
+    { key: 'result',      label: '生成設計' },
   ],
 }
 
@@ -452,7 +441,7 @@ try {
     cadRoomSnapshots.value = Object.fromEntries(
       Object.entries(d.snapshots || {}).filter(([id]) => cadRoomStatus.value[id]),
     )
-    stepIndex.value = Math.max(0, steps.value.findIndex(s => s.key === 'roomPick'))
+    stepIndex.value = Math.max(0, steps.value.findIndex(s => s.key === 'roomProgram'))
   }
 } catch { /* 壞掉的進度直接忽略 */ }
 

@@ -5,6 +5,7 @@ import StartView from '../views/StartView.vue'
 import StudioView from '../views/StudioView.vue'
 import AccountView from '../views/AccountView.vue'
 import HistoryView from '../views/HistoryView.vue'
+import FavoritesView from '../views/FavoritesView.vue'
 import FurnitureView from '../views/FurnitureView.vue'
 import CartView from '../views/CartView.vue'
 
@@ -22,8 +23,10 @@ const router = createRouter({
     { path: '/studio',  name: 'studio',  component: StudioView },
     { path: '/account', name: 'account', component: AccountView },
 
-    // ── 既有頁面，維持原樣 ──
+    // ── 既有頁面，維持原樣（歷史紀錄：開發時查看測試結果用，技術細節不收斂）──
     { path: '/history',   name: 'history',   component: HistoryView },
+    // 收藏設計：從使用者角度設計的收藏畫廊，只顯示 favorited 的紀錄
+    { path: '/favorites', name: 'favorites', component: FavoritesView },
     { path: '/furniture', name: 'furniture', component: FurnitureView },
     { path: '/cart',      name: 'cart',      component: CartView },
 

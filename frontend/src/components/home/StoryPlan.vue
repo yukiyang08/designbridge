@@ -69,7 +69,7 @@ const renderStyle = computed(() => {
     <div class="sticky">
       <div class="copy">
         <p class="eyebrow">從一句話到一張圖</p>
-        <h2 id="story-h">你說想法，<br />我們畫成圖</h2>
+        <h2 id="story-h">你說想法，<br />我們幫你做設計</h2>
         <ol class="steps">
           <li v-for="(s, i) in STEPS" :key="s.t" :class="{ active: i === active, done: i < active }">
             <span class="num">0{{ i + 1 }}</span>

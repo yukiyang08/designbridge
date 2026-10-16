@@ -20,7 +20,7 @@ const LayoutPreview3D = defineAsyncComponent(() => import('@/components/LayoutPr
 const {
   editPlacements, roomW, roomD, roomTypeForPlan, roomGeometry, setOpeningEdit, layoutViewMode, layoutRenderConfig,
   floorPlanUrl, uploadedPlanUrl, onEditorChange,
-  nextStep, scheduleSearch, loading, planSource,
+  nextStep, prevStep, scheduleSearch, loading, planSource,
 } = useDesignFlow()
 
 const editSceneGraph = computed(() => ({ furniture_placements: editPlacements.value }))
@@ -89,6 +89,7 @@ function goNext() {
     </div>
 
     <div class="actions">
+      <button class="db-btn db-btn--ghost db-btn--sm" @click="prevStep">← 上一步</button>
       <button class="db-btn" :disabled="loading" @click="goNext">
         下一步：繼續生成 3D 渲染圖
       </button>

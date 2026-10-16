@@ -15,8 +15,13 @@ const { selectedCount } = useFurnitureSelection()
 
 const SECTIONS = [
   {
+    to: '/favorites',
+    label: '收藏設計',
+    desc: '你標記收藏的設計，可以重新查看、取得家具預算，或用同樣描述再設計一次。',
+  },
+  {
     to: '/history',
-    label: '歷史設計',
+    label: '歷史紀錄',
     desc: '過去每一次生成的渲染圖、風格參數與需求解析，可檢視細節或批次刪除。',
   },
   {

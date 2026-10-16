@@ -8,14 +8,14 @@ import {
   floorPlanPath, floorPlanUrl, sceneGraph, layoutRenderConfig, lastGeneratedImage,
   uploadedPlanUrl, panoUrl, panoError,
 } from './state'
-import { nextStep, goToStepKey } from './navigation'
+import { goToStepKey } from './navigation'
 import { cancelCadBatch } from './cadBatch'
 
 /* ══ Step: CAD 房型生成 ═══════════════════════════════════
    輸入幾房幾廳＋總坪數 → /api/generate-room-plan 直接切割出整層樓的房間配置
-   （牆／門／窗，結構化資料，不需要再像上傳流程那樣用 Gemini 視覺辨識），一定是
-   多房間，所以固定進「選擇房間」步驟，使用者選一間後才落地成單房間的
-   scene_graph 交給既有的 LayoutEditor。 */
+   （牆／門／窗，結構化資料，不需要再像上傳流程那樣用 Gemini 視覺辨識）。多房間時
+   房間選擇器就在 StepRoomProgram 同一頁的表單下方展開，不跳頁；使用者選一間後
+   才落地成單房間的 scene_graph 交給既有的 LayoutEditor（goToStepKey('plan')）。 */
 
 export async function submitRoomProgram() {
   const requestId = ++requestState.current
@@ -36,8 +36,8 @@ export async function submitRoomProgram() {
     cancelCadBatch()
     cadPlanResult.value = data
     if ((data.rooms || []).length > 1) {
+      // 多房間：房間選擇器就在這一頁的表單下方展開，不跳頁，使用者直接點房間繼續。
       loading.value = false
-      nextStep() // → 'roomPick'
       return
     }
     if (data.rooms?.[0]) await handleCadRoomSelected(data.rooms[0], requestId)
@@ -170,7 +170,7 @@ export function abandonCadRoom() {
   cadRoomSnapshots.value = snaps
   cadActiveRoomId.value = null
   error.value = ''
-  goToStepKey('roomPick')
+  goToStepKey('roomProgram')
 }
 
 export function cadRoomLabel(id) {
