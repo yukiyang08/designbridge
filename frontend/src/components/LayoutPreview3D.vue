@@ -346,15 +346,15 @@ function buildScene() {
     furnitureMeshes.push({ mesh: furnitureGroup, item: { ...item } })
   }
 
-  // 相機：hfov_deg 是水平視角，PerspectiveCamera 吃垂直視角，換算一下
+  // 相機：fov_v_deg 本身就是 PerspectiveCamera 吃的垂直視角，不用再換算
   const width = container.clientWidth || 640
   const height2 = container.clientHeight || 480
   const aspect = width / height2
-  const hfovRad = THREE.MathUtils.degToRad(camCfg.hfov_deg || 65)
-  const vfovDeg = THREE.MathUtils.radToDeg(2 * Math.atan(Math.tan(hfovRad / 2) / aspect))
-  const eyeHeight = camCfg.eye_height || 1.4
-  const setback = camCfg.setback || 0.8
-  const pitchRad = THREE.MathUtils.degToRad(camCfg.pitch_deg ?? -16)
+  const vfovDeg = camCfg.fov_v_deg || 58
+  const eyeHeight = camCfg.eye_height || 2.2
+  const setback = camCfg.setback || 2.6
+  const targetH = camCfg.target_h ?? 0.5
+  const targetDepthFrac = camCfg.target_depth_frac ?? 0.58
   camera = new THREE.PerspectiveCamera(vfovDeg, aspect, 0.05, 50)
   camera.position.set(0, eyeHeight, -setback)
 
@@ -379,16 +379,11 @@ function buildScene() {
   scene.environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture
   pmrem.dispose()
 
-  // 初始朝向對齊 scene_graph_to_depth.py 的投影相機（同一個俯角），這樣使用者看到的
-  // 就是生圖實際會用的取景角度。沿著相機視線（+Z、下傾 pitchRad）取一個落在房間中段
-  // 的注視點；使用者之後仍可自由拖曳旋轉。
-  const lookDist = (roomDepth / 2 + setback) / Math.cos(pitchRad)
+  // 初始朝向對齊 camera_projection.py 的 look-at 相機（同一個瞄準點），這樣使用者看到的
+  // 就是生圖實際會用的取景角度（候選角度評分後實際選中的那組，不一定等於這裡的 base
+  // 參數——這個 3D 預覽固定用 base，只是給使用者一個大致對齊的初始視角，之後仍可自由拖曳旋轉）。
   controls = new OrbitControls(camera, renderer.domElement)
-  controls.target.set(
-    0,
-    eyeHeight + Math.sin(pitchRad) * lookDist,
-    -setback + Math.cos(pitchRad) * lookDist,
-  )
+  controls.target.set(0, targetH, targetDepthFrac * roomDepth)
   controls.update()
 
   if (props.editable) {

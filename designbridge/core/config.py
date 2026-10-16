@@ -304,9 +304,19 @@ class Config:
     LAYOUT_CAMERA_EYE_HEIGHT: float = float(
         os.getenv("DESIGNBRIDGE_LAYOUT_CAMERA_EYE_HEIGHT", "1.5")
     )
-    LAYOUT_PROJECTION_HFOV: float = float(os.getenv("DESIGNBRIDGE_LAYOUT_PROJECTION_HFOV", "65.0"))
-    LAYOUT_PROJECTION_PITCH: float = float(os.getenv("DESIGNBRIDGE_LAYOUT_PROJECTION_PITCH", "-8.0"))
-    LAYOUT_PROJECTION_SETBACK: float = float(os.getenv("DESIGNBRIDGE_LAYOUT_PROJECTION_SETBACK", "1.2"))
+    # Synthetic-camera depth projection (scene_graph_to_depth's no-photo branch) now
+    # shares the same look-at camera + parameters as the renderer's layout fallback
+    # (LAYOUT_CAM_EYE_H/SETBACK/TARGET_H/TARGET_DEPTH_FRAC/FOV above) instead of its
+    # own separate HFOV/pitch/setback knobs, so both paths tune as one camera.
+    #
+    # That shared set is now only the *base* station point (candidate 0): when
+    # LAYOUT_CAMERA_AUTO_SELECT is on, a few perturbed candidates around it are
+    # rendered and scored by how little furniture occludes other furniture, and the
+    # best-scoring one is used instead of always the fixed base station.
+    LAYOUT_CAMERA_AUTO_SELECT: bool = os.getenv(
+        "DESIGNBRIDGE_LAYOUT_CAMERA_AUTO_SELECT", "true"
+    ).lower() in ("1", "true", "yes")
+    LAYOUT_CAMERA_CANDIDATES: int = int(os.getenv("DESIGNBRIDGE_LAYOUT_CAMERA_CANDIDATES", "6"))
 
     @classmethod
     def get_gemini_api_key(cls) -> str:

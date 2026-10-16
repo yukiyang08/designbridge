@@ -15,23 +15,25 @@ from __future__ import annotations
 import numpy as np
 from PIL import Image
 
-from designbridge.layout.layout_projection import (
-    _Camera,
-    _build_scene,
-    _rasterize,
-    _depth_to_gray,
-    _furniture_height,
-    render_layout_depth_map,
+from designbridge.layout.camera_projection import (
+    CameraParams,
+    LookAtCamera as _Camera,
+    build_tagged_scene,
+    depth_to_gray,
+    furniture_height as _furniture_height,
+    rasterize_ids,
 )
+from designbridge.layout.layout_projection import render_layout_depth_map
 
 ROOM_W, ROOM_D, ROOM_H = 5.0, 4.0, 2.7
 IMG = 768
 
 
 def _gray(placements):
-    cam = _Camera(ROOM_W, ROOM_D, IMG, IMG)
-    tris = _build_scene(placements, ROOM_W, ROOM_D, ROOM_H)
-    return _depth_to_gray(_rasterize(tris, cam), cam), cam
+    cam = _Camera(ROOM_W, ROOM_D, IMG, IMG, CameraParams())
+    tagged, _id_to_type = build_tagged_scene(placements, ROOM_W, ROOM_D, ROOM_H)
+    zbuf, _idbuf = rasterize_ids(tagged, cam)
+    return depth_to_gray(zbuf), cam
 
 
 def _blob_centroid(placements, item):

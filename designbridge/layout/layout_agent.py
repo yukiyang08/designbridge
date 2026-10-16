@@ -1760,14 +1760,19 @@ def _write_projection_meta(res: dict, task_id: str) -> None:
     深度圖本身是灰階、不帶身分；renderer 靠這份 JSON 才能讓 prompt 裡的「沙發在左邊」
     對準深度圖上真正屬於沙發的那一塊，並剔除投影後根本不在畫面內的家具。
     """
-    instances = (res.get("meta") or {}).get("instances")
+    meta = res.get("meta") or {}
+    instances = meta.get("instances")
     if not instances:
         return
     out = Path(Config.ARTIFACTS_DIR) / "layout" / f"{task_id}_projection.json"
     try:
         out.parent.mkdir(parents=True, exist_ok=True)
+        payload = {"instances": instances}
+        if "camera" in meta:
+            payload["camera"] = meta["camera"]
+            payload["camera_score"] = meta.get("camera_score")
         out.write_text(
-            json.dumps({"instances": instances}, ensure_ascii=False, indent=2),
+            json.dumps(payload, ensure_ascii=False, indent=2),
             encoding="utf-8",
         )
     except OSError as e:
@@ -1858,11 +1863,6 @@ def _generate_projected_depth(
             depth_out,
             image_size=output_size or (1024, 1024),
             seg_out_path=seg_out,
-            camera_overrides={
-                "hfov_deg": Config.LAYOUT_PROJECTION_HFOV,
-                "pitch_deg": Config.LAYOUT_PROJECTION_PITCH,
-                "setback": Config.LAYOUT_PROJECTION_SETBACK,
-            },
         )
         _write_projection_meta(res, task_id)
         return res.get("depth_path"), res.get("seg_path"), "synthetic"

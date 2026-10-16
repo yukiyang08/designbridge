@@ -47,8 +47,11 @@ from style_kb.styles import STYLES
 
 def _layout_render_config() -> dict:
     """Furniture heights/colors + camera params for the frontend's Three.js layout
-    preview — same numbers scene_graph_to_depth.py already uses to rasterize the
-    ControlNet depth map, so the 3D preview and the actual generation stay in sync."""
+    preview — same base camera params scene_graph_to_depth.py / layout_projection.py
+    use (candidate 0), so the 3D preview starts out roughly aligned with the actual
+    generation. The real render may pick a different candidate (occlusion-scored —
+    see camera_projection.select_best_camera); the preview isn't re-scored per
+    layout, it's just a reasonable default orientation the user can freely rotate."""
     from designbridge.core.config import Config
     from designbridge.layout.layout_agent import FURNITURE_COLORS
     from designbridge.layout.scene_graph_to_depth import FURNITURE_HEIGHTS
@@ -59,10 +62,11 @@ def _layout_render_config() -> dict:
             ftype: "#%02x%02x%02x" % rgb for ftype, rgb in FURNITURE_COLORS.items()
         },
         "camera": {
-            "hfov_deg": Config.LAYOUT_PROJECTION_HFOV,
-            "pitch_deg": Config.LAYOUT_PROJECTION_PITCH,
-            "eye_height": 1.40,
-            "setback": Config.LAYOUT_PROJECTION_SETBACK,
+            "eye_height": Config.LAYOUT_CAM_EYE_H,
+            "setback": Config.LAYOUT_CAM_SETBACK,
+            "target_h": Config.LAYOUT_CAM_TARGET_H,
+            "target_depth_frac": Config.LAYOUT_CAM_TARGET_DEPTH_FRAC,
+            "fov_v_deg": Config.LAYOUT_CAM_FOV,
         },
     }
 

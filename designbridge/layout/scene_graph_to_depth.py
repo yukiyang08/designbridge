@@ -7,15 +7,18 @@ scene_graph_to_depth.py
 
 設計理念（老師建議）：
   不做完整 3D（不需 Blender / TripoSR）。每件家具用一個長方體代表，由 scene graph
-  的正規化座標直接在 3D 房間中擺位，再用固定針孔相機投影 + z-buffer，得到透視深度圖。
-  純 NumPy 即可。之後若需要再加 segmentation mask（同一個 pass 順手輸出）。
+  的正規化座標直接在 3D 房間中擺位，再用 `camera_projection.py` 共用的 look-at 相機
+  + z-buffer，得到透視深度圖。純 NumPy 即可。
 
 深度極性與 vision.run_depth_estimation 一致：近處亮（255）、遠處暗（0），
 對齊 Depth-Anything V2 的視覺化慣例，方便沿用既有 Kontext / ControlNet 深度條件。
 
-座標慣例：
+座標慣例（與 `camera_projection.py` / `layout_projection.py` 共用）：
   floor-plan x ∈ [0,1] 左→右；y ∈ [0,1] 上(遠牆)→下(近相機側)
-  world: X 左右、Y 遠近(由近相機側往遠牆遞增)、Z 上下(地板 0、天花板 H)
+  world: X 左右、Y 上下（地板 0、天花板 H）、Z 前後（近相機側 0、遠牆 room_d）
+
+沒有真實照片時（synthetic 分支），相機站位不是固定死的：會產生幾個候選站位，
+依「家具互相遮擋的程度」評分，自動選分數最好的一個（見 `camera_projection.select_best_camera`）。
 
 用法：
   python -m designbridge.layout.scene_graph_to_depth placements.json --out depth.png --seg seg.png --vis
@@ -25,246 +28,36 @@ from __future__ import annotations
 
 import argparse
 import json
+from dataclasses import asdict, replace
 from pathlib import Path
 from typing import Any
 
 import numpy as np
 
+from designbridge.layout.camera_projection import (
+    CameraParams,
+    FURNITURE_HEIGHTS,
+    LookAtCamera,
+    build_tagged_scene,
+    depth_to_gray,
+    furniture_height,
+    furniture_parts,
+    instance_summary,
+    is_floor_standing,
+    normalize_furniture_type,
+    rasterize_ids,
+    select_best_camera,
+)
 
-# ── 家具高度（公尺）─ footprint 已由 layout_agent.FURNITURE_SIZES 提供，這裡補垂直高度 ──
-FURNITURE_HEIGHTS: dict[str, float] = {
-    "sofa": 0.85,
-    "loveseat": 0.80,
-    "coffee_table": 0.45,
-    "tv_unit": 0.50,
-    "tv": 0.70,
-    "table": 0.75,
-    "dining_table": 0.75,
-    "chair": 0.90,
-    "armchair": 0.95,
-    "bed": 0.55,
-    "bunk_bed": 1.70,
-    "bunk_ladder": 1.55,
-    "wardrobe": 2.00,
-    "desk": 0.75,
-    "bookshelf": 1.80,
-    "side_table": 0.55,
-    "nightstand": 0.55,
-    "lamp": 1.50,
-    "rug": 0.02,
-    "plant": 1.20,
-    "cabinet": 0.90,
-    "dresser": 0.85,
-    "shelf": 1.60,
-    "cat_tree": 1.40,
-    "dog_bed": 0.20,
-    "litter_box": 0.30,
-    "default": 0.80,
-}
-
-# LLM 產出的 type 是自由文字（platform_bed / low_cabinet / floor_lamp…），與上表的短鍵對不上時
-# 會全部落到 default 0.80，導致整屋家具等高。這裡把同義詞收斂回標準鍵。
-_TYPE_SYNONYMS: dict[str, str] = {
-    "couch": "sofa",
-    "sectional": "sofa",
-    "closet": "wardrobe",
-    "armoire": "wardrobe",
-    "bedside_table": "nightstand",
-    "night_table": "nightstand",
-    "tv_stand": "tv_unit",
-    "tv_console": "tv_unit",
-    "media_console": "tv_unit",
-    "sideboard": "cabinet",
-    "credenza": "cabinet",
-    "chest_of_drawers": "dresser",
-    "carpet": "rug",
-    "area_rug": "rug",
-    "potted_plant": "plant",
-    "floor_plant": "plant",
-    "bookcase": "bookshelf",
-    "work_desk": "desk",
-    "study_desk": "desk",
-}
-
-# 從天花板吊掛或貼在牆上的物件沒有地板 footprint，不能當成從地板長上來的盒子。
-# 投影時整個略過，改由 layout_prompt 的文字通道表達。
-_CEILING_MOUNTED: frozenset[str] = frozenset({
-    "ceiling_lamp", "ceiling_light", "ceiling_fan", "pendant_light", "pendant_lamp",
-    "chandelier", "track_light", "downlight", "spotlight", "skylight",
-})
-_WALL_MOUNTED: frozenset[str] = frozenset({
-    "wall_lamp", "wall_light", "sconce", "wall_sconce", "wall_shelf", "wall_art",
-    "wall_decor", "painting", "artwork", "mirror", "curtain", "curtains", "blind",
-    "blinds", "wall_tv", "mounted_tv",
-})
-
-
-def normalize_furniture_type(ftype: str) -> str:
-    """把自由文字的家具 type 收斂成 FURNITURE_HEIGHTS 的標準鍵。
-
-    依序嘗試：完全比對 → 同義詞表 → 由左往右剝除修飾詞後的後綴比對
-    （platform_bed → bed、low_cabinet → cabinet、wooden_side_table → side_table）。
-    都對不上時回傳原字串，由呼叫端落到 default。
-    """
-    key = str(ftype or "").strip().lower().replace(" ", "_").replace("-", "_")
-    if not key:
-        return "default"
-    if key in FURNITURE_HEIGHTS or key in _CEILING_MOUNTED or key in _WALL_MOUNTED:
-        return key
-    if key in _TYPE_SYNONYMS:
-        return _TYPE_SYNONYMS[key]
-
-    tokens = [t for t in key.split("_") if t]
-    for start in range(1, len(tokens)):
-        suffix = "_".join(tokens[start:])
-        if suffix in _CEILING_MOUNTED or suffix in _WALL_MOUNTED:
-            return suffix
-        if suffix in FURNITURE_HEIGHTS:
-            return suffix
-        if suffix in _TYPE_SYNONYMS:
-            return _TYPE_SYNONYMS[suffix]
-    return key
-
-
-def is_floor_standing(ftype: str) -> bool:
-    key = normalize_furniture_type(ftype)
-    return key not in _CEILING_MOUNTED and key not in _WALL_MOUNTED
-
-
-def furniture_height(ftype: str) -> float:
-    return FURNITURE_HEIGHTS.get(normalize_furniture_type(ftype), FURNITURE_HEIGHTS["default"])
-
-# ── 語意化家具輪廓 ────────────────────────────────────────────────────────────
-# 深度 ControlNet 唯一看得到的東西就是深度圖的形狀。把每件家具都擠成一個實心長方體，
-# 模型就只能照著長方體畫——這正是「生出純方塊」的來源。把家具拆成類別特徵的子塊
-# （沙發＝座墊＋椅背＋扶手、桌子＝懸空桌面＋四腳、床＝床墊＋床頭板）之後，深度圖的
-# 輪廓本身就帶有家具身分：桌面下方是地板的深度，模型無法把它畫成一塊實心方塊。
-
-_SEATING: frozenset[str] = frozenset({
-    "sofa", "loveseat", "armchair", "chair", "stool", "bench", "dog_bed",
-})
-_BEDS: frozenset[str] = frozenset({"bed", "bunk_bed", "crib", "daybed"})
-_TABLES: frozenset[str] = frozenset({
-    "table", "dining_table", "coffee_table", "desk", "side_table",
-    "nightstand", "console",
-})
-# 薄板類：電視／螢幕是一片面板，擠成方塊會被畫成櫃子
-_PANELS: frozenset[str] = frozenset({"tv", "monitor", "screen"})
-_LAMPS: frozenset[str] = frozenset({"lamp", "floor_lamp", "table_lamp"})
-_PLANTS: frozenset[str] = frozenset({"plant", "potted_plant", "tree"})
-
-
-def _shape_kind(ftype: str) -> str:
-    """家具 type → 輪廓類別。未知者退回 'box'（衣櫃、櫃體本來就是方塊，這是正確的）。"""
-    t = normalize_furniture_type(ftype)
-    if t in _SEATING:
-        return "seat"
-    if t in _BEDS:
-        return "bed"
-    if t in _TABLES:
-        return "table"
-    if t in _PANELS:
-        return "panel"
-    if t in _LAMPS:
-        return "lamp"
-    if t in _PLANTS:
-        return "plant"
-    return "box"
-
-
-def _back_edge(fx: float, fy: float, fw: float, fh: float) -> str:
-    """椅背／床頭板靠的那一側：離房間牆面最近的那條 footprint 邊。
-
-    平面圖座標：x=0 左牆、x=1 右牆、y=0 遠牆、y=1 近相機側。
-    """
-    dists = {"far": fy, "near": 1.0 - (fy + fh), "left": fx, "right": 1.0 - (fx + fw)}
-    return min(dists, key=dists.get)
-
-
-def furniture_parts(
-    ftype: str, fx: float, fy: float, fw: float, fh: float, height: float,
-) -> list[tuple[float, float, float, float, float, float]]:
-    """把一件家具拆成數個子塊，回傳 (u0,u1,v0,v1,z0,z1)。
-
-    u/v 是 footprint 內的正規化座標（u 沿平面圖 +x，v 沿平面圖 +y，即 v=0 為遠側），
-    z0/z1 是離地高度（公尺）。兩條投影路徑（合成相機、照片錨定）共用這份形狀知識，
-    各自把 (u,v) 映射回自己的座標系。
-    """
-    from designbridge.core.config import Config
-
-    kind = _shape_kind(ftype) if Config.ENABLE_SEMANTIC_SHAPES else "box"
-    if kind == "box":
-        return [(0.0, 1.0, 0.0, 1.0, 0.0, height)]
-
-    back = _back_edge(fx, fy, fw, fh)
-
-    def _slab(frac: float, z0: float, z1: float) -> tuple:
-        """沿 ``back`` 那一側、佔 footprint ``frac`` 厚度的整條板。"""
-        if back == "far":
-            return (0.0, 1.0, 0.0, frac, z0, z1)
-        if back == "near":
-            return (0.0, 1.0, 1.0 - frac, 1.0, z0, z1)
-        if back == "left":
-            return (0.0, frac, 0.0, 1.0, z0, z1)
-        return (1.0 - frac, 1.0, 0.0, 1.0, z0, z1)  # right
-
-    if kind == "seat":
-        seat_h = min(0.45, height * 0.5)
-        arm_h = min(height, seat_h + 0.18)
-        parts = [
-            (0.0, 1.0, 0.0, 1.0, 0.0, seat_h),   # 座墊
-            _slab(0.22, seat_h, height),          # 椅背
-        ]
-        # 扶手長在與椅背垂直的兩條邊上
-        if back in ("far", "near"):
-            parts += [(0.0, 0.14, 0.0, 1.0, 0.0, arm_h), (0.86, 1.0, 0.0, 1.0, 0.0, arm_h)]
-        else:
-            parts += [(0.0, 1.0, 0.0, 0.14, 0.0, arm_h), (0.0, 1.0, 0.86, 1.0, 0.0, arm_h)]
-        return parts
-
-    if kind == "bed":
-        mattress_h = min(0.45, height * 0.7)
-        headboard_h = max(height, mattress_h + 0.35)
-        return [
-            (0.0, 1.0, 0.0, 1.0, 0.0, mattress_h),   # 床墊
-            _slab(0.10, 0.0, headboard_h),            # 床頭板
-        ]
-
-    if kind == "table":
-        # 桌面懸空 + 四支細腳。桌面下方露出地板深度，是「這是桌子不是方塊」最強的訊號。
-        top_th = max(0.03, min(0.06, height * 0.15))
-        leg_top = max(0.0, height - top_th)
-        return [
-            (0.0, 1.0, 0.0, 1.0, leg_top, height),   # 桌面
-            (0.0, 0.10, 0.0, 0.10, 0.0, leg_top),
-            (0.90, 1.0, 0.0, 0.10, 0.0, leg_top),
-            (0.0, 0.10, 0.90, 1.0, 0.0, leg_top),
-            (0.90, 1.0, 0.90, 1.0, 0.0, leg_top),
-        ]
-
-    if kind == "panel":
-        # 一片薄螢幕，靠牆側；底下留空（電視多半架在櫃子或牆上）
-        return [_slab(0.12, height * 0.45, height)]
-
-    if kind == "lamp":
-        base_h = height * 0.04
-        pole_top = height * 0.80
-        return [
-            (0.36, 0.64, 0.36, 0.64, 0.0, base_h),        # 底座
-            (0.44, 0.56, 0.44, 0.56, base_h, pole_top),   # 燈桿
-            (0.10, 0.90, 0.10, 0.90, pole_top, height),   # 燈罩
-        ]
-
-    if kind == "plant":
-        pot_top = height * 0.22
-        stem_top = height * 0.50
-        return [
-            (0.22, 0.78, 0.22, 0.78, 0.0, pot_top),        # 盆
-            (0.44, 0.56, 0.44, 0.56, pot_top, stem_top),   # 主幹
-            (0.0, 1.0, 0.0, 1.0, stem_top, height),        # 樹冠
-        ]
-
-    return [(0.0, 1.0, 0.0, 1.0, 0.0, height)]
+__all__ = [
+    "FURNITURE_HEIGHTS",
+    "normalize_furniture_type",
+    "is_floor_standing",
+    "furniture_height",
+    "furniture_parts",
+    "project_scene_graph_to_depth",
+    "project_layout_onto_photo",
+]
 
 
 # 房間外殼（地板/牆/天花板）在 segmentation 中的中性顏色
@@ -282,66 +75,154 @@ def _furniture_color(ftype: str) -> tuple[int, int, int]:
     return FURNITURE_COLORS.get(normalize_furniture_type(ftype), FURNITURE_COLORS["default"])
 
 
-# ── 相機 ──────────────────────────────────────────────────────────────────────
+def _render_seg(idbuf: np.ndarray, id_to_type: dict[int, str]) -> np.ndarray:
+    h_img, w_img = idbuf.shape
+    seg_rgb = np.zeros((h_img, w_img, 3), dtype=np.uint8)
+    for oid, ftype in id_to_type.items():
+        mask = idbuf == oid
+        if not mask.any():
+            continue
+        if ftype.startswith("_"):
+            color = _SHELL_COLORS.get(ftype[1:], _SHELL_COLORS["wall"])
+        else:
+            color = _furniture_color(ftype)
+        seg_rgb[mask] = color
+    return seg_rgb
 
-def _build_camera(
-    image_size: tuple[int, int],
+
+# ── 幾何組裝（僅 synthetic 相機分支需要的房間尺寸讀取）────────────────────────
+
+def _room_dims(space_info: dict) -> tuple[float, float, float]:
+    size = (space_info or {}).get("estimated_size") or {}
+    w = float(size.get("width", 5.0))
+    d = float(size.get("depth", 4.0))
+    h = float(size.get("height", 2.8))
+    return w, d, h
+
+
+def _base_camera_params(overrides: dict[str, Any] | None) -> CameraParams:
+    from designbridge.core.config import Config
+
+    base = CameraParams(
+        eye_height=Config.LAYOUT_CAM_EYE_H,
+        setback=Config.LAYOUT_CAM_SETBACK,
+        target_h=Config.LAYOUT_CAM_TARGET_H,
+        target_depth_frac=Config.LAYOUT_CAM_TARGET_DEPTH_FRAC,
+        fov_v_deg=Config.LAYOUT_CAM_FOV,
+    )
+    return replace(base, **overrides) if overrides else base
+
+
+# ── 主函式（synthetic 相機：無真實照片時使用）─────────────────────────────────
+
+def project_scene_graph_to_depth(
+    furniture_placements: list[dict],
+    space_info: dict | None = None,
+    out_path: str | Path | None = None,
     *,
-    hfov_deg: float = 60.0,
-    eye_height: float = 1.40,
-    setback: float = 0.80,
-    pitch_deg: float = -6.0,
-) -> dict[str, float]:
-    """固定針孔相機：站在近牆後方 `setback` 公尺、眼高 `eye_height`，朝 +Y（房間內）看。
+    image_size: tuple[int, int] = (1024, 1024),
+    seg_out_path: str | Path | None = None,
+    camera_overrides: dict[str, Any] | None = None,
+    auto_select_camera: bool | None = None,
+) -> dict[str, Any]:
+    """把 furniture_placements 投影成透視深度圖（近亮遠暗），可選輸出 segmentation。
 
-    pitch_deg < 0 代表略微俯視（看到較多地板），符合一般室內算圖視角。
+    ``camera_overrides``：覆寫 base `CameraParams` 的欄位（`eye_height` /
+    `setback` / `target_h` / `target_depth_frac` / `fov_v_deg`），當成候選 0。
+    ``auto_select_camera``：是否在候選 0 周圍再產生幾個候選站位、依家具遮擋程度
+    評分自動挑最好的一個（預設讀 `Config.LAYOUT_CAMERA_AUTO_SELECT`）。關掉時只用
+    候選 0，等同過去的固定站位行為。
+
+    回傳 dict：depth_path / seg_path / depth_array / id_map / meta
+    （`meta.camera`/`meta.camera_score` 記錄實際選中的相機與分數）。
     """
-    w, h = image_size
-    f = 0.5 * w / np.tan(np.radians(hfov_deg) / 2.0)
-    return {
-        "x": 0.0,
-        "y": -float(setback),
-        "z": float(eye_height),
-        "pitch": np.radians(pitch_deg),
-        "f": float(f),
-        "cx": w / 2.0,
-        "cy": h / 2.0,
-        "w": w,
-        "h": h,
-        "near": 0.05,
+    from designbridge.core.config import Config
+
+    space_info = space_info or {}
+    w_img, h_img = image_size
+    room_w, room_d, room_h = _room_dims(space_info)
+    base_params = _base_camera_params(camera_overrides)
+
+    use_auto = Config.LAYOUT_CAMERA_AUTO_SELECT if auto_select_camera is None else auto_select_camera
+    if use_auto:
+        chosen_params, picked = select_best_camera(
+            base_params, room_w, room_d, room_h, w_img, h_img,
+            furniture_placements or [],
+            semantic_shapes=Config.ENABLE_SEMANTIC_SHAPES,
+            candidates=Config.LAYOUT_CAMERA_CANDIDATES,
+        )
+        zbuf, idbuf, id_to_type = picked["zbuf"], picked["idbuf"], picked["id_to_type"]
+        camera_score = picked["score"]
+        if furniture_placements:
+            _p = chosen_params
+            print(
+                f"[scene_graph_to_depth] 候選角度評分選用相機："
+                f"eye_height={_p.eye_height:.2f} setback={_p.setback:.2f} "
+                f"target_h={_p.target_h:.2f} target_depth_frac={_p.target_depth_frac:.2f} "
+                f"fov_v={_p.fov_v_deg:.0f}°（分數 {camera_score:.3f}）"
+            )
+    else:
+        chosen_params = base_params
+        tagged, id_to_type = build_tagged_scene(
+            furniture_placements or [], room_w, room_d, room_h,
+            semantic_shapes=Config.ENABLE_SEMANTIC_SHAPES,
+        )
+        cam = LookAtCamera(room_w, room_d, w_img, h_img, chosen_params)
+        zbuf, idbuf = rasterize_ids(tagged, cam)
+        camera_score = None
+
+    depth_img = depth_to_gray(zbuf)
+
+    # 合成深度是硬邊方塊（家具邊緣沒有真實深度圖的漸層過渡），ControlNet 用力
+    # 對齊硬邊時容易在物件邊界生成半透明疊影。輕微模糊軟化邊緣，緩解此瑕疵。
+    from PIL import Image, ImageFilter
+    depth_img = np.array(
+        Image.fromarray(depth_img, mode="L").filter(ImageFilter.GaussianBlur(radius=3))
+    )
+
+    furniture_count = sum(1 for t in id_to_type.values() if not t.startswith("_"))
+    result: dict[str, Any] = {
+        "depth_array": depth_img,
+        "id_map": idbuf,
+        "id_to_type": id_to_type,
+        "meta": {
+            "room_dims": {"width": room_w, "depth": room_d, "height": room_h},
+            "image_size": {"width": w_img, "height": h_img},
+            "furniture_count": furniture_count,
+            "instances": instance_summary(idbuf, id_to_type),
+            "camera": asdict(chosen_params),
+            "camera_score": camera_score,
+        },
     }
 
+    if out_path is not None:
+        out_path = Path(out_path)
+        out_path.parent.mkdir(parents=True, exist_ok=True)
+        Image.fromarray(depth_img, mode="L").save(str(out_path))
+        result["depth_path"] = str(out_path)
 
-def _project(points: np.ndarray, cam: dict[str, float]) -> tuple[np.ndarray, np.ndarray]:
-    """world points (N,3) → 像素座標 (N,2) 與前向深度 (N,)。"""
-    rx = points[:, 0] - cam["x"]
-    ry = points[:, 1] - cam["y"]
-    rz = points[:, 2] - cam["z"]
+    if seg_out_path is not None:
+        seg_out_path = Path(seg_out_path)
+        seg_out_path.parent.mkdir(parents=True, exist_ok=True)
+        Image.fromarray(_render_seg(idbuf, id_to_type), mode="RGB").save(str(seg_out_path))
+        result["seg_path"] = str(seg_out_path)
 
-    th = cam["pitch"]
-    fwd = ry * np.cos(th) + rz * np.sin(th)   # 進入畫面方向
-    up = -ry * np.sin(th) + rz * np.cos(th)   # 畫面上方
-
-    depth = np.maximum(fwd, cam["near"])
-    u = cam["cx"] + cam["f"] * rx / depth
-    v = cam["cy"] - cam["f"] * up / depth
-    return np.stack([u, v], axis=1), fwd
+    return result
 
 
-# ── 三角形光柵化 + z-buffer ────────────────────────────────────────────────────
+# ── 照片錨定投影（首選路徑，相機由照片本身決定，候選評分不適用）──────────────────
 
-def _raster_triangle(
+def _raster_pixel_triangle(
     zbuf: np.ndarray,
     idbuf: np.ndarray,
     p0: np.ndarray, p1: np.ndarray, p2: np.ndarray,
     d0: float, d1: float, d2: float,
     obj_id: int,
 ) -> None:
-    """把單一三角形以 z-buffer 寫入。p* 為像素座標 (2,)，d* 為各頂點的 **inverse depth**。
+    """直接以影像像素座標 + disparity 光柵化三角形（inverse-depth 語意，大=近）。
 
-    緩衝區一律採 inverse-depth 語意（大=近、0=無限遠）：平面的 1/深度 在螢幕空間是
-    仿射的，所以這裡的重心座標內插才是透視正確的；直接內插「距離」會讓大跨度的
-    地板/天花板三角形深度嚴重偏斜。
+    這是給「貼真實照片」路徑用的——相機已經是照片本身，沒有世界座標投影，純粹是
+    像素空間的疊圖，跟 `camera_projection.rasterize_ids`（世界座標合成相機）無關。
     """
     h, w = zbuf.shape
     minx = max(int(np.floor(min(p0[0], p1[0], p2[0]))), 0)
@@ -374,260 +255,15 @@ def _raster_triangle(
     sub_id[closer] = obj_id
 
 
-def _raster_quad(
-    zbuf: np.ndarray, idbuf: np.ndarray,
-    world_quad: np.ndarray, cam: dict[str, float], obj_id: int,
-) -> None:
-    """把世界座標四邊形（4,3，順序為環繞）拆成兩個三角形光柵化。"""
-    pix, depth = _project(world_quad, cam)
-    # 任一頂點在相機後方則略過（PoC：房間內物件皆在前方，足夠）
-    if (depth <= cam["near"]).any():
-        return
-    inv = 1.0 / depth
-    _raster_triangle(zbuf, idbuf, pix[0], pix[1], pix[2], inv[0], inv[1], inv[2], obj_id)
-    _raster_triangle(zbuf, idbuf, pix[0], pix[2], pix[3], inv[0], inv[2], inv[3], obj_id)
-
-
-# ── 幾何組裝 ──────────────────────────────────────────────────────────────────
-
-def _room_dims(space_info: dict) -> tuple[float, float, float]:
-    size = (space_info or {}).get("estimated_size") or {}
-    w = float(size.get("width", 5.0))
-    d = float(size.get("depth", 4.0))
-    h = float(size.get("height", 2.8))
-    return w, d, h
-
-
-def _fp_to_world_box(item: dict, room_w: float, room_d: float) -> tuple[float, float, float, float, float]:
-    """floor-plan bbox → world (x0,x1,y0,y1,top_z)。"""
-    fx = float(item.get("x", 0.0))
-    fy = float(item.get("y", 0.0))
-    fw = float(item.get("w", 0.1))
-    fh = float(item.get("h", 0.1))
-    ftype = str(item.get("type", "default"))
-
-    x0 = (fx - 0.5) * room_w
-    x1 = (fx + fw - 0.5) * room_w
-    # floor-plan y=0 為遠牆、y=1 為近相機側 → world Y 由近(0)到遠(room_d)
-    y_near = (1.0 - (fy + fh)) * room_d
-    y_far = (1.0 - fy) * room_d
-    top_z = furniture_height(ftype)
-    return x0, x1, y_near, y_far, top_z
-
-
-def _add_room_shell(
-    zbuf: np.ndarray, idbuf: np.ndarray, cam: dict[str, float],
-    room_w: float, room_d: float, room_h: float,
-    shell_ids: dict[str, int],
-) -> None:
-    hx = room_w / 2.0
-    # 地板
-    _raster_quad(zbuf, idbuf, np.array([
-        [-hx, 0.0, 0.0], [hx, 0.0, 0.0], [hx, room_d, 0.0], [-hx, room_d, 0.0],
-    ]), cam, shell_ids["floor"])
-    # 天花板
-    _raster_quad(zbuf, idbuf, np.array([
-        [-hx, 0.0, room_h], [hx, 0.0, room_h], [hx, room_d, room_h], [-hx, room_d, room_h],
-    ]), cam, shell_ids["ceiling"])
-    # 遠牆
-    _raster_quad(zbuf, idbuf, np.array([
-        [-hx, room_d, 0.0], [hx, room_d, 0.0], [hx, room_d, room_h], [-hx, room_d, room_h],
-    ]), cam, shell_ids["wall"])
-    # 左牆
-    _raster_quad(zbuf, idbuf, np.array([
-        [-hx, 0.0, 0.0], [-hx, room_d, 0.0], [-hx, room_d, room_h], [-hx, 0.0, room_h],
-    ]), cam, shell_ids["wall"])
-    # 右牆
-    _raster_quad(zbuf, idbuf, np.array([
-        [hx, 0.0, 0.0], [hx, room_d, 0.0], [hx, room_d, room_h], [hx, 0.0, room_h],
-    ]), cam, shell_ids["wall"])
-
-
-def _add_box(
-    zbuf: np.ndarray, idbuf: np.ndarray, cam: dict[str, float],
-    x0: float, x1: float, y0: float, y1: float, z1: float, obj_id: int,
-    z0: float = 0.0,
-) -> None:
-    """擺一個長方體。渲染頂面 + 四側面；z0>0 時底面懸空（桌面、電視面板）。"""
-    # 頂面
-    _raster_quad(zbuf, idbuf, np.array([
-        [x0, y0, z1], [x1, y0, z1], [x1, y1, z1], [x0, y1, z1]]), cam, obj_id)
-    # 近面 (y0)
-    _raster_quad(zbuf, idbuf, np.array([
-        [x0, y0, z0], [x1, y0, z0], [x1, y0, z1], [x0, y0, z1]]), cam, obj_id)
-    # 遠面 (y1)
-    _raster_quad(zbuf, idbuf, np.array([
-        [x0, y1, z0], [x1, y1, z0], [x1, y1, z1], [x0, y1, z1]]), cam, obj_id)
-    # 左面 (x0)
-    _raster_quad(zbuf, idbuf, np.array([
-        [x0, y0, z0], [x0, y1, z0], [x0, y1, z1], [x0, y0, z1]]), cam, obj_id)
-    # 右面 (x1)
-    _raster_quad(zbuf, idbuf, np.array([
-        [x1, y0, z0], [x1, y1, z0], [x1, y1, z1], [x1, y0, z1]]), cam, obj_id)
-
-
-def _instance_summary(
-    idbuf: np.ndarray, id_to_type: dict[int, str],
-) -> list[dict[str, Any]]:
-    """每件家具在投影影像上實際佔到的位置，正規化到 [0,1]（左上為原點）。
-
-    深度圖是灰階的，本身不帶「這塊是沙發」的資訊；prompt 用平面圖座標描述位置時，
-    經過透視投影後未必落在深度圖上同一個地方（貼牆的家具甚至可能整件出框）。把投影
-    後的實際 bbox 帶出來，renderer 就能讓文字描述對準畫面上真正存在的那一塊。
-    """
-    h_img, w_img = idbuf.shape
-    out: list[dict[str, Any]] = []
-    for oid, ftype in id_to_type.items():
-        if ftype.startswith("_"):
-            continue
-        ys, xs = np.nonzero(idbuf == oid)
-        if xs.size == 0:
-            # 投影後完全不在畫面內 —— renderer 據此把它從 prompt 拿掉，
-            # 免得模型被要求在一片空白的地方畫出一件深度圖沒有的家具
-            out.append({"id": int(oid), "type": ftype, "visible": False})
-            continue
-        out.append({
-            "id": int(oid),
-            "type": ftype,
-            "visible": True,
-            "x0": round(float(xs.min()) / w_img, 4),
-            "x1": round(float(xs.max() + 1) / w_img, 4),
-            "y0": round(float(ys.min()) / h_img, 4),
-            "y1": round(float(ys.max() + 1) / h_img, 4),
-            "cx": round(float(xs.mean()) / w_img, 4),
-            "cy": round(float(ys.mean()) / h_img, 4),
-            "area": round(float(xs.size) / (w_img * h_img), 5),
-        })
-    # 由近到遠（畫面下方 = 近）排序，與 renderer 描述的順序一致
-    out.sort(key=lambda d: -d.get("cy", 0.0))
-    return out
-
-
-# ── 主函式 ────────────────────────────────────────────────────────────────────
-
-def project_scene_graph_to_depth(
-    furniture_placements: list[dict],
-    space_info: dict | None = None,
-    out_path: str | Path | None = None,
-    *,
-    image_size: tuple[int, int] = (1024, 1024),
-    seg_out_path: str | Path | None = None,
-    camera_overrides: dict[str, Any] | None = None,
-) -> dict[str, Any]:
-    """把 furniture_placements 投影成透視深度圖（近亮遠暗），可選輸出 segmentation。
-
-    回傳 dict：depth_path / seg_path / depth_array / id_map / meta。
-    """
-    space_info = space_info or {}
-    w_img, h_img = image_size
-    cam = _build_camera(image_size, **(camera_overrides or {}))
-    room_w, room_d, room_h = _room_dims(space_info)
-
-    zbuf = np.zeros((h_img, w_img), dtype=np.float32)  # inverse depth，0 = 無限遠 / 空
-    idbuf = np.zeros((h_img, w_img), dtype=np.int32)  # 0 = 空 / 背景
-
-    # id 配置：1..N_shell 給外殼，之後給家具
-    shell_ids = {"floor": 1, "ceiling": 2, "wall": 3}
-    _add_room_shell(zbuf, idbuf, cam, room_w, room_d, room_h, shell_ids)
-
-    id_to_type: dict[int, str] = {
-        1: "_floor", 2: "_ceiling", 3: "_wall",
-    }
-    next_id = 4
-    for item in (furniture_placements or []):
-        if not is_floor_standing(str(item.get("type", "default"))):
-            continue
-        x0, x1, y_near, y_far, z1 = _fp_to_world_box(item, room_w, room_d)
-        if x1 <= x0 or y_far <= y_near:
-            continue
-        obj_id = next_id
-        next_id += 1
-        ftype = str(item.get("type", "default"))
-        id_to_type[obj_id] = ftype
-        # 同一個 obj_id 給所有子塊 —— segmentation 上這件家具仍是單一實例
-        fx, fy = float(item.get("x", 0.0)), float(item.get("y", 0.0))
-        fw, fh = float(item.get("w", 0.1)), float(item.get("h", 0.1))
-        for u0, u1, v0, v1, pz0, pz1 in furniture_parts(ftype, fx, fy, fw, fh, z1):
-            if pz1 <= pz0:
-                continue
-            # v 沿平面圖 +y（v=0 遠側）→ world y 由 y_far 遞減到 y_near
-            _add_box(
-                zbuf, idbuf, cam,
-                x0 + u0 * (x1 - x0), x0 + u1 * (x1 - x0),
-                y_far + v1 * (y_near - y_far), y_far + v0 * (y_near - y_far),
-                pz1, obj_id, z0=pz0,
-            )
-
-    # 深度 → 8-bit 灰階（近亮遠暗）。這裡用 **inverse depth（disparity）** 而非線性距離，
-    # 才與 Depth-Anything V2 的輸出一致 —— depth ControlNet 就是拿那種色調曲線訓練的，
-    # 餵線性距離會讓模型誤判各面之間的相對遠近。
-    covered = zbuf > 0
-    depth_img = np.zeros((h_img, w_img), dtype=np.uint8)
-    if covered.any():
-        ivals = zbuf[covered]
-        imin, imax = float(ivals.min()), float(ivals.max())
-        if imax - imin < 1e-9:
-            depth_img[covered] = 255
-        else:
-            bright = ((zbuf - imin) / (imax - imin) * 255.0).clip(0, 255)
-            depth_img[covered] = bright[covered].astype(np.uint8)
-
-    # 合成深度是硬邊方塊（家具邊緣沒有真實深度圖的漸層過渡），ControlNet 用力
-    # 對齊硬邊時容易在物件邊界生成半透明疊影。輕微模糊軟化邊緣，緩解此瑕疵。
-    from PIL import Image, ImageFilter
-    depth_img = np.array(
-        Image.fromarray(depth_img, mode="L").filter(ImageFilter.GaussianBlur(radius=3))
-    )
-
-    result: dict[str, Any] = {
-        "depth_array": depth_img,
-        "id_map": idbuf,
-        "id_to_type": id_to_type,
-        "meta": {
-            "room_dims": {"width": room_w, "depth": room_d, "height": room_h},
-            "image_size": {"width": w_img, "height": h_img},
-            "furniture_count": next_id - 4,
-            "instances": _instance_summary(idbuf, id_to_type),
-        },
-    }
-
-    from PIL import Image
-    if out_path is not None:
-        out_path = Path(out_path)
-        out_path.parent.mkdir(parents=True, exist_ok=True)
-        Image.fromarray(depth_img, mode="L").save(str(out_path))
-        result["depth_path"] = str(out_path)
-
-    if seg_out_path is not None:
-        seg_rgb = np.zeros((h_img, w_img, 3), dtype=np.uint8)
-        for oid, ftype in id_to_type.items():
-            mask = idbuf == oid
-            if not mask.any():
-                continue
-            if ftype.startswith("_"):
-                color = _SHELL_COLORS.get(ftype[1:], _SHELL_COLORS["wall"])
-            else:
-                color = _furniture_color(ftype)
-            seg_rgb[mask] = color
-        seg_out_path = Path(seg_out_path)
-        seg_out_path.parent.mkdir(parents=True, exist_ok=True)
-        Image.fromarray(seg_rgb, mode="RGB").save(str(seg_out_path))
-        result["seg_path"] = str(seg_out_path)
-
-    return result
-
-
-# ── 照片錨定投影（首選路徑）────────────────────────────────────────────────────
-
 def _raster_pixel_quad(
     zbuf: np.ndarray, idbuf: np.ndarray,
     pix: np.ndarray, disp: np.ndarray, obj_id: int,
 ) -> None:
     """直接以影像像素座標 + disparity 光柵化四邊形（緩衝區同為 inverse-depth 語意）。"""
-    _raster_triangle(zbuf, idbuf, pix[0], pix[1], pix[2],
-                     float(disp[0]), float(disp[1]), float(disp[2]), obj_id)
-    _raster_triangle(zbuf, idbuf, pix[0], pix[2], pix[3],
-                     float(disp[0]), float(disp[2]), float(disp[3]), obj_id)
+    _raster_pixel_triangle(zbuf, idbuf, pix[0], pix[1], pix[2],
+                            float(disp[0]), float(disp[1]), float(disp[2]), obj_id)
+    _raster_pixel_triangle(zbuf, idbuf, pix[0], pix[2], pix[3],
+                            float(disp[0]), float(disp[2]), float(disp[3]), obj_id)
 
 
 def project_layout_onto_photo(
@@ -646,7 +282,7 @@ def project_layout_onto_photo(
     """把新規劃的家具長方體疊回**原始照片自己的深度圖**上。
 
     相對於 `project_scene_graph_to_depth`（合成相機 + 空盒子），這條路徑：
-      - 相機視角、房間比例直接沿用原始照片，不需估焦距或房間尺寸
+      - 相機視角、房間比例直接沿用原始照片，不需估焦距或房間尺寸，候選角度評分不適用
       - 保留照片中的窗、門、牆角、樑柱等建築結構（只清掉舊家具）
       - 家具腳印經由地板 homography 落在照片裡真實的地板位置
 
@@ -753,7 +389,7 @@ def project_layout_onto_photo(
             "mode": "photo_anchored",
             "image_size": {"width": w_img, "height": h_img},
             "furniture_count": placed,
-            "instances": _instance_summary(idbuf, id_to_type),
+            "instances": instance_summary(idbuf, id_to_type),
             "non_floor_skipped": skipped_non_floor,
             "preserved_in_place": skipped_preserved,
             "preserved_regions": len(preserved_id_to_type),
@@ -768,17 +404,7 @@ def project_layout_onto_photo(
     depth_pil = Image.fromarray(depth_img, mode="L")
     seg_pil: Any = None
     if seg_out_path is not None:
-        seg_rgb = np.zeros((h_img, w_img, 3), dtype=np.uint8)
-        for oid, ftype in id_to_type.items():
-            mask = idbuf == oid
-            if not mask.any():
-                continue
-            if ftype.startswith("_"):
-                color = _SHELL_COLORS.get(ftype[1:], _SHELL_COLORS["wall"])
-            else:
-                color = _furniture_color(ftype)
-            seg_rgb[mask] = color
-        seg_pil = Image.fromarray(seg_rgb, mode="RGB")
+        seg_pil = Image.fromarray(_render_seg(idbuf, id_to_type), mode="RGB")
 
     if output_size is not None and tuple(output_size) != (w_img, h_img):
         depth_pil = depth_pil.resize(tuple(output_size), Image.BICUBIC)
@@ -835,8 +461,9 @@ def main() -> None:
     parser.add_argument("--seg", default=None, help="可選 segmentation mask 輸出路徑")
     parser.add_argument("--width", type=int, default=1024)
     parser.add_argument("--height", type=int, default=1024)
-    parser.add_argument("--hfov", type=float, default=60.0)
-    parser.add_argument("--pitch", type=float, default=-6.0, help="相機俯角（負=俯視，看更多地板）")
+    parser.add_argument("--setback", type=float, default=None, help="相機後退距離（公尺），覆寫候選 0")
+    parser.add_argument("--eye-height", type=float, default=None, help="相機眼高（公尺），覆寫候選 0")
+    parser.add_argument("--no-auto-camera", action="store_true", help="關閉候選角度評分，只用候選 0")
     parser.add_argument("--vis", action="store_true", help="另存深度+seg 並排視覺化圖")
     args = parser.parse_args()
 
@@ -845,15 +472,23 @@ def main() -> None:
     out_path = Path(args.out) if args.out else src.parent / "projected_depth.png"
     seg_path = Path(args.seg) if args.seg else None
 
+    overrides: dict[str, Any] = {}
+    if args.setback is not None:
+        overrides["setback"] = args.setback
+    if args.eye_height is not None:
+        overrides["eye_height"] = args.eye_height
+
     res = project_scene_graph_to_depth(
         placements, space_info, out_path,
         image_size=(args.width, args.height),
         seg_out_path=seg_path,
-        camera_overrides={"hfov_deg": args.hfov, "pitch_deg": args.pitch},
+        camera_overrides=overrides or None,
+        auto_select_camera=not args.no_auto_camera,
     )
 
     print(f"家具數：{res['meta']['furniture_count']}")
     print(f"房間尺寸：{res['meta']['room_dims']}")
+    print(f"選用相機：{res['meta']['camera']}（分數 {res['meta']['camera_score']}）")
     print(f"深度圖：{res.get('depth_path')}")
     if res.get("seg_path"):
         print(f"Segmentation：{res['seg_path']}")

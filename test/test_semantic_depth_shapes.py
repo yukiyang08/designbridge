@@ -13,11 +13,8 @@ from __future__ import annotations
 
 import numpy as np
 
-from designbridge.layout.scene_graph_to_depth import (
-    _shape_kind,
-    furniture_parts,
-    project_scene_graph_to_depth,
-)
+from designbridge.layout.camera_projection import furniture_parts, shape_kind as _shape_kind
+from designbridge.layout.scene_graph_to_depth import project_scene_graph_to_depth
 
 SPACE = {"estimated_size": {"width": 5.0, "depth": 4.0, "height": 2.8}}
 IMG = 768
@@ -117,10 +114,21 @@ def test_every_piece_reports_where_it_landed_on_screen():
 
 
 def test_offscreen_piece_is_reported_not_silently_dropped():
-    """Furniture hugging a side wall falls outside the camera's FOV. It must come back
-    marked invisible so the renderer can drop it from the prompt rather than asking the
-    model to paint a sofa where the depth map is empty."""
-    inst = _project([_item("wardrobe", x=0.02, y=0.40, w=0.06, h=0.06)])["meta"]["instances"]
+    """Furniture hugging the entrance wall (right under the camera) falls outside its
+    FOV. It must come back marked invisible so the renderer can drop it from the
+    prompt rather than asking the model to paint a sofa where the depth map is empty.
+
+    Candidate-camera auto-selection is disabled here on purpose: with it on, a piece
+    that's off-frame from the base station point can pull a *different* candidate into
+    the lead (score rewards keeping furniture in frame — see
+    test_camera_candidate_scoring.py), which would defeat the point of this check. This
+    test is about the visibility-reporting *contract*, not about which camera wins.
+    """
+    placements = [_item("wardrobe", x=0.0, y=0.95, w=0.05, h=0.05)]
+    res = project_scene_graph_to_depth(
+        placements, SPACE, image_size=(IMG, IMG), auto_select_camera=False,
+    )
+    inst = res["meta"]["instances"]
     assert len(inst) == 1 and inst[0]["visible"] is False, inst
     print("[offscreen] wall-hugging piece correctly reported as not visible")
 
