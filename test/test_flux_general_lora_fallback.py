@@ -13,7 +13,7 @@ def test_retries_flux_general_without_lora_after_lora_download_error(tmp_path, m
     output_path = tmp_path / "render.png"
     calls = []
 
-    def subscribe(model, *, arguments, with_logs):
+    def subscribe(model, *, arguments, with_logs, **_kwargs):   # on_queue_update 等耗時記錄用的參數
         calls.append((model, arguments, with_logs))
         if "loras" in arguments:
             raise RuntimeError(

@@ -111,13 +111,18 @@ def test_no_key_raises_helpful_error():
 
 
 def test_thinking_budget_zero_skipped_on_gemini_3():
-    """thinking_budget=0 只有 2.x 收，送給 3.x 會被回 400，必須改為不送。"""
+    """thinking_budget=0 只有 2.x 收，送給 3.x 會被回 400：3.x flash 改用 thinking_level=minimal，
+    其他 3.x 不送。"""
     from google.genai import types
 
     orig_model, orig_budget = Config.GEMINI_MODEL, Config.GEMINI_THINKING_BUDGET
     try:
         Config.GEMINI_THINKING_BUDGET = 0
         Config.GEMINI_MODEL = "gemini-3.6-flash"
+        cfg = llm._thinking_config(types)
+        assert cfg.thinking_budget is None
+        assert cfg.thinking_level == types.ThinkingLevel.MINIMAL
+        Config.GEMINI_MODEL = "gemini-3.6-pro"
         assert llm._thinking_config(types) is None
         Config.GEMINI_MODEL = "gemini-2.5-flash"
         assert llm._thinking_config(types).thinking_budget == 0
