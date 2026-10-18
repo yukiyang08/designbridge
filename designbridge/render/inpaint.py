@@ -616,6 +616,7 @@ def run_fal_inpainting(
         import os
         import requests
         import fal_client
+        from designbridge.core.timing import fal_subscribe
         from PIL import Image
 
         os.environ.setdefault("FAL_KEY", Config.FAL_KEY)
@@ -653,7 +654,7 @@ def run_fal_inpainting(
             return f"data:image/png;base64,{b64}"
 
         print(f"[fal] num_steps={num_steps}  guidance_scale={guidance_scale}")
-        result = fal_client.subscribe(
+        result = fal_subscribe("inpaint",
             Config.FAL_INPAINT_MODEL,
             arguments={
                 "prompt": prompt,
@@ -788,6 +789,7 @@ def run_fal_outpainting(
         import os
         import requests
         import fal_client
+        from designbridge.core.timing import fal_subscribe
         from PIL import Image
 
         os.environ.setdefault("FAL_KEY", Config.FAL_KEY)
@@ -832,7 +834,7 @@ def run_fal_outpainting(
                 "enable_safety_checker": False,
             }
 
-        result = fal_client.subscribe(Config.FAL_OUTPAINT_MODEL, arguments=arguments)
+        result = fal_subscribe("outpaint", Config.FAL_OUTPAINT_MODEL, arguments=arguments)
 
         images = result.get("images") or []
         if not images:

@@ -89,6 +89,7 @@ def _render_flux_fal(
         return False
     try:
         import fal_client
+        from designbridge.core.timing import fal_subscribe
         import requests
         import os
 
@@ -99,7 +100,7 @@ def _render_flux_fal(
         width, height = output_size
         image_size = _FAL_SIZE_MAP.get((width, height), {"width": width, "height": height})
 
-        result = fal_client.subscribe(
+        result = fal_subscribe("flux_txt2img",
             model,
             arguments={
                 "prompt": prompt,
@@ -191,6 +192,7 @@ def _render_flux_kontext_fal(
         return False
     try:
         import fal_client
+        from designbridge.core.timing import fal_subscribe
         import requests
         import os
 
@@ -210,7 +212,7 @@ def _render_flux_kontext_fal(
         print(f"[kontext] prompt preview: {full_prompt[:120]}")
         print(f"[kontext] lora scale: {depth_conditioning_scale}")
 
-        result = fal_client.subscribe(
+        result = fal_subscribe("kontext",
             "fal-ai/flux-kontext/dev",
             arguments={
                 "prompt": full_prompt,
@@ -292,6 +294,7 @@ def _render_flux_controlnet_depth_fal(
         return False
     try:
         import fal_client
+        from designbridge.core.timing import fal_subscribe
         import requests
         import os
 
@@ -365,7 +368,7 @@ def _render_flux_controlnet_depth_fal(
             print("[lora] 已知 fal 無法下載此 LoRA，略過並保留深度 ControlNet")
 
         try:
-            result = fal_client.subscribe(
+            result = fal_subscribe("controlnet_depth",
                 "fal-ai/flux-general",
                 arguments=arguments,
                 with_logs=False,
@@ -380,7 +383,7 @@ def _render_flux_controlnet_depth_fal(
             print("⚠️  fal.ai 無法下載 LoRA 權重，保留深度 ControlNet 並移除 LoRA 重試")
             retry_arguments = dict(arguments)
             retry_arguments.pop("loras", None)
-            result = fal_client.subscribe(
+            result = fal_subscribe("controlnet_depth_retry",
                 "fal-ai/flux-general",
                 arguments=retry_arguments,
                 with_logs=False,
@@ -443,6 +446,7 @@ def _render_flux_depth_controlnet_fal(
         import os
 
         import fal_client
+        from designbridge.core.timing import fal_subscribe
         import requests
 
         os.environ["FAL_KEY"] = fal_key
@@ -506,7 +510,7 @@ def _render_flux_depth_controlnet_fal(
               f"controls={_modes} depth_scale={conditioning_scale} edge_scale={edge_conditioning_scale} "
               f"depth_end={depth_control_end} edge_end={edge_control_end}")
 
-        result = fal_client.subscribe(
+        result = fal_subscribe("controlnet_union",
             "fal-ai/flux-general",
             arguments=arguments,
             with_logs=True,
