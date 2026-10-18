@@ -14,6 +14,7 @@ from routers.common import (
     _is_artifact_file, _layout_render_config, _require_artifact_file,
 )
 from designbridge.core.config import Config
+from designbridge.core.timing import collect_stages
 from routers.history import _save_history
 
 router = APIRouter()
@@ -133,7 +134,8 @@ def generate_design(request: DesignRequest):
 
         # 執行工作流
         t0 = time.perf_counter()
-        result = _get_graph().invoke(initial_state)
+        with collect_stages() as timings:
+            result = _get_graph().invoke(initial_state)
         elapsed = time.perf_counter() - t0
         generated_image_path = result.get("generated_image")
         generated_image_url = _artifact_url(generated_image_path)
@@ -161,6 +163,7 @@ def generate_design(request: DesignRequest):
             "style_params": result.get("style_params"),
             "evaluation_result": result.get("evaluation_result"),
             "quotation_result": result.get("quotation_result"),
+            "timings": timings,
         }
 
         # 儲存生成紀錄
@@ -202,6 +205,7 @@ def generate_design(request: DesignRequest):
             "gemini_style_description": generation_params.get("gemini_style_description"),
             "generation_params": generation_params,
             "evaluation_result": result.get("evaluation_result"),
+            "timings": timings,
         })
 
         return response

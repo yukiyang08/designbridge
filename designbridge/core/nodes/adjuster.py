@@ -10,6 +10,7 @@ from typing import Any
 
 from designbridge.core.config import Config
 from designbridge.core.state import DesignBridgeState
+from designbridge.core.timing import timed_call
 from designbridge.render.inpaint import (
     mask_from_segmentation,
     expand_mask_by_segmentation,
@@ -219,8 +220,9 @@ def adjuster_agent_stub(state: DesignBridgeState) -> dict[str, Any]:
             combined_arr = None
             ok_count = 0
             for comp_drawn, class_full, label in seg_aux_per_object:
-                obj_mask, obj_ok = generate_mask_with_sam2(
-                    image_path, comp_drawn, img_size, aux_mask=class_full
+                obj_mask, obj_ok = timed_call(
+                    "adjuster.sam2", task_id, generate_mask_with_sam2,
+                    image_path, comp_drawn, img_size, aux_mask=class_full,
                 )
                 if obj_ok:
                     ok_count += 1
@@ -237,8 +239,9 @@ def adjuster_agent_stub(state: DesignBridgeState) -> dict[str, Any]:
             print(f"[adjuster] mask source: SAM 2 instance segmentation, multi-object x{len(seg_aux_per_object)}")
         else:
             # 優先用 SAM 2 取得實例層級精確遮罩
-            sam2_mask, sam2_ok = generate_mask_with_sam2(
-                image_path, drawn_mask, img_size, aux_mask=seg_aux_mask
+            sam2_mask, sam2_ok = timed_call(
+                "adjuster.sam2", task_id, generate_mask_with_sam2,
+                image_path, drawn_mask, img_size, aux_mask=seg_aux_mask,
             )
             if sam2_ok:
                 mask = sam2_mask
@@ -256,7 +259,7 @@ def adjuster_agent_stub(state: DesignBridgeState) -> dict[str, Any]:
     else:
         # Gemini Vision 判斷意圖：物件目標 + 動作類型
         text_prompt = user_input.get("text_prompt") or ""
-        intent       = analyze_edit_intent(text_prompt, image_path, str(seg_meta) if seg_meta else None)
+        intent       = timed_call("adjuster.intent", task_id, analyze_edit_intent, text_prompt, image_path, str(seg_meta) if seg_meta else None)
         edit_action  = intent["action"]
         seg_labels   = intent["seg_labels"]
         replace_with = intent["replace_with"]
@@ -353,7 +356,8 @@ def adjuster_agent_stub(state: DesignBridgeState) -> dict[str, Any]:
             try:
                 from designbridge.render.llm import call_llm
                 obj_hint = f" The selected object is: {seg_labels[0]}." if seg_labels else ""
-                translated = call_llm(
+                translated = timed_call(
+                    "adjuster.translate", task_id, call_llm,
                     f"Translate this interior design modification request to English in one sentence.{obj_hint} "
                     "Output ONLY the translated sentence itself — a single line, no markdown, no bullet points, "
                     "no quotes, no explanation of how you translated it, no meta-commentary.\n\n"
@@ -423,7 +427,7 @@ def adjuster_agent_stub(state: DesignBridgeState) -> dict[str, Any]:
     # 取得像素級精確輪廓（例如連椅子的輪子、桌腳一起框進去），
     # 避免純 segmentation/vision bbox 遮罩過於粗略導致邊緣殘留或誤刪背景
     if not has_manual_mask and mask_source != "fallback_center":
-        sam2_refined, sam2_ok = generate_mask_with_sam2(image_path, mask, img_size)
+        sam2_refined, sam2_ok = timed_call("adjuster.sam2", task_id, generate_mask_with_sam2, image_path, mask, img_size)
         if sam2_ok:
             mask = sam2_refined
             mask_source = f"sam2_refined({mask_source})"
@@ -453,14 +457,14 @@ def adjuster_agent_stub(state: DesignBridgeState) -> dict[str, Any]:
 
     # 1. LaMa（純移除任務：背景重建最穩定）
     if is_removal:
-        if run_lama_inpainting(image_path, mask, out_path):
+        if timed_call("adjuster.lama", task_id, run_lama_inpainting, image_path, mask, out_path):
             backend = "lama_inpainting"
 
     # 2. fal.ai FLUX.1-Fill（修改任務，或 LaMa 失敗時的 fallback）
     if backend == "placeholder" and Config.FAL_KEY:
         print(f"[adjuster] task={'removal' if is_removal else 'modification'}  steps={fal_num_steps}  guidance={fal_guidance}")
-        if run_fal_inpainting(image_path, mask, prompt, out_path,
-                              num_steps=fal_num_steps, guidance_scale=fal_guidance):
+        if timed_call("adjuster.fal_inpainting", task_id, run_fal_inpainting, image_path, mask, prompt, out_path,
+                      num_steps=fal_num_steps, guidance_scale=fal_guidance):
             backend = "fal_inpainting"
 
     # 3. Fallback：複製原圖

@@ -22,6 +22,7 @@ import ImageUpload from '@/components/ImageUpload.vue'
 import DesignDetails from '@/components/steps/DesignDetails.vue'
 import ApplyToRooms from '@/components/steps/ApplyToRooms.vue'
 import RefineCanvas from '@/components/RefineCanvas.vue'
+import TimingPanel from '@/components/TimingPanel.vue'
 import { useDesignFlow, ASPECT_OPTIONS, ORIGINAL_STYLE_KEY } from '@/composables/useDesignFlow'
 import { useFurnitureSelection } from '@/composables/useFurnitureSelection'
 import { API_BASE } from '@/config/api'
@@ -57,6 +58,7 @@ const router = useRouter()
 
 const viewMode = ref('image')   // 'image' | 'pano'
 const showDetails = ref(false)
+const showTimings = ref(false)
 const showRefine = ref(false)   // 微調工作區預設收起，按「開始微調」才跳出
 function openRefine() { viewMode.value = 'image'; showRefine.value = true }
 
@@ -289,7 +291,7 @@ function toFavoriteItem(item, c) {
           <template v-if="!showRefine">
             <h2 class="block-title">微調編輯</h2>
             <p class="block-hint">對這張圖不滿意？用畫筆圈出想調整的範圍，AI 只重繪該區域。</p>
-            <button type="button" class="db-btn refine-cta-btn" @click="openRefine">🖌️ 開始微調</button>
+            <button type="button" class="db-btn refine-cta-btn" @click="openRefine">開始微調</button>
           </template>
 
           <template v-else>
@@ -380,6 +382,17 @@ function toFavoriteItem(item, c) {
               <p>正在生成 360° 環景…約 30–60 秒</p>
             </div>
 
+            <!-- 右下角：查看這次請求各環節耗時 -->
+            <button
+              v-if="imageUrl && result.timings?.length"
+              type="button" class="timing-btn" title="各環節耗時" aria-label="查看各環節耗時"
+              @click="showTimings = true"
+            >
+              <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <circle cx="12" cy="12" r="9" /><path d="M12 7v5l3 2" />
+              </svg>
+            </button>
+
             <div v-if="panoError && !panoLoading" class="pano-fail" role="alert">
               <span>⚠ {{ panoError }}</span>
               <button type="button" class="pano-retry" @click="startPano">重試</button>
@@ -440,6 +453,11 @@ function toFavoriteItem(item, c) {
           </button>
         </div>
         <DesignDetails v-if="showDetails" :result="result" />
+        <TimingPanel
+          v-if="showTimings && result.timings?.length"
+          :timings="result.timings" :elapsed="result.elapsed_time" :routing="result.routing_decision"
+          @close="showTimings = false"
+        />
 
         <div class="inline-actions">
           <button class="db-btn db-btn--ghost db-btn--sm" @click="regenerate">重新調整並生成</button>
@@ -784,6 +802,22 @@ function toFavoriteItem(item, c) {
 .pano-cta:hover:not(:disabled) { background: rgba(20, 18, 14, 0.92); }
 .pano-cta:disabled { cursor: not-allowed; }
 .cta-title { font-size: 0.95rem; font-weight: 600; }
+.timing-btn {
+  position: absolute;
+  right: 0.75rem;
+  bottom: 0.75rem;
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  border: none;
+  border-radius: 50%;
+  background: rgba(20, 18, 14, 0.62);
+  color: #fff;
+  cursor: pointer;
+  transition: background 0.16s;
+}
+.timing-btn:hover { background: rgba(20, 18, 14, 0.9); }
 .cta-sub { font-size: 0.72rem; opacity: 0.75; }
 @media (hover: none) { .pano-cta { opacity: 1; transform: translate(-50%, 0); } }
 

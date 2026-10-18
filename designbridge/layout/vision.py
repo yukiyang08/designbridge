@@ -336,12 +336,14 @@ def run_visual_preprocessing(
     layout_json: dict | None = None
 
     if parallel and enable_depth and enable_segmentation:
+        import contextvars
         from concurrent.futures import ThreadPoolExecutor
 
         with log_stage("visual_preprocessing.parallel", task_id=task_id):
             with ThreadPoolExecutor(max_workers=2) as pool:
-                depth_future = pool.submit(_depth)
-                seg_future = pool.submit(_seg)
+                # 各自複製 context，執行緒內的 log_stage 才記得進這次請求的耗時
+                depth_future = pool.submit(contextvars.copy_context().run, _depth)
+                seg_future = pool.submit(contextvars.copy_context().run, _seg)
                 depth_path = depth_future.result()
                 seg_path, seg_meta_path = seg_future.result()
     else:

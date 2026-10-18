@@ -11,11 +11,38 @@ they took before failing).
 
 from __future__ import annotations
 
+import contextvars
 import time
 from contextlib import contextmanager
 from typing import TypeVar
 
 T = TypeVar("T")
+
+# (records, 起點)；用 contextvar 而非全域，同時跑的多個請求才不會混在一起。
+# 丟進 thread pool 的工作要用 contextvars.copy_context().run 才收得到。
+_collector: contextvars.ContextVar[tuple[list, float] | None] = contextvars.ContextVar("timing_collector", default=None)
+
+
+@contextmanager
+def collect_stages():
+    """收集此區塊內所有 log_stage / fal_subscribe 的耗時（回傳給前端顯示）。"""
+    records: list[dict] = []
+    token = _collector.set((records, time.perf_counter()))
+    try:
+        yield records
+    finally:
+        _collector.reset(token)
+
+
+def _record(label: str, start: float, elapsed: float, detail: str | None = None) -> None:
+    col = _collector.get()
+    if col is None:
+        return
+    records, origin = col
+    entry = {"label": label, "seconds": round(elapsed, 2), "start": round(start - origin, 2)}
+    if detail:
+        entry["detail"] = detail
+    records.append(entry)
 
 
 @contextmanager
@@ -27,6 +54,7 @@ def log_stage(label: str, task_id: str | None = None):
     finally:
         elapsed = time.perf_counter() - start
         print(f"{prefix} {label}: {elapsed:.2f}s")
+        _record(label, start, elapsed)
 
 
 def timed_call(label: str, task_id: str | None, fn, *args, **kwargs) -> T:
@@ -68,3 +96,4 @@ def fal_subscribe(label: str, application: str, arguments: dict, **kwargs):
         detail = f" ({', '.join(parts)})" if parts else ""
         status = "" if result is not None else " [failed]"
         print(f"[timing] fal.{label} {application}: total {total:.2f}s{detail}{status}")
+        _record(f"fal.{label}", start, total, ", ".join(parts) + status if parts or status else None)
