@@ -138,6 +138,22 @@ def generate_design(request: DesignRequest):
             result = _get_graph().invoke(initial_state)
         elapsed = time.perf_counter() - t0
         generated_image_path = result.get("generated_image")
+
+        # 每輪一筆，串上這張圖之前的流程，前端與歷史紀錄都能看到完整耗時
+        if result.get("routing_decision") == "design_adjuster":
+            run_kind = "refine"
+        elif initial_state.get("generated_image"):
+            run_kind = "style_swap"
+        else:
+            run_kind = "generate"
+        prior_runs = request.prior_timing_runs or (request.plan or {}).get("timing_runs") or []
+        timing_runs = [*prior_runs, {
+            "kind": run_kind,
+            "task_id": result.get("task_id"),
+            "timestamp": time.strftime("%Y-%m-%dT%H:%M:%S"),
+            "elapsed_seconds": round(elapsed, 2),
+            "timings": timings,
+        }]
         generated_image_url = _artifact_url(generated_image_path)
 
         scene_graph = result.get("scene_graph") or {}
@@ -164,6 +180,7 @@ def generate_design(request: DesignRequest):
             "evaluation_result": result.get("evaluation_result"),
             "quotation_result": result.get("quotation_result"),
             "timings": timings,
+            "timing_runs": timing_runs,
         }
 
         # 儲存生成紀錄
@@ -206,6 +223,7 @@ def generate_design(request: DesignRequest):
             "generation_params": generation_params,
             "evaluation_result": result.get("evaluation_result"),
             "timings": timings,
+            "timing_runs": timing_runs,
         })
 
         return response

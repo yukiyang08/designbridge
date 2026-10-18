@@ -1,14 +1,12 @@
 <script setup>
 /**
- * 各環節耗時面板：顯示 /api/generate 回傳的 timings（後端 log_stage 收集）。
- * 子步驟以時間區間包含關係判斷層級，長條的位置/長度對應實際起訖時間。
+ * 各環節耗時面板：顯示 /api/generate 回傳的 timing_runs（每輪生成／換風格／微調一段，
+ * 串成這張圖的完整流程）。子步驟以時間區間包含關係判斷層級，長條對應該輪內的起訖時間。
  */
 import { computed, onMounted, onBeforeUnmount } from 'vue'
 
 const props = defineProps({
-  timings: { type: Array, required: true },
-  elapsed: { type: String, default: '' },        // 後端回傳的 "123.45s"
-  routing: { type: String, default: '' },
+  runs: { type: Array, required: true },   // [{ kind, timestamp, elapsed_seconds, timings }]
 })
 const emit = defineEmits(['close'])
 
@@ -50,17 +48,14 @@ function labelOf(raw) {
   return step
 }
 
-const total = computed(() => {
-  const fromApi = parseFloat(props.elapsed)
-  if (fromApi > 0) return fromApi
-  return Math.max(0.01, ...props.timings.map(t => t.start + t.seconds))
-})
+const KIND_LABEL = { generate: '生成設計', style_swap: '換風格', refine: '微調' }
+const NUM = ['①', '②', '③', '④', '⑤', '⑥', '⑦', '⑧', '⑨', '⑩']
 
 // graph 節點（名稱沒有「.」）固定在第一層；子步驟依被幾段時間區間包住決定縮排
-const rows = computed(() => {
+function buildRows(timings, total) {
   const eps = 0.05
   const isNode = t => !t.label.includes('.')
-  const list = props.timings.filter(t => t.seconds >= 0.01 || isNode(t))
+  const list = timings.filter(t => t.seconds >= 0.01 || isNode(t))
   const contains = (p, t) => p !== t && p.seconds > t.seconds
     && p.start <= t.start + eps && p.start + p.seconds + eps >= t.start + t.seconds
   return list
@@ -69,12 +64,23 @@ const rows = computed(() => {
     .map(t => ({
       ...t,
       name: labelOf(t.label),
-      left: (t.start / total.value) * 100,
-      width: Math.max(0.6, (t.seconds / total.value) * 100),
+      left: (t.start / total) * 100,
+      width: Math.max(0.6, (t.seconds / total) * 100),
     }))
-})
+}
 
-const title = computed(() => props.routing === 'design_adjuster' ? '微調耗時' : '生成耗時')
+const sections = computed(() => props.runs.map((run, i) => {
+  const timings = run.timings || []
+  const total = run.elapsed_seconds || Math.max(0.01, ...timings.map(t => t.start + t.seconds))
+  return {
+    title: `${NUM[i] || `${i + 1}.`} ${KIND_LABEL[run.kind] || run.kind}`,
+    time: run.timestamp ? run.timestamp.slice(5, 16).replace('T', ' ') : '',
+    total,
+    rows: buildRows(timings, total),
+  }
+}))
+const grandTotal = computed(() => sections.value.reduce((sum, s) => sum + s.total, 0))
+const title = computed(() => props.runs.length > 1 ? '完整流程耗時' : '耗時明細')
 const fmt = s => s >= 60 ? `${Math.floor(s / 60)} 分 ${(s % 60).toFixed(1)} 秒` : `${s.toFixed(1)} 秒`
 
 function onKey(e) { if (e.key === 'Escape') emit('close') }
@@ -90,21 +96,27 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey))
       <header class="tp-head">
         <div>
           <h3 class="tp-title">{{ title }}</h3>
-          <p class="tp-total">總計 {{ fmt(total) }}</p>
+          <p class="tp-total">總計 {{ fmt(grandTotal) }}<template v-if="sections.length > 1">（{{ sections.length }} 輪）</template></p>
         </div>
         <button type="button" class="tp-close" aria-label="關閉" @click="emit('close')">✕</button>
       </header>
 
-      <ul class="tp-list">
-        <li v-for="(r, i) in rows" :key="i" :class="['tp-row', `d${r.depth}`]" :title="r.detail ? `${r.label}（${r.detail}）` : r.label">
-          <span class="tp-name">{{ r.name }}</span>
-          <span class="tp-track">
-            <span class="tp-bar" :style="{ left: r.left + '%', width: r.width + '%' }" />
-          </span>
-          <span class="tp-sec">{{ fmt(r.seconds) }}</span>
-        </li>
-      </ul>
-      <p class="tp-note">長條位置代表開始與結束的時間點；縮排的是上一層裡的子步驟。</p>
+      <section v-for="(sec, si) in sections" :key="si" class="tp-section">
+        <h4 class="tp-sec-head">
+          <span>{{ sec.title }}</span>
+          <span class="tp-sec-meta">{{ sec.time }}<b>{{ fmt(sec.total) }}</b></span>
+        </h4>
+        <ul class="tp-list">
+          <li v-for="(r, i) in sec.rows" :key="i" :class="['tp-row', `d${r.depth}`]" :title="r.detail ? `${r.label}（${r.detail}）` : r.label">
+            <span class="tp-name">{{ r.name }}</span>
+            <span class="tp-track">
+              <span class="tp-bar" :style="{ left: r.left + '%', width: r.width + '%' }" />
+            </span>
+            <span class="tp-sec">{{ fmt(r.seconds) }}</span>
+          </li>
+        </ul>
+      </section>
+      <p class="tp-note">每一輪的長條以該輪總時間為基準，位置代表開始與結束的時間點；縮排的是上一層裡的子步驟。</p>
     </div>
   </div>
   </Teleport>
@@ -114,7 +126,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey))
 .tp-backdrop {
   position: fixed;
   inset: 0;
-  z-index: 50;
+  z-index: 1100;   /* 要蓋過歷史紀錄的詳情 overlay（1000） */
   display: grid;
   place-items: center;
   padding: 16px;
@@ -136,6 +148,21 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey))
 .tp-total { margin: 0.2rem 0 0; font-size: 0.85rem; color: var(--db-text-soft); }
 .tp-close { border: none; background: none; font-size: 1rem; color: var(--db-text-soft); cursor: pointer; padding: 0.2rem; }
 .tp-close:hover { color: var(--db-text); }
+.tp-section + .tp-section { margin-top: 1.1rem; }
+.tp-sec-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 1rem;
+  margin: 0 0 0.3rem;
+  padding: 0.4rem 0.6rem;
+  border-radius: 6px;
+  background: #f5f2ec;
+  font-size: 0.9rem;
+  font-weight: 600;
+}
+.tp-sec-meta { display: flex; gap: 0.75rem; font-size: 0.78rem; font-weight: 400; color: var(--db-text-soft); font-variant-numeric: tabular-nums; }
+.tp-sec-meta b { color: var(--db-text); font-weight: 600; }
 .tp-list { list-style: none; margin: 0; padding: 0; }
 .tp-row {
   display: grid;

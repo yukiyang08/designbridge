@@ -82,6 +82,8 @@ class DesignRequest(BaseModel):
     # /api/plan-layout 回傳的結果，原樣回傳給 /api/generate 就能跳過重跑 RA/vision/layout_agent，
     # 直接進 renderer——使用者在前端確認過 3D 佈局預覽後才會帶著這個欄位呼叫
     plan: Optional[dict] = None
+    # 這張圖之前各輪的耗時（微調時由前端帶入；換風格則從 plan.timing_runs 取）
+    prior_timing_runs: Optional[List[dict]] = None
     # 以下四個欄位只給獨立的除錯測試介面（debug-console/）用，測試不同 ControlNet
     # 模型/強度/LoRA 組合；正式產品前端不會帶這些欄位，None 時完全走 Config 預設值。
     controlnet_model_override: Optional[str] = None

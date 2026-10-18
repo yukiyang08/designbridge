@@ -59,6 +59,12 @@ const router = useRouter()
 const viewMode = ref('image')   // 'image' | 'pano'
 const showDetails = ref(false)
 const showTimings = ref(false)
+const timingRuns = computed(() => {
+  const r = result.value
+  if (r?.timing_runs?.length) return r.timing_runs
+  if (!r?.timings?.length) return []
+  return [{ kind: r.routing_decision === 'design_adjuster' ? 'refine' : 'generate', elapsed_seconds: parseFloat(r.elapsed_time) || 0, timings: r.timings }]
+})
 const showRefine = ref(false)   // 微調工作區預設收起，按「開始微調」才跳出
 function openRefine() { viewMode.value = 'image'; showRefine.value = true }
 
@@ -384,7 +390,7 @@ function toFavoriteItem(item, c) {
 
             <!-- 右下角：查看這次請求各環節耗時 -->
             <button
-              v-if="imageUrl && result.timings?.length"
+              v-if="imageUrl && timingRuns.length"
               type="button" class="timing-btn" title="各環節耗時" aria-label="查看各環節耗時"
               @click="showTimings = true"
             >
@@ -454,8 +460,8 @@ function toFavoriteItem(item, c) {
         </div>
         <DesignDetails v-if="showDetails" :result="result" />
         <TimingPanel
-          v-if="showTimings && result.timings?.length"
-          :timings="result.timings" :elapsed="result.elapsed_time" :routing="result.routing_decision"
+          v-if="showTimings && timingRuns.length"
+          :runs="timingRuns"
           @close="showTimings = false"
         />
 

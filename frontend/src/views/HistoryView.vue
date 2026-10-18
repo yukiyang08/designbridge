@@ -3,12 +3,20 @@ import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { apiUrl, jsonFetch, mediaUrl } from '@/config/api'
 import { cleanDescription } from '@/utils/text'
+import TimingPanel from '@/components/TimingPanel.vue'
 
 const router = useRouter()
 const records = ref([])
 const loading = ref(true)
 const error = ref('')
 const selected = ref(null)
+const showTimings = ref(false)
+// 舊紀錄只有單輪 timings（或完全沒有），包成一輪顯示
+function timingRunsOf(r) {
+  if (r?.timing_runs?.length) return r.timing_runs
+  if (!r?.timings?.length) return []
+  return [{ kind: r.routing_decision === 'design_adjuster' ? 'refine' : 'generate', timestamp: r.timestamp, elapsed_seconds: r.elapsed_seconds, timings: r.timings }]
+}
 
 // 批量模式
 const batchMode = ref(false)
@@ -279,7 +287,7 @@ function modelBadge(r) {
 
     <!-- 詳細面板（點擊後顯示） -->
     <Teleport to="body">
-      <div v-if="selected" class="overlay" @click.self="selected = null">
+      <div v-if="selected" class="overlay" @click.self="selected = null; showTimings = false">
         <div class="panel">
           <button class="close-btn" @click="selected = null">✕</button>
 
@@ -313,6 +321,15 @@ function modelBadge(r) {
             <div class="meta-row">
               <span class="time">{{ formatTime(selected.timestamp) }}</span>
               <span v-if="selected.elapsed_seconds" class="time">{{ selected.elapsed_seconds }}s</span>
+              <button
+                v-if="timingRunsOf(selected).length" type="button" class="timing-link"
+                title="各環節耗時" @click="showTimings = true"
+              >
+                <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <circle cx="12" cy="12" r="9" /><path d="M12 7v5l3 2" />
+                </svg>
+                耗時明細
+              </button>
               <span v-if="clipScore(selected)" class="clip" :style="{ color: clipColor(selected) }">
                 CLIP {{ clipScore(selected) }}
               </span>
@@ -344,6 +361,10 @@ function modelBadge(r) {
         </div>
       </div>
     </Teleport>
+    <TimingPanel
+      v-if="showTimings && selected && timingRunsOf(selected).length"
+      :runs="timingRunsOf(selected)" @close="showTimings = false"
+    />
   </div>
 </template>
 
@@ -471,6 +492,8 @@ function modelBadge(r) {
 
 .meta-row { display: flex; gap: 1rem; align-items: center; }
 .time { font-size: 0.72rem; color: #999; }
+.timing-link { display: inline-flex; align-items: center; gap: 0.3rem; padding: 0.15rem 0.55rem; border: 1px solid #ddd; border-radius: 999px; background: #fff; color: #666; font-size: 0.72rem; cursor: pointer; }
+.timing-link:hover { border-color: #999; color: #333; }
 .clip { font-size: 0.78rem; font-weight: 700; margin-left: auto; }
 
 .info-block { border-left: 3px solid #ccc; border-radius: 0 6px 6px 0; padding: 0.45rem 0.7rem; }

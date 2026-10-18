@@ -25,7 +25,10 @@ export function undoRefine() {
   if (!canUndoRefine.value) return
   const { from } = refineHistory.value.pop()
   lastGeneratedImage.value = from
-  result.value = { ...(result.value || {}), generated_image_path: from.path, generated_image_url: from.url, quotation_result: null }
+  // 耗時紀錄也退回上一版：拿掉最後一輪微調
+  const runs = result.value?.timing_runs || []
+  const timing_runs = runs.at(-1)?.kind === 'refine' ? runs.slice(0, -1) : runs
+  result.value = { ...(result.value || {}), generated_image_path: from.path, generated_image_url: from.url, quotation_result: null, timing_runs }
   if (planSource.value === 'cad' && cadActiveRoomId.value) snapshotCurrentCadRoom()
 }
 
@@ -54,6 +57,7 @@ export async function submitRefine() {
       refine_mode: true,
       output_aspect: outputAspect.value,
       mask_image_path,
+      prior_timing_runs: result.value?.timing_runs || undefined,   // 串上前面流程的耗時
     })
     if (!res.ok) throw new Error(`${res.status}`)
     const data = await res.json()
