@@ -47,14 +47,41 @@ const projects = computed(() => {
       if (!spaces.has(sid)) spaces.set(sid, { id: sid, name: r.space_name || '主要空間', renders: [] })
       spaces.get(sid).renders.push(r)
     }
+    const spaceList = [...spaces.values()]
+    const cover = renders[0]
+    // 整層設計才知道「總共幾間」；單空間／照片設計沒有這個依據
+    const totalRooms = cover.cad_summary?.rooms?.length || 0
+    const quoted = spaceList.map(s => quoteOf(s.renders[0])).filter(Boolean)
     return {
-      id, renders,
-      cover: renders[0],
+      id, renders, cover,
       title: renders[renders.length - 1].title || '未命名設計',
-      spaces: [...spaces.values()],
+      spaces: spaceList,
+      totalRooms,
+      doneRooms: spaceList.length,
+      area: cover.cad_summary?.total_m2 || 0,
+      quotedCount: quoted.length,
+      budget: quoted.reduce((sum, q) => sum + quotationTotal(q), 0),
     }
   })
 })
+
+// 每個空間取最新一版已有的估價（存過的或剛在詳情按出來的）
+const quoteOf = r => quotations[r.task_id]?.data || r.quotation || null
+
+function projectStatus(p) {
+  if (!p.totalRooms) return null
+  return p.doneRooms >= p.totalRooms
+    ? { text: '✓ 已完成', cls: 'done' }
+    : { text: `進行中 ${p.doneRooms} / ${p.totalRooms} 間`, cls: 'wip' }
+}
+
+function relTime(ts) {
+  if (!ts) return ''
+  const days = Math.floor((Date.now() - new Date(ts).getTime()) / 86400000)
+  if (days < 1) return '今天'
+  if (days < 30) return `${days} 天前`
+  return formatTime(ts).slice(0, 10)
+}
 
 // ── 詳情 ──
 const openId = ref(null)
@@ -72,10 +99,10 @@ const imageKinds = computed(() => {
   const r = activeRender.value
   if (!r) return []
   return [
-    { key: 'render', label: '渲染圖', url: r.generated_image_url },
-    { key: 'cad', label: 'CAD 平面圖（尺寸／門窗）', url: r.cad_svg_url },
-    { key: 'plan', label: '家具配置圖', url: r.floor_plan_url },
-    { key: 'photo', label: '原始照片', url: r.source_photo_url },
+    { key: 'render', label: '渲染', url: r.generated_image_url },
+    { key: 'cad', label: 'CAD', url: r.cad_svg_url },
+    { key: 'plan', label: '配置', url: r.floor_plan_url },
+    { key: 'photo', label: '原照', url: r.source_photo_url },
   ].filter(k => k.url)
 })
 const mainImage = computed(() => (imageKinds.value.find(k => k.key === imgKind.value) || imageKinds.value[0])?.url || '')
@@ -106,7 +133,8 @@ function openDetail(p) {
   imgKind.value = 'render'
 }
 function pickSpace(s) { activeSpaceId.value = s.id; activeTaskId.value = null; imgKind.value = 'render' }
-function closeDetail() { openId.value = null }
+function closeDetail() { openId.value = null; zoomed.value = false }
+const zoomed = ref(false)
 
 // ── 刪除 ──
 async function removeTasks(ids) {
@@ -233,10 +261,18 @@ function reuseDesign(r) {
 
       <div v-else class="grid">
         <article v-for="p in projects" :key="p.id" class="card" @click="openDetail(p)">
-          <div class="card-img-wrap">
-            <img v-if="p.cover.generated_image_url" :src="p.cover.generated_image_url" alt="" class="card-img" loading="lazy" />
-            <div v-else class="card-no-img">無圖</div>
-            <span v-if="p.spaces.length > 1" class="badge">{{ p.spaces.length }} 個空間</span>
+          <div :class="['card-img-wrap', { mosaic: p.spaces.length > 1 }]">
+            <div class="main-cell">
+              <img v-if="p.cover.generated_image_url" :src="p.cover.generated_image_url" alt="" class="card-img" loading="lazy" />
+              <div v-else class="card-no-img">無圖</div>
+            </div>
+            <div v-if="p.spaces.length > 1" class="side-col">
+              <div v-for="(s, i) in p.spaces.slice(1, 3)" :key="s.id" class="side-cell" :title="s.name">
+                <img v-if="s.renders[0].generated_image_url" :src="s.renders[0].generated_image_url" alt="" class="card-img" loading="lazy" />
+                <span v-if="i === 1 && p.spaces.length > 3" class="more">+{{ p.spaces.length - 3 }}</span>
+              </div>
+            </div>
+            <span v-if="projectStatus(p)" :class="['status', projectStatus(p).cls]">{{ projectStatus(p).text }}</span>
             <button
               type="button" class="del-btn" title="刪除整個設計" :disabled="deleting"
               @click.stop="deleteProject(p)"
@@ -245,9 +281,27 @@ function reuseDesign(r) {
           <div class="card-body">
             <p class="card-title">{{ p.title }}</p>
             <p class="card-meta">
-              <span v-if="styleLabel(p.cover)">{{ styleLabel(p.cover) }} · </span>{{ p.spaces.map(s => s.name).join('、') }}
+              {{ [p.spaces.length > 1 && `${p.spaces.length} 個空間`, p.area && `${fmt(p.area)} m²`, styleLabel(p.cover)].filter(Boolean).join(' · ') }}
             </p>
-            <span class="card-time">{{ formatTime(p.cover.timestamp) }}</span>
+            <p v-if="p.quotedCount" class="budget">NT$ {{ p.budget.toLocaleString() }}</p>
+            <div class="card-foot">
+              <span class="card-time">{{ relTime(p.cover.timestamp) }}</span>
+              <div class="card-actions">
+                <button type="button" class="icon-btn" title="查看詳情" aria-label="查看詳情" @click.stop="openDetail(p)">
+                  <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12Z" /><circle cx="12" cy="12" r="3" />
+                  </svg>
+                </button>
+                <button
+                  v-if="isCadProject(p)" type="button" class="icon-btn primary" title="繼續編輯" aria-label="繼續編輯"
+                  :disabled="restoring" @click.stop="continueEditing(p)"
+                >
+                  <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <path d="M12 20h9" /><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z" />
+                  </svg>
+                </button>
+              </div>
+            </div>
           </div>
         </article>
       </div>
@@ -270,13 +324,15 @@ function reuseDesign(r) {
 
         <div v-if="activeRender" class="panel-body">
           <div class="viewer">
-            <img v-if="mainImage" :src="mainImage" alt="" class="main-img" />
-            <div v-else class="card-no-img">無圖</div>
-            <div v-if="imageKinds.length > 1" class="kinds">
-              <button
-                v-for="k in imageKinds" :key="k.key" type="button"
-                :class="['kind', { on: k.url === mainImage }]" @click="imgKind = k.key"
-              >{{ k.label }}</button>
+            <div class="stage">
+              <img v-if="mainImage" :src="mainImage" alt="" :class="['main-img', { cover: mainImage === activeRender.generated_image_url }]" title="點擊放大" @click="zoomed = true" />
+              <div v-else class="card-no-img">無圖</div>
+              <div v-if="imageKinds.length > 1" class="kinds">
+                <button
+                  v-for="k in imageKinds" :key="k.key" type="button"
+                  :class="['kind', { on: k.url === mainImage }]" @click="imgKind = k.key"
+                >{{ k.label }}</button>
+              </div>
             </div>
             <div v-if="activeSpace.renders.length > 1" class="versions">
               <button
@@ -292,33 +348,32 @@ function reuseDesign(r) {
 
           <div class="info">
             <p class="prompt">{{ activeRender.text_prompt || '（無描述）' }}</p>
-            <div v-if="styleLabel(activeRender)" class="style-tag">{{ styleLabel(activeRender) }}</div>
-            <p v-if="styleDescription(activeRender)" class="desc">{{ styleDescription(activeRender) }}</p>
-            <ul v-if="dimLines.length" class="dims">
-              <li v-for="d in dimLines" :key="d">{{ d }}</li>
-            </ul>
-            <span class="card-time">{{ formatTime(activeRender.timestamp) }}</span>
+            <p class="meta">
+              {{ [activeSpace.name, dimLines.at(-1)?.replace(/^[^：]*：/, ''), styleLabel(activeRender)].filter(Boolean).join(' · ') }}
+              <span class="card-time">{{ formatTime(activeRender.timestamp) }}</span>
+            </p>
 
             <div class="actions">
               <button
                 v-if="isCadProject(openProject)" type="button" class="db-btn db-btn--sm"
                 :disabled="restoring" @click="continueEditing(openProject)"
               >{{ restoring ? '載入中…' : '繼續編輯' }}</button>
-              <button type="button" class="db-btn db-btn--ghost db-btn--sm" @click="reuseDesign(activeRender)">用同樣描述再設計一次</button>
-              <button
-                v-if="!qState(activeRender).data" type="button" class="db-btn db-btn--ghost db-btn--sm"
-                :disabled="qState(activeRender).loading" @click="loadQuotation(activeRender)"
-              >查看家具預算</button>
-              <button
-                type="button" class="db-btn db-btn--ghost db-btn--sm" :disabled="deleting"
-                @click="deleteRender(activeRender)"
-              >刪除這張</button>
+              <button type="button" class="db-btn db-btn--ghost db-btn--sm" @click="reuseDesign(activeRender)">再設計一次</button>
+              <button type="button" class="link-btn" :disabled="deleting" @click="deleteRender(activeRender)">刪除這張</button>
             </div>
 
             <div class="quotation">
+              <button
+                v-if="!qState(activeRender).data && !qState(activeRender).loading" type="button"
+                class="db-btn db-btn--ghost db-btn--sm" @click="loadQuotation(activeRender)"
+              >查看家具預算</button>
               <p v-if="qState(activeRender).loading" class="q-hint" role="status">正在辨識畫面中的家具…約需 30 秒</p>
               <p v-else-if="qState(activeRender).error" class="db-error">{{ qState(activeRender).error }}</p>
-              <template v-else-if="qState(activeRender).data">
+              <details v-else-if="qState(activeRender).data" class="q-box">
+                <summary>
+                  <span>家具預算</span>
+                  <strong>NT$ {{ quotationTotal(qState(activeRender).data).toLocaleString() }}</strong>
+                </summary>
                 <ul class="q-list">
                   <li v-for="(item, idx) in qState(activeRender).data.furniture_list" :key="idx" class="q-item">
                     <img
@@ -329,15 +384,15 @@ function reuseDesign(r) {
                     <span class="q-item-price">NT$ {{ (item.candidates?.[0]?.price ?? 0).toLocaleString() }}</span>
                   </li>
                 </ul>
-                <div class="q-total">
-                  <span>預估總價</span>
-                  <strong>NT$ {{ quotationTotal(qState(activeRender).data).toLocaleString() }}</strong>
-                </div>
-              </template>
+              </details>
             </div>
           </div>
         </div>
       </div>
+    </div>
+
+    <div v-if="zoomed && mainImage" class="lightbox" @click="zoomed = false">
+      <img :src="mainImage" alt="" />
     </div>
   </div>
 </template>
@@ -356,7 +411,7 @@ function reuseDesign(r) {
 .empty-state { text-align: center; color: var(--db-text-soft); padding: 4rem 0; }
 .empty-hint { font-size: 0.88rem; color: var(--db-placeholder); margin: 0 0 1rem; }
 
-.grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 1.25rem; }
+.grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(380px, 100%), 1fr)); gap: 1.25rem; }
 .card {
   background: #fff; border: 1px solid #ececec; border-radius: var(--db-radius-chip);
   overflow: hidden; cursor: pointer;
@@ -370,19 +425,39 @@ function reuseDesign(r) {
 }
 @keyframes sh { to { background-position: -200% 0; } }
 
-.card-img-wrap { position: relative; aspect-ratio: 4 / 3; background: var(--db-chip-soft); }
+.card-img-wrap { position: relative; aspect-ratio: 4 / 3; background: var(--db-chip-soft); display: flex; gap: 2px; }
+.main-cell { flex: 1 1 0; min-width: 0; }
+.side-col { flex: 0 0 32%; display: flex; flex-direction: column; gap: 2px; }
+.side-cell { position: relative; flex: 1 1 0; min-height: 0; background: var(--db-chip-soft); }
+.more {
+  position: absolute; inset: 0; display: grid; place-items: center;
+  background: rgba(0, 0, 0, 0.45); color: #fff; font-size: 1rem;
+}
 .card-img { width: 100%; height: 100%; object-fit: cover; display: block; }
 .card-no-img { display: grid; place-items: center; width: 100%; height: 100%; color: var(--db-placeholder); }
-.badge {
+.status {
   position: absolute; left: 10px; bottom: 10px; padding: 0.2rem 0.65rem;
-  border-radius: var(--db-radius-pill); background: rgba(0, 0, 0, 0.6); color: #fff; font-size: 0.78rem;
+  border-radius: var(--db-radius-pill); color: #fff; font-size: 0.78rem;
 }
+.status.done { background: rgba(46, 125, 80, 0.9); }
+.status.wip { background: rgba(190, 120, 20, 0.9); }
+.budget { margin: 0.2rem 0 0; font-size: 0.95rem; font-weight: 600; color: var(--db-text); font-variant-numeric: tabular-nums; }
+.card-actions { display: flex; gap: 0.5rem; }
+.icon-btn {
+  display: grid; place-items: center; width: 34px; height: 34px; border: 1px solid #d8d4cb; border-radius: 50%;
+  background: #fff; color: var(--db-text); cursor: pointer; transition: transform 0.16s;
+}
+.icon-btn.primary { border-color: var(--db-accent); background: var(--db-accent); color: var(--db-on-accent); }
+.icon-btn:hover:not(:disabled) { transform: scale(1.08); }
+.icon-btn:disabled { opacity: 0.5; cursor: wait; }
+.card-foot { display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; margin-top: 0.2rem; }
 .del-btn {
   position: absolute; top: 10px; right: 10px; width: 30px; height: 30px; border: 0; border-radius: 50%;
   background: rgba(255, 255, 255, 0.9); color: var(--db-text); cursor: pointer; opacity: 0;
   transition: opacity 0.16s;
 }
 .card:hover .del-btn, .del-btn:focus-visible { opacity: 1; }
+@media (hover: none) { .del-btn { opacity: 1; } }
 .del-btn:hover { background: #fff; color: #c0392b; }
 .del-btn:disabled { cursor: not-allowed; }
 
@@ -415,15 +490,26 @@ function reuseDesign(r) {
 .tab.on { background: var(--db-accent); border-color: var(--db-accent); color: var(--db-on-accent); }
 
 .panel-body { display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr); gap: 1.5rem; }
-.viewer { display: flex; flex-direction: column; gap: 0.7rem; }
-.main-img { width: 100%; border-radius: var(--db-radius-chip); background: #fff; display: block; }
-.kinds, .versions { display: flex; flex-wrap: wrap; gap: 0.5rem; }
-.kind {
-  padding: 0.25rem 0.8rem; border: 1px solid #d8d4cb; border-radius: var(--db-radius-pill);
-  background: #fff; font-size: 0.82rem; cursor: pointer;
+.viewer { display: flex; flex-direction: column; gap: 0.7rem; min-width: 0; align-self: start; position: sticky; top: 0; }
+.stage {
+  position: relative; aspect-ratio: 4 / 3; max-height: 70vh; width: 100%;
+  border-radius: var(--db-radius-chip); background: #fff; border: 1px solid #ececec; overflow: hidden;
 }
-.kind.on { border-color: var(--db-accent); background: var(--db-chip-soft); }
-.ver { width: 84px; padding: 0; border: 2px solid transparent; border-radius: 8px; background: none; cursor: pointer; text-align: center; }
+.main-img { width: 100%; height: 100%; object-fit: contain; display: block; cursor: zoom-in; }
+.main-img.cover { object-fit: cover; }
+.kinds { position: absolute; left: 10px; top: 10px; display: flex; gap: 2px; padding: 3px; border-radius: var(--db-radius-pill); background: rgba(255, 255, 255, 0.92); box-shadow: 0 1px 4px rgba(0, 0, 0, 0.15); }
+.versions { display: flex; gap: 0.5rem; overflow-x: auto; padding-bottom: 2px; }
+.kind {
+  padding: 0.2rem 0.75rem; border: 0; border-radius: var(--db-radius-pill);
+  background: none; font-size: 0.8rem; cursor: pointer; color: var(--db-text);
+}
+.kind.on { background: var(--db-accent); color: var(--db-on-accent); }
+.lightbox {
+  position: fixed; inset: 0; z-index: 60; display: grid; place-items: center; padding: 1rem;
+  background: rgba(0, 0, 0, 0.85); cursor: zoom-out;
+}
+.lightbox img { max-width: 100%; max-height: 100%; object-fit: contain; background: #fff; }
+.ver { flex: 0 0 104px; padding: 0; border: 2px solid transparent; border-radius: 8px; background: none; cursor: pointer; text-align: center; }
 .ver.on { border-color: var(--db-accent); }
 .ver img { width: 100%; aspect-ratio: 4 / 3; object-fit: cover; border-radius: 6px; display: block; }
 .ver span { font-size: 0.7rem; color: var(--db-text-soft); }
@@ -447,13 +533,23 @@ function reuseDesign(r) {
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
 .q-item-price { font-size: 0.85rem; color: var(--db-text); font-variant-numeric: tabular-nums; }
-.q-total {
-  display: flex; justify-content: space-between; font-size: 0.92rem; color: var(--db-text);
-  padding-top: 0.5rem; border-top: 1px dashed #e8e6e1;
+.meta { margin: 0; font-size: 0.85rem; color: var(--db-text-soft); display: flex; flex-wrap: wrap; gap: 0.2rem 0.75rem; }
+.link-btn { border: 0; background: none; padding: 0 0.4rem; font-size: 0.82rem; color: var(--db-text-soft); cursor: pointer; text-decoration: underline; }
+.link-btn:hover { color: #c0392b; }
+.q-box { border-top: 1px dashed #e8e6e1; padding-top: 0.6rem; }
+.q-box summary {
+  display: flex; justify-content: space-between; align-items: center; cursor: pointer;
+  font-size: 0.92rem; color: var(--db-text); list-style: none;
 }
+.q-box summary::-webkit-details-marker { display: none; }
+.q-box summary::after { content: '▾'; margin-left: 0.5rem; color: var(--db-text-soft); }
+.q-box[open] summary::after { content: '▴'; }
+.q-box summary span { flex: 1; }
+.q-box .q-list { margin: 0.7rem 0 0; }
 
 @media (max-width: 800px) {
   .designs { padding: 1.25rem 1rem 2.5rem; }
   .panel-body { grid-template-columns: 1fr; }
+  .viewer { position: static; }
 }
 </style>

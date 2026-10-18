@@ -14,8 +14,6 @@ const MASK_LONG_EDGE = 1536   // 遮罩解析度上限，不必跟原圖一樣�
 const rootRef = ref(null)
 const drawRef = ref(null)
 const trailRef = ref(null)           // 橡皮擦軌跡（只是回饋用，不屬於遮罩）
-const trailFading = ref(false)
-let trailTimer = null
 const nat = ref({ w: 16, h: 9 })     // 圖片原始尺寸
 const box = ref({ w: 0, h: 0 })      // 容器尺寸
 const zoom = ref(1)
@@ -119,12 +117,13 @@ onMounted(() => {
   window.addEventListener('keyup', onKey)
 })
 onBeforeUnmount(() => {
-  clearTimeout(trailTimer)
   ro?.disconnect()
   window.removeEventListener('keydown', onKey)
   window.removeEventListener('keyup', onKey)
 })
 watch(() => props.fill, () => { zoom.value = 1; pan.value = { x: 0, y: 0 } })
+// 殘影留到離開橡皮擦為止；不然切回畫筆後，新畫的紅色會被蓋在白色殘影底下看起來變淡
+watch(() => props.drawMode, (m) => { if (m !== 'erase') clearTrail() })
 
 // ── 繪圖 ──────────────────────────────────────────────────
 // 螢幕座標 → 遮罩座標；k = 遮罩像素 / 螢幕像素（已含縮放），筆刷寬度據此換算
@@ -148,13 +147,11 @@ function paintSeg(a, b) {
   if (props.drawMode === 'erase') paintTrail(a, b)
 }
 
-// 橡皮擦走過的路徑留一道白色殘影（放開後淡出）。只擦掉半透明的紅色時畫面變化很小，
-// 擦在沒有遮罩的地方更是完全沒變化，使用者會以為橡皮擦沒作用。
+// 橡皮擦走過的路徑留一道白色殘影，不會自己消失（切換工具、清除塗抹時才清掉）。
+// 只擦掉半透明的紅色時畫面變化很小，擦在沒有遮罩的地方更是完全沒變化，使用者會以為橡皮擦沒作用。
 function paintTrail(a, b) {
   const t = trailRef.value
   if (!t) return
-  clearTimeout(trailTimer)
-  trailFading.value = false
   const ctx = t.getContext('2d')
   ctx.globalCompositeOperation = 'source-over'
   ctx.strokeStyle = '#ffffff'
@@ -165,15 +162,9 @@ function paintTrail(a, b) {
   ctx.lineTo(b.x, b.y)
   ctx.stroke()
 }
-function fadeTrail() {
+function clearTrail() {
   const t = trailRef.value
-  if (!t) return
-  trailFading.value = true   // CSS 淡出
-  clearTimeout(trailTimer)
-  trailTimer = setTimeout(() => {
-    t.getContext('2d').clearRect(0, 0, t.width, t.height)
-    trailFading.value = false
-  }, 600)
+  if (t) t.getContext('2d').clearRect(0, 0, t.width, t.height)
 }
 
 function onDown(e) {
@@ -203,10 +194,7 @@ function onMove(e) {
 }
 
 function onUp() {
-  if (stroke && !stroke.pan) {
-    refreshHasMask()
-    if (props.drawMode === 'erase') fadeTrail()
-  }
+  if (stroke && !stroke.pan) refreshHasMask()
   stroke = null
 }
 
@@ -225,6 +213,7 @@ function refreshHasMask() {
 function clearMask() {
   const c = drawRef.value
   c.getContext('2d').clearRect(0, 0, c.width, c.height)
+  clearTrail()
   hasMask.value = false
 }
 
@@ -275,7 +264,7 @@ defineExpose({ getMaskBlob, clearMask, hasMask, resetView })
     <div class="stage" :style="stageStyle">
       <img :src="imageUrl" class="layer" alt="" draggable="false" @load="onImgLoad" />
       <canvas ref="drawRef" class="layer mask" />
-      <canvas ref="trailRef" class="layer trail" :class="{ fading: trailFading }" />
+      <canvas ref="trailRef" class="layer trail" />
     </div>
 
     <span v-if="ring && !panning" class="ring" :class="{ 'is-erase': drawMode === 'erase' }" :style="ringStyle" />
@@ -291,7 +280,7 @@ defineExpose({ getMaskBlob, clearMask, hasMask, resetView })
     </div>
 
     <div class="hint">
-      紅色 = 要修改的區域<template v-if="drawMode === 'erase'"> · 橡皮擦：擦掉紅色，白色殘影是擦過的路徑</template> · {{ fill ? '滾輪' : 'Ctrl＋滾輪' }}縮放 · 空白鍵拖曳平移
+      紅色 = 要修改的區域<template v-if="drawMode === 'erase'"> · 橡皮擦：擦掉紅色，白色是擦過的路徑，切換工具後消失</template> · {{ fill ? '滾輪' : 'Ctrl＋滾輪' }}縮放 · 空白鍵拖曳平移
     </div>
   </div>
 </template>
@@ -328,7 +317,6 @@ defineExpose({ getMaskBlob, clearMask, hasMask, resetView })
   filter: drop-shadow(0 0 1.5px rgba(255, 255, 255, 0.95)) drop-shadow(0 0 1px rgba(0, 0, 0, 0.7));
 }
 .trail { opacity: 0.55; mix-blend-mode: normal; }
-.trail.fading { opacity: 0; transition: opacity 0.55s ease-out; }
 
 .ring {
   position: absolute;
