@@ -138,8 +138,21 @@ def _thinking_config(types):
     """
     budget = Config.GEMINI_THINKING_BUDGET
     if budget == 0 and not Config.GEMINI_MODEL.startswith(("gemini-1.", "gemini-2.")):
+        # 3.x flash 用 thinking_level=minimal 才等於不思考；不設的話思考 token 會吃掉
+        # max_output_tokens，輸出被截斷（composer 只剩「(#DDC8B4), yellow (#F」）
+        if "flash" in Config.GEMINI_MODEL:
+            return types.ThinkingConfig(thinking_level="minimal")
         return None
     return types.ThinkingConfig(thinking_budget=budget)
+
+
+def _model_may_think() -> bool:
+    """模型會自行思考（關不掉）時，呼叫端的 max_tokens 需要另外加思考的餘裕。"""
+    return (
+        Config.GEMINI_THINKING_BUDGET == 0
+        and not Config.GEMINI_MODEL.startswith(("gemini-1.", "gemini-2."))
+        and "flash" not in Config.GEMINI_MODEL
+    )
 
 
 _clients: dict[str | None, object] = {}  # api_key (None = Vertex) -> cached genai.Client
@@ -181,6 +194,8 @@ def _gemini_client_and_config(
         raise RuntimeError("google-genai 未安裝。請先執行: pip install google-genai") from exc
 
     client = _get_client(api_key)
+    if max_tokens is not None and _model_may_think():
+        max_tokens += 4096   # 思考 token 也算在 max_output_tokens 裡
     cfg = types.GenerateContentConfig(
         temperature=temperature if temperature is not None else Config.GEMINI_TEMPERATURE,
         **({"max_output_tokens": max_tokens} if max_tokens is not None else {}),
