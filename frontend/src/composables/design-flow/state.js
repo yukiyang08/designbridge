@@ -132,18 +132,26 @@ export function cadDefaultPlacements(editorRoomType, roomW = 5, roomD = 4, geome
   if (!build) return []
   const out = [], seen = {}
   const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v))
+  // 牆沿房間矩形（牆中心線）往內畫一半厚度；家具要在牆的內緣以內，不然會跟牆疊在一起
+  const wt = geometry?.wallT || {}
+  const x0 = (wt.left || 0) / 2 / roomW, x1 = 1 - (wt.right || 0) / 2 / roomW
+  const y0 = (wt.top || 0) / 2 / roomD, y1 = 1 - (wt.bottom || 0) / 2 / roomD
   const put = (type, xm, ym, wm, dm) => {
     const [rw, rd] = furnitureRealSize(type)
     const w = clamp((wm ?? rw) / roomW, 0.04, 0.9), h = clamp((dm ?? rd) / roomD, 0.04, 0.9)
     seen[type] = (seen[type] || 0) + 1
     out.push({
       id: `${type}_${seen[type]}`, type, rotation: 0, w, h,
-      x: clamp(xm / roomW, 0, 1 - w), y: clamp(ym / roomD, 0, 1 - h),
+      x: clamp(xm / roomW, x0, Math.max(x0, x1 - w)), y: clamp(ym / roomD, y0, Math.max(y0, y1 - h)),
     })
   }
   build(roomW, roomD, put)
   // 門會碰到的範圍不擺家具
-  return settlePlacements(out, doorKeepouts(geometry, roomW, roomD), (t) => t === 'rug' || t === 'carpet')
+  return settlePlacements(
+    out,
+    doorKeepouts(geometry, roomW, roomD),
+    { x0, x1, y0, y1 },
+  )
 }
 
 export const ASPECT_OPTIONS = [
@@ -265,6 +273,8 @@ export const detectedRooms     = ref([])   // /api/detect-rooms 偵測到的房�
 export const cadCounts     = ref({ bedroom_count: 2, living_count: 1, dining_count: 1, bathroom_count: 1, kitchen_count: 1, balcony_count: 1 })
 export const cadExtraRooms = ref([])   // 自訂空間名稱（書房、儲藏室…），每個 1 間
 export const cadTotalPing  = ref(32)        // 2房1廳1衛1廚1陽台在 25 坪下房間偏小，32 坪落地起來更合理
+export const cadRoomW      = ref(null)      // 整層外框寬／深（公尺）；跟總坪數連動，null＝還沒算過（由坪數推出）
+export const cadRoomD      = ref(null)
 export const cadPlanResult = ref(null)     // /api/generate-room-plan 的完整回應（rooms/walls/doors/windows/svg_markup…）
 
 // ── CAD 多房間逐一設計：進度追蹤（右上角縮圖用）──
@@ -273,6 +283,13 @@ export const cadPlanResult = ref(null)     // /api/generate-room-plan 的完整�
 // 回來時還原，這樣同一間房不會因為切去別間又切回來而遺失進度。
 export const cadActiveRoomId  = ref(null)          // 目前正在設計的房間 id
 export const cadRoomStatus    = ref({})            // { [roomId]: 'active' | 'done' }
+// 正在渲染的房間（{ [roomId]: true }）。渲染要 30–60 秒，這段時間可以切去看別間，
+// 所以它不是全域的 loading，而是每間房各自的背景工作；結果回來時依使用者人在哪間決定放哪裡（見 render.js）。
+export const cadRendering     = ref({})
+export const cadRenderError   = ref({})            // 使用者離開後才失敗的渲染：{ [roomId]: 錯誤訊息 }，回到那間房時再顯示
+// 每間房各自的渲染編號（非響應式）：同一間房重新送出、或整層重新生成時，舊的那次回來要作廢。
+// 不能用全域的 requestState——切房間會遞增它，等於把還在跑的渲染宣告作廢。
+export const cadRenderTokens  = {}
 // 目前這間房的牆厚／門／窗（從整層結果換算，不另外存——快照還原也會自動對上）。非 CAD 路徑沒有資料就是 null。
 // 使用者拖動／改寬度後的門窗：{ 'roomId:openingId': { frac?, width? } }，疊在換算結果上。共用的內門在兩間房各自記一份。
 export const openingEdits = ref({})
@@ -283,8 +300,34 @@ export const roomGeometry = computed(() => {
   if (!g) return null
   return { ...g, openings: g.openings.map(o => ({ ...o, ...openingEdits.value[`${room.id}:${o.id}`] })) }
 })
+// 「我的設計」的分組：一次精靈流程 = 一個設計（project），整層 CAD 的每間房是它的一個空間
+export const projectId = ref(crypto.randomUUID())
+// 整層 CAD 平面圖（含牆／門／窗／尺寸）連同使用者改過的門窗一起存；SVG 本體由後端依 svg_path 上傳
+export function cadPlanPayload() {
+  if (!cadPlanResult.value) return undefined
+  const { svg_markup, ...plan } = cadPlanResult.value
+  return { ...plan, opening_edits: openingEdits.value }
+}
+export function spaceInfo() {
+  if (planSource.value === 'cad' && cadActiveRoomId.value) {
+    const room = cadPlanResult.value?.rooms?.find(r => r.id === cadActiveRoomId.value)
+    return {
+      space_id: cadActiveRoomId.value, space_name: room?.label_zh || '空間',
+      space_dims: room ? { w: room.w, d: room.h } : undefined,
+      cad_plan: cadPlanPayload(),
+    }
+  }
+  const hasPlan = ['generate', 'upload'].includes(planSource.value)
+  return {
+    space_id: 'main',
+    space_name: spacePhotoPath.value ? '主要空間' : (ROOM_TYPE_LABEL[roomTypeForPlan.value] || '主要空間'),
+    space_dims: hasPlan ? { w: roomW.value, d: roomD.value } : undefined,
+  }
+}
 export const cadBatch = ref({})                // 批次生成進行中：{ [roomId]: { status: 'queued'|'running'|'failed', error } }，不存草稿
 export const cadBatchRunning = ref(false)
+export const cadOverview = ref(false)          // 整層總覽（結果頁的「總覽」分頁）；不存草稿，切到任一房間就關掉
+export const cadQuoting = ref({})              // 總覽裡正在估價的房間：{ [roomId]: true }
 export const cadRoomSnapshots = ref({})            // { [roomId]: { roomW, roomD, roomTypeForPlan, editPlacements, floorPlanPath, floorPlanUrl, sceneGraph, layoutRenderConfig, result, lastGeneratedImage } }
 
 // ── 佈局編輯 ──
@@ -363,13 +406,6 @@ export const panoError   = ref('')
 export const quotationLoading = ref(false)
 export const quotationError   = ref('')
 
-// ── 收藏這個設計（預算估計步驟最後一顆按鈕）──
-// 每次 /api/generate 都已經自動存進 artifacts/history.json 了，收藏不是另開一份
-// 清單，只是在同一筆紀錄上標記 favorited=true，讓它在歷史紀錄裡好找、不會被
-// 使用者自己在歷史紀錄頁批次刪除時誤刪。
-export const favoriteLoading = ref(false)
-export const favoriteError   = ref('')
-
 /* ══ 衍生值 ══════════════════════════════════════════════ */
 
 export const steps        = computed(() => STEP_FLOWS[planSource.value] || STEP_FLOWS.generate)
@@ -393,7 +429,7 @@ const DRAFT_KEY = 'db.flow'
 const DRAFT_FIELDS = {
   planSource, roomType, spaceSizePing, customRoomW, customRoomD, furnitureItems, furnitureQty,
   extraPrompt, fengshuiRules, outputAspect, selectedStyle, noStyleReference, styleMethod,
-  cadCounts, cadTotalPing, cadExtraRooms,   // 整層房型表單（幾房幾廳＋坪數），重整後不用重填
+  cadCounts, cadTotalPing, cadRoomW, cadRoomD, cadExtraRooms,   // 整層房型表單（幾房幾廳＋坪數＋長寬），重整後不用重填
 }
 
 export function saveDraft() {

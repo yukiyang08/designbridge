@@ -10,6 +10,7 @@ import { ref, watch, nextTick, onBeforeUnmount } from 'vue'
 const props = defineProps({
   svgMarkup: { type: String, required: true },
   rooms:     { type: Array,  required: true }, // RoomInstance.to_dict() 陣列
+  showHint:  { type: Boolean, default: true },     // 外層已經有標題與說明時可以關掉
 })
 const emit = defineEmits(['select-room'])
 
@@ -41,7 +42,7 @@ onBeforeUnmount(clearHandlers)
 
 <template>
   <div class="room-picker-cad">
-    <p class="hint">點選要編輯的房間</p>
+    <p v-if="showHint" class="hint">點選要編輯的房間</p>
     <div ref="boardRef" class="board" v-html="svgMarkup"></div>
   </div>
 </template>
@@ -57,7 +58,15 @@ onBeforeUnmount(clearHandlers)
   background: var(--db-card, #fff);
   padding: 1rem;
 }
-.board :deep(svg) { max-width: 100%; height: auto; display: block; margin: 0 auto; }
+.board :deep(svg) {
+  /* 平面圖 SVG 自帶固定的 width/height 屬性，不設的話只會畫成原始尺寸、旁邊留一大片空白；
+     它有 viewBox，所以撐滿欄寬會等比放大。高度設上限，避免在高度不夠的畫面上要捲動才看得到整張。 */
+  width: 100%;
+  height: auto;
+  max-height: min(72vh, 820px);
+  display: block;
+  margin: 0 auto;
+}
 
 .board :deep(.room-rect) { cursor: pointer; }
 /* Scoped to the room's own floor plate (.room-floor, see svg_render.py) rather than

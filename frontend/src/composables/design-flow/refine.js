@@ -1,15 +1,18 @@
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
 import { jsonFetch } from '@/config/api'
 import {
   requestState,
-  error, loading, loadingMsg, result,
+  error, result,
   refineCanvasRef, manualMaskPath, lastGeneratedImage, refineHistory, spacePhotoPath, spaceImage,
-  outputAspect, textPrompt, planSource, cadActiveRoomId,
+  outputAspect, textPrompt, planSource, cadActiveRoomId, projectId, spaceInfo,
 } from './state'
 import { uploadFile } from './common'
 import { snapshotCurrentCadRoom } from './cad'
 
 /* ══ Step: 微調編輯 ══════════════════════════════════════ */
+
+// 微調只讓圖模糊，不能用全域 loading（會把整個步驟換成載入畫面、編輯器跟著卸載）
+export const refining = ref(false)
 
 export async function handleMaskReady(blob) {
   const file = new File([blob], 'mask.png', { type: 'image/png' })
@@ -36,8 +39,7 @@ export async function submitRefine() {
   if (!textPrompt.value.trim()) { error.value = '請輸入調整需求'; return }
   const requestId = ++requestState.current
   error.value = ''
-  loading.value = true
-  loadingMsg.value = { title: '套用微調中', sub: 'AI 只重繪你塗抹的區域，其餘保持不變' }
+  refining.value = true
   try {
     let mask_image_path
     const maskBlob = await refineCanvasRef.value?.getMaskBlob()
@@ -58,6 +60,8 @@ export async function submitRefine() {
       output_aspect: outputAspect.value,
       mask_image_path,
       prior_timing_runs: result.value?.timing_runs || undefined,   // 串上前面流程的耗時
+      project_id: projectId.value,
+      ...spaceInfo(),
     })
     if (!res.ok) throw new Error(`${res.status}`)
     const data = await res.json()
@@ -76,6 +80,6 @@ export async function submitRefine() {
   } catch (e) {
     if (requestId === requestState.current) error.value = `微調失敗：${e.message}`
   } finally {
-    if (requestId === requestState.current) loading.value = false
+    if (requestId === requestState.current) refining.value = false
   }
 }

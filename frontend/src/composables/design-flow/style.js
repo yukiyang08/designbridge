@@ -66,13 +66,18 @@ export async function fetchStyleDemoImages() {
 // 也不能把「搜尋中」狀態提早關掉。
 let searchSeq = 0
 
+// 後端 style_images.space 的字彙（跟 ROOM_TYPE_LABEL 不完全一樣）
+const DB_SPACE = { bathroom: '浴室', living_dining: '客廳' }
+
 export async function fetchStyleCandidates({ anchorSelected = false } = {}) {
   const seq = ++searchSeq
   if (styleRefImage.file) { candidatesLoading.value = false; return }
   const anchor = anchorSelected ? confirmedStyle.value : null
-  const q = anchor ? '' : (extraPrompt.value.trim() || ROOM_TYPE_LABEL[roomTypeForPlan.value] || '')
+  // 只有使用者真的打了描述才送 query（後端才需要 BGE）；沒打字就只送房型，後端純資料庫篩選
+  const q = anchor ? '' : extraPrompt.value.trim()
+  const space = DB_SPACE[roomTypeForPlan.value] || ROOM_TYPE_LABEL[roomTypeForPlan.value] || ''
   const sid = anchor ? anchor.style_id : (selectedStyle.value !== 'auto' ? selectedStyle.value : '')
-  if (!q && !sid) {
+  if (!q && !sid && !space) {
     candidatesLoading.value = false
     styleCandidates.value = []
     candidatesSearched.value = false
@@ -88,7 +93,7 @@ export async function fetchStyleCandidates({ anchorSelected = false } = {}) {
   const anchorParam = anchor ? `&anchor_image_url=${encodeURIComponent(anchor.image_url)}` : ''
   try {
     const res = await fetch(
-      apiUrl(`/api/style-search?query=${encodeURIComponent(q)}&style_id=${encodeURIComponent(sid)}&top_k=24${diverse ? '&diverse=true' : ''}${anchorParam}`),
+      apiUrl(`/api/style-search?query=${encodeURIComponent(q)}&style_id=${encodeURIComponent(sid)}&space=${encodeURIComponent(space)}&top_k=24${diverse ? '&diverse=true' : ''}${anchorParam}`),
     )
     if (!res.ok) throw new Error(String(res.status))
     {

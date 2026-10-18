@@ -22,8 +22,8 @@ export { ORIGINAL_STYLE_KEY } from './design-flow/render'
 import {
   planSource, stepIndex, steps, currentStep, isLastStep,
   floorPlanUrl, floorPlanPath, sceneGraph, floorPlanUpload, uploadedPlanUrl, detectedRooms,
-  cadCounts, cadTotalPing, cadExtraRooms, cadPlanResult, cadActiveRoomId, cadRoomStatus,
-  cadBatch, cadBatchRunning, cadRoomSnapshots,
+  cadCounts, cadTotalPing, cadRoomW, cadRoomD, cadExtraRooms, cadPlanResult, cadActiveRoomId, cadRoomStatus, cadRendering,
+  cadBatch, cadBatchRunning, cadRoomSnapshots, cadOverview, cadQuoting,
   editPlacements, roomW, roomD, roomTypeForPlan, layoutViewMode, layoutRenderConfig,
   roomType, spaceSizePing, customRoomW, customRoomD,
   furnitureItems, furnitureQty, extraPrompt, fengshuiRules, outputAspect,
@@ -39,7 +39,6 @@ import {
   textPrompt, refineCanvasRef, baseImagePreview,
   panoLoading, panoUrl, panoError,
   quotationLoading, quotationError,
-  favoriteLoading, favoriteError,
 } from './design-flow/state'
 
 import { goStep, nextStep, prevStep, startFlow, resetFlow } from './design-flow/navigation'
@@ -52,10 +51,11 @@ import {
   submitLayout, useUploadedPlan, handleRoomSelected, onEditorChange, updateFloorPlan,
 } from './design-flow/layout'
 import { applyToRooms, cancelCadBatch } from './design-flow/cadBatch'
-import { submitRoomProgram, handleCadRoomSelected, jumpToCadRoom, abandonCadRoom, setOpeningEdit } from './design-flow/cad'
+import { submitRoomProgram, fetchRoomPlan, handleCadRoomSelected, jumpToCadRoom, abandonCadRoom, setOpeningEdit } from './design-flow/cad'
 import { submitPhoto, submit3D, swapStyle, restoreOriginal, generatePanorama } from './design-flow/render'
-import { handleMaskReady, submitRefine, undoRefine, canUndoRefine } from './design-flow/refine'
-import { fetchQuotation, toggleFavoriteDesign } from './design-flow/quotation'
+import { handleMaskReady, submitRefine, undoRefine, canUndoRefine, refining } from './design-flow/refine'
+import { fetchQuotation, quoteRooms } from './design-flow/quotation'
+import { restoreProject } from './design-flow/projectSync'
 
 export function useDesignFlow() {
   return {
@@ -66,9 +66,10 @@ export function useDesignFlow() {
     floorPlanUrl, floorPlanPath, sceneGraph, floorPlanUpload, uploadedPlanUrl,
     detectedRooms, handleRoomSelected,
     // CAD 房型生成
-    cadCounts, cadTotalPing, cadExtraRooms, cadPlanResult, submitRoomProgram, handleCadRoomSelected,
+    cadCounts, cadTotalPing, cadRoomW, cadRoomD, cadExtraRooms, cadPlanResult, submitRoomProgram, fetchRoomPlan, handleCadRoomSelected,
     cadActiveRoomId, cadRoomStatus, jumpToCadRoom, abandonCadRoom,
-    cadBatch, cadBatchRunning, cadRoomSnapshots, applyToRooms, cancelCadBatch,
+    cadBatch, cadBatchRunning, cadRoomSnapshots, cadRendering, applyToRooms, cancelCadBatch,
+    cadOverview, cadQuoting, quoteRooms, restoreProject,
     // 佈局
     editPlacements, roomW, roomD, roomTypeForPlan, roomGeometry, setOpeningEdit, layoutViewMode, layoutRenderConfig,
     onEditorChange, updateFloorPlan,
@@ -93,9 +94,7 @@ export function useDesignFlow() {
     panoLoading, panoUrl, panoError, generatePanorama,
     // 估價
     quotationLoading, quotationError, fetchQuotation,
-    // 收藏
-    favoriteLoading, favoriteError, toggleFavoriteDesign,
     // 動作
-    uploadFile, submitLayout, useUploadedPlan, submitPhoto, submit3D, submitRefine, undoRefine, canUndoRefine,
+    uploadFile, submitLayout, useUploadedPlan, submitPhoto, submit3D, submitRefine, undoRefine, canUndoRefine, refining,
   }
 }

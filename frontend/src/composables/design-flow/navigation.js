@@ -3,13 +3,13 @@ import {
   steps, stepIndex, error, planSource,
   floorPlanUrl, floorPlanPath, sceneGraph, editPlacements, layoutViewMode, layoutRenderConfig,
   floorPlanUpload, uploadedPlanUrl, uploadedPlanPath, detectedRooms,
-  cadPlanResult, cadActiveRoomId, cadRoomStatus, cadRoomSnapshots, openingEdits,
+  cadPlanResult, cadActiveRoomId, cadRoomStatus, cadRoomSnapshots, openingEdits, cadOverview,
   spacePhoto, spacePhotoPath, spaceImage, styleRefImage,
   result, loading,
   styleCandidates, styleCandidatePool, candidatesSearched, confirmedStyle, matchedStylePreview,
   lastGeneratedImage, manualMaskPath, refineHistory, textPrompt,
   panoUrl, panoError, panoLoading, quotationError,
-  timers, saveDraft,
+  timers, saveDraft, projectId,
 } from './state'
 
 export function goStep(i) {
@@ -33,6 +33,7 @@ export function startFlow(source) {
 }
 
 export function resetFlow() {
+  projectId.value = crypto.randomUUID()
   planSource.value = 'generate'
   stepIndex.value = 0
   floorPlanUrl.value = ''
@@ -51,6 +52,7 @@ export function resetFlow() {
   cadActiveRoomId.value = null
   cadRoomStatus.value = {}
   cadRoomSnapshots.value = {}
+  cadOverview.value = false
   openingEdits.value = {}
   cancelCadBatch()
   spacePhoto.remove()

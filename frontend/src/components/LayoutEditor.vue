@@ -1,5 +1,5 @@
 <script setup>
-import { ref, computed, watch } from 'vue'
+import { ref, computed, watch, onMounted, onBeforeUnmount } from 'vue'
 import { Icon } from '@iconify/vue'
 import RoomWalls from '@/components/RoomWalls.vue'
 import RoomDims from '@/components/RoomDims.vue'
@@ -25,6 +25,24 @@ const emit = defineEmits(['update:placements', 'room-size-changed', 'opening-cha
 const roomW = defineModel('roomW', { default: 5 })
 const roomD = defineModel('roomD', { default: 4 })
 
+// 牆沿房間矩形（= 牆中心線）往內畫一半厚度（見 RoomWalls.vue）。家具必須在牆的「內緣」以內，
+// 不然會跟牆疊在一起；沒有牆資料（非 CAD 路徑）就是整個 0~1。
+const bounds = computed(() => {
+  const t = props.geometry?.wallT
+  if (!t) return { x0: 0, x1: 1, y0: 0, y1: 1 }
+  return {
+    x0: t.left / 2 / roomW.value, x1: 1 - t.right / 2 / roomW.value,
+    y0: t.top / 2 / roomD.value, y1: 1 - t.bottom / 2 / roomD.value,
+  }
+})
+// 把一件家具拉回牆的內緣以內（太大放不下就縮到剛好）；已經在範圍內就原樣回傳同一個物件
+function inBounds(it) {
+  const b = bounds.value
+  const w = Math.min(it.w, b.x1 - b.x0), h = Math.min(it.h, b.y1 - b.y0)
+  const x = clamp(it.x, b.x0, b.x1 - w), y = clamp(it.y, b.y0, b.y1 - h)
+  return x === it.x && y === it.y && w === it.w && h === it.h ? it : { ...it, x, y, w, h }
+}
+
 const FLOOR_TYPES = new Set(['rug', 'carpet'])
 const isFloor = (t) => FLOOR_TYPES.has(t)
 
@@ -35,15 +53,18 @@ function rectsOverlap(a, b) {
 // 門會碰到的範圍：家具不能放進去（見 utils/roomGeometry 的 doorKeepouts / settlePlacements）。
 const doorKeepouts = computed(() => doorKeepoutsOf(props.geometry, roomW.value, roomD.value))
 // 預設擺法、門被拖動、房間改尺寸、撤銷之後，只要有家具壓在範圍裡就自動推到最近的空位。
-watch([doorKeepouts, () => props.placements], () => {
-  const next = settlePlacements(props.placements, doorKeepouts.value, isFloor)
+// 也一併把壓在牆裡的家具拉回牆的內緣（舊的快照、房間改尺寸、面板改大小都可能讓家具跑進牆裡）。
+watch([doorKeepouts, () => props.placements, bounds], () => {
+  const bounded = props.placements.map(inBounds)
+  const fitted = bounded.some((it, i) => it !== props.placements[i]) ? bounded : props.placements
+  const next = settlePlacements(fitted, doorKeepouts.value, bounds.value)
   if (next !== props.placements) emit('update:placements', next)
 }, { immediate: true })
-function collidesWithOthers(rect, type, excludeId, from = null) {
-  if (isFloor(type)) return false
-  if (doorKeepouts.value.some((k) => rectsOverlap(rect, k) && !(from && rectsOverlap(from, k)))) return true
+const editorNotice = ref('')
+function collidesWithOthers(rect, excludeId) {
+  if (doorKeepouts.value.some((k) => rectsOverlap(rect, k))) return true
   return items.value.some((it) => (
-    it.id !== excludeId && !isFloor(it.type) && rectsOverlap(rect, it)
+    it.id !== excludeId && rectsOverlap(rect, it)
   ))
 }
 const labelOf = (t) => furnitureLabel(t)
@@ -115,19 +136,20 @@ function onMove(e) {
   if (!drag) return
   const dx = (e.clientX - drag.startX) / drag.size
   const dy = (e.clientY - drag.startY) / drag.size
+  const b = bounds.value
   const next = items.value.map((it) => {
     if (it.id !== drag.id) return it
     if (drag.mode === 'move') {
-      const x = clamp(drag.ox + dx, 0, 1 - it.w)
-      const y = clamp(drag.oy + dy, 0, 1 - it.h)
+      const x = clamp(drag.ox + dx, b.x0, b.x1 - it.w)
+      const y = clamp(drag.oy + dy, b.y0, b.y1 - it.h)
       // 撞到別的家具（非地毯類）：卡在目前位置，不繼續往那個方向移動
-      if (collidesWithOthers({ x, y, w: it.w, h: it.h }, it.type, it.id, { x: drag.ox, y: drag.oy, w: it.w, h: it.h })) return it
+      if (collidesWithOthers({ x, y, w: it.w, h: it.h }, it.id)) return it
       return { ...it, x, y }
     }
     // resize from bottom-right corner
-    const w = clamp(drag.ow + dx, MIN, 1 - drag.ox)
-    const h = clamp(drag.oh + dy, MIN, 1 - drag.oy)
-    if (collidesWithOthers({ x: drag.ox, y: drag.oy, w, h }, it.type, it.id, { x: drag.ox, y: drag.oy, w: drag.ow, h: drag.oh })) return it
+    const w = clamp(drag.ow + dx, MIN, b.x1 - drag.ox)
+    const h = clamp(drag.oh + dy, MIN, b.y1 - drag.oy)
+    if (collidesWithOthers({ x: drag.ox, y: drag.oy, w, h }, it.id)) return it
     return { ...it, w, h }
   })
   commit(next)
@@ -139,13 +161,15 @@ function onUp() {
     const next = items.value.map((it) => {
       if (it.id !== drag.id) return it
       const { x: ox, y: oy, w, h } = it
+      const b = bounds.value
       let x = ox, y = oy
-      if (x < SNAP) x = 0
-      if (x + w > 1 - SNAP) x = 1 - w
-      if (y < SNAP) y = 0
-      if (y + h > 1 - SNAP) y = 1 - h
+      // 貼牆是貼到牆的內緣，不是房間矩形（牆中心線）的邊
+      if (x < b.x0 + SNAP) x = b.x0
+      if (x + w > b.x1 - SNAP) x = b.x1 - w
+      if (y < b.y0 + SNAP) y = b.y0
+      if (y + h > b.y1 - SNAP) y = b.y1 - h
       // 貼牆會撞到別的家具的話，維持原位不貼牆
-      if ((x !== ox || y !== oy) && collidesWithOthers({ x, y, w, h }, it.type, it.id, { x: drag.ox, y: drag.oy, w, h })) return it
+      if ((x !== ox || y !== oy) && collidesWithOthers({ x, y, w, h }, it.id)) return it
       return { ...it, x, y }
     })
     commit(next)
@@ -226,8 +250,8 @@ function rotateNTimes90(item, times) {
   for (let i = 0; i < times; i++) {
     const cx = x + w / 2, cy = y + h / 2
     ;[w, h] = [h, w]
-    x = clamp(cx - w / 2, 0, 1 - w)
-    y = clamp(cy - h / 2, 0, 1 - h)
+    x = clamp(cx - w / 2, bounds.value.x0, bounds.value.x1 - w)
+    y = clamp(cy - h / 2, bounds.value.y0, bounds.value.y1 - h)
     rotation = (rotation + 90) % 360
   }
   return { ...item, x, y, w, h, rotation }
@@ -235,8 +259,13 @@ function rotateNTimes90(item, times) {
 
 function rotate90(item) {
   if (!item) return
-  pushHistory()
   const rotated = rotateNTimes90(item, 1)
+  if (collidesWithOthers(rotated, item.id)) {
+    editorNotice.value = '這個位置會和門或其他家具重疊，無法旋轉。'
+    return
+  }
+  editorNotice.value = ''
+  pushHistory()
   commit(items.value.map((it) => (it.id === item.id ? rotated : it)))
 }
 
@@ -247,8 +276,13 @@ function setRotationDeg(item, deg) {
   const current = item.rotation || 0
   if (target === current) return
   const steps = ((target - current) / 90 + 4) % 4
-  pushHistory()
   const rotated = rotateNTimes90(item, steps)
+  if (collidesWithOthers(rotated, item.id)) {
+    editorNotice.value = '這個位置會和門或其他家具重疊，無法旋轉。'
+    return
+  }
+  editorNotice.value = ''
+  pushHistory()
   commit(items.value.map((it) => (it.id === item.id ? rotated : it)))
 }
 
@@ -259,26 +293,39 @@ function removeItem(item) {
   if (selectedId.value === item.id) selectedId.value = null
 }
 
-// 從房間正中心開始找，撞到別的家具（非地毯類）就往外一圈圈找空位；實在找不到才疊放。
-function findFreeSpot(w, h, type) {
-  const cx = clamp(0.5 - w / 2, 0, 1 - w)
-  const cy = clamp(0.5 - h / 2, 0, 1 - h)
-  if (!collidesWithOthers({ x: cx, y: cy, w, h }, type, null)) return { x: cx, y: cy }
-  const step = 0.08
-  for (let ring = 1; ring <= 8; ring++) {
-    for (const [dx, dy] of [[1,0],[-1,0],[0,1],[0,-1],[1,1],[-1,1],[1,-1],[-1,-1]]) {
-      const x = clamp(cx + dx * ring * step, 0, 1 - w)
-      const y = clamp(cy + dy * ring * step, 0, 1 - h)
-      if (!collidesWithOthers({ x, y, w, h }, type, null)) return { x, y }
+// 由中心向外找同時避開門和其他家具的位置，找不到空位就不新增，避免家具疊在一起。
+function findFreeSpot(w, h) {
+  const b = bounds.value
+  const maxX = b.x1 - w, maxY = b.y1 - h
+  if (maxX < b.x0 || maxY < b.y0) return null
+  const cx = clamp(0.5 - w / 2, b.x0, maxX)
+  const cy = clamp(0.5 - h / 2, b.y0, maxY)
+  const step = 0.02
+  let best = null, bestDistance = Infinity
+  for (let x = b.x0; x <= maxX + 1e-9; x += step) {
+    for (let y = b.y0; y <= maxY + 1e-9; y += step) {
+      const candidate = { x: Math.min(x, maxX), y: Math.min(y, maxY), w, h }
+      if (collidesWithOthers(candidate, null)) continue
+      const distance = Math.hypot(candidate.x - cx, candidate.y - cy)
+      if (distance < bestDistance) {
+        bestDistance = distance
+        best = { x: candidate.x, y: candidate.y }
+      }
     }
   }
-  return { x: cx, y: cy }
+  return best
 }
 
 function addItem(type) {
   const [w, h] = furnitureDefaultSize(type, roomW.value, roomD.value)
   const id = `${type}_${Date.now().toString(36)}`
-  const { x, y } = findFreeSpot(w, h, type)
+  const spot = findFreeSpot(w, h)
+  if (!spot) {
+    editorNotice.value = '房間沒有足夠的空位放置這件家具。'
+    return
+  }
+  editorNotice.value = ''
+  const { x, y } = spot
   const item = { id, type, w, h, x, y, rotation: 0, locked: false }
   pushHistory()
   commit([...items.value, item])
@@ -287,8 +334,15 @@ function addItem(type) {
 
 function updateSelectedField(key, value) {
   if (!selectedItem.value) return
+  const item = selectedItem.value
+  const updated = inBounds({ ...item, [key]: value })
+  if ((key === 'w' || key === 'h') && collidesWithOthers(updated, item.id)) {
+    editorNotice.value = '這個尺寸會和門或其他家具重疊，請調小尺寸或移動家具。'
+    return
+  }
+  editorNotice.value = ''
   pushHistory()
-  commit(items.value.map((it) => (it.id === selectedItem.value.id ? { ...it, [key]: value } : it)))
+  commit(items.value.map((it) => (it.id === item.id ? updated : it)))
 }
 
 // ── Properties panel bindings ────────────────────────────────────
@@ -355,6 +409,34 @@ const boardAspect = computed(() => {
   const ratio = (roomW.value || 5) / (roomD.value || 4)
   return Math.max(0.5, Math.min(2, ratio))
 })
+const viewportRef = ref(null)
+const viewportSize = ref({ width: 0, height: 0 })
+const boardStageStyle = computed(() => {
+  const { width, height } = viewportSize.value
+  if (!width || !height) return { transform: `scale(${zoom.value})`, '--z': zoom.value }
+  const padding = showDims.value ? 92 : 0
+  const availableWidth = Math.max(0, width - padding)
+  const availableHeight = Math.max(0, height - padding)
+  const boardWidth = Math.min(availableWidth, availableHeight * boardAspect.value, 720)
+  const boardHeight = boardWidth / boardAspect.value
+  return {
+    width: `${boardWidth + padding}px`,
+    height: `${boardHeight + padding}px`,
+    transform: `scale(${zoom.value})`,
+    '--z': zoom.value,
+  }
+})
+let viewportObserver
+onMounted(() => {
+  viewportObserver = new ResizeObserver(([entry]) => {
+    viewportSize.value = {
+      width: entry.contentRect.width,
+      height: entry.contentRect.height,
+    }
+  })
+  if (viewportRef.value) viewportObserver.observe(viewportRef.value)
+})
+onBeforeUnmount(() => viewportObserver?.disconnect())
 </script>
 
 <template>
@@ -406,8 +488,8 @@ const boardAspect = computed(() => {
       </aside>
 
       <!-- ── 畫布 ── -->
-      <div class="board-viewport">
-        <div class="board-stage" :class="{ dims: showDims }" :style="{ transform: `scale(${zoom})`, '--z': zoom }">
+      <div ref="viewportRef" class="board-viewport">
+        <div class="board-stage" :class="{ dims: showDims }" :style="boardStageStyle">
         <RoomDims v-if="showDims" :room-w="roomW" :room-d="roomD" :geometry="geometry" />
         <div ref="boardRef" class="board" :class="{ 'has-walls': !!geometry }"
              :style="{ aspectRatio: boardAspect }"
@@ -521,7 +603,8 @@ const boardAspect = computed(() => {
       </aside>
     </div>
 
-    <span class="hint">拖動移動 · 右下角縮放 · ⟳ 旋轉 · 靠牆自動吸附 · 點選外框可調整房間尺寸 · 「尺寸」可顯示標註</span>
+    <span v-if="editorNotice" class="hint hint-notice" role="status">{{ editorNotice }}</span>
+    <span v-else class="hint">拖動移動 · 右下角縮放 · ⟳ 旋轉 · 靠牆自動吸附 · 點選外框可調整房間尺寸 · 「尺寸」可顯示標註</span>
   </div>
 </template>
 
@@ -578,16 +661,21 @@ const boardAspect = computed(() => {
 .palette-hint { font-size: 0.68rem; color: #a08a6f; margin: 0; text-align: center; }
 
 .board-viewport {
-  flex: 1; min-width: 420px; max-height: 720px; overflow: auto;
-  display: flex; justify-content: center;
+  flex: 1 1 420px; min-width: 0; height: min(70vh, 720px); overflow: auto;
+  display: flex; align-items: center; justify-content: center;
 }
 .board-stage {
-  position: relative; width: 100%; max-width: 720px; box-sizing: border-box;
+  position: relative;
+  display: flex; align-items: center; justify-content: center;
+  box-sizing: border-box;
   transform-origin: top center; flex-shrink: 0;
 }
-.board-stage.dims { max-width: 812px; padding: 46px; }   /* 外圍留給尺寸線 */
+.board-stage.dims {
+  padding: 46px;
+}
 .board {
-  position: relative; width: 100%;
+  position: relative; width: 100%; height: 100%;
+  aspect-ratio: var(--room-aspect);
   background: #fbf6ee;
   border: 3px solid #2b2b2b; border-radius: 4px; overflow: hidden;
   box-shadow: 0 4px 24px rgba(0,0,0,0.12); touch-action: none;
@@ -685,6 +773,13 @@ const boardAspect = computed(() => {
 .props-toggle {
   display: flex; align-items: center; justify-content: space-between;
   font-size: 0.78rem; color: #5c4630; font-weight: 600;
+}
+.hint-notice { color: #a33b2b; font-weight: 600; }
+
+@media (max-width: 900px) {
+  .board-viewport { flex-basis: 100%; order: 2; height: min(70vh, 640px); }
+  .props-panel { order: 3; }
+  .palette { order: 1; }
 }
 .switch-input { width: 36px; height: 20px; accent-color: #756d66; cursor: pointer; }
 </style>

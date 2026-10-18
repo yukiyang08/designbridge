@@ -1,11 +1,11 @@
 import { hasDraft } from '../composables/design-flow/state'
+import { useAuth } from '../composables/useAuth'
 import { createRouter, createWebHistory } from 'vue-router'
 import HeroView from '../views/HeroView.vue'
 import StartView from '../views/StartView.vue'
 import StudioView from '../views/StudioView.vue'
 import AccountView from '../views/AccountView.vue'
-import HistoryView from '../views/HistoryView.vue'
-import FavoritesView from '../views/FavoritesView.vue'
+import MyDesignsView from '../views/MyDesignsView.vue'
 import FurnitureView from '../views/FurnitureView.vue'
 import CartView from '../views/CartView.vue'
 
@@ -23,10 +23,8 @@ const router = createRouter({
     { path: '/studio',  name: 'studio',  component: StudioView },
     { path: '/account', name: 'account', component: AccountView },
 
-    // ── 既有頁面，維持原樣（歷史紀錄：開發時查看測試結果用，技術細節不收斂）──
-    { path: '/history',   name: 'history',   component: HistoryView },
-    // 收藏設計：從使用者角度設計的收藏畫廊，只顯示 favorited 的紀錄
-    { path: '/favorites', name: 'favorites', component: FavoritesView },
+    // 我的設計：登入者每次生成的設計（即歷史紀錄）
+    { path: '/designs',   name: 'designs',   component: MyDesignsView },
     { path: '/furniture', name: 'furniture', component: FurnitureView },
     { path: '/cart',      name: 'cart',      component: CartView },
 
@@ -37,5 +35,16 @@ const router = createRouter({
 
 // 直接輸入 /studio（沒經過入口頁選路徑）會得到一個空流程，導回入口頁。
 router.beforeEach(to => (to.name === 'studio' && !hasDraft() ? { name: 'start' } : true))
+
+// 需要登入的頁面：未登入就導去 Google 登入，登入後回到原頁（會整頁重載，所以守在 /start 而非 /studio）
+const AUTH_PAGES = ['start', 'account', 'designs', 'cart']
+router.beforeEach(async to => {
+  if (!AUTH_PAGES.includes(to.name)) return true
+  const { user, ready, signInWithGoogle } = useAuth()
+  await ready
+  if (user.value) return true
+  signInWithGoogle(to.fullPath)
+  return false
+})
 
 export default router

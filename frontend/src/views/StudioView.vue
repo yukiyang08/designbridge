@@ -3,7 +3,7 @@
  * 線性精靈外殼（Figma frame 10/11/13/15/18/19/20 共用的版面）：
  * 滿版背景 → 導覽列 → 流程列 → 置中白卡，白卡內容由當前步驟決定。
  */
-import { computed, onMounted } from 'vue'
+import { computed, onMounted, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import AppNav from '@/components/shell/AppNav.vue'
 import StepBar from '@/components/shell/StepBar.vue'
@@ -16,7 +16,8 @@ import StepRoomPick from '@/components/steps/StepRoomPick.vue'
 import StepFloorPlan from '@/components/steps/StepFloorPlan.vue'
 import StepResult from '@/components/steps/StepResult.vue'
 import CadRoomMiniMap from '@/components/CadRoomMiniMap.vue'
-import { useDesignFlow } from '@/composables/useDesignFlow'
+import CadOverview from '@/components/CadOverview.vue'
+import { useDesignFlow, ASPECT_OPTIONS } from '@/composables/useDesignFlow'
 import sceneBg from '@/assets/figma/room-bg.png'
 
 const router = useRouter()
@@ -26,12 +27,48 @@ const {
   loading, loadingMsg, error,
   editPlacements, floorPlanUrl, spacePhotoPath, planSource,
   detectedRooms, cadPlanResult, cadRoomStatus, cadActiveRoomId, jumpToCadRoom, abandonCadRoom,
+  cadBatch, cadBatchRunning, applyToRooms, cancelCadBatch,
+  cadRoomSnapshots, cadRendering, planSource: flowPlanSource, confirmedStyle, result, outputAspect, extraPrompt,
+  fengshuiRules, cadOverview,
   fetchStyleOptions, fetchStyleDemoImages, resetFlow,
 } = flow
 
 // 右上角縮圖只在 CAD 多房間流程、且已經進到逐一設計房間（plan 之後）的步驟才顯示——
 // roomProgram 本身就是整層/選房間的畫面，不需要再疊一個縮圖。
+// 整層套用的接片用：每間房渲染完成的縮圖，以及「沿用了哪些設定」的說明
+const batchThumbs = computed(() => Object.fromEntries(
+  Object.entries(cadRoomSnapshots.value || {})
+    .map(([id, snap]) => [id, snap?.lastGeneratedImage?.url || ''])
+    .filter(([, url]) => url),
+))
+const batchSettings = computed(() => {
+  const prompt = (extraPrompt.value || '').trim()
+  return [
+    `風格：${confirmedStyle.value?.style_name || result.value?.style_params?.style_profile_id || '自動'}`,
+    `比例：${ASPECT_OPTIONS.find(o => o.value === outputAspect.value)?.label || outputAspect.value}`,
+    prompt ? `描述：${prompt.slice(0, 16)}${prompt.length > 16 ? '…' : ''}` : '',
+  ].filter(Boolean)
+})
+
+// 整層逐間設計的渲染是每間房各自的背景工作：只有「目前正在看的這間」還在渲染才蓋載入畫面，
+// 切去別間就不會被卡住（見 render.js 的 submit3D）。
+const activeRendering = computed(() =>
+  flowPlanSource.value === 'cad' && !!cadActiveRoomId.value && !!cadRendering.value[cadActiveRoomId.value])
+
 const MINIMAP_STEPS = new Set(['plan', 'result'])
+// 有生成結果、右側要留給家具清單時，縮圖才改成頂部細列（要看平面圖按「放大平面圖」）；
+// 還沒生成或正在渲染時維持右側縮圖
+const showOverview = computed(
+  () => planSource.value === 'cad' && cadOverview.value && currentStep.value === 'result',
+)
+const openOverview = () => { cadOverview.value = true }
+// 批次生成跑完、而且整層都完成了：自動帶到總覽（只在批次剛結束時；重新載入已完成的進度不會跳）
+watch(cadBatchRunning, (running, was) => {
+  if (!was || running || currentStep.value !== 'result' || planSource.value !== 'cad') return
+  const rooms = cadPlanResult.value?.rooms || []
+  if (rooms.length && rooms.every(r => cadRoomStatus.value[r.id] === 'done')) cadOverview.value = true
+})
+const minimapCompact = computed(() => currentStep.value === 'result' && !!result.value)
 const showCadMiniMap = computed(
   () => planSource.value === 'cad' && !!cadPlanResult.value && MINIMAP_STEPS.has(currentStep.value),
 )
@@ -97,7 +134,10 @@ onMounted(() => {
 
     <!-- 縮圖是卡片內部的第二欄（同一個白色框框），不是另外浮在旁邊的獨立卡片——
          那樣看起來像兩個框、主框框還會被擠到左邊。見 .studio-card.has-minimap 的 grid。 -->
-    <div class="db-card studio-card" :class="{ 'has-minimap': showCadMiniMap }">
+    <div
+      class="db-card studio-card"
+      :class="{ 'has-minimap': showCadMiniMap && !minimapCompact, 'minimap-top': showCadMiniMap && minimapCompact }"
+    >
       <div class="studio-main">
         <button
           v-if="stepIndex === 0 && !loading"
@@ -112,7 +152,8 @@ onMounted(() => {
           重新選擇模式
         </button>
 
-        <LoadingState v-if="loading" :title="loadingMsg.title" :sub="loadingMsg.sub" />
+        <LoadingState v-if="loading || activeRendering" :title="loadingMsg.title" :sub="loadingMsg.sub" />
+        <CadOverview v-else-if="showOverview" />
         <component :is="STEP_COMPONENTS[currentStep]" v-else />
 
         <p v-if="error && !loading" class="db-error studio-error">{{ error }}</p>
@@ -120,12 +161,23 @@ onMounted(() => {
 
       <CadRoomMiniMap
         v-if="showCadMiniMap"
+        :compact="minimapCompact"
+        :overview-active="showOverview"
+        @overview="openOverview"
         :plan="cadPlanResult"
         :room-status="cadRoomStatus"
         :active-room-id="cadActiveRoomId"
         :active-placements="editPlacements"
+        :batch="cadBatch"
+        :batch-running="cadBatchRunning"
+        :rendering="cadRendering"
+        :thumbs="batchThumbs"
+        :setting-labels="batchSettings"
+        v-model:fengshui-rules="fengshuiRules"
         @select-room="jumpToCadRoom"
         @abandon="abandonCadRoom"
+        @apply="applyToRooms"
+        @cancel="cancelCadBatch"
       />
     </div>
   </div>
@@ -176,6 +228,8 @@ onMounted(() => {
   gap: clamp(1.25rem, 2.5vw, 2rem);
 }
 .studio-main { min-width: 0; }
+.studio-card.minimap-top { display: flex; flex-direction: column; }
+.studio-card.minimap-top > .cad-minimap { order: -1; }
 
 /* 原本是一行小灰字，太不顯眼，容易被當成裝飾文字而不是按鈕。
    改成有外框的實體按鈕，字級跟其他次要動作（例如「上一步」）看齊。 */

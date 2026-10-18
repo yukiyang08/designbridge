@@ -6,13 +6,14 @@ import {
   styleRefImage, confirmedStyle, noStyleReference, selectedStyle, styleMethod,
   editPlacements, sceneGraph, floorPlanPath,
   extraPrompt, fengshuiRules, outputAspect, roomTypeForPlan, spaceSizePing,
-  planSource, cadActiveRoomId, cadRoomStatus, lastGeneratedImage,
-  panoLoading, panoUrl, panoError,
+  planSource, cadActiveRoomId, cadRoomStatus, cadRoomSnapshots, cadRendering, cadRenderError, cadRenderTokens, lastGeneratedImage,
+  panoLoading, panoUrl, panoError, projectId, spaceInfo,
 } from './state'
 import { nextStep } from './navigation'
 import { uploadFile } from './common'
 import { updateFloorPlan } from './layout'
 import { snapshotCurrentCadRoom } from './cad'
+import { saveProjectSettings } from './projectSync'
 
 // 原圖（submit3D 第一次生成的那張）在 styleSwapCache 裡的固定 key——跟真正的
 // style_profile_id 分開存，這樣就算原圖沒套風格（no_style_reference / 風格搜尋落空，
@@ -54,78 +55,127 @@ export async function submit3D() {
     await updateFloorPlan()
   }
   const requestId = ++requestState.current
+  // 整層逐間設計：渲染要 30–60 秒，這段時間要能切去看別間，所以不佔用全域 loading，
+  // 結果回來時依使用者人在哪間決定放哪裡。其他路徑（單間、照片…）維持原本的整頁載入。
+  const cadRoomId = planSource.value === 'cad' ? cadActiveRoomId.value : null
+  const token = cadRoomId ? (cadRenderTokens[cadRoomId] = (cadRenderTokens[cadRoomId] || 0) + 1) : 0
+  const isLatest = () => (cadRoomId ? cadRenderTokens[cadRoomId] === token : requestId === requestState.current)
+
+  // 送出所需的資料要在第一個 await 之前讀完：上傳風格參考圖要等一下，
+  // 這段時間使用者可能已經切去別間，全域的家具、描述就不是這間房的了。
+  const input = {
+    placements: editPlacements.value, sceneGraph: sceneGraph.value, floorPlanPath: floorPlanPath.value,
+    roomTypeForPlan: roomTypeForPlan.value, extraPrompt: extraPrompt.value, spacePhotoPath: spacePhotoPath.value,
+    fengshui: fengshuiRules.value, aspect: outputAspect.value, method: styleMethod.value,
+    noRef: noStyleReference.value, selected: selectedStyle.value, confirmed: confirmedStyle.value,
+    refFile: styleRefImage.file, sizePing: spaceSizePing.value,
+  }
+
   submitKey.value++
   error.value = ''
   result.value = null
-  loading.value = true
+  if (cadRoomId) {
+    cadRendering.value = { ...cadRendering.value, [cadRoomId]: true }
+    const { [cadRoomId]: _e, ...rest } = cadRenderError.value
+    cadRenderError.value = rest
+  } else {
+    loading.value = true
+  }
   loadingMsg.value = { title: '生成 3D 渲染圖中', sub: 'AI 將平面配置轉為立體室內透視，通常約 30–60 秒' }
   panoUrl.value = null
   panoError.value = ''
   try {
     let style_reference_image_path
-    if (!noStyleReference.value) {
-      if (styleRefImage.file) style_reference_image_path = await uploadFile(styleRefImage.file)
-      else if (confirmedStyle.value?.image_url) style_reference_image_path = confirmedStyle.value.image_url
+    if (!input.noRef) {
+      if (input.refFile) style_reference_image_path = await uploadFile(input.refFile)
+      else if (input.confirmed?.image_url) style_reference_image_path = input.confirmed.image_url
     }
 
-    const editedSceneGraph = editPlacements.value.length
+    const editedSceneGraph = input.placements.length
       ? {
-          ...(sceneGraph.value || {}),
-          furniture_placements: editPlacements.value,
-          floor_plan_path: floorPlanPath.value || sceneGraph.value?.floor_plan_path,
+          ...(input.sceneGraph || {}),
+          furniture_placements: input.placements,
+          floor_plan_path: input.floorPlanPath || input.sceneGraph?.floor_plan_path,
         }
       : undefined
 
     // 跳過排版時沒有 scene_graph、沒有平面圖、也沒有照片，房型與坪數就沒有任何
     // 欄位可以承載（DesignRequest 沒有 room_type / space_size）。折進 text_prompt，
     // 使用者在第一步選的東西才真的會影響生成結果，而不是選了等於沒選。
-    const noSpatialInput = !editedSceneGraph && !floorPlanPath.value && !spacePhotoPath.value
+    const noSpatialInput = !editedSceneGraph && !input.floorPlanPath && !input.spacePhotoPath
     // 有平面圖／scene_graph 的流程（含整層 CAD 逐間設計）同樣沒有欄位承載房型，不寫進描述的話 AI 會自己
     // 猜——實測客餐廳被猜成臥室、沙發畫成床。所以非照片流程一律把房型帶進描述。
-    const roomLabel = ROOM_TYPE_LABEL[roomTypeForPlan.value] || ''
+    const roomLabel = ROOM_TYPE_LABEL[input.roomTypeForPlan] || ''
     const spacePreamble = noSpatialInput
-      ? `${roomLabel}，約 ${spaceSizePing.value} 坪。`
-      : (!spacePhotoPath.value && roomLabel ? `${roomLabel}。` : '')
+      ? `${roomLabel}，約 ${input.sizePing} 坪。`
+      : (!input.spacePhotoPath && roomLabel ? `${roomLabel}。` : '')
 
     const res = await jsonFetch('/api/generate', {
-      text_prompt:      (spacePreamble + extraPrompt.value).trim(),
-      style_profile_id: !noStyleReference.value && selectedStyle.value !== 'auto'
-        ? selectedStyle.value
-        : !noStyleReference.value ? confirmedStyle.value?.style_id || undefined : undefined,
+      text_prompt:      (spacePreamble + input.extraPrompt).trim(),
+      style_profile_id: !input.noRef && input.selected !== 'auto'
+        ? input.selected
+        : !input.noRef ? input.confirmed?.style_id || undefined : undefined,
       style_reference_image_path,
-      no_style_reference: noStyleReference.value,
+      no_style_reference: input.noRef,
       refine_mode:        false,
-      output_aspect:      outputAspect.value,
-      style_method:       styleMethod.value,
-      fengshui_rules:     fengshuiRules.value,
+      output_aspect:      input.aspect,
+      style_method:       input.method,
+      fengshui_rules:     input.fengshui,
       // 上傳照片路徑：把照片當作生成的起始影像
-      initial_image_path: spacePhotoPath.value || undefined,
-      floor_plan_path:    floorPlanPath.value || undefined,
+      initial_image_path: input.spacePhotoPath || undefined,
+      floor_plan_path:    input.floorPlanPath || undefined,
       scene_graph:        editedSceneGraph,
+      project_id:         projectId.value,
+      ...spaceInfo(),
     })
     if (!res.ok) throw new Error(`${res.status}`)
     const data = await res.json()
-    if (requestId === requestState.current) {
-      result.value = data
-      // 新的一輪生成（房間/描述可能都變了），舊風格版本快取失效；用這次的結果重新起頭。
-      // 原圖一定存進 ORIGINAL_STYLE_KEY（不管有沒有套風格），style_profile_id 另外多存一份
-      // 純粹是讓「這個風格已經生成過」的縮圖判斷（swapStyle 的 cache 命中）也認得出原圖本身。
-      const styleId = data.style_params?.style_profile_id
-      styleSwapCache.value = { [ORIGINAL_STYLE_KEY]: data, ...(styleId ? { [styleId]: data } : {}) }
-      if (data.generated_image_path) {
-        lastGeneratedImage.value = { path: data.generated_image_path, url: data.generated_image_url || null }
+    if (!isLatest()) return
+    saveProjectSettings()   // 把這次用的設定存雲端，「繼續編輯」時還原
+    const image = data.generated_image_path
+      ? { path: data.generated_image_path, url: data.generated_image_url || null }
+      : null
+
+    if (cadRoomId && cadActiveRoomId.value !== cadRoomId) {
+      // 使用者在等待時已經切去別間：結果存進「那間房」的快照、標成完成，不能動到畫面上目前這間的狀態。
+      // 回到那間房時 restoreCadRoomSnapshot 會把它還原出來。
+      cadRoomSnapshots.value = {
+        ...cadRoomSnapshots.value,
+        [cadRoomId]: { ...(cadRoomSnapshots.value[cadRoomId] || {}), result: data, lastGeneratedImage: image },
       }
-      // CAD 多房間流程：這間房的 3D 渲染圖生成完成才算「完成」，縮圖到這裡才會解鎖、
-      // 可以點去別間房（見 jumpToCadRoom）。
-      if (planSource.value === 'cad' && cadActiveRoomId.value) {
-        cadRoomStatus.value = { ...cadRoomStatus.value, [cadActiveRoomId.value]: 'done' }
-        snapshotCurrentCadRoom()
-      }
+      cadRoomStatus.value = { ...cadRoomStatus.value, [cadRoomId]: 'done' }
+      return
+    }
+
+    result.value = data
+    // 新的一輪生成（房間/描述可能都變了），舊風格版本快取失效；用這次的結果重新起頭。
+    // 原圖一定存進 ORIGINAL_STYLE_KEY（不管有沒有套風格），style_profile_id 另外多存一份
+    // 純粹是讓「這個風格已經生成過」的縮圖判斷（swapStyle 的 cache 命中）也認得出原圖本身。
+    const styleId = data.style_params?.style_profile_id
+    styleSwapCache.value = { [ORIGINAL_STYLE_KEY]: data, ...(styleId ? { [styleId]: data } : {}) }
+    if (image) lastGeneratedImage.value = image
+    // CAD 多房間流程：這間房的 3D 渲染圖生成完成才算「完成」（縮圖才會標成完成、可以套用到其他房間）。
+    if (cadRoomId) {
+      cadRoomStatus.value = { ...cadRoomStatus.value, [cadRoomId]: 'done' }
+      snapshotCurrentCadRoom()
     }
   } catch (e) {
-    if (requestId === requestState.current) error.value = `生成渲染圖失敗：${e.message}`
+    if (!isLatest()) return
+    if (cadRoomId && cadActiveRoomId.value !== cadRoomId) {
+      // 使用者已經離開那間房：不能把錯誤寫到畫面上現在這間，留著，回去時再顯示
+      cadRenderError.value = { ...cadRenderError.value, [cadRoomId]: `生成渲染圖失敗：${e.message}` }
+    } else {
+      error.value = `生成渲染圖失敗：${e.message}`
+    }
   } finally {
-    if (requestId === requestState.current) loading.value = false
+    if (cadRoomId) {
+      if (isLatest()) {
+        const { [cadRoomId]: _r, ...rest } = cadRendering.value
+        cadRendering.value = rest
+      }
+    } else if (requestId === requestState.current) {
+      loading.value = false
+    }
   }
 }
 
@@ -164,6 +214,8 @@ export async function swapStyle(styleId) {
       output_aspect:      outputAspect.value,
       style_method:       styleMethod.value,
       plan,
+      project_id:         projectId.value,
+      ...spaceInfo(),
     })
     if (!res.ok) throw new Error(`${res.status}`)
     const data = await res.json()

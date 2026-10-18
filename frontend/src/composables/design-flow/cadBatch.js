@@ -3,13 +3,13 @@ import {
   CAD_ROOM_TYPE_TO_EDITOR, cadDefaultPlacements, FENGSHUI_OPTIONS,
   error, result, extraPrompt, outputAspect, styleMethod, fengshuiRules,
   styleRefImage, confirmedStyle, noStyleReference, selectedStyle,
-  cadPlanResult, cadRoomStatus, cadRoomSnapshots, cadBatch, cadBatchRunning,
+  cadPlanResult, cadRoomStatus, cadRoomSnapshots, cadBatch, cadBatchRunning, projectId, cadPlanPayload,
 } from './state'
 import { uploadFile } from './common'
 import { buildRoomGeometry } from '@/utils/roomGeometry'
 
 /* ══ 把目前這間房的設定套用到其他房間，一次生成 ═══════════════
-   入口：渲染完成頁的「套用到其他房間」（ApplyToRooms.vue）。
+   入口：右上角整層縮圖的「套用目前風格」（CadRoomMiniMap.vue），目前這間渲染完才能用。
 
    每間房的流程跟互動式一樣：預設家具 → /api/render-floor-plan 取底圖 → /api/generate。
    不碰 result / editPlacements 這些「目前這間房」的全域狀態，所以批次進行中使用者還能
@@ -23,7 +23,7 @@ import { buildRoomGeometry } from '@/utils/roomGeometry'
    ponytail: 一致性只靠共用 style_params，渲染 seed 是隨機的（render_backends.py）；
    不夠一致時，升級路徑是讓後端接受固定 seed。 */
 
-const CONCURRENCY = 2   // ponytail: 固定 2 條；後端是本機 GPU 時可能要降到 1
+export const CONCURRENCY = 4   // ponytail: 固定 4 條；撞到 429 或後端是本機 GPU 時往下調
 
 let currentRun = null   // { cancelled, controller }
 
@@ -84,6 +84,11 @@ async function renderOne(room, base, run) {
       ? { furniture_placements: placements, floor_plan_path: fp.floor_plan_path }
       : undefined,
     plan: base.style_params ? { style_params: base.style_params } : undefined,
+    project_id: projectId.value,
+    space_id: room.id,
+    space_name: room.label_zh,
+    space_dims: { w: room.w, d: room.h },
+    cad_plan: cadPlanPayload(),
   }, run)
 
   if (run.cancelled) return
@@ -105,12 +110,6 @@ async function renderOne(room, base, run) {
   return data
 }
 
-// 整層一次生成時沒有「已渲染的那間」可借風格，先挑客廳（沒有就第一間）當基準
-const anchorFirst = (rooms) => {
-  const i = Math.max(0, rooms.findIndex(r => r.room_type === 'living_room'))
-  return [rooms[i], ...rooms.filter((_, j) => j !== i)]
-}
-
 export async function applyToRooms(roomIds) {
   if (cadBatchRunning.value) return
   const rooms = (cadPlanResult.value?.rooms || []).filter(r => roomIds.includes(r.id))
@@ -124,24 +123,11 @@ export async function applyToRooms(roomIds) {
   try {
     const base = await buildBase()
     if (run.cancelled) return
+    // 沒有目前這間的 style_params，每間會各自選風格，整層就不一致了
+    if (!base.style_params) throw new Error('請先完成目前這間房的渲染')
     cadBatch.value = { ...cadBatch.value, ...Object.fromEntries(rooms.map(r => [r.id, { status: 'queued' }])) }
 
-    const queue = anchorFirst(rooms)
-    if (!base.style_params) {
-      // 先單獨跑基準那間，拿到 style_params 後其餘才併行，每間共用同一組色彩/材質
-      const first = queue.shift()
-      setBatch(first.id, { status: 'running', error: '' })
-      try {
-        const data = await renderOne(first, base, run)
-        base.style_params = data?.style_params || null
-      } catch (e) {
-        if (run.cancelled) return
-        setBatch(first.id, { status: 'failed', error: e.message || '生成失敗' })
-        for (const r of queue) clearBatch(r.id)   // 基準失敗就不往下跑，免得每間各選各的風格
-        error.value = `「${first.label_zh}」生成失敗，其餘房間未開始：${e.message}`
-        return
-      }
-    }
+    const queue = [...rooms]
     const worker = async () => {
       while (!run.cancelled) {
         const room = queue.shift()

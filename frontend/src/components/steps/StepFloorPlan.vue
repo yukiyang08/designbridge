@@ -19,8 +19,8 @@ const LayoutPreview3D = defineAsyncComponent(() => import('@/components/LayoutPr
 
 const {
   editPlacements, roomW, roomD, roomTypeForPlan, roomGeometry, setOpeningEdit, layoutViewMode, layoutRenderConfig,
-  floorPlanUrl, uploadedPlanUrl, onEditorChange,
-  nextStep, prevStep, scheduleSearch, loading, planSource,
+  onEditorChange,
+  nextStep, prevStep, scheduleSearch, loading,
 } = useDesignFlow()
 
 const editSceneGraph = computed(() => ({ furniture_placements: editPlacements.value }))
@@ -37,10 +37,6 @@ function goNext() {
 <template>
   <div class="floor-plan-step">
     <div class="panel-head">
-      <h2 class="panel-title">
-        {{ layoutViewMode === '3d' ? '3D 佈局預覽' : '2D 平面配置圖' }}
-      </h2>
-
       <div class="head-actions">
         <!-- 設計稿沒有這個切換，但 3D 佈局預覽是既有功能 -->
         <div v-if="editPlacements.length" class="view-toggle" role="group" aria-label="檢視模式">
@@ -77,17 +73,6 @@ function goNext() {
       未辨識到家具座標，將以整張平面圖作為結構參考生成 3D 渲染圖。
     </p>
 
-    <div class="refs">
-      <details v-if="floorPlanUrl">
-        <summary>檢視平面圖 PNG</summary>
-        <img :src="floorPlanUrl" alt="2D 平面配置圖" class="ref-img" />
-      </details>
-      <details v-if="uploadedPlanUrl">
-        <summary>{{ planSource === 'cad' ? '對照整層 CAD 分區圖' : '對照原始上傳平面圖' }}</summary>
-        <img :src="uploadedPlanUrl" alt="平面圖參考" class="ref-img" />
-      </details>
-    </div>
-
     <div class="actions">
       <button class="db-btn db-btn--ghost db-btn--sm" @click="prevStep">← 上一步</button>
       <button class="db-btn" :disabled="loading" @click="goNext">
@@ -110,40 +95,30 @@ function goNext() {
   margin-bottom: 1rem;
 }
 
-/* 設計稿的「家具列表」標題列：#878181 底、白字 */
-.panel-title {
-  margin: 0;
-  padding: 0.6rem 1.5rem;
-  border-radius: 4px;
-  background: var(--db-secondary-2);
-  color: #fff;                     /* 底色是灰的，不吃 --db-on-accent */
-  font-family: var(--db-font-display);
-  font-style: italic;
-  font-weight: 500;
-  font-size: 1.25rem;
-}
-
 .head-actions {
   display: flex;
   align-items: center;
   gap: 0.75rem;
-  margin-left: auto;
+  margin-left: 0;
 }
 
 .view-toggle {
   display: inline-flex;
-  padding: 3px;
+  padding: 4px;
   border-radius: var(--db-radius-pill);
   background: var(--db-chip-soft);
 }
 .view-toggle button {
-  padding: 0.4rem 1.05rem;
+  min-width: 76px;
+  min-height: 44px;
+  padding: 0.55rem 1.25rem;
   border: none;
   border-radius: var(--db-radius-pill);
   background: none;
   color: var(--db-text-soft);
   font-family: var(--db-font-body);
-  font-size: 0.9rem;
+  font-size: 1rem;
+  font-weight: 600;
   cursor: pointer;
   transition: background 0.16s, color 0.16s;
 }
@@ -158,31 +133,6 @@ function goNext() {
   margin: 0.75rem 0 0;
   color: var(--db-text-soft);
   font-size: 0.9rem;
-}
-
-.refs {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 1.25rem;
-  margin-top: 1rem;
-}
-/* 原本 0.88rem 太不起眼，使用者常常沒發現這裡可以點開對照原圖 */
-.refs summary {
-  cursor: pointer;
-  color: var(--db-text);
-  font-family: var(--db-font-display);
-  font-style: normal;
-  font-weight: 500;
-  font-size: 1.05rem;
-}
-.refs summary::marker { color: var(--db-accent); }
-.refs summary:hover { color: var(--db-accent-deep); }
-.ref-img {
-  display: block;
-  max-width: min(460px, 100%);
-  margin-top: 0.6rem;
-  border-radius: 8px;
-  border: 1px solid #ececec;
 }
 
 .actions {

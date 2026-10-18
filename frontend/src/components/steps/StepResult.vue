@@ -7,23 +7,23 @@
  * 兩態，submitRefine／fetchQuotation 也都是原地更新 result、不跳頁——所以合併成
  * 一頁並不需要改資料流，只是把三段 UI 疊在同一個 template 裡，由上到下：
  *   1. 結果圖＋一鍵換風格＋360°環景＋設計詳情
- *   2. 微調：需求輸入＋畫筆/橡皮擦工具＋畫布
+ *   2. （微調已併入結果圖：圖右上角「編輯」，見 RefineEditor）
  *   3. 家具預算：候選清單＋總價
  * 「開始新的設計」「收藏這個設計」固定在頁尾最下面。
  *
  * 還沒生成時（!result）沿用原 StepRender 的設定表單（描述/風格推薦/風水/進階設定）。
  */
 import { ref, reactive, computed, watch, defineAsyncComponent } from 'vue'
-import { RouterLink, useRouter } from 'vue-router'
+import { useRouter } from 'vue-router'
 import AdvancedPanel from '@/components/shell/AdvancedPanel.vue'
 import FengshuiPicker from '@/components/FengshuiPicker.vue'
 import StyleSuggestions from '@/components/StyleSuggestions.vue'
 import ImageUpload from '@/components/ImageUpload.vue'
 import DesignDetails from '@/components/steps/DesignDetails.vue'
-import ApplyToRooms from '@/components/steps/ApplyToRooms.vue'
-import RefineCanvas from '@/components/RefineCanvas.vue'
 import TimingPanel from '@/components/TimingPanel.vue'
+import RefineEditor from '@/components/RefineEditor.vue'
 import { useDesignFlow, ASPECT_OPTIONS, ORIGINAL_STYLE_KEY } from '@/composables/useDesignFlow'
+import { spaceInfo, ROOM_TYPE_LABEL } from '@/composables/design-flow/state'
 import { useFurnitureSelection } from '@/composables/useFurnitureSelection'
 import { API_BASE } from '@/config/api'
 
@@ -31,7 +31,7 @@ import { API_BASE } from '@/config/api'
 const PanoramaViewer = defineAsyncComponent(() => import('@/components/PanoramaViewer.vue'))
 
 const {
-  planSource, extraPrompt, outputAspect, fengshuiRules, roomTypeForPlan,
+  planSource, extraPrompt, outputAspect, fengshuiRules, roomTypeForPlan, roomType,
   selectedStyle, noStyleReference, styleRefImage,
   styleOptions, styleLoading, styleError, fetchStyleOptions,
   styleCandidates, candidatesLoading, candidatesError, confirmedStyle, showSuggestions,
@@ -39,17 +39,11 @@ const {
   result, loading, submit3D, prevStep,
   swappingStyle, swapStyle, restoreOriginal, styleSwapCache, styleDemoImages,
   panoLoading, panoUrl, panoError, generatePanorama,
-  // 微調
-  brushSize, eraserSize, drawMode, baseImagePreview, refineCanvasRef,
-  textPrompt, submitRefine, undoRefine, canUndoRefine,
   // 預算
   quotationLoading, quotationError, fetchQuotation, resetFlow,
-  favoriteLoading, favoriteError, toggleFavoriteDesign,
-  // 整層多房間：引導設計下一間
-  cadPlanResult, cadActiveRoomId, cadRoomStatus, handleCadRoomSelected,
+  cadActiveRoomId,
 } = useDesignFlow()
 const {
-  selectedCount: furnitureSelectedCount,
   toggle: toggleFavorite,
   isSelected: isFavorited,
 } = useFurnitureSelection()
@@ -65,11 +59,21 @@ const timingRuns = computed(() => {
   if (!r?.timings?.length) return []
   return [{ kind: r.routing_decision === 'design_adjuster' ? 'refine' : 'generate', elapsed_seconds: parseFloat(r.elapsed_time) || 0, timings: r.timings }]
 })
-const showRefine = ref(false)   // 微調工作區預設收起，按「開始微調」才跳出
-function openRefine() { viewMode.value = 'image'; showRefine.value = true }
+const editing = ref(false)      // 在結果圖上直接編輯（塗抹重繪）
+const editFull = ref(false)     // 編輯時是否全螢幕
 
 const imageUrl = computed(() => result.value?.generated_image_url || '')
 const isSkipPath = computed(() => planSource.value === 'skip')
+
+// 這一步一律在最上面寫出「現在是哪個房間」：整層是房間名稱，其他路徑是房型
+const roomTitle = computed(() => {
+  const info = spaceInfo()
+  // 不排家具路徑沒有平面圖步驟，roomTypeForPlan 沒被設定過，房型要看空間設定選的那個
+  const name = planSource.value === 'skip' ? (ROOM_TYPE_LABEL[roomType.value] || info.space_name) : info.space_name
+  const d = info.space_dims
+  const fmt = n => Math.round(n * 10) / 10
+  return { name, dims: d?.w && d?.d ? `${fmt(d.w)} × ${fmt(d.d)} m` : '' }
+})
 // 「自動」對換風格沒有意義（重送同一個 plan、style_profile_id=auto 只會重查一次語意搜尋，
 // 不保證換成別的風格），一鍵換風格只列有固定 LoRA 對應的實際風格。
 const swapStyleOptions = computed(() => styleOptions.value.filter(opt => opt.value !== 'auto'))
@@ -85,26 +89,6 @@ const isOriginalActive = computed(() => !!result.value && result.value === style
 const showFengshui = computed(
   () => planSource.value === 'cad' || planSource.value === 'upload',
 )
-
-/**
- * 整層多房間（cad）：結果頁捲到最下面才看得到「設計下一間」，不用再往上找
- * CadRoomMiniMap 那個側欄縮圖——那是被動的，螢幕窄於 1100px 時還會跑到內容
- * 上面，捲到頁尾時使用者很可能已經看不到它了。
- */
-const cadTotalCount = computed(() => cadPlanResult.value?.rooms?.length || 0)
-const cadDoneCount = computed(
-  () => Object.values(cadRoomStatus.value).filter(s => s === 'done').length,
-)
-const cadAllDone = computed(() => cadTotalCount.value > 0 && cadDoneCount.value >= cadTotalCount.value)
-const cadNextRoom = computed(() => {
-  if (planSource.value !== 'cad' || !cadPlanResult.value) return null
-  return (cadPlanResult.value.rooms || []).find(
-    (r) => r.id !== cadActiveRoomId.value && cadRoomStatus.value[r.id] !== 'done',
-  ) || null
-})
-function goNextRoom() {
-  if (cadNextRoom.value) handleCadRoomSelected(cadNextRoom.value)
-}
 
 // 排家具路徑在這一頁才打描述，打字時重查風格推薦（debounce 在 scheduleSearch 裡）
 function onPromptInput() { scheduleSearch() }
@@ -129,8 +113,10 @@ async function startPano() {
 watch(() => result.value?.task_id, () => { viewMode.value = 'image' })
 
 // ── 微調 ──────────────────────────────────────────────────
-// RefineCanvas 只吃一個 brush-size：畫筆模式用 brushSize，橡皮擦模式用 eraserSize
-const activeBrushSize = computed(() => drawMode.value === 'erase' ? eraserSize.value : brushSize.value)
+function startEdit(full) { editing.value = true; editFull.value = full }
+function stopEdit() { editing.value = false; editFull.value = false }
+// 切到別間房：編輯中的塗抹屬於舊那張圖，直接結束
+watch(cadActiveRoomId, stopEdit)
 
 // ── 家具預算 ──────────────────────────────────────────────
 const quotation = computed(() => result.value?.quotation_result || null)
@@ -139,8 +125,10 @@ const quotation = computed(() => result.value?.quotation_result || null)
 // result 換成新物件、quotation_result 清掉（見 render.js/refine.js），watch 在這裡
 // 補上原本「進到這一步就自動估價」的行為，只是觸發點從「掛載這個 step」換成
 // 「result 換了一個沒有報價的新物件」，因為現在已經不會因為換頁而重新掛載。
+// fetchQuotation 自己會讓舊的估價作廢，所以這裡不能再用「正在估價就跳過」擋掉：
+// 微調或換風格的新圖常常在上一張還在估價時就出來，擋掉的話新圖就永遠不會估價。
 watch(result, (r) => {
-  if (r && !r.quotation_result && !quotationLoading.value) fetchQuotation()
+  if (r && !r.quotation_result) fetchQuotation()
 }, { immediate: true })
 
 const confirmingReset = ref(false)
@@ -153,9 +141,53 @@ function startOver() {
 const selectedCandidates = reactive({})
 watch(
   () => quotation.value?.furniture_list,
-  (list) => { if (list) list.forEach((_, idx) => { selectedCandidates[idx] = 0 }) },
+  (list) => {
+    if (list) list.forEach((_, idx) => { selectedCandidates[idx] = quotation.value?.selected_indices?.[idx] ?? 0 })
+  },
   { immediate: true },
 )
+// 換款的選擇寫回這份報價（selected_indices）：整層總覽加總各房間預算時要用同一份選擇，
+// 不然這裡換過款、總覽還是用預設推薦算
+watch(selectedCandidates, () => {
+  const q = quotation.value
+  const list = q?.furniture_list
+  if (!list) return
+  const saved = list.map((_, i) => q.selected_indices?.[i] ?? 0)
+  const now = list.map((_, i) => selectedCandidates[i] ?? 0)
+  if (saved.every((v, i) => v === now[i])) return
+  result.value = { ...result.value, quotation_result: { ...q, selected_indices: { ...now } } }
+}, { deep: true })
+
+// IKEA 商品名常只有代號（MALM、KALLAX），多一個中文類別才看得出是什麼；
+// 沒有明確類別時退回偵測到的名稱
+const CATEGORY_ZH = {
+  sofa: '沙發', table: '桌子', chair: '椅子', lamp: '燈具', rug: '地毯',
+  curtain: '窗簾', storage: '收納', shelf: '收納', bed: '床',
+}
+const categoryLabel = (item) => CATEGORY_ZH[item.category] || item.detected_name
+// IKEA 商品全名後面一長串顏色、尺寸（"KALLAX 層架組, 白色, 77x147 公分"）：清單只留第一段，
+// 全名放在 title（滑過去看得到）與商品頁；"VIHALS/VIHALS" 這種重複的也去掉
+const shortName = (name = '') => name.split(/[,，]/)[0].trim().replace(/^(\S+)\/\1(?=\s|$)/, '$1')
+
+// 候選完全相同的家具（例如同一款 KALLAX 被偵測到 4 次）合併成一行 ×N；
+// 換款時同組的每一件一起換，總價仍是逐件加總
+const furnitureGroups = computed(() => {
+  const groups = new Map()
+  ;(quotation.value?.furniture_list || []).forEach((item, idx) => {
+    const key = (item.candidates || []).map(c => c.id || c.name).join('|') || `#${idx}`
+    if (!groups.has(key)) groups.set(key, { key, item, idxs: [] })
+    groups.get(key).idxs.push(idx)
+  })
+  return [...groups.values()]
+})
+const groupPick = (g) => selectedCandidates[g.idxs[0]] ?? 0
+function setGroupPick(g, ci) { g.idxs.forEach(i => { selectedCandidates[i] = ci }) }
+
+// 目前展開「換款」的那一組
+const openRow = ref(null)
+watch(quotation, () => { openRow.value = null })
+// 向量與關鍵字都沒比到時後端只給一筆 LLM 估價：沒連結、沒圖、similarity 0
+const isEstimate = (c) => !c.purchase_url && !c.product_image_url && !(c.similarity > 0)
 
 const computedTotal = computed(() => {
   const list = quotation.value?.furniture_list
@@ -181,6 +213,10 @@ function toFavoriteItem(item, c) {
 
 <template>
   <div class="result-step">
+    <header class="room-title">
+      <h2 class="room-name">{{ roomTitle.name }}</h2>
+      <span v-if="roomTitle.dims" class="room-dims">{{ roomTitle.dims }}</span>
+    </header>
 
     <!-- ══ 尚未生成：描述 + 風格推薦 ══ -->
     <template v-if="!result">
@@ -199,7 +235,7 @@ function toFavoriteItem(item, c) {
         <textarea
           v-model="extraPrompt"
           class="db-textarea prompt"
-          rows="3"
+          rows="7"
           placeholder="輸入…例如：木質感、採光充足的明亮感"
           @input="onPromptInput"
         />
@@ -280,6 +316,9 @@ function toFavoriteItem(item, c) {
     <!-- ══ 已生成：結果圖 + 微調 + 預算，整頁往下排 ══ -->
     <template v-else>
 
+      <!-- 寬螢幕：左圖右清單（清單 sticky）；窄螢幕退回單欄往下排 -->
+      <div class="result-grid">
+
       <!-- ── ① 結果圖 + 360° 環景 + 一鍵換風格 ── -->
       <section class="block block-image">
         <!-- 單圖／360° 分頁：有環景（或正在生成）才出現 -->
@@ -291,88 +330,23 @@ function toFavoriteItem(item, c) {
           >360° 環景<span v-if="panoLoading" class="tab-note">生成中…</span></button>
         </div>
 
-        <div class="stage-row">
-        <!-- 微調欄：放在結果圖左側，預設只有一顆按鈕，展開後右側的圖換成可塗抹的畫布 -->
-        <aside class="refine-side" :class="{ open: showRefine }">
-          <template v-if="!showRefine">
-            <h2 class="block-title">微調編輯</h2>
-            <p class="block-hint">對這張圖不滿意？用畫筆圈出想調整的範圍，AI 只重繪該區域。</p>
-            <button type="button" class="db-btn refine-cta-btn" @click="openRefine">開始微調</button>
-          </template>
-
-          <template v-else>
-            <div class="block-head">
-              <h2 class="block-title">微調編輯</h2>
-              <button type="button" class="collapse-link" @click="showRefine = false">收合</button>
-            </div>
-            <label class="field-label" for="refine-prompt">輸入你的微調需求</label>
-            <textarea
-              id="refine-prompt"
-              v-model="textPrompt"
-              class="db-textarea"
-              rows="4"
-              placeholder="例如：把沙發換成藍色布藝款式、窗簾改為白色薄紗"
-            />
-
-            <h3 class="tool-title">用畫筆圈選微調範圍</h3>
-
-            <div class="tool-row">
-              <button
-                type="button"
-                :class="['tool-btn', { active: drawMode === 'draw' }]"
-                @click="drawMode = 'draw'"
-              >畫筆</button>
-              <input
-                v-model.number="brushSize"
-                type="range" min="5" max="120" step="5"
-                class="slider" aria-label="筆刷大小"
-              />
-              <span class="slider-val">{{ brushSize }}px</span>
-            </div>
-
-            <div class="tool-row">
-              <button
-                type="button"
-                :class="['tool-btn', { active: drawMode === 'erase' }]"
-                @click="drawMode = 'erase'"
-              >橡皮擦</button>
-              <input
-                v-model.number="eraserSize"
-                type="range" min="5" max="120" step="5"
-                class="slider" aria-label="橡皮擦大小"
-              />
-              <span class="slider-val">{{ eraserSize }}px</span>
-            </div>
-
-            <p class="tool-hint">
-              不塗抹就整張重繪；塗抹後只重繪塗到的區域。
-            </p>
-
-            <div class="side-actions">
-              <button class="db-btn" :disabled="loading" @click="submitRefine">
-                生成新圖
-              </button>
-              <button
-                v-if="canUndoRefine" class="db-btn db-btn--ghost db-btn--sm"
-                title="回到微調前的圖片" @click="undoRefine"
-              >↶ 還原上一版</button>
-            </div>
-          </template>
-        </aside>
-
-        <div v-if="showRefine" class="canvas-wrap">
-          <RefineCanvas
-            ref="refineCanvasRef"
-            :image-url="baseImagePreview"
-            :brush-size="activeBrushSize"
-            :draw-mode="drawMode"
-          />
-        </div>
-        <div v-else class="result-stage" :class="{ 'is-swapping': swappingStyle }">
+        <div class="result-stage" :class="{ 'is-swapping': swappingStyle }">
           <PanoramaViewer v-if="showingPano" :image-url="panoUrl" class="stage-pano" />
+          <RefineEditor
+            v-else-if="editing && imageUrl"
+            v-model:fullscreen="editFull"
+            :image-url="imageUrl"
+            @close="stopEdit"
+          />
           <div v-else class="stage-img-wrap">
             <img v-if="imageUrl" :src="imageUrl" alt="生成的 3D 渲染圖" class="result-img" />
             <p v-else class="no-img">生成完成，但沒有取得圖片 URL。</p>
+
+            <!-- 右上角：直接在圖上編輯／全螢幕編輯 -->
+            <div v-if="imageUrl && result.task_id" class="img-tools">
+              <button type="button" :disabled="swappingStyle" @click="startEdit(false)">✎ 編輯</button>
+              <button type="button" :disabled="swappingStyle" title="全螢幕編輯" aria-label="全螢幕編輯" @click="startEdit(true)">⛶</button>
+            </div>
 
             <!-- 滑鼠移到圖上才出現（觸控裝置沒有 hover，常駐顯示） -->
             <button
@@ -404,7 +378,6 @@ function toFavoriteItem(item, c) {
               <button type="button" class="pano-retry" @click="startPano">重試</button>
             </div>
           </div>
-        </div>
         </div>
 
         <!-- 一鍵換風格：沿用同一個房間佈局／視角，只重換風格 LoRA 重繪。 -->
@@ -449,9 +422,6 @@ function toFavoriteItem(item, c) {
           <p v-if="swappingStyle" class="pano-hint">換風格中，沿用同一個房間佈局重新生成…</p>
         </section>
 
-        <!-- 整層流程：把這間的設定套用到其他房間，一次生成 -->
-        <ApplyToRooms />
-
         <!-- 設計詳情（結構化需求 / 風格參數 / 點雲 / raw JSON） -->
         <div class="details-toggle-wrap">
           <button type="button" class="details-toggle" @click="showDetails = !showDetails">
@@ -465,74 +435,98 @@ function toFavoriteItem(item, c) {
           @close="showTimings = false"
         />
 
-        <div class="inline-actions">
-          <button class="db-btn db-btn--ghost db-btn--sm" @click="regenerate">重新調整並生成</button>
-        </div>
       </section>
 
-      <!-- ── ③ 家具預算 ── -->
+      <!-- ── ② 家具預算 ── -->
       <section class="block block-budget">
         <div class="head">
-          <h2 class="block-title">
-            根據設計方案，進行家具推薦
-            <span class="badge">IKEA 台灣</span>
-          </h2>
-          <div class="head-actions">
-            <RouterLink to="/furniture" class="link">
-              前往家具查詢
-              <span v-if="furnitureSelectedCount" class="count">{{ furnitureSelectedCount }}</span>
-            </RouterLink>
-            <button class="db-btn db-btn--sm" :disabled="quotationLoading" @click="fetchQuotation">
-              {{ quotationLoading ? '估價中…' : (quotation ? '重新估價' : '取得家具報價') }}
-            </button>
-          </div>
+          <h2 class="block-title">家具推薦</h2>
+          <button
+            v-if="quotation"
+            type="button" class="refresh" title="重新估價" aria-label="重新估價"
+            :disabled="quotationLoading" @click="fetchQuotation"
+          >
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M21 12a9 9 0 1 1-2.64-6.36M21 4v5h-5" />
+            </svg>
+          </button>
+          <button v-else class="db-btn db-btn--sm" :disabled="quotationLoading" @click="fetchQuotation">
+            {{ quotationLoading ? '估價中…' : '取得家具報價' }}
+          </button>
         </div>
 
         <p v-if="quotationError" class="db-error">{{ quotationError }}</p>
 
         <template v-if="quotation">
-          <div v-for="(item, idx) in quotation.furniture_list" :key="idx" class="row">
-            <div class="row-label">{{ item.detected_name }}</div>
-            <div class="candidates">
-              <button
-                v-for="(c, ci) in item.candidates"
-                :key="ci"
-                type="button"
-                :class="['candidate', { selected: (selectedCandidates[idx] ?? 0) === ci }]"
-                @click="selectedCandidates[idx] = ci"
-              >
-                <span class="img-wrap">
-                  <img v-if="c.product_image_url" :src="c.product_image_url" :alt="c.name" />
-                  <span v-else class="img-placeholder">資料庫沒有該項商品</span>
-                </span>
-                <span class="name">{{ c.name }}</span>
-                <span class="price">NT$ {{ c.price.toLocaleString() }}</span>
-                <span v-if="c.similarity > 0" class="sim">相似度 {{ (c.similarity * 100).toFixed(0) }}%</span>
-                <span class="card-actions">
-                  <a
-                    v-if="c.purchase_url" :href="c.purchase_url"
-                    target="_blank" rel="noopener" class="buy" @click.stop
-                  >商品詳情</a>
-                  <span
-                    class="fav"
-                    :class="{ active: isFavorited(toFavoriteItem(item, c)) }"
-                    :title="isFavorited(toFavoriteItem(item, c)) ? '取消收藏' : '加入收藏'"
-                    @click.stop="toggleFavorite(toFavoriteItem(item, c))"
-                  >{{ isFavorited(toFavoriteItem(item, c)) ? '★' : '☆' }}</span>
-                </span>
-              </button>
-            </div>
-          </div>
-
           <div class="total">
-            <span class="total-label">目前選擇預算</span>
+            <span class="total-label">預算 · {{ quotation.furniture_list.length }} 件</span>
             <span class="total-val">NT$ {{ computedTotal.toLocaleString() }}</span>
           </div>
 
-          <p class="note">
-            * 點選卡片可切換商品，總預算自動更新。{{ quotation.kb_match_count }}/{{ quotation.furniture_list.length }}
-            件成功向量比對 IKEA，其餘為 AI 估算。
-          </p>
+          <ul class="furn-list">
+            <li v-for="g in furnitureGroups" :key="g.key" class="furn">
+              <template v-for="c in [g.item.candidates?.[groupPick(g)]]" :key="c?.id || g.key">
+                <div v-if="c" class="furn-main">
+                  <span class="furn-thumb">
+                    <img v-if="c.product_image_url" :src="c.product_image_url" :alt="c.name" />
+                    <span v-else class="furn-thumb-empty">無圖</span>
+                  </span>
+                  <div class="furn-info" :title="g.item.detected_name">
+                    <span class="furn-cat">{{ categoryLabel(g.item) }}</span>
+                    <a v-if="c.purchase_url" :href="c.purchase_url" target="_blank" rel="noopener" class="name name--link" :title="c.name">{{ shortName(c.name) }}</a>
+                    <span v-else class="name" :title="c.name">{{ shortName(c.name) }}</span>
+                    <div class="furn-foot">
+                      <span class="price">
+                        NT$ {{ c.price.toLocaleString() }}
+                        <small v-if="g.idxs.length > 1" class="qty">×{{ g.idxs.length }}</small>
+                        <small v-if="isEstimate(c)" class="est">AI 估價</small>
+                      </span>
+                      <span class="furn-side">
+                        <button
+                          v-if="!isEstimate(c)"
+                          type="button"
+                          class="fav"
+                          :class="{ active: isFavorited(toFavoriteItem(g.item, c)) }"
+                          :title="isFavorited(toFavoriteItem(g.item, c)) ? '取消收藏' : '加入收藏'"
+                          :aria-label="isFavorited(toFavoriteItem(g.item, c)) ? '取消收藏' : '加入收藏'"
+                          @click="toggleFavorite(toFavoriteItem(g.item, c))"
+                        >{{ isFavorited(toFavoriteItem(g.item, c)) ? '★' : '☆' }}</button>
+                        <button
+                          v-if="g.item.candidates.length > 1"
+                          type="button" class="swap-btn" :class="{ open: openRow === g.key }"
+                          title="換一款" aria-label="換一款"
+                          :aria-expanded="openRow === g.key"
+                          @click="openRow = openRow === g.key ? null : g.key"
+                        >
+                          <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                            <path d="m17 2 4 4-4 4" /><path d="M3 11v-1a4 4 0 0 1 4-4h14" />
+                            <path d="m7 22-4-4 4-4" /><path d="M21 13v1a4 4 0 0 1-4 4H3" />
+                          </svg>
+                        </button>
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              </template>
+
+              <!-- 其他候選：點了就換，並自動收合 -->
+              <div v-if="openRow === g.key" class="alts">
+                <button
+                  v-for="(a, ai) in g.item.candidates"
+                  :key="ai"
+                  type="button"
+                  :class="['alt', { selected: groupPick(g) === ai }]"
+                  @click="setGroupPick(g, ai); openRow = null"
+                >
+                  <span class="alt-img">
+                    <img v-if="a.product_image_url" :src="a.product_image_url" :alt="a.name" />
+                  </span>
+                  <span class="alt-name" :title="a.name">{{ shortName(a.name) }}</span>
+                  <span class="alt-price">NT$ {{ a.price.toLocaleString() }}</span>
+                </button>
+              </div>
+            </li>
+          </ul>
         </template>
 
         <p v-else-if="quotationLoading" class="hint" role="status">
@@ -543,37 +537,12 @@ function toFavoriteItem(item, c) {
         </p>
       </section>
 
-      <!-- ── 整層多房間：引導設計下一間，不用再往上找側欄縮圖 ── -->
-      <section v-if="planSource === 'cad' && cadPlanResult" class="next-room">
-        <template v-if="cadNextRoom">
-          <div class="next-room-row">
-            <p class="next-room-progress">整層進度 {{ cadDoneCount }} / {{ cadTotalCount }} 間完成</p>
-            <button type="button" class="db-btn next-room-btn" @click="goNextRoom">
-              設計下一間：{{ cadNextRoom.label_zh }} →
-            </button>
-          </div>
-          <p class="next-room-hint">也可以點擊右邊的平面圖，選其他空間當下一個設計目標</p>
-        </template>
-        <p v-else-if="cadAllDone" class="next-room-done">🎉 整層 {{ cadTotalCount }} 間房間都完成了！</p>
-      </section>
-
-      <!-- ── 頁尾：收藏 / 開始新的設計 / 上一步 ── -->
-      <div v-if="result?.task_id" class="collect-row">
-        <button
-          type="button"
-          :class="['collect-btn', { active: result.favorited }]"
-          :disabled="favoriteLoading"
-          @click="toggleFavoriteDesign()"
-        >
-          <span class="collect-star">{{ result.favorited ? '★' : '☆' }}</span>
-          {{ result.favorited ? '已收藏這個設計' : '收藏這個設計' }}
-        </button>
-        <RouterLink to="/favorites" class="collect-link">在收藏設計查看 →</RouterLink>
-        <p v-if="favoriteError" class="db-error collect-error">{{ favoriteError }}</p>
       </div>
 
+      <!-- ── 頁尾：開始新的設計 / 上一步（自動存檔不另外宣告，導覽列有「我的設計」） ── -->
       <div class="actions">
         <button class="db-btn db-btn--ghost db-btn--sm" @click="prevStep">← 上一步</button>
+        <button v-if="!confirmingReset" class="db-btn db-btn--ghost db-btn--sm" @click="regenerate">重新調整並生成</button>
         <template v-if="confirmingReset">
           <span class="reset-warn">目前的設計與報價會被清除</span>
           <button class="db-btn db-btn--ghost db-btn--sm" @click="confirmingReset = false">取消</button>
@@ -588,11 +557,43 @@ function toFavoriteItem(item, c) {
 <style scoped>
 .result-step { display: flex; flex-direction: column; }
 
+.room-title { display: flex; align-items: baseline; gap: 0.9rem; margin: 0 0 1rem; }
+.room-name {
+  margin: 0;
+  font-family: var(--db-font-display);
+  font-style: italic;
+  font-weight: 500;
+  font-size: 2rem;
+  color: var(--db-text);
+}
+.room-dims { color: var(--db-text-soft); font-size: 1rem; font-variant-numeric: tabular-nums; }
+
 .block { display: flex; flex-direction: column; }
+.result-grid { display: block; }
 .block-budget {
   margin-top: 2rem;
   padding-top: 1.75rem;
   border-top: 1px solid #ececec;
+}
+@media (min-width: 1100px) {
+  .result-grid {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) clamp(320px, 27vw, 460px);   /* 圖吃掉剩下的寬度，清單固定窄欄 */
+    gap: 2rem;
+    align-items: start;
+  }
+  /* 清單跟著捲動；內容比視窗高時自己捲，不撐開整頁 */
+  .block-budget {
+    position: sticky;
+    top: 1rem;
+    max-height: calc(100vh - 2rem);
+    overflow-y: auto;
+    margin-top: 0.5rem;   /* 跟左邊圖片頂端對齊（.result-stage 上方有 0.5rem 內距） */
+    padding: 1.1rem 1.1rem 0.5rem;
+    border: 1px solid #ececec;
+    border-radius: var(--db-radius-chip);
+    background: #fff;
+  }
 }
 .block-title {
   display: flex;
@@ -606,57 +607,15 @@ function toFavoriteItem(item, c) {
   color: var(--db-text);
 }
 
-/* 微調欄：結果圖左側 */
-.stage-row {
-  display: grid;
-  grid-template-columns: minmax(240px, 300px) 1fr;
-  gap: clamp(1rem, 2.5vw, 2rem);
-  align-items: start;
-  padding: 0.5rem 0 1.25rem;
-}
-.stage-row > .result-stage { padding: 0; min-width: 0; }
-.refine-side {
-  display: flex;
-  flex-direction: column;
-  gap: 0.75rem;
-  padding: 1.1rem 1.25rem;
-  border-radius: var(--db-radius-chip);
-  background: var(--db-accent-soft);
-}
-.refine-side.open { background: none; padding: 0; gap: 0; }
-.refine-cta-btn { align-self: flex-start; padding: 0.7rem 1.5rem; font-size: 1rem; }
-.side-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 0.75rem; margin-top: 1.25rem; }
-.block-hint { margin: 0; color: var(--db-text-soft); font-size: 0.9rem; line-height: 1.6; }
-
-.block-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 1rem;
-  margin-bottom: 1.25rem;
-}
-.collapse-link {
-  flex-shrink: 0;
-  border: none;
-  background: none;
-  padding: 0;
-  color: var(--db-accent-deep);
-  font-size: 0.85rem;
-  text-decoration: underline;
-  text-underline-offset: 3px;
-  cursor: pointer;
-}
-.collapse-link:hover { color: var(--db-text); }
-
 .lead {
   margin: 0 0 0.9rem;
   font-family: var(--db-font-display);
   font-style: italic;
   font-weight: 500;
-  font-size: 1.5rem;
+  font-size: 1.9rem;
   color: var(--db-text);
 }
-.prompt { max-width: 720px; }
+.prompt { min-height: 180px; padding: 1rem 1.25rem; font-size: 1.1rem; }
 
 .recap {
   display: flex;
@@ -748,7 +707,7 @@ function toFavoriteItem(item, c) {
 }
 .result-img {
   max-width: 100%;
-  max-height: 60vh;
+  max-height: 75vh;
   border-radius: 8px;
   box-shadow: var(--db-shadow-soft);
 }
@@ -782,6 +741,33 @@ function toFavoriteItem(item, c) {
 
 .result-stage > .stage-pano { width: 100%; }
 .stage-img-wrap { position: relative; display: inline-block; max-width: 100%; line-height: 0; }
+
+/* 圖右上角的編輯入口：跟 360° 按鈕一樣 hover 才出現，觸控裝置常駐 */
+.img-tools {
+  position: absolute;
+  top: 0.75rem;
+  right: 0.75rem;
+  display: flex;
+  gap: 0.4rem;
+  opacity: 0;
+  transition: opacity 0.18s;
+}
+.img-tools button {
+  height: 2.1rem;
+  padding: 0 0.8rem;
+  border: none;
+  border-radius: var(--db-radius-pill);
+  background: rgba(20, 18, 14, 0.78);
+  color: #fff;
+  font-size: 0.88rem;
+  line-height: 1;
+  cursor: pointer;
+}
+.img-tools button:hover:not(:disabled) { background: rgba(20, 18, 14, 0.92); }
+.img-tools button:disabled { cursor: not-allowed; opacity: 0.6; }
+.stage-img-wrap:hover .img-tools,
+.img-tools:focus-within { opacity: 1; }
+@media (hover: none) { .img-tools { opacity: 1; } }
 
 /* 圖上的「360° 環景模式」：平常隱藏，hover／鍵盤聚焦才出現；觸控裝置常駐 */
 .pano-cta {
@@ -935,165 +921,134 @@ function toFavoriteItem(item, c) {
 }
 .details-toggle:hover { color: var(--db-text); }
 
-/* 微調 */
-.tool-title {
-  margin: 1.5rem 0 0.85rem;
-  font-family: var(--db-font-display);
-  font-style: italic;
-  font-weight: 500;
-  font-size: 1.1rem;
-  color: var(--db-text);
-}
-.tool-row {
-  display: flex;
-  align-items: center;
-  gap: 0.75rem;
-  margin-bottom: 0.85rem;
-}
-.tool-btn {
-  flex-shrink: 0;
-  min-width: 92px;
-  padding: 0.45rem 1rem;
-  border: 2px solid transparent;
-  border-radius: 4px;
-  background: var(--db-secondary-2);
-  color: #fff;
-  font-family: var(--db-font-display);
-  font-style: normal;
-  font-size: 0.98rem;
-  cursor: pointer;
-  transition: background 0.16s, border-color 0.16s;
-}
-.tool-btn.active {
-  background: var(--db-accent);
-  border-color: var(--db-accent-deep);
-  color: var(--db-on-accent);
-}
-.tool-btn:hover:not(.active) { background: #6f6a6a; }
-
-.slider { flex: 1; min-width: 0; accent-color: var(--db-accent); }
-.slider-val {
-  flex-shrink: 0;
-  min-width: 5.5em;
-  font-size: 0.8rem;
-  color: var(--db-text-soft);
-  font-variant-numeric: tabular-nums;
-}
-
-.tool-hint {
-  margin: 0.25rem 0 0;
-  font-size: 0.8rem;
-  line-height: 1.65;
-  color: var(--db-placeholder);
-}
-
-/* 之前沒給高度：RefineCanvas 內部是 width/height:100%，父層沒有實際高度
-   時整組畫布會塌縮成圖片的原始像素大小，遠比左欄小、佔不滿右半邊。
-   這裡給一個跟畫面高度連動的高度，畫布才會真的填滿右側。 */
-.canvas-wrap {
-  min-width: 0;
-  height: clamp(460px, 66vh, 720px);
-}
-
 /* 預算 */
 .head {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   gap: 1rem;
-  margin-bottom: 1.25rem;
+  margin-bottom: 0.5rem;
 }
-.badge {
-  padding: 0.15rem 0.6rem;
-  border-radius: var(--db-radius-pill);
-  background: var(--db-accent);
-  color: var(--db-on-accent);
-  font-family: var(--db-font-body);
-  font-style: normal;
-  font-size: 0.72rem;
-}
-.head-actions {
-  display: flex;
-  align-items: center;
-  gap: 0.85rem;
-  margin-left: auto;
-}
-.link {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.35rem;
-  color: var(--db-text-soft);
-  font-size: 0.9rem;
-  text-decoration: none;
-}
-.link:hover { color: var(--db-text); }
-.count {
-  display: inline-grid;
-  place-items: center;
-  min-width: 18px; height: 18px;
-  padding: 0 5px;
-  border-radius: var(--db-radius-pill);
-  background: var(--db-accent);
-  color: var(--db-on-accent);
-  font-size: 0.68rem;
-}
-
-.row {
+.head .db-btn, .refresh { margin-left: auto; }
+.refresh {
   display: grid;
-  grid-template-columns: 120px 1fr;
-  gap: 1rem;
-  align-items: start;
-  padding: 1rem 0;
-  border-bottom: 1px solid #f0f0f0;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  border: none;
+  border-radius: 50%;
+  background: none;
+  color: var(--db-text-soft);
+  cursor: pointer;
+  transition: background 0.16s, color 0.16s;
 }
-.row-label {
-  font-family: var(--db-font-display);
-  font-style: normal;
-  font-size: 1.05rem;
-  color: var(--db-text);
-}
+.refresh:hover:not(:disabled) { background: var(--db-chip-soft); color: var(--db-text); }
+.refresh:disabled { opacity: 0.5; cursor: not-allowed; }
 
-.candidates {
-  display: flex;
-  gap: 0.85rem;
-  overflow-x: auto;
-  padding-bottom: 0.4rem;
+/* 家具清單：每件一行（選中的商品），其他候選按「換」才展開 */
+.furn-list { margin: 0; padding: 0; list-style: none; }
+.furn { padding: 0.4rem 0; border-bottom: 1px solid #f0f0f0; }
+.furn:last-child { border-bottom: none; }
+.furn-main { display: flex; align-items: center; gap: 0.75rem; }
+.furn-thumb {
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+  width: 76px;
+  height: 76px;
+  border-radius: 10px;
+  background: var(--db-chip-soft);
+  overflow: hidden;
 }
-.candidate {
+.furn-thumb img { max-width: 100%; max-height: 100%; object-fit: contain; }
+.furn-thumb-empty { color: var(--db-placeholder); font-size: 0.7rem; }
+.furn-info { display: flex; flex-direction: column; gap: 0.15rem; flex: 1; min-width: 0; }
+.furn-info .name { font-size: 0.92rem; }
+.furn-cat { font-size: 0.74rem; color: var(--db-text-soft); letter-spacing: 0.04em; }
+/* 價格在左、收藏／換款在右同一行，操作離資訊近、也看得到 */
+.furn-foot { display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; margin-top: 0.1rem; }
+.est {
+  margin-left: 0.4rem;
+  padding: 0.05rem 0.4rem;
+  border-radius: var(--db-radius-pill);
+  background: var(--db-chip-soft);
+  color: var(--db-text-soft);
+  font-size: 0.68rem;
+  font-weight: 400;
+}
+.furn-side { display: flex; align-items: center; gap: 0.5rem; flex-shrink: 0; }
+.name--link { color: inherit; text-decoration: none; }
+.name--link:hover { text-decoration: underline; text-underline-offset: 3px; }
+.qty {
+  margin-left: 0.5rem;
+  padding: 0.1rem 0.6rem;
+  border-radius: var(--db-radius-pill);
+  background: var(--db-accent-ink);
+  color: #fff;
+  font-size: 1rem;
+  font-weight: 600;
+  line-height: 1.4;
+}
+/* 換一款：圓形「交換」圖示，跟旁邊的收藏星號同尺寸；展開候選時反白 */
+.swap-btn svg { width: 20px; height: 20px; }
+.swap-btn {
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  border: none;
+  border-radius: 50%;
+  background: none;
+  color: var(--db-text-soft);
+  cursor: pointer;
+  transition: background 0.16s, color 0.16s;
+}
+.swap-btn:hover { background: var(--db-chip-soft); color: var(--db-text); }
+.swap-btn.open { background: var(--db-accent-ink); color: #fff; }
+.swap-btn:focus-visible { outline: 2px solid var(--db-text); outline-offset: 2px; }
+.alts {
+  display: flex;
+  gap: 0.6rem;
+  margin-top: 0.7rem;
+  padding-bottom: 0.3rem;
+  overflow-x: auto;
+}
+.alt {
   display: flex;
   flex-direction: column;
-  gap: 0.3rem;
+  gap: 0.2rem;
   flex-shrink: 0;
-  width: 168px;
-  padding: 0.65rem;
+  width: 112px;
+  padding: 0.5rem;
   border: 2px solid #ececec;
   border-radius: var(--db-radius-chip);
   background: #fff;
   text-align: left;
   cursor: pointer;
-  transition: border-color 0.16s, box-shadow 0.16s;
+  transition: border-color 0.16s;
 }
-.candidate:hover { border-color: var(--db-accent-soft); }
-.candidate.selected {
-  border-color: var(--db-accent);
-  box-shadow: var(--db-shadow-soft);
-}
-
-.img-wrap {
+.alt:hover { border-color: var(--db-accent-soft); }
+.alt.selected { border-color: var(--db-accent); }
+.alt-img {
   display: grid;
   place-items: center;
-  height: 104px;
+  height: 72px;
   border-radius: 6px;
   background: var(--db-chip-soft);
   overflow: hidden;
 }
-.img-wrap img { max-width: 100%; max-height: 100%; object-fit: contain; }
-.img-placeholder {
-  padding: 0 0.5rem;
-  color: var(--db-placeholder);
+.alt-img img { max-width: 100%; max-height: 100%; object-fit: contain; }
+.alt-name {
   font-size: 0.72rem;
-  text-align: center;
+  line-height: 1.35;
+  color: var(--db-text);
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
 }
+.alt-price { font-size: 0.8rem; font-weight: 600; color: var(--db-text); }
 
 .name {
   font-size: 0.82rem;
@@ -1108,26 +1063,32 @@ function toFavoriteItem(item, c) {
 .price { font-size: 0.9rem; font-weight: 600; color: var(--db-text); }
 .sim { font-size: 0.7rem; color: var(--db-placeholder); }
 
-.card-actions {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-top: 0.25rem;
+.fav {
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  border: none;
+  border-radius: 50%;
+  background: none;
+  cursor: pointer;
+  color: var(--db-text-soft);
+  font-size: 1.75rem;
+  line-height: 1;
+  transition: background 0.16s, color 0.16s, transform 0.12s;
 }
-.buy {
-  color: var(--db-accent-deep);
-  font-size: 0.75rem;
-  text-decoration: underline;
-}
-.fav { cursor: pointer; color: var(--db-placeholder); font-size: 1.05rem; line-height: 1; }
+.fav:hover { background: var(--db-chip-soft); color: var(--db-text); }
+.fav:active { transform: scale(0.9); }
 .fav.active { color: var(--db-accent); }
+.fav:focus-visible { outline: 2px solid var(--db-text); outline-offset: 2px; }
 
 .total {
   display: flex;
   align-items: baseline;
-  justify-content: flex-end;
+  justify-content: space-between;
   gap: 0.85rem;
-  padding: 1.25rem 0 0.5rem;
+  padding: 0.75rem 0 0.6rem;
+  border-bottom: 1px solid #f0f0f0;
 }
 .total-label { color: var(--db-text-soft); font-size: 0.9rem; }
 .total-val {
@@ -1147,35 +1108,6 @@ function toFavoriteItem(item, c) {
 .hint { padding: 2rem 0; text-align: center; font-size: 0.95rem; }
 
 /* 頁尾 */
-.next-room {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 0.5rem;
-  margin-top: 2rem;
-  padding: 1.1rem 1.5rem;
-  border-radius: var(--db-radius-chip);
-  background: var(--db-accent-soft);
-}
-.next-room-row {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: center;
-  gap: 1rem;
-}
-.next-room-progress { margin: 0; color: var(--db-text-soft); font-size: 0.9rem; }
-.next-room-btn { padding: 0.75rem 1.6rem; font-size: 1.02rem; }
-.next-room-hint { margin: 0; color: var(--db-text-soft); font-size: 0.78rem; }
-.next-room-done {
-  margin: 0;
-  font-family: var(--db-font-display);
-  font-style: italic;
-  font-weight: 500;
-  font-size: 1.05rem;
-  color: var(--db-accent-deep, var(--db-text));
-}
-
 .collect-row {
   display: flex;
   flex-wrap: wrap;
@@ -1227,22 +1159,7 @@ function toFavoriteItem(item, c) {
   padding-top: 1.75rem;
 }
 
-/* 跟 .actions 同樣的按鈕排版，但刻意不叫 .actions——StudioView.vue 的
-   :deep(.actions) 全域樣式會把它變成貼齊視窗底部的 sticky 工具列，那是給「這一步
-   最後的上一步/下一步」用的。這裡是區塊內部的次要動作（重新調整／生成新圖），
-   後面還有其他區塊，用 sticky 會在頁面中段撐出一大段空白。 */
-.inline-actions {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 1rem;
-  padding-top: 1.25rem;
-}
-
 @media (max-width: 900px) {
-  .stage-row { grid-template-columns: 1fr; }
-  .head-actions { margin-left: 0; }
-  .row { grid-template-columns: 1fr; }
   .actions { flex-direction: column-reverse; }
   .actions .db-btn { width: 100%; }
 }

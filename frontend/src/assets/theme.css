@@ -74,7 +74,7 @@
 
 /* 置中白卡 —— Figma 是固定 1192×620，這裡改成上限 + 自適應高度 */
 .db-card {
-  width: min(1192px, calc(100vw - 5rem));
+  width: min(1760px, calc(100vw - 2rem));   /* 與 /studio 白卡同寬，各頁切換時框不會忽寬忽窄 */
   margin: 0 auto;
   background: var(--db-card);
   border-radius: var(--db-radius-card);

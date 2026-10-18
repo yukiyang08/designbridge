@@ -7,32 +7,19 @@
  * 沒有浮動按鈕了，不給它一個入口就會變成沒人找得到的孤兒頁。
  */
 import { RouterLink } from 'vue-router'
+import { useAuth } from '@/composables/useAuth'
 import AppNav from '@/components/shell/AppNav.vue'
 import { useFurnitureSelection } from '@/composables/useFurnitureSelection'
 import sceneBg from '@/assets/figma/room-bg.png'
 
 const { selectedCount } = useFurnitureSelection()
+const { user, signOut } = useAuth()
 
 const SECTIONS = [
-  {
-    to: '/favorites',
-    label: '收藏設計',
-    desc: '你標記收藏的設計，可以重新查看、取得家具預算，或用同樣描述再設計一次。',
-  },
-  {
-    to: '/history',
-    label: '歷史紀錄',
-    desc: '過去每一次生成的渲染圖、風格參數與需求解析，可檢視細節或批次刪除。',
-  },
   {
     to: '/cart',
     label: '家具收藏',
     desc: '在估價與家具查詢中收藏的商品，集中在這裡對照價格與購買連結。',
-  },
-  {
-    to: '/furniture',
-    label: '家具查詢',
-    desc: '依分類與關鍵字搜尋 IKEA 台灣商品資料庫，可直接加入收藏。',
   },
 ]
 </script>
@@ -42,20 +29,13 @@ const SECTIONS = [
     <AppNav />
 
     <div class="db-card account-card">
-      <aside class="side">
-        <RouterLink
-          v-for="s in SECTIONS" :key="s.to"
-          :to="s.to"
-          class="side-item"
-        >
-          {{ s.label }}
-          <span v-if="s.to === '/cart' && selectedCount" class="count">{{ selectedCount }}</span>
-        </RouterLink>
-      </aside>
-
       <main class="main">
         <h1 class="title">個人專區</h1>
-        <p class="lead">你的設計紀錄與收藏都在這裡。</p>
+        <p class="lead">
+          {{ user?.user_metadata?.name || user?.email }}
+          <span v-if="user?.user_metadata?.name">（{{ user.email }}）</span>
+          · <a href="#" @click.prevent="signOut">登出</a>
+        </p>
 
         <div class="cards">
           <RouterLink v-for="s in SECTIONS" :key="s.to" :to="s.to" class="entry">
@@ -77,7 +57,7 @@ const SECTIONS = [
 
 .account-card {
   display: grid;
-  grid-template-columns: 210px 1fr;
+  grid-template-columns: 1fr;
   min-height: 560px;
   margin-top: 1.25rem;
   overflow: hidden;

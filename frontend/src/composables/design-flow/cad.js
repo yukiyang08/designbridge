@@ -2,8 +2,8 @@ import { jsonFetch } from '@/config/api'
 import {
   requestState, cadDefaultPlacements, CAD_ROOM_TYPE_TO_EDITOR,
   error, loading, loadingMsg, result,
-  cadCounts, cadTotalPing, cadExtraRooms, cadPlanResult,
-  cadActiveRoomId, cadRoomStatus, cadRoomSnapshots, cadBatch, openingEdits, roomGeometry,
+  cadCounts, cadTotalPing, cadRoomW, cadRoomD, cadExtraRooms, cadPlanResult, cadRendering, cadRenderError,
+  cadActiveRoomId, cadRoomStatus, cadRoomSnapshots, cadBatch, openingEdits, roomGeometry, cadOverview,
   roomW, roomD, roomTypeForPlan, editPlacements,
   floorPlanPath, floorPlanUrl, sceneGraph, layoutRenderConfig, lastGeneratedImage,
   uploadedPlanUrl, panoUrl, panoError,
@@ -17,6 +17,17 @@ import { cancelCadBatch } from './cadBatch'
    房間選擇器就在 StepRoomProgram 同一頁的表單下方展開，不跳頁；使用者選一間後
    才落地成單房間的 scene_graph 交給既有的 LayoutEditor（goToStepKey('plan')）。 */
 
+// 只取平面圖、不動畫面狀態（不顯示整頁載入、不清進度）：整層房型頁「改了設定就即時更新」用。
+// 這裡不會清掉已設計的房間，所以呼叫端要先確認目前沒有任何進度。
+export async function fetchRoomPlan() {
+  // 長寬兩個都有才送：後端會以 長×寬 為準換算坪數（見 routers/floorplan.py 的 RoomProgramRequest）
+  const size = cadRoomW.value > 0 && cadRoomD.value > 0 ? { room_w: cadRoomW.value, room_d: cadRoomD.value } : {}
+  const res = await jsonFetch('/api/generate-room-plan', { ...cadCounts.value, total_ping: cadTotalPing.value, ...size, extra_rooms: cadExtraRooms.value })
+  const data = await res.json()
+  if (!res.ok) throw new Error(data.detail || `${res.status}`)
+  return data
+}
+
 export async function submitRoomProgram() {
   const requestId = ++requestState.current
   error.value = ''
@@ -24,7 +35,9 @@ export async function submitRoomProgram() {
   loadingMsg.value = { title: '生成房型配置中', sub: '依房型配置切割空間、繪製牆體與門窗' }
   result.value = null
   try {
-    const res = await jsonFetch('/api/generate-room-plan', { ...cadCounts.value, total_ping: cadTotalPing.value, extra_rooms: cadExtraRooms.value })
+    // 長寬兩個都有才送：後端會以 長×寬 為準換算坪數（見 routers/floorplan.py 的 RoomProgramRequest）
+    const size = cadRoomW.value > 0 && cadRoomD.value > 0 ? { room_w: cadRoomW.value, room_d: cadRoomD.value } : {}
+    const res = await jsonFetch('/api/generate-room-plan', { ...cadCounts.value, total_ping: cadTotalPing.value, ...size, extra_rooms: cadExtraRooms.value })
     const data = await res.json()
     if (!res.ok) throw new Error(data.detail || `${res.status}`)
     if (requestId !== requestState.current) return
@@ -32,6 +45,10 @@ export async function submitRoomProgram() {
     cadActiveRoomId.value = null
     cadRoomStatus.value = {}
     cadRoomSnapshots.value = {}
+    cadOverview.value = false
+    cadRendering.value = {}
+    cadRenderError.value = {}
+    for (const k of Object.keys(cadRenderTokens)) cadRenderTokens[k]++   // 舊平面圖還在跑的渲染作廢（房間 id 會撞名）
     openingEdits.value = {}
     cancelCadBatch()
     cadPlanResult.value = data
@@ -89,26 +106,27 @@ function restoreCadRoomSnapshot(roomId) {
 // 使用者從「選擇房間」／右上角縮圖選定一間房後，把它的絕對座標矩形換算成單房間的
 // roomW/roomD。回頭選過的房間（cadRoomSnapshots 裡已經有）直接還原上次的進度；
 // 第一次選的房間才用 cadDefaultPlacements 的預設家具跟 render-floor-plan 要一張底圖。
+// 已完成的房間：點了直接看它的生成結果（「生成設計」步驟）；還沒完成的才回「繪製平面圖」繼續編輯。
+// 想改已完成房間的家具，從結果頁用步驟列回到「繪製平面圖」。
+// 正在渲染的房間也進結果頁（那裡會顯示「生成中」）。
+const stepForRoom = (id) => ((cadRoomStatus.value[id] === 'done' && result.value) || cadRendering.value[id] ? 'result' : 'plan')
+
 export async function handleCadRoomSelected(room, requestId = ++requestState.current) {
+  cadOverview.value = false   // 選了任何一間房就離開整層總覽
   const activeId = cadActiveRoomId.value
   if (activeId === room.id) {
     // 選的就是正在做的那間：直接回去繼續，不能重新載入（會把還沒渲染的編輯蓋掉）
-    goToStepKey('plan')
+    goToStepKey(stepForRoom(room.id))
     return
   }
-  if (cadBatch.value[room.id]) {
-    // 批次還在生成這間：現在進去編輯，完成時會把使用者的編輯蓋掉
+  if (['queued', 'running'].includes(cadBatch.value[room.id]?.status)) {
+    // 批次還在生成這間：現在進去編輯，完成時會把使用者的編輯蓋掉（失敗的不擋，可以進去改）
     error.value = `「${cadRoomLabel(room.id)}」正在批次生成中，完成後再進入編輯`
     return
   }
-  if (activeId) {
-    // 不管從縮圖還是「選擇房間」步驟進來，都套同一條規則：目前這間渲染完才能換
-    if (cadRoomStatus.value[activeId] !== 'done') {
-      error.value = `請先完成「${cadRoomLabel(activeId)}」的渲染，或選擇放棄這間房`
-      return
-    }
-    snapshotCurrentCadRoom()
-  }
+  // 隨時都可以切去別間：目前這間的編輯先存進它自己的快照（回來時還原）；如果它正在渲染，
+  // 結果會在背景寫進同一份快照（見 render.js 的 submit3D）。
+  if (activeId) snapshotCurrentCadRoom()
   cadActiveRoomId.value = room.id
   if (!cadRoomStatus.value[room.id]) {
     cadRoomStatus.value = { ...cadRoomStatus.value, [room.id]: 'active' }
@@ -116,7 +134,14 @@ export async function handleCadRoomSelected(room, requestId = ++requestState.cur
   uploadedPlanUrl.value = cadPlanResult.value?.svg_url || ''
 
   if (restoreCadRoomSnapshot(room.id)) {
-    goToStepKey('plan')
+    goToStepKey(stepForRoom(room.id))   // 換步驟會順手清掉 error，所以顯示錯誤要放在它後面
+    // 離開期間渲染失敗了：回來時才告訴使用者
+    const failed = cadRenderError.value[room.id]
+    if (failed) {
+      error.value = failed
+      const { [room.id]: _f, ...rest } = cadRenderError.value
+      cadRenderError.value = rest
+    }
     return
   }
 

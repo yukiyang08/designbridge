@@ -95,32 +95,32 @@ const overlap = (a, b) => a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h 
 const clamp01 = (v, lo, hi) => Math.max(lo, Math.min(hi, v))
 
 /**
- * 把壓在門範圍裡的家具推到最近的空位（優先不跟別的家具重疊）。沒有可行的位置就維持原樣。
+ * 把壓到門範圍或其他家具的家具推到最近的空位。沒有可行的位置就維持原樣。
  * 沒有任何改動時回傳同一個陣列（呼叫端可以用 === 判斷要不要更新）。
- * 預設擺法、門被拖動、房間改尺寸、旋轉之後都靠它收斂。
+ * 預設擺法、門被拖動、房間改尺寸、家具變更之後都靠它收斂。
  */
-export function settlePlacements(items, keepouts, isFloor) {
-  if (!keepouts.length) return items
+export function settlePlacements(items, keepouts, bounds = { x0: 0, x1: 1, y0: 0, y1: 1 }) {
   const out = items.map(it => ({ ...it }))
   const hitsKeep = (r) => keepouts.some(k => overlap(r, k))
-  const hitsItem = (r, id) => out.some(o => o.id !== id && !isFloor(o.type) && overlap(r, o))
   let changed = false
-  for (const it of out) {
-    if (isFloor(it.type) || !hitsKeep(it)) continue
-    // 逐格找離原位最近、不碰任何門範圍的位置（優先也不跟別的家具重疊）
+  for (let index = 0; index < out.length; index++) {
+    const it = out[index]
+    const others = out.slice(0, index)
+    const hitsItem = (r) => others.some(o => overlap(r, o))
+    if (!hitsKeep(it) && !hitsItem(it)) continue
+    // 逐格找離原位最近、不碰門範圍或已安置家具的位置
     const STEP = 0.02
-    let free = null, clear = null, fd = Infinity, cd = Infinity
-    for (let x = 0; x <= 1 - it.w + 1e-9; x += STEP) {
-      for (let y = 0; y <= 1 - it.h + 1e-9; y += STEP) {
-        const c = { x: Math.min(x, 1 - it.w), y: Math.min(y, 1 - it.h) }
+    let best = null, bestDistance = Infinity
+    const maxX = bounds.x1 - it.w, maxY = bounds.y1 - it.h
+    for (let x = bounds.x0; x <= maxX + 1e-9; x += STEP) {
+      for (let y = bounds.y0; y <= maxY + 1e-9; y += STEP) {
+        const c = { x: Math.min(x, maxX), y: Math.min(y, maxY) }
         const r = { ...it, ...c }
-        if (hitsKeep(r)) continue
+        if (hitsKeep(r) || hitsItem(r)) continue
         const d = Math.hypot(c.x - it.x, c.y - it.y)
-        if (d < fd) { fd = d; free = c }
-        if (d < cd && !hitsItem(r, it.id)) { cd = d; clear = c }
+        if (d < bestDistance) { bestDistance = d; best = c }
       }
     }
-    const best = clear || free
     if (best) { it.x = best.x; it.y = best.y; changed = true }
   }
   return changed ? out : items

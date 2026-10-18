@@ -19,6 +19,8 @@ import { FENGSHUI_DIAGRAMS } from './fengshuiDiagrams'
 const props = defineProps({
   /** 目前的房型，用來決定哪些規則排在前面（可不給，不給就全部視為相關）。 */
   roomType: { type: String, default: '' },
+  /** 多房間批次時，只把適用於其中任一房型的規則排在前面。 */
+  roomTypes: { type: Array, default: () => [] },
   /** 標題下方那句話；不同入口（排家具／上傳照片）可以換句話講。 */
   hint: {
     type: String,
@@ -29,7 +31,11 @@ const props = defineProps({
 const rules = defineModel({ type: Array, default: () => [] })
 
 const relevant = computed(() => {
-  const hit = FENGSHUI_OPTIONS.filter(o => o.rooms.includes(props.roomType))
+  const hit = FENGSHUI_OPTIONS.filter(o =>
+    props.roomTypes.length
+      ? props.roomTypes.some(type => o.rooms.includes(type))
+      : o.rooms.includes(props.roomType),
+  )
   // 自訂房型（「和室」「更衣室」）對不上任何清單。此時全部當成相關，
   // 否則主格子會是空的、所有選項都躲在收合區裡，等於整個區塊消失。
   return hit.length ? hit : FENGSHUI_OPTIONS
