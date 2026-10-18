@@ -1,0 +1,401 @@
+{
+ "started": "2026-10-11 14:34:13",
+ "runs": 5,
+ "scenarios": {
+  "S1": {
+   "desc": "文字＋家具位置 首次生成（完整流程：需求分析、版面、風格搜尋、composer、渲染、CLIP）",
+   "runs": [
+    {
+     "elapsed": 130.19,
+     "wall": 130.18788270000368,
+     "backend": "flux_controlnet_depth_fal",
+     "timings": {
+      "requirement_analyzer": 8.34,
+      "visual_preprocessing": 0.0,
+      "layout_and_style.style_search": 7.38,
+      "layout_agent.llm_layout": 2.58,
+      "layout_agent.optimize_positions": 0.13,
+      "layout_and_style.layout_agent": 3.27,
+      "layout_and_style_agent": 10.67,
+      "composer": 1.78,
+      "renderer.flux_controlnet_depth_fal": 108.15,
+      "renderer": 108.62,
+      "clip_evaluator.evaluate": 0.75,
+      "clip_evaluator": 0.75
+     },
+     "path": "artifacts\\render\\61888843-e093-403d-8bcb-2ed39c629077_46137dab.png",
+     "note": "seed 100"
+    },
+    {
+     "elapsed": 55.09,
+     "wall": 55.091472600004636,
+     "backend": "flux_controlnet_depth_fal",
+     "timings": {
+      "requirement_analyzer": 18.25,
+      "visual_preprocessing": 0.0,
+      "layout_and_style.style_search": 2.45,
+      "layout_agent.llm_layout": 16.08,
+      "layout_agent.optimize_positions": 0.21,
+      "layout_and_style.layout_agent": 16.82,
+      "layout_and_style_agent": 19.27,
+      "composer": 2.34,
+      "renderer.flux_controlnet_depth_fal": 14.39,
+      "renderer": 14.73,
+      "clip_evaluator.evaluate": 0.49,
+      "clip_evaluator": 0.49
+     },
+     "path": "artifacts\\render\\6d1677d9-fa10-4d75-9796-cc99329b24ff_ea0844db.png",
+     "note": "seed 101"
+    },
+    {
+     "elapsed": 28.3,
+     "wall": 28.297319599980256,
+     "backend": "flux_controlnet_depth_fal",
+     "timings": {
+      "requirement_analyzer": 5.95,
+      "visual_preprocessing": 0.0,
+      "layout_and_style.style_search": 1.96,
+      "layout_agent.llm_layout": 2.45,
+      "layout_agent.optimize_positions": 0.24,
+      "layout_and_style.layout_agent": 3.27,
+      "layout_and_style_agent": 5.23,
+      "composer": 1.72,
+      "renderer.flux_controlnet_depth_fal": 14.39,
+      "renderer": 14.65,
+      "clip_evaluator.evaluate": 0.74,
+      "clip_evaluator": 0.74
+     },
+     "path": "artifacts\\render\\afc7b9a7-cfbc-4eb6-ae06-daf136ef707b_402bb71d.png",
+     "note": "seed 102"
+    },
+    {
+     "elapsed": 29.5,
+     "wall": 29.49699079999118,
+     "backend": "flux_controlnet_depth_fal",
+     "timings": {
+      "requirement_analyzer": 3.94,
+      "visual_preprocessing": 0.0,
+      "layout_and_style.style_search": 2.77,
+      "layout_agent.llm_layout": 2.97,
+      "layout_agent.optimize_positions": 0.18,
+      "layout_and_style.layout_agent": 3.81,
+      "layout_and_style_agent": 6.58,
+      "composer": 1.75,
+      "renderer.flux_controlnet_depth_fal": 15.75,
+      "renderer": 16.4,
+      "clip_evaluator.evaluate": 0.8,
+      "clip_evaluator": 0.8
+     },
+     "path": "artifacts\\render\\2f44bf12-f375-4a86-80d2-e9b4a5c1f5b8_628b2259.png",
+     "note": "seed 103"
+    },
+    {
+     "elapsed": 27.74,
+     "wall": 27.741196799994214,
+     "backend": "flux_controlnet_depth_fal",
+     "timings": {
+      "requirement_analyzer": 3.46,
+      "visual_preprocessing": 0.0,
+      "layout_and_style.style_search": 2.07,
+      "layout_agent.llm_layout": 2.69,
+      "layout_agent.optimize_positions": 0.16,
+      "layout_and_style.layout_agent": 3.39,
+      "layout_and_style_agent": 5.46,
+      "composer": 1.92,
+      "renderer.flux_controlnet_depth_fal": 15.71,
+      "renderer": 16.01,
+      "clip_evaluator.evaluate": 0.88,
+      "clip_evaluator": 0.88
+     },
+     "path": "artifacts\\render\\ed51f49c-a288-480d-8722-94bc249aa903_44279acd.png",
+     "note": "seed 104"
+    }
+   ]
+  },
+  "S2": {
+   "desc": "真實照片 首次生成（含深度估計與分割）",
+   "runs": [
+    {
+     "elapsed": 28.53,
+     "wall": 28.530295999982627,
+     "backend": "flux_controlnet_depth_fal",
+     "timings": {
+      "requirement_analyzer": 4.74,
+      "visual_preprocessing": 0.09,
+      "layout_and_style.style_search": 1.54,
+      "layout_and_style_agent": 1.54,
+      "composer": 1.27,
+      "renderer.flux_controlnet_depth_fal": 17.2,
+      "renderer": 18.78,
+      "clip_evaluator.evaluate": 2.09,
+      "clip_evaluator": 2.09
+     },
+     "path": "artifacts\\render\\52963bd2-057a-497d-b11e-dc8bec1576e7_e13e986a.png",
+     "note": "seed 100"
+    },
+    {
+     "elapsed": 25.99,
+     "wall": 25.985856400016928,
+     "backend": "flux_controlnet_depth_fal",
+     "timings": {
+      "requirement_analyzer": 5.01,
+      "visual_preprocessing": 0.01,
+      "layout_and_style.style_search": 1.5,
+      "layout_and_style_agent": 1.5,
+      "composer": 1.58,
+      "renderer.flux_controlnet_depth_fal": 16.13,
+      "renderer": 17.11,
+      "clip_evaluator.evaluate": 0.76,
+      "clip_evaluator": 0.76
+     },
+     "path": "artifacts\\render\\b7f4985f-a8f2-48a1-b6fa-9318fd03a06b_58da2af2.png",
+     "note": "seed 101"
+    },
+    {
+     "elapsed": 24.08,
+     "wall": 24.08135900000343,
+     "backend": "flux_controlnet_depth_fal",
+     "timings": {
+      "requirement_analyzer": 5.19,
+      "visual_preprocessing": 0.0,
+      "layout_and_style.style_search": 0.67,
+      "layout_and_style_agent": 0.67,
+      "composer": 1.64,
+      "renderer.flux_controlnet_depth_fal": 15.34,
+      "renderer": 16.0,
+      "clip_evaluator.evaluate": 0.56,
+      "clip_evaluator": 0.56
+     },
+     "path": "artifacts\\render\\3d9ab4b2-9be7-4a5a-9f48-7edb0233bdd7_fbe71c3c.png",
+     "note": "seed 102"
+    },
+    {
+     "elapsed": 23.12,
+     "wall": 23.11903259999235,
+     "backend": "flux_controlnet_depth_fal",
+     "timings": {
+      "requirement_analyzer": 5.25,
+      "visual_preprocessing": 0.0,
+      "layout_and_style.style_search": 0.6,
+      "layout_and_style_agent": 0.6,
+      "composer": 1.68,
+      "renderer.flux_controlnet_depth_fal": 14.53,
+      "renderer": 15.19,
+      "clip_evaluator.evaluate": 0.39,
+      "clip_evaluator": 0.39
+     },
+     "path": "artifacts\\render\\68ef0c12-3cac-4056-8ef3-8d708c5020bc_5e4ae3f4.png",
+     "note": "seed 103"
+    },
+    {
+     "elapsed": 24.27,
+     "wall": 24.268871100008255,
+     "backend": "flux_controlnet_depth_fal",
+     "timings": {
+      "requirement_analyzer": 5.05,
+      "visual_preprocessing": 0.0,
+      "layout_and_style.style_search": 0.66,
+      "layout_and_style_agent": 0.66,
+      "composer": 1.67,
+      "renderer.flux_controlnet_depth_fal": 15.74,
+      "renderer": 16.51,
+      "clip_evaluator.evaluate": 0.36,
+      "clip_evaluator": 0.36
+     },
+     "path": "artifacts\\render\\0515b85b-de5f-46be-ba71-89becd24ed84_1afc794b.png",
+     "note": "seed 104"
+    }
+   ]
+  },
+  "S3": {
+   "desc": "一鍵換風格（版面基準，ControlNet 正式做法）",
+   "runs": [
+    {
+     "elapsed": 19.84,
+     "wall": 19.840916600020137,
+     "backend": "flux_controlnet_depth_fal",
+     "timings": {
+      "requirement_analyzer": 0.0,
+      "visual_preprocessing": 0.0,
+      "layout_and_style.style_search": 2.0,
+      "layout_and_style_agent": 2.37,
+      "composer": 1.58,
+      "renderer.flux_controlnet_depth_fal": 15.09,
+      "renderer": 15.39,
+      "clip_evaluator.evaluate": 0.49,
+      "clip_evaluator": 0.49
+     },
+     "path": "artifacts\\render\\61888843-e093-403d-8bcb-2ed39c629077_c9d6fa8f.png",
+     "note": "industrial"
+    },
+    {
+     "elapsed": 19.1,
+     "wall": 19.099946200003615,
+     "backend": "flux_controlnet_depth_fal",
+     "timings": {
+      "requirement_analyzer": 0.0,
+      "visual_preprocessing": 0.0,
+      "layout_and_style.style_search": 0.58,
+      "layout_and_style_agent": 0.95,
+      "composer": 1.66,
+      "renderer.flux_controlnet_depth_fal": 15.56,
+      "renderer": 15.92,
+      "clip_evaluator.evaluate": 0.56,
+      "clip_evaluator": 0.56
+     },
+     "path": "artifacts\\render\\61888843-e093-403d-8bcb-2ed39c629077_56715e19.png",
+     "note": "luxury"
+    },
+    {
+     "elapsed": 21.3,
+     "wall": 21.29613450000761,
+     "backend": "flux_controlnet_depth_fal",
+     "timings": {
+      "requirement_analyzer": 0.0,
+      "visual_preprocessing": 0.0,
+      "layout_and_style.style_search": 0.82,
+      "layout_and_style_agent": 1.53,
+      "composer": 1.57,
+      "renderer.flux_controlnet_depth_fal": 17.12,
+      "renderer": 17.57,
+      "clip_evaluator.evaluate": 0.62,
+      "clip_evaluator": 0.62
+     },
+     "path": "artifacts\\render\\61888843-e093-403d-8bcb-2ed39c629077_2c859238.png",
+     "note": "country"
+    },
+    {
+     "elapsed": 22.99,
+     "wall": 22.98840889998246,
+     "backend": "flux_controlnet_depth_fal",
+     "timings": {
+      "requirement_analyzer": 0.0,
+      "visual_preprocessing": 0.0,
+      "layout_and_style.style_search": 1.95,
+      "layout_and_style_agent": 3.04,
+      "composer": 1.64,
+      "renderer.flux_controlnet_depth_fal": 16.49,
+      "renderer": 17.2,
+      "clip_evaluator.evaluate": 1.09,
+      "clip_evaluator": 1.09
+     },
+     "path": "artifacts\\render\\61888843-e093-403d-8bcb-2ed39c629077_b1fd08ac.png",
+     "note": "nordic"
+    },
+    {
+     "elapsed": 19.39,
+     "wall": 19.387057299987646,
+     "backend": "flux_controlnet_depth_fal",
+     "timings": {
+      "requirement_analyzer": 0.0,
+      "visual_preprocessing": 0.0,
+      "layout_and_style.style_search": 0.66,
+      "layout_and_style_agent": 1.08,
+      "composer": 1.49,
+      "renderer.flux_controlnet_depth_fal": 16.09,
+      "renderer": 16.47,
+      "clip_evaluator.evaluate": 0.33,
+      "clip_evaluator": 0.33
+     },
+     "path": "artifacts\\render\\61888843-e093-403d-8bcb-2ed39c629077_c7820755.png",
+     "note": "japanese"
+    }
+   ]
+  },
+  "S4": {
+   "desc": "一鍵換風格（照片基準，ControlNet 正式做法）",
+   "runs": [
+    {
+     "elapsed": 15.58,
+     "wall": 15.582425100001274,
+     "backend": "flux_controlnet_depth_fal",
+     "timings": {
+      "requirement_analyzer": 0.0,
+      "visual_preprocessing": 0.0,
+      "layout_and_style.style_search": 0.89,
+      "layout_and_style_agent": 0.89,
+      "composer": 0.0,
+      "renderer.flux_controlnet_depth_fal": 13.73,
+      "renderer": 14.34,
+      "clip_evaluator.evaluate": 0.34,
+      "clip_evaluator": 0.35
+     },
+     "path": "artifacts\\render\\52963bd2-057a-497d-b11e-dc8bec1576e7_1f202a33.png",
+     "note": "industrial"
+    },
+    {
+     "elapsed": 16.16,
+     "wall": 16.161668999993708,
+     "backend": "flux_controlnet_depth_fal",
+     "timings": {
+      "requirement_analyzer": 0.0,
+      "visual_preprocessing": 0.0,
+      "layout_and_style.style_search": 0.7,
+      "layout_and_style_agent": 0.7,
+      "composer": 0.0,
+      "renderer.flux_controlnet_depth_fal": 14.36,
+      "renderer": 15.12,
+      "clip_evaluator.evaluate": 0.34,
+      "clip_evaluator": 0.34
+     },
+     "path": "artifacts\\render\\52963bd2-057a-497d-b11e-dc8bec1576e7_643bca76.png",
+     "note": "luxury"
+    },
+    {
+     "elapsed": 15.22,
+     "wall": 15.21830539999064,
+     "backend": "flux_controlnet_depth_fal",
+     "timings": {
+      "requirement_analyzer": 0.0,
+      "visual_preprocessing": 0.0,
+      "layout_and_style.style_search": 0.5,
+      "layout_and_style_agent": 0.5,
+      "composer": 0.0,
+      "renderer.flux_controlnet_depth_fal": 13.72,
+      "renderer": 14.37,
+      "clip_evaluator.evaluate": 0.34,
+      "clip_evaluator": 0.34
+     },
+     "path": "artifacts\\render\\52963bd2-057a-497d-b11e-dc8bec1576e7_082c3a3f.png",
+     "note": "country"
+    },
+    {
+     "elapsed": 14.88,
+     "wall": 14.880231699993601,
+     "backend": "flux_controlnet_depth_fal",
+     "timings": {
+      "requirement_analyzer": 0.0,
+      "visual_preprocessing": 0.0,
+      "layout_and_style.style_search": 0.53,
+      "layout_and_style_agent": 0.53,
+      "composer": 0.0,
+      "renderer.flux_controlnet_depth_fal": 13.05,
+      "renderer": 13.96,
+      "clip_evaluator.evaluate": 0.38,
+      "clip_evaluator": 0.38
+     },
+     "path": "artifacts\\render\\52963bd2-057a-497d-b11e-dc8bec1576e7_0d586926.png",
+     "note": "nordic"
+    },
+    {
+     "elapsed": 15.38,
+     "wall": 15.38211959999171,
+     "backend": "flux_controlnet_depth_fal",
+     "timings": {
+      "requirement_analyzer": 0.0,
+      "visual_preprocessing": 0.0,
+      "layout_and_style.style_search": 0.55,
+      "layout_and_style_agent": 0.55,
+      "composer": 0.0,
+      "renderer.flux_controlnet_depth_fal": 13.79,
+      "renderer": 14.48,
+      "clip_evaluator.evaluate": 0.35,
+      "clip_evaluator": 0.35
+     },
+     "path": "artifacts\\render\\52963bd2-057a-497d-b11e-dc8bec1576e7_5ce8d4c6.png",
+     "note": "japanese"
+    }
+   ]
+  }
+ }
+}

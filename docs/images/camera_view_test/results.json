@@ -1,0 +1,275 @@
+{
+ "started": "2026-10-18 14:05:06",
+ "size": [
+  1024,
+  576
+ ],
+ "cameras": {
+  "bedroom_old": {
+   "camera": {
+    "eye_height": 1.6,
+    "setback": 1.6,
+    "target_h": 0.9,
+    "target_depth_frac": 0.7,
+    "fov_v_deg": 65.0,
+    "eye_xz": null,
+    "target_xz": null
+   },
+   "score": 0.9297682709447415
+  },
+  "bedroom_new": {
+   "camera": {
+    "eye_height": 1.35,
+    "setback": 1.6,
+    "target_h": 1.0,
+    "target_depth_frac": 0.6,
+    "fov_v_deg": 62.0,
+    "eye_xz": [
+     0.4,
+     0.4
+    ],
+    "target_xz": [
+     3.175,
+     3.3000000000000003
+    ]
+   },
+   "score": 1.2448034316205487
+  },
+  "living_old": {
+   "camera": {
+    "eye_height": 1.6,
+    "setback": 1.6,
+    "target_h": 0.9,
+    "target_depth_frac": 0.5,
+    "fov_v_deg": 65.0,
+    "eye_xz": null,
+    "target_xz": null
+   },
+   "score": 0.9593781855249746
+  },
+  "living_new": {
+   "camera": {
+    "eye_height": 1.35,
+    "setback": 1.6,
+    "target_h": 1.0,
+    "target_depth_frac": 0.6,
+    "fov_v_deg": 62.0,
+    "eye_xz": [
+     5.1,
+     0.4
+    ],
+    "target_xz": [
+     1.4431167108753313,
+     3.8783488063660476
+    ]
+   },
+   "score": 1.2240680503946657
+  },
+  "small_bedroom_old": {
+   "camera": {
+    "eye_height": 1.6,
+    "setback": 1.6,
+    "target_h": 0.9,
+    "target_depth_frac": 0.5,
+    "fov_v_deg": 65.0,
+    "eye_xz": null,
+    "target_xz": null
+   },
+   "score": 0.94886647219717
+  },
+  "small_bedroom_new": {
+   "camera": {
+    "eye_height": 1.35,
+    "setback": 1.6,
+    "target_h": 1.0,
+    "target_depth_frac": 0.6,
+    "fov_v_deg": 62.0,
+    "eye_xz": [
+     2.64,
+     0.36
+    ],
+    "target_xz": [
+     0.8174999999999999,
+     2.5
+    ]
+   },
+   "score": 1.336244638560519
+  },
+  "dining_old": {
+   "camera": {
+    "eye_height": 1.75,
+    "setback": 1.7920000000000003,
+    "target_h": 0.9,
+    "target_depth_frac": 0.6,
+    "fov_v_deg": 65.0,
+    "eye_xz": null,
+    "target_xz": null
+   },
+   "score": 0.5769760375832537
+  },
+  "dining_new": {
+   "camera": {
+    "eye_height": 1.35,
+    "setback": 1.6,
+    "target_h": 1.0,
+    "target_depth_frac": 0.6,
+    "fov_v_deg": 62.0,
+    "eye_xz": [
+     0.4,
+     0.4
+    ],
+    "target_xz": [
+     2.8,
+     3.23125
+    ]
+   },
+   "score": 0.9298549141481058
+  }
+ },
+ "results": [
+  {
+   "scene": "bedroom",
+   "view": "old",
+   "seed": 101,
+   "ok": true,
+   "sec": 145.4,
+   "prompt": "Strictly follow this furniture arrangement: a dresser on the right of the frame, in the mid-ground; a bed with headboard in the center of the frame, in the mid-ground; a nightstand in the center of the frame, in the mid-ground; a nightstand in the center of the frame, in the mid-ground; a tall wardrobe on the left of the frame, in the mid-ground. Exact positions must match the floor plan layout. a modern warm minimalist bedroom, soft natural light from a window, light oak wood floor, neutral linen bedding, photorealistic interior photography",
+   "image": "bedroom_old_s101.png"
+  },
+  {
+   "scene": "bedroom",
+   "view": "old",
+   "seed": 202,
+   "ok": true,
+   "sec": 133.2,
+   "prompt": "Strictly follow this furniture arrangement: a dresser on the right of the frame, in the mid-ground; a bed with headboard in the center of the frame, in the mid-ground; a nightstand in the center of the frame, in the mid-ground; a nightstand in the center of the frame, in the mid-ground; a tall wardrobe on the left of the frame, in the mid-ground. Exact positions must match the floor plan layout. a modern warm minimalist bedroom, soft natural light from a window, light oak wood floor, neutral linen bedding, photorealistic interior photography",
+   "image": "bedroom_old_s202.png"
+  },
+  {
+   "scene": "bedroom",
+   "view": "new",
+   "seed": 101,
+   "ok": true,
+   "sec": 167.3,
+   "prompt": "Strictly follow this furniture arrangement: a bed with headboard in the center of the frame, in the foreground; a nightstand on the left of the frame, in the foreground; a dresser on the right of the frame, in the mid-ground; a nightstand in the center of the frame, in the mid-ground; a tall wardrobe on the left of the frame, in the mid-ground. Exact positions must match the floor plan layout. a modern warm minimalist bedroom, soft natural light from a window, light oak wood floor, neutral linen bedding, photorealistic interior photography",
+   "image": "bedroom_new_s101.png"
+  },
+  {
+   "scene": "bedroom",
+   "view": "new",
+   "seed": 202,
+   "ok": true,
+   "sec": 273.1,
+   "prompt": "Strictly follow this furniture arrangement: a bed with headboard in the center of the frame, in the foreground; a nightstand on the left of the frame, in the foreground; a dresser on the right of the frame, in the mid-ground; a nightstand in the center of the frame, in the mid-ground; a tall wardrobe on the left of the frame, in the mid-ground. Exact positions must match the floor plan layout. a modern warm minimalist bedroom, soft natural light from a window, light oak wood floor, neutral linen bedding, photorealistic interior photography",
+   "image": "bedroom_new_s202.png"
+  },
+  {
+   "scene": "living",
+   "view": "old",
+   "seed": 101,
+   "ok": true,
+   "sec": 11.2,
+   "prompt": "Strictly follow this furniture arrangement: a tv stand on the left of the frame, in the mid-ground; a low coffee table in the center of the frame, in the mid-ground; a single upholstered accent armchair with armrests on the right of the frame, in the mid-ground; a fabric upholstered sofa in the center of the frame, in the mid-ground. Exact positions must match the floor plan layout. a modern scandinavian living room, large window with soft daylight, light wood floor, gray fabric sofa, photorealistic interior photography",
+   "image": "living_old_s101.png"
+  },
+  {
+   "scene": "living",
+   "view": "old",
+   "seed": 202,
+   "ok": true,
+   "sec": 11.3,
+   "prompt": "Strictly follow this furniture arrangement: a tv stand on the left of the frame, in the mid-ground; a low coffee table in the center of the frame, in the mid-ground; a single upholstered accent armchair with armrests on the right of the frame, in the mid-ground; a fabric upholstered sofa in the center of the frame, in the mid-ground. Exact positions must match the floor plan layout. a modern scandinavian living room, large window with soft daylight, light wood floor, gray fabric sofa, photorealistic interior photography",
+   "image": "living_old_s202.png"
+  },
+  {
+   "scene": "living",
+   "view": "new",
+   "seed": 101,
+   "ok": true,
+   "sec": 10.9,
+   "prompt": "Strictly follow this furniture arrangement: a single upholstered accent armchair with armrests on the right of the frame, in the foreground; a low coffee table in the center of the frame, in the foreground; a fabric upholstered sofa on the right of the frame, in the mid-ground; a tv stand on the left of the frame, in the mid-ground. Exact positions must match the floor plan layout. a modern scandinavian living room, large window with soft daylight, light wood floor, gray fabric sofa, photorealistic interior photography",
+   "image": "living_new_s101.png"
+  },
+  {
+   "scene": "living",
+   "view": "new",
+   "seed": 202,
+   "ok": true,
+   "sec": 12.6,
+   "prompt": "Strictly follow this furniture arrangement: a single upholstered accent armchair with armrests on the right of the frame, in the foreground; a low coffee table in the center of the frame, in the foreground; a fabric upholstered sofa on the right of the frame, in the mid-ground; a tv stand on the left of the frame, in the mid-ground. Exact positions must match the floor plan layout. a modern scandinavian living room, large window with soft daylight, light wood floor, gray fabric sofa, photorealistic interior photography",
+   "image": "living_new_s202.png"
+  },
+  {
+   "scene": "small_bedroom",
+   "view": "old",
+   "seed": 101,
+   "ok": true,
+   "sec": 11.6,
+   "prompt": "Strictly follow this furniture arrangement: a bed with headboard in the center of the frame, in the mid-ground; a nightstand in the center of the frame, in the mid-ground; a tall wardrobe on the left of the frame, in the mid-ground. Exact positions must match the floor plan layout. a cozy small bedroom, warm wood tones, soft daylight, photorealistic interior photography",
+   "image": "small_bedroom_old_s101.png"
+  },
+  {
+   "scene": "small_bedroom",
+   "view": "old",
+   "seed": 202,
+   "ok": true,
+   "sec": 13.9,
+   "prompt": "Strictly follow this furniture arrangement: a bed with headboard in the center of the frame, in the mid-ground; a nightstand in the center of the frame, in the mid-ground; a tall wardrobe on the left of the frame, in the mid-ground. Exact positions must match the floor plan layout. a cozy small bedroom, warm wood tones, soft daylight, photorealistic interior photography",
+   "image": "small_bedroom_old_s202.png"
+  },
+  {
+   "scene": "small_bedroom",
+   "view": "new",
+   "seed": 101,
+   "ok": true,
+   "sec": 13.9,
+   "prompt": "Strictly follow this furniture arrangement: a bed with headboard in the center of the frame, in the foreground; a nightstand on the right of the frame, in the foreground; a tall wardrobe on the left of the frame, in the mid-ground. Exact positions must match the floor plan layout. a cozy small bedroom, warm wood tones, soft daylight, photorealistic interior photography",
+   "image": "small_bedroom_new_s101.png"
+  },
+  {
+   "scene": "small_bedroom",
+   "view": "new",
+   "seed": 202,
+   "ok": true,
+   "sec": 13.2,
+   "prompt": "Strictly follow this furniture arrangement: a bed with headboard in the center of the frame, in the foreground; a nightstand on the right of the frame, in the foreground; a tall wardrobe on the left of the frame, in the mid-ground. Exact positions must match the floor plan layout. a cozy small bedroom, warm wood tones, soft daylight, photorealistic interior photography",
+   "image": "small_bedroom_new_s202.png"
+  },
+  {
+   "scene": "dining",
+   "view": "old",
+   "seed": 101,
+   "ok": true,
+   "sec": 12.8,
+   "prompt": "Strictly follow this furniture arrangement: a dining table in the center of the frame, in the mid-ground; a dining chair in the center of the frame, in the mid-ground; a dining chair in the center of the frame, in the mid-ground; a storage cabinet in the center of the frame, in the mid-ground. Exact positions must match the floor plan layout. a bright modern dining room, wooden dining table, soft daylight, photorealistic interior photography",
+   "image": "dining_old_s101.png"
+  },
+  {
+   "scene": "dining",
+   "view": "old",
+   "seed": 202,
+   "ok": true,
+   "sec": 13.2,
+   "prompt": "Strictly follow this furniture arrangement: a dining table in the center of the frame, in the mid-ground; a dining chair in the center of the frame, in the mid-ground; a dining chair in the center of the frame, in the mid-ground; a storage cabinet in the center of the frame, in the mid-ground. Exact positions must match the floor plan layout. a bright modern dining room, wooden dining table, soft daylight, photorealistic interior photography",
+   "image": "dining_old_s202.png"
+  },
+  {
+   "scene": "dining",
+   "view": "new",
+   "seed": 101,
+   "ok": true,
+   "sec": 13.2,
+   "prompt": "Strictly follow this furniture arrangement: a dining chair on the left of the frame, in the foreground; a dining table in the center of the frame, in the foreground; a dining chair in the center of the frame, in the mid-ground; a storage cabinet on the left of the frame, in the mid-ground. Exact positions must match the floor plan layout. a bright modern dining room, wooden dining table, soft daylight, photorealistic interior photography",
+   "image": "dining_new_s101.png"
+  },
+  {
+   "scene": "dining",
+   "view": "new",
+   "seed": 202,
+   "ok": true,
+   "sec": 11.9,
+   "prompt": "Strictly follow this furniture arrangement: a dining chair on the left of the frame, in the foreground; a dining table in the center of the frame, in the foreground; a dining chair in the center of the frame, in the mid-ground; a storage cabinet on the left of the frame, in the mid-ground. Exact positions must match the floor plan layout. a bright modern dining room, wooden dining table, soft daylight, photorealistic interior photography",
+   "image": "dining_new_s202.png"
+  }
+ ]
+}
