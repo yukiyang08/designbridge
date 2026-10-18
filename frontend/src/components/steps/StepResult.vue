@@ -58,6 +58,7 @@ const router = useRouter()
 const viewMode = ref('image')   // 'image' | 'pano'
 const showDetails = ref(false)
 const showRefine = ref(false)   // 微調工作區預設收起，按「開始微調」才跳出
+function openRefine() { viewMode.value = 'image'; showRefine.value = true }
 
 const imageUrl = computed(() => result.value?.generated_image_url || '')
 const isSkipPath = computed(() => planSource.value === 'skip')
@@ -282,7 +283,84 @@ function toFavoriteItem(item, c) {
           >360° 環景<span v-if="panoLoading" class="tab-note">生成中…</span></button>
         </div>
 
-        <div class="result-stage" :class="{ 'is-swapping': swappingStyle }">
+        <div class="stage-row">
+        <!-- 微調欄：放在結果圖左側，預設只有一顆按鈕，展開後右側的圖換成可塗抹的畫布 -->
+        <aside class="refine-side" :class="{ open: showRefine }">
+          <template v-if="!showRefine">
+            <h2 class="block-title">微調編輯</h2>
+            <p class="block-hint">對這張圖不滿意？用畫筆圈出想調整的範圍，AI 只重繪該區域。</p>
+            <button type="button" class="db-btn refine-cta-btn" @click="openRefine">🖌️ 開始微調</button>
+          </template>
+
+          <template v-else>
+            <div class="block-head">
+              <h2 class="block-title">微調編輯</h2>
+              <button type="button" class="collapse-link" @click="showRefine = false">收合</button>
+            </div>
+            <label class="field-label" for="refine-prompt">輸入你的微調需求</label>
+            <textarea
+              id="refine-prompt"
+              v-model="textPrompt"
+              class="db-textarea"
+              rows="4"
+              placeholder="例如：把沙發換成藍色布藝款式、窗簾改為白色薄紗"
+            />
+
+            <h3 class="tool-title">用畫筆圈選微調範圍</h3>
+
+            <div class="tool-row">
+              <button
+                type="button"
+                :class="['tool-btn', { active: drawMode === 'draw' }]"
+                @click="drawMode = 'draw'"
+              >畫筆</button>
+              <input
+                v-model.number="brushSize"
+                type="range" min="5" max="120" step="5"
+                class="slider" aria-label="筆刷大小"
+              />
+              <span class="slider-val">{{ brushSize }}px</span>
+            </div>
+
+            <div class="tool-row">
+              <button
+                type="button"
+                :class="['tool-btn', { active: drawMode === 'erase' }]"
+                @click="drawMode = 'erase'"
+              >橡皮擦</button>
+              <input
+                v-model.number="eraserSize"
+                type="range" min="5" max="120" step="5"
+                class="slider" aria-label="橡皮擦大小"
+              />
+              <span class="slider-val">{{ eraserSize }}px</span>
+            </div>
+
+            <p class="tool-hint">
+              不塗抹就整張重繪；塗抹後只重繪塗到的區域。
+            </p>
+
+            <div class="side-actions">
+              <button class="db-btn" :disabled="loading" @click="submitRefine">
+                生成新圖
+              </button>
+              <button
+                v-if="canUndoRefine" class="db-btn db-btn--ghost db-btn--sm"
+                title="回到微調前的圖片" @click="undoRefine"
+              >↶ 還原上一版</button>
+            </div>
+          </template>
+        </aside>
+
+        <div v-if="showRefine" class="canvas-wrap">
+          <RefineCanvas
+            ref="refineCanvasRef"
+            :image-url="baseImagePreview"
+            :brush-size="activeBrushSize"
+            :draw-mode="drawMode"
+          />
+        </div>
+        <div v-else class="result-stage" :class="{ 'is-swapping': swappingStyle }">
           <PanoramaViewer v-if="showingPano" :image-url="panoUrl" class="stage-pano" />
           <div v-else class="stage-img-wrap">
             <img v-if="imageUrl" :src="imageUrl" alt="生成的 3D 渲染圖" class="result-img" />
@@ -307,6 +385,7 @@ function toFavoriteItem(item, c) {
               <button type="button" class="pano-retry" @click="startPano">重試</button>
             </div>
           </div>
+        </div>
         </div>
 
         <!-- 一鍵換風格：沿用同一個房間佈局／視角，只重換風格 LoRA 重繪。 -->
@@ -365,90 +444,6 @@ function toFavoriteItem(item, c) {
         <div class="inline-actions">
           <button class="db-btn db-btn--ghost db-btn--sm" @click="regenerate">重新調整並生成</button>
         </div>
-      </section>
-
-      <!-- ── ② 微調編輯：預設收起，按按鈕才跳出畫筆工作區（canvas 跟工具很佔版面，
-           不是每張圖都需要微調，收起來讓頁面一開始不會太長）── -->
-      <section class="block block-refine">
-        <div v-if="!showRefine" class="refine-cta">
-          <div class="refine-cta-text">
-            <h2 class="block-title">微調編輯</h2>
-            <p class="block-hint">對這張圖不滿意？用畫筆圈出想調整的範圍，AI 只重繪該區域。</p>
-          </div>
-          <button type="button" class="db-btn refine-cta-btn" @click="showRefine = true">🖌️ 開始微調</button>
-        </div>
-
-        <template v-else>
-          <div class="block-head">
-            <h2 class="block-title">微調編輯</h2>
-            <button type="button" class="collapse-link" @click="showRefine = false">收合</button>
-          </div>
-          <div class="cols">
-            <div class="panel">
-              <label class="field-label" for="refine-prompt">輸入你的微調需求</label>
-              <textarea
-                id="refine-prompt"
-                v-model="textPrompt"
-                class="db-textarea"
-                rows="4"
-                placeholder="例如：把沙發換成藍色布藝款式、窗簾改為白色薄紗"
-              />
-
-              <h3 class="tool-title">用畫筆圈選微調範圍</h3>
-
-              <div class="tool-row">
-                <button
-                  type="button"
-                  :class="['tool-btn', { active: drawMode === 'draw' }]"
-                  @click="drawMode = 'draw'"
-                >畫筆</button>
-                <input
-                  v-model.number="brushSize"
-                  type="range" min="5" max="120" step="5"
-                  class="slider" aria-label="筆刷大小"
-                />
-                <span class="slider-val">{{ brushSize }}px</span>
-              </div>
-
-              <div class="tool-row">
-                <button
-                  type="button"
-                  :class="['tool-btn', { active: drawMode === 'erase' }]"
-                  @click="drawMode = 'erase'"
-                >橡皮擦</button>
-                <input
-                  v-model.number="eraserSize"
-                  type="range" min="5" max="120" step="5"
-                  class="slider" aria-label="橡皮擦大小"
-                />
-                <span class="slider-val">{{ eraserSize }}px</span>
-              </div>
-
-              <p class="tool-hint">
-                不塗抹就整張重繪；塗抹後只重繪塗到的區域。
-              </p>
-            </div>
-
-            <div class="canvas-wrap">
-              <RefineCanvas
-                ref="refineCanvasRef"
-                :image-url="baseImagePreview"
-                :brush-size="activeBrushSize"
-                :draw-mode="drawMode"
-              />
-            </div>
-          </div>
-
-          <div class="inline-actions">
-            <button
-              v-if="canUndoRefine" class="db-btn db-btn--ghost db-btn--sm"
-              title="回到微調前的圖片" @click="undoRefine"
-            >↶ 還原上一版</button>
-            <button class="db-btn" :disabled="loading" @click="submitRefine">
-              生成新圖
-            </button>
-          </div>
-        </template>
       </section>
 
       <!-- ── ③ 家具預算 ── -->
@@ -570,7 +565,7 @@ function toFavoriteItem(item, c) {
 .result-step { display: flex; flex-direction: column; }
 
 .block { display: flex; flex-direction: column; }
-.block-refine, .block-budget {
+.block-budget {
   margin-top: 2rem;
   padding-top: 1.75rem;
   border-top: 1px solid #ececec;
@@ -587,24 +582,26 @@ function toFavoriteItem(item, c) {
   color: var(--db-text);
 }
 
-/* 微調：收起時是一顆 CTA，點了才跳出整組工具 + 畫布 */
-.refine-cta {
+/* 微調欄：結果圖左側 */
+.stage-row {
+  display: grid;
+  grid-template-columns: minmax(240px, 300px) 1fr;
+  gap: clamp(1rem, 2.5vw, 2rem);
+  align-items: start;
+  padding: 0.5rem 0 1.25rem;
+}
+.stage-row > .result-stage { padding: 0; min-width: 0; }
+.refine-side {
   display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: space-between;
-  gap: 1rem;
-  padding: 1.1rem 1.5rem;
+  flex-direction: column;
+  gap: 0.75rem;
+  padding: 1.1rem 1.25rem;
   border-radius: var(--db-radius-chip);
   background: var(--db-accent-soft);
 }
-.refine-cta-text { min-width: 0; }
-.refine-cta-text .block-title { margin-bottom: 0.4rem; }
-.refine-cta-btn {
-  flex-shrink: 0;
-  padding: 0.75rem 1.8rem;
-  font-size: 1.05rem;
-}
+.refine-side.open { background: none; padding: 0; gap: 0; }
+.refine-cta-btn { align-self: flex-start; padding: 0.7rem 1.5rem; font-size: 1rem; }
+.side-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 0.75rem; margin-top: 1.25rem; }
 .block-hint { margin: 0; color: var(--db-text-soft); font-size: 0.9rem; line-height: 1.6; }
 
 .block-head {
@@ -899,14 +896,6 @@ function toFavoriteItem(item, c) {
 .details-toggle:hover { color: var(--db-text); }
 
 /* 微調 */
-.cols {
-  display: grid;
-  grid-template-columns: minmax(260px, 340px) 1fr;
-  gap: clamp(1.25rem, 3vw, 2.5rem);
-  align-items: stretch;
-}
-.panel { min-width: 0; }
-
 .tool-title {
   margin: 1.5rem 0 0.85rem;
   font-family: var(--db-font-display);
@@ -1211,7 +1200,7 @@ function toFavoriteItem(item, c) {
 }
 
 @media (max-width: 900px) {
-  .cols { grid-template-columns: 1fr; }
+  .stage-row { grid-template-columns: 1fr; }
   .head-actions { margin-left: 0; }
   .row { grid-template-columns: 1fr; }
   .actions { flex-direction: column-reverse; }
