@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
@@ -155,6 +156,25 @@ def _mask_region_png(image_path: str, mask: Any) -> bytes | None:
         return buf.getvalue()
     except Exception:
         return None
+
+
+def _expand_mask_to_box(mask: Any, img_size: tuple) -> Any:
+    """遮罩改成物件外框矩形，左右各外擴 35%、往上 20%、往下 5%。"""
+    from PIL import Image, ImageDraw
+    m = mask.convert("L")
+    bbox = m.point(lambda v: 255 if v > 128 else 0).getbbox()
+    if not bbox:
+        return mask
+    x0, y0, x1, y1 = bbox
+    w, h = x1 - x0, y1 - y0
+    W, H = m.size
+    box = (
+        max(0, x0 - max(24, int(w * 0.35))), max(0, y0 - int(h * 0.20)),
+        min(W, x1 + max(24, int(w * 0.35))), min(H, y1 + int(h * 0.05)),
+    )
+    out = Image.new("L", m.size, 0)
+    ImageDraw.Draw(out).rectangle(box, fill=255)
+    return out
 
 
 def adjuster_agent_stub(state: DesignBridgeState) -> dict[str, Any]:
@@ -357,6 +377,7 @@ def adjuster_agent_stub(state: DesignBridgeState) -> dict[str, Any]:
     fal_num_steps     = 50  if is_removal else 28
     fal_guidance      = 3.0 if is_removal else 5.0
 
+    object_changes = False   # 換成不同種類的物件（如植栽→書櫃），由 Gemini 判斷
     if user_text:
         # 若 user_text 是純動作詞，補上 segmentation 偵測到的物件名稱 + 背景填補描述
         action_en = None
@@ -390,12 +411,18 @@ def adjuster_agent_stub(state: DesignBridgeState) -> dict[str, Any]:
                     "name the object explicitly and keep its type, shape, size, position and details unless the request "
                     "changes them; only apply the requested change. Describe, do not instruct (no 'change', 'make', "
                     "'replace', 'it'). If the request removes the object, describe the empty background instead. "
-                    "Output ONLY the sentence — a single line, no markdown, no quotes, no explanation.",
+                    "Start the line with [NEW] if the edit turns the object into a different kind of object "
+                    "(e.g. a plant into a bookcase), otherwise [SAME]. "
+                    "Output ONLY the tag and the sentence — a single line, no markdown, no quotes, no explanation.",
                     images=[region_png] if region_png else None,
                     max_tokens=500,
                     temperature=0.0,
                 )
                 t = translated.strip()
+                tag = re.match(r"\[(NEW|SAME)\]\s*", t)
+                if tag:
+                    object_changes = tag.group(1) == "NEW"
+                    t = t[tag.end():].strip()
                 # 有效翻譯的判斷：
                 #  - 至少 2 個英文字，且不以虛詞結尾（避免截斷的不完整翻譯）
                 #  - 單行（多行代表可能混入推理草稿而非乾淨的翻譯）
@@ -414,7 +441,7 @@ def adjuster_agent_stub(state: DesignBridgeState) -> dict[str, Any]:
                 pass
 
         prompt = (
-            f"{en_text}. Photorealistic, high quality, seamless integration, "
+            f"{en_text.rstrip('. ')}. Photorealistic, high quality, seamless integration, "
             "lit consistently with the room's ambient lighting direction and color temperature, "
             "with edges that blend naturally into the surrounding scene. "
             "No text, no writing, no letters, no words, no typography, no signage or wall decals anywhere in the image."
@@ -463,6 +490,13 @@ def adjuster_agent_stub(state: DesignBridgeState) -> dict[str, Any]:
             mask_source = f"sam2_refined({mask_source})"
             mask_white = sum(1 for p in mask.getdata() if p > 128)
             print(f"[adjuster] SAM 2 refine: {mask_white}/{mask_total} white px ({mask_white/mask_total:.1%})" if mask_total > 0 else "[adjuster] SAM 2 refine done")
+
+    # 換成不同種類的物件時，貼著舊物件輪廓的遮罩會讓新物件被迫長成舊物件的形狀
+    # （植栽輪廓裡畫出來的書櫃還是植栽的樣子），改成外擴的矩形給新物件空間
+    if object_changes and not is_removal:
+        mask = _expand_mask_to_box(mask, img_size)
+        mask_source = f"box({mask_source})"
+        print(f"[adjuster] object type changes → mask expanded to box")
 
     # DRY_RUN 模式：只存遮罩，不呼叫任何 inpainting API（測試用）
     import os
