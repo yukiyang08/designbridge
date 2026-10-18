@@ -56,7 +56,9 @@ function buildRows(timings, total) {
   const eps = 0.05
   const isNode = t => !t.label.includes('.')
   const list = timings.filter(t => t.seconds >= 0.01 || isNode(t))
-  const contains = (p, t) => p !== t && p.seconds > t.seconds
+  // 秒數相同時看紀錄順序：後端在結束時才記錄，子步驟一定比外層先記
+  const contains = (p, t) => p !== t
+    && (p.seconds > t.seconds || (p.seconds === t.seconds && list.indexOf(p) > list.indexOf(t)))
     && p.start <= t.start + eps && p.start + p.seconds + eps >= t.start + t.seconds
   return list
     .map(t => ({ ...t, depth: isNode(t) ? 0 : Math.min(2, list.filter(p => contains(p, t)).length) }))
