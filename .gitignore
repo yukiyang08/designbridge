@@ -120,6 +120,6 @@ style_kb/raw
 model/
 dataset_export
 ablation_tests/
-docs/images/controlnet_test/
+docs/experiments/images/controlnet_test/
 
 

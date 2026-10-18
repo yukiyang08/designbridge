@@ -1,4 +1,4 @@
-"""現行系統各情境生圖耗時：每個情境跑 5 次，輸出 docs/style_swap_ab/timing_report.md。
+"""現行系統各情境生圖耗時：每個情境跑 5 次，輸出 docs/experiments/style_swap_ab/timing_report.md。
 
 會呼叫 fal（有費用）：4 情境 × 5 次 = 20 次生成。直接呼叫 generate_design（不經 HTTP），
 並先跑啟動暖機，模擬伺服器已預載模型的狀態。

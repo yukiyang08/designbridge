@@ -1,4 +1,4 @@
-"""img2img 參數掃描：負向 prompt／步數／guidance 能否把風格推上去，輸出 docs/style_swap_ab/params_report.md。
+"""img2img 參數掃描：負向 prompt／步數／guidance 能否把風格推上去，輸出 docs/experiments/style_swap_ab/params_report.md。
 
 會呼叫 fal（有費用）：1 張基準圖 + 2 風格 × 6 種條件 = 13 次生成。
 用法：PYTHONUTF8=1 python scripts/ab_img2img_params.py [--report-only]

@@ -269,7 +269,7 @@ Python 函式名）、`order`（執行順序）、`parameters`（可調參數）
 `layout_and_style_agent_stub`（`core/nodes/layout_and_style.py`）在 Step 2 會偵測
 `floor_plan_path` 已存在就**直接沿用**，不重跑規劃——否則使用者剛審核通過的佈局
 會被換成另一份不同的結果。座標如何轉成透視深度圖見
-`docs/LAYOUT_HYBRID_ARCHITECTURE.md`。
+`docs/design/LAYOUT_HYBRID_ARCHITECTURE.md`。
 
 ---
 

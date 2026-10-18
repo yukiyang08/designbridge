@@ -1,4 +1,4 @@
-"""換風格 A/B 實測：同一 plan／seed 下比較 ControlNet 與 img2img，輸出 docs/style_swap_ab/。
+"""換風格 A/B 實測：同一 plan／seed 下比較 ControlNet 與 img2img，輸出 docs/experiments/style_swap_ab/。
 
 會呼叫 fal（有費用）：2 張基準圖 + 5 組 × 3 種方法 = 17 次生成。
 用法：PYTHONUTF8=1 python scripts/ab_style_swap.py [--report-only]
@@ -18,7 +18,7 @@ sys.path.insert(0, str(ROOT))
 import numpy as np
 from PIL import Image
 
-OUT = ROOT / "docs" / "style_swap_ab"
+OUT = ROOT / "docs" / "experiments" / "style_swap_ab"
 IMG = OUT / "images"
 RAW = OUT / "results.json"
 SEED = 42

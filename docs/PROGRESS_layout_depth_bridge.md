@@ -1,7 +1,7 @@
 # 進度報告：Layout 座標 → 深度圖 → FLUX 控制
 
 > 日期：2026-07-10　範圍：Layout Agent 混合架構落地與驗證
-> 詳細架構另見 [LAYOUT_HYBRID_ARCHITECTURE.md](LAYOUT_HYBRID_ARCHITECTURE.md)
+> 詳細架構另見 [LAYOUT_HYBRID_ARCHITECTURE.md](design/LAYOUT_HYBRID_ARCHITECTURE.md)
 
 ---
 
@@ -89,7 +89,7 @@ LAYOUT_PROJECTION_SETBACK = 0.8
 ## 附錄：產出檔案位置
 
 ```
-docs/LAYOUT_HYBRID_ARCHITECTURE.md         完整架構文件
+docs/design/LAYOUT_HYBRID_ARCHITECTURE.md         完整架構文件
 docs/PROGRESS_layout_depth_bridge.md       本進度報告
 designbridge/scene_graph_to_depth.py       投影模組（新）
 scripts/calibrate_layout_depth.py          校準工具（新）
