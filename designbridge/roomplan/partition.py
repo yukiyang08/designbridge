@@ -45,7 +45,29 @@ def _expand_program(program: dict) -> list[RoomSpec]:
         name = str(name).strip()[:12]
         if name:
             specs.append(RoomSpec("custom", i, 1.0, 4.0, name, name))
+
+    bedrooms = [s for s in specs if s.room_type in {"bedroom_master", "bedroom"}]
+    bathrooms = [s for s in specs if s.room_type == "bathroom"]
+    for rooms, label_zh, label_en in (
+        (bedrooms, "臥室", "BEDROOM"),
+        (bathrooms, "衛浴", "BATHROOM"),
+    ):
+        if len(rooms) > 1:
+            for index, room in enumerate(rooms):
+                suffix = _alpha_suffix(index)
+                room.label_zh = f"{label_zh}{suffix}"
+                room.label_en = f"{label_en} {suffix}"
     return specs
+
+
+def _alpha_suffix(index: int) -> str:
+    """Return spreadsheet-style alphabetic labels: A..Z, AA.."""
+    result = ""
+    while index >= 0:
+        index, remainder = divmod(index, 26)
+        result = chr(65 + remainder) + result
+        index -= 1
+    return result
 
 
 def allocate_areas(program: dict) -> list[RoomSpec]:

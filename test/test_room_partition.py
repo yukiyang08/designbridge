@@ -87,9 +87,31 @@ def test_every_room_has_a_door_and_exactly_one_entry():
         print(f"[doors] {len(rooms)} rooms, {len(doors)} doors (1 entry), all reachable, {len(windows)} windows")
 
 
+def test_repeated_room_types_get_letter_suffixes():
+    rooms, _, _, _ = partition_rooms({
+        "bedroom_count": 3,
+        "bathroom_count": 3,
+        "total_ping": 32,
+    })
+    bedrooms = [room for room in rooms if room.room_type in {"bedroom_master", "bedroom"}]
+    bathrooms = [room for room in rooms if room.room_type == "bathroom"]
+
+    assert [room.label_zh for room in bedrooms] == ["臥室A", "臥室B", "臥室C"]
+    assert [room.label_zh for room in bathrooms] == ["衛浴A", "衛浴B", "衛浴C"]
+
+    single_rooms, _, _, _ = partition_rooms({
+        "bedroom_count": 1,
+        "bathroom_count": 1,
+        "total_ping": 12,
+    })
+    assert next(room for room in single_rooms if room.room_type == "bedroom_master").label_zh == "主臥室"
+    assert next(room for room in single_rooms if room.room_type == "bathroom").label_zh == "衛浴"
+
+
 if __name__ == "__main__":
     test_no_overlaps_and_full_tiling()
     test_min_dimension_sanity()
     test_infeasible_program_raises()
     test_every_room_has_a_door_and_exactly_one_entry()
+    test_repeated_room_types_get_letter_suffixes()
     print("\nALL ROOM-PARTITION CHECKS PASSED ✅")

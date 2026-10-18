@@ -341,12 +341,16 @@ def render_room_plan_svg(
         cx, cy = (fx1r + fx2r) / 2, (fy1r + fy2r) / 2
         halo = ' paint-order="stroke" stroke="white" stroke-width="3" stroke-linejoin="round"'
         lines.append(
-            f'<text x="{cx:.1f}" y="{cy-6:.1f}" font-size="13" font-weight="bold"{halo} '
+            f'<text class="plan-name" x="{cx:.1f}" y="{cy-6:.1f}" font-size="13" font-weight="bold"{halo} '
             f'text-anchor="middle" fill="{_TEXT_FILL}">{room.label_zh}</text>'
         )
         lines.append(
-            f'<text x="{cx:.1f}" y="{cy+11:.1f}" font-size="11"{halo} '
+            f'<text class="plan-detail" x="{cx:.1f}" y="{cy+11:.1f}" font-size="11"{halo} '
             f'text-anchor="middle" fill="{_TEXT_FILL}">{room.actual_area_m2:.1f} m²</text>'
+        )
+        lines.append(
+            f'<text class="plan-detail" x="{cx:.1f}" y="{cy+25:.1f}" font-size="10"{halo} '
+            f'text-anchor="middle" fill="{_DIM_STROKE}">{room.rect.w:.2f} × {room.rect.h:.2f} m</text>'
         )
         lines.append('</g>')
 
@@ -403,6 +407,23 @@ def render_room_plan_svg(
                 f'<line x1="{cx-wall_px/2:.1f}" y1="{cy:.1f}" x2="{cx+wall_px/2:.1f}" y2="{cy:.1f}" stroke="{_WINDOW_STROKE}" stroke-width="1.3"/>'
             )
 
+    # 門窗寬度標註（白色描邊避免壓在家具線上看不清）
+    _tag_halo = ' paint-order="stroke" stroke="white" stroke-width="3" stroke-linejoin="round"'
+    for opening, name in [(d, "門") for d in doors] + [(w, "窗") for w in windows]:
+        ox, oy = px(opening.x), py(opening.y)
+        off = pl(e) / 2 + 12
+        if opening.orientation == "horizontal":
+            lines.append(
+                f'<text class="plan-detail" x="{ox:.1f}" y="{oy+off:.1f}" font-size="9"{_tag_halo} text-anchor="middle" '
+                f'fill="{_DIM_STROKE}">{name} {opening.width_m:.2f}</text>'
+            )
+        else:
+            lines.append(
+                f'<text class="plan-detail" x="{ox+off-4:.1f}" y="{oy+3:.1f}" font-size="9"{_tag_halo} text-anchor="start" '
+                f'fill="{_DIM_STROKE}">{name} {opening.width_m:.2f}</text>'
+            )
+
+    lines.append('<g class="plan-detail">')   # 尺寸細節：前端縮小顯示時整組隱藏
     # Overall dimension lines — generalizes the single-room tick-mark convention in
     # layout_agent.py's _generate_floor_plan (there: one room; here: the whole footprint).
     dim_y = py(-e / 2) - 28
@@ -422,6 +443,34 @@ def render_room_plan_svg(
         f'transform="rotate(-90 {dim_x-8:.1f} {(y0+y1)/2:.1f})">{bounding_d:.2f} m</text>'
     )
 
+    # 分段尺寸鏈：沿房間邊界切段，每段標長度（太窄放不下字的略過）
+    def _chain(edges: list[float], horizontal: bool) -> None:
+        edges = sorted({round(v, 3) for v in edges})
+        fixed = (py(-e / 2) - 12) if horizontal else (px(-e / 2) - 12)
+        for a, b in zip(edges, edges[1:]):
+            p0, p1 = (px(a), px(b)) if horizontal else (py(a), py(b))
+            if horizontal:
+                lines.append(f'<line x1="{p0:.1f}" y1="{fixed:.1f}" x2="{p1:.1f}" y2="{fixed:.1f}" stroke="{_DIM_STROKE}" stroke-width="0.8"/>')
+                for t in (p0, p1):
+                    lines.append(f'<line x1="{t:.1f}" y1="{fixed-3:.1f}" x2="{t:.1f}" y2="{fixed+3:.1f}" stroke="{_DIM_STROKE}" stroke-width="0.8"/>')
+            else:
+                lines.append(f'<line x1="{fixed:.1f}" y1="{p0:.1f}" x2="{fixed:.1f}" y2="{p1:.1f}" stroke="{_DIM_STROKE}" stroke-width="0.8"/>')
+                for t in (p0, p1):
+                    lines.append(f'<line x1="{fixed-3:.1f}" y1="{t:.1f}" x2="{fixed+3:.1f}" y2="{t:.1f}" stroke="{_DIM_STROKE}" stroke-width="0.8"/>')
+            if abs(p1 - p0) < 26:
+                continue
+            m = (p0 + p1) / 2
+            if horizontal:
+                lines.append(f'<text x="{m:.1f}" y="{fixed-4:.1f}" font-size="9" text-anchor="middle" fill="{_DIM_STROKE}">{b - a:.2f}</text>')
+            else:
+                lines.append(
+                    f'<text x="{fixed-4:.1f}" y="{m:.1f}" font-size="9" text-anchor="middle" fill="{_DIM_STROKE}" '
+                    f'transform="rotate(-90 {fixed-4:.1f} {m:.1f})">{b - a:.2f}</text>'
+                )
+
+    _chain([v for r in rooms for v in (r.rect.x, r.rect.right)], True)
+    _chain([v for r in rooms for v in (r.rect.y, r.rect.bottom)], False)
+
     na_x, na_y = canvas_w - MARGIN_PX + 20, MARGIN_PX * 0.55
     lines.append(f'<polygon points="{na_x:.1f},{na_y-14:.1f} {na_x-8:.1f},{na_y+8:.1f} {na_x+8:.1f},{na_y+8:.1f}" fill="#333"/>')
     lines.append(f'<text x="{na_x:.1f}" y="{na_y+21:.1f}" font-size="12" text-anchor="middle" fill="#333">N</text>')
@@ -437,5 +486,6 @@ def render_room_plan_svg(
         f'fill="{_TEXT_FILL}">總面積 {total_m2:.1f} m²（約 {total_ping:.1f} 坪）</text>'
     )
 
+    lines.append('</g>')   # 結束 plan-detail 群組
     lines.append('</svg>')
     return '\n'.join(lines)
