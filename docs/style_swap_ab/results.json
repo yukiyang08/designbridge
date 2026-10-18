@@ -1,0 +1,498 @@
+{
+ "config": {
+  "seed": 42,
+  "strength": 0.85,
+  "started": "2026-10-11 11:56:37"
+ },
+ "bases": {
+  "A": {
+   "label": "文字＋家具位置（投影深度）",
+   "path": "artifacts\\render\\87e179a5-76e9-41ad-a12e-c290e9f522f5_c61e2a25.png",
+   "backend": "flux_controlnet_depth_fal",
+   "elapsed": 286.89,
+   "wall": 286.89221160000307,
+   "timings": {
+    "visual_preprocessing": 0.0,
+    "layout_and_style.style_search": 21.44,
+    "layout_agent.llm_layout": 2.44,
+    "layout_agent.optimize_positions": 0.06,
+    "layout_and_style.layout_agent": 2.75,
+    "layout_and_style_agent": 24.2,
+    "composer": 1.94,
+    "renderer.flux_controlnet_depth_fal": 250.06,
+    "renderer": 250.17,
+    "clip_evaluator.evaluate": 4.86,
+    "clip_evaluator": 4.87
+   },
+   "depth_scale": 0.3,
+   "strength": null,
+   "loras": [
+    "designbridge_v5_flux1dev_modern.safetensors"
+   ],
+   "seed": 42,
+   "prompt": "A well-lit modern living room featuring off-white, gray, and greige tones, illuminated by soft natural light from a far window. In the center foreground sits a light neutral fabric upholstered sofa, complemented by a low-profile storage cabinet on the left wall. A sleek TV media console with a wall-mounted flat TV above it is centered against the back wall, flanked by a low wood coffee table on the left. On the right, a small side table rests against the wall, with a lush potted green plant tucked into the back corner. Clean lines, subtle textured walls, and geometric forms create a bright, functional, and balanced space with clear walking paths.",
+   "img": "images/base_A.jpg"
+  },
+  "B": {
+   "label": "真實照片（照片深度）",
+   "path": "artifacts\\render\\ca5c6b0d-eae1-4678-a877-3ac881dde3d1_2b795f93.png",
+   "backend": "flux_controlnet_depth_fal",
+   "elapsed": 33.73,
+   "wall": 33.72666370001389,
+   "timings": {
+    "visual_preprocessing.depth_estimation": 2.6,
+    "visual_preprocessing.segmentation": 7.74,
+    "visual_preprocessing.parallel": 7.74,
+    "visual_preprocessing.depth_to_layout": 0.09,
+    "visual_preprocessing": 7.98,
+    "layout_and_style.style_search": 1.11,
+    "layout_and_style_agent": 1.11,
+    "composer": 1.93,
+    "renderer.flux_controlnet_depth_fal": 15.7,
+    "renderer": 16.08,
+    "clip_evaluator.evaluate": 0.19,
+    "clip_evaluator": 0.19
+   },
+   "depth_scale": 0.65,
+   "strength": null,
+   "loras": [
+    "designbridge_v5_flux1dev_modern.safetensors"
+   ],
+   "seed": 42,
+   "prompt": "A bright and airy modern living room flooded with natural light, featuring warm wood accents and subtle architectural curves. The space is anchored by a cream upholstered sofa set on a light neutral beige rug, paired with a circular wood coffee table. Clean lines, minimalist low-profile forms, and textured white wall surfaces enhance the open atmosphere. Soft indirect warm lighting glows beneath the tray ceiling, perfectly balancing the neutral color palette with subtle charcoal and soft blue accents. The overall ambiance is serene, spacious, sophisticated, and highly comfortable.",
+   "img": "images/base_B.jpg"
+  }
+ },
+ "groups": [
+  {
+   "base": "A",
+   "style": "industrial",
+   "runs": {
+    "cn_lora": {
+     "label": "ControlNet（正式，含風格 LoRA）",
+     "path": "artifacts\\render\\87e179a5-76e9-41ad-a12e-c290e9f522f5_d23ecd1e.png",
+     "backend": "flux_controlnet_depth_fal",
+     "elapsed": 19.6,
+     "wall": 19.602443799987668,
+     "timings": {
+      "requirement_analyzer": 0.0,
+      "visual_preprocessing": 0.0,
+      "layout_and_style.style_search": 0.44,
+      "layout_and_style_agent": 0.64,
+      "composer": 2.06,
+      "renderer.flux_controlnet_depth_fal": 16.6,
+      "renderer": 16.7,
+      "clip_evaluator.evaluate": 0.19,
+      "clip_evaluator": 0.19
+     },
+     "depth_scale": 0.3,
+     "strength": null,
+     "loras": [
+      "designbridge_v5_flux1dev_industrial.safetensors"
+     ],
+     "seed": 42,
+     "prompt": "A photorealistic industrial loft living room featuring exposed concrete and red brick walls, black steel frames, and polished dark wood flooring. In the front center sits a dark fabric upholstered sofa, complemented by a low reclaimed dark wood coffee table placed on the left back. Against the back center wall is a sleek media console with a wall-mounted flat TV, balanced by a potted green plant in the right back corner. A small side table rests against the right middle wall, and a dark storage cabinet sits against the front left corner. Edison bulb pendant lights, track lighting, and integrated warm LED strips cast moody, high-contrast dim illumination, accentuating gray, charcoal, and warm tan textures.",
+     "img": "images/A_industrial_cn_lora.jpg",
+     "corr": 0.8899598812588472,
+     "diff": 0.5045675395447531
+    },
+    "cn_nolora": {
+     "label": "ControlNet（無 LoRA）",
+     "path": "artifacts\\render\\87e179a5-76e9-41ad-a12e-c290e9f522f5_9d326baf.png",
+     "backend": "flux_controlnet_depth_fal",
+     "elapsed": 15.11,
+     "wall": 15.110766500001773,
+     "timings": {
+      "requirement_analyzer": 0.0,
+      "visual_preprocessing": 0.0,
+      "layout_and_style.style_search": 0.43,
+      "layout_and_style_agent": 0.71,
+      "composer": 1.83,
+      "renderer.flux_controlnet_depth_fal": 12.2,
+      "renderer": 12.34,
+      "clip_evaluator.evaluate": 0.23,
+      "clip_evaluator": 0.23
+     },
+     "depth_scale": 0.3,
+     "strength": null,
+     "loras": [],
+     "seed": 42,
+     "prompt": "Photorealistic industrial loft living room with raw exposed concrete walls, weathered red brick, polished dark wood flooring, and black steel frames. In the center front, a low-profile dark leather sofa sits opposite a wall-mounted flat TV above a dark wood media console against the back wall. To the left back, a low coffee table; to the left front, a rustic storage cabinet. A sleek side table rests against the right wall, with a vibrant potted green plant nestled in the back-right corner. High-contrast moody dim lighting with warm Edison bulb pendants, black track lights, and subtle LED strips highlights raw textures, charcoal tones, and warm tan accents in a sophisticated aesthetic.",
+     "img": "images/A_industrial_cn_nolora.jpg",
+     "corr": 0.7998337664935502,
+     "diff": 0.4726109323937909
+    },
+    "i2i": {
+     "label": "img2img 0.85（無 LoRA）",
+     "path": "artifacts\\render\\87e179a5-76e9-41ad-a12e-c290e9f522f5_723d663a.png",
+     "backend": "flux_img2img_fal",
+     "elapsed": 12.6,
+     "wall": 12.599040000000969,
+     "timings": {
+      "requirement_analyzer": 0.0,
+      "visual_preprocessing": 0.0,
+      "layout_and_style.style_search": 0.45,
+      "layout_and_style_agent": 0.61,
+      "composer": 2.08,
+      "renderer.flux_img2img_fal": 9.62,
+      "renderer": 9.7,
+      "clip_evaluator.evaluate": 0.2,
+      "clip_evaluator": 0.2
+     },
+     "depth_scale": null,
+     "strength": 0.85,
+     "loras": [],
+     "seed": 42,
+     "prompt": "Photorealistic industrial loft living room with exposed concrete and red brick walls, polished dark wood flooring, and moody dim ambient lighting paired with warm LED strips and Edison bulb pendants. Centered in the foreground sits a dark leather sofa. On the left side towards the back, a low reclaimed dark wood coffee table rests, while a storage cabinet anchors the front left corner. Against the center back wall, a flat TV is mounted above a black steel frame media console. A sleek side table sits along the middle right wall, and a vibrant potted green plant brightens the back right corner. Sophisticated charcoal, raw gray, and warm tan palette with high-contrast lighting.",
+     "img": "images/A_industrial_i2i.jpg",
+     "corr": 0.9208401063929355,
+     "diff": 0.10819500470905956
+    }
+   }
+  },
+  {
+   "base": "A",
+   "style": "luxury",
+   "runs": {
+    "cn_lora": {
+     "label": "ControlNet（正式，含風格 LoRA）",
+     "path": "artifacts\\render\\87e179a5-76e9-41ad-a12e-c290e9f522f5_99262dcb.png",
+     "backend": "flux_controlnet_depth_fal",
+     "elapsed": 21.09,
+     "wall": 21.08578269998543,
+     "timings": {
+      "requirement_analyzer": 0.0,
+      "visual_preprocessing": 0.0,
+      "layout_and_style.style_search": 1.57,
+      "layout_and_style_agent": 1.72,
+      "composer": 2.56,
+      "renderer.flux_controlnet_depth_fal": 16.5,
+      "renderer": 16.6,
+      "clip_evaluator.evaluate": 0.21,
+      "clip_evaluator": 0.21
+     },
+     "depth_scale": 0.3,
+     "strength": null,
+     "loras": [
+      "designbridge_v5_flux1dev_luxury.safetensors"
+     ],
+     "seed": 42,
+     "prompt": "Photorealistic living room in luxury high-end glamour style, featuring dramatic warm lighting and soft ambient glow highlighting silver, charcoal, and tan tones with gold and brass accents. In the front center, a velvet upholstered sofa sits gracefully, paired with a polished stone low coffee table to its rear left. Against the back wall center, a TV media console with a wall-mounted flat TV is positioned, complemented by a potted green plant tucked into the rear right corner. A storage cabinet occupies the front left corner, while a sleek small side table rests against the right wall, set amidst dark wood paneling, textured wall coverings, and a glowing crystal chandelier.",
+     "img": "images/A_luxury_cn_lora.jpg",
+     "corr": 0.7397398527742965,
+     "diff": 0.5037450852736928
+    },
+    "cn_nolora": {
+     "label": "ControlNet（無 LoRA）",
+     "path": "artifacts\\render\\87e179a5-76e9-41ad-a12e-c290e9f522f5_81e541b5.png",
+     "backend": "flux_controlnet_depth_fal",
+     "elapsed": 13.48,
+     "wall": 13.484466400026577,
+     "timings": {
+      "requirement_analyzer": 0.0,
+      "visual_preprocessing": 0.0,
+      "layout_and_style.style_search": 0.33,
+      "layout_and_style_agent": 0.47,
+      "composer": 1.72,
+      "renderer.flux_controlnet_depth_fal": 10.87,
+      "renderer": 10.98,
+      "clip_evaluator.evaluate": 0.31,
+      "clip_evaluator": 0.31
+     },
+     "depth_scale": 0.3,
+     "strength": null,
+     "loras": [],
+     "seed": 42,
+     "prompt": "Photorealistic interior design visualization of a luxury high-end glamour living room. Centered in the front, a plush charcoal velvet upholstered sofa sits under a dramatic crystal chandelier, glowing with warm ambient light. In the center back against dark wood paneling wall, a sleek TV media console with a wall-mounted flat TV is flanked by a low polished marble coffee table on the left back and a leafy potted green plant on the right back corner. A delicate side table with gold and brass accents stands against the right middle wall, while a silver-toned storage cabinet rests against the left front wall. Elegant metallic finishes, polished stone surfaces, and refined craftsmanship create a serene, opulent atmosphere.",
+     "img": "images/A_luxury_cn_nolora.jpg",
+     "corr": 0.676734983567734,
+     "diff": 0.49667965204021425
+    },
+    "i2i": {
+     "label": "img2img 0.85（無 LoRA）",
+     "path": "artifacts\\render\\87e179a5-76e9-41ad-a12e-c290e9f522f5_d49889f9.png",
+     "backend": "flux_img2img_fal",
+     "elapsed": 13.88,
+     "wall": 13.876759100006893,
+     "timings": {
+      "requirement_analyzer": 0.0,
+      "visual_preprocessing": 0.0,
+      "layout_and_style.style_search": 0.33,
+      "layout_and_style_agent": 0.47,
+      "composer": 4.39,
+      "renderer.flux_img2img_fal": 8.77,
+      "renderer": 8.85,
+      "clip_evaluator.evaluate": 0.16,
+      "clip_evaluator": 0.16
+     },
+     "depth_scale": null,
+     "strength": 0.85,
+     "loras": [],
+     "seed": 42,
+     "prompt": "A photorealistic luxury high-end living room featuring dark wood paneling, polished marble floors, dramatic warm ambient lighting, and crystal chandelier illumination, styled in rich charcoal, silver, and warm metallic gold accents. In the front center, a plush velvet upholstered sofa rests comfortably. Opposite it against the back wall, a sleek media console with a wall-mounted flat TV is flanked by a small low coffee table on the back-left and a vibrant potted green plant in the back-right corner. A refined storage cabinet stands against the front-left wall, while a metallic-accented side table nestles against the middle-right wall.",
+     "img": "images/A_luxury_i2i.jpg",
+     "corr": 0.8637581986118675,
+     "diff": 0.11130064366603122
+    }
+   }
+  },
+  {
+   "base": "A",
+   "style": "country",
+   "runs": {
+    "cn_lora": {
+     "label": "ControlNet（正式，含風格 LoRA）",
+     "path": "artifacts\\render\\87e179a5-76e9-41ad-a12e-c290e9f522f5_cdc42122.png",
+     "backend": "flux_controlnet_depth_fal",
+     "elapsed": 17.7,
+     "wall": 17.70376390000456,
+     "timings": {
+      "requirement_analyzer": 0.0,
+      "visual_preprocessing": 0.0,
+      "layout_and_style.style_search": 0.42,
+      "layout_and_style_agent": 0.57,
+      "composer": 1.94,
+      "renderer.flux_controlnet_depth_fal": 14.95,
+      "renderer": 15.03,
+      "clip_evaluator.evaluate": 0.17,
+      "clip_evaluator": 0.17
+     },
+     "depth_scale": 0.3,
+     "strength": null,
+     "loras": [
+      "designbridge_v5_flux1dev_country.safetensors"
+     ],
+     "seed": 42,
+     "prompt": "Photorealistic interior design visualization of a cozy country rustic farmhouse living room bathed in warm ambient lighting. In the front center, a comfortable fabric upholstered sofa features gentle curves, soft cream and sage green floral patterns, and wrought iron details. In the back center against the wall, a media console crafted from warm weathered wood supports a wall-mounted flat TV. To the back left, a low rustic wood coffee table rests, while a storage cabinet stands in the front left corner. A delicate side table sits against the right wall in the middle, complemented by a vibrant potted green plant nestled in the back right corner. Vintage decor and soft blush pink accents enhance the inviting atmosphere.",
+     "img": "images/A_country_cn_lora.jpg",
+     "corr": 0.7797555047354323,
+     "diff": 0.23485899061592228
+    },
+    "cn_nolora": {
+     "label": "ControlNet（無 LoRA）",
+     "path": "artifacts\\render\\87e179a5-76e9-41ad-a12e-c290e9f522f5_c5a35a0b.png",
+     "backend": "flux_controlnet_depth_fal",
+     "elapsed": 14.55,
+     "wall": 14.552563300007023,
+     "timings": {
+      "requirement_analyzer": 0.0,
+      "visual_preprocessing": 0.0,
+      "layout_and_style.style_search": 0.31,
+      "layout_and_style_agent": 0.45,
+      "composer": 1.85,
+      "renderer.flux_controlnet_depth_fal": 12.0,
+      "renderer": 12.08,
+      "clip_evaluator.evaluate": 0.17,
+      "clip_evaluator": 0.17
+     },
+     "depth_scale": 0.3,
+     "strength": null,
+     "loras": [],
+     "seed": 42,
+     "prompt": "A high-quality photorealistic country rustic farmhouse living room bathed in warm ambient lighting, rendered in cream, sage green, beige, and subtle blush pink accents. In the front center, a comfortable fabric upholstered sofa with gentle curves anchors the space. Behind it in the center back against the wall, a media console sits beneath a wall-mounted flat TV. To the left back, a low weathered wood coffee table adds character, while a small rustic side table rests against the right wall. A vibrant potted green plant brightens the right back corner. In the front left corner stands a storage cabinet featuring wrought iron details, surrounded by floral fabrics, ceramic accents, and vintage decor for a lived-in feel.",
+     "img": "images/A_country_cn_nolora.jpg",
+     "corr": 0.7928872917960146,
+     "diff": 0.2298982375068083
+    },
+    "i2i": {
+     "label": "img2img 0.85（無 LoRA）",
+     "path": "artifacts\\render\\87e179a5-76e9-41ad-a12e-c290e9f522f5_17bd915b.png",
+     "backend": "flux_img2img_fal",
+     "elapsed": 12.12,
+     "wall": 12.120866799989017,
+     "timings": {
+      "requirement_analyzer": 0.0,
+      "visual_preprocessing": 0.0,
+      "layout_and_style.style_search": 0.34,
+      "layout_and_style_agent": 0.49,
+      "composer": 2.02,
+      "renderer.flux_img2img_fal": 9.34,
+      "renderer": 9.44,
+      "clip_evaluator.evaluate": 0.16,
+      "clip_evaluator": 0.16
+     },
+     "depth_scale": null,
+     "strength": 0.85,
+     "loras": [],
+     "seed": 42,
+     "prompt": "Photorealistic interior design visualization of a cozy country rustic farmhouse living room bathed in warm ambient lighting. In the front center sits a soft fabric upholstered sofa with gentle curves and delicate floral patterns in cream and sage green. Facing the back wall, a rustic weathered wood TV media console supports a wall-mounted flat TV, flanked by a low matching wooden coffee table on the back left and a lush potted green plant in the back right corner. A wrought iron accent side table rests against the middle right wall, while a vintage wooden storage cabinet stands against the front left wall. The space features warm weathered wood elements, wrought iron details, and vintage decor, creating a comfortable, lived-in atmosphere.",
+     "img": "images/A_country_i2i.jpg",
+     "corr": 0.8721119019655477,
+     "diff": 0.13714026047340233
+    }
+   }
+  },
+  {
+   "base": "B",
+   "style": "industrial",
+   "runs": {
+    "cn_lora": {
+     "label": "ControlNet（正式，含風格 LoRA）",
+     "path": "artifacts\\render\\ca5c6b0d-eae1-4678-a877-3ac881dde3d1_ed34c85c.png",
+     "backend": "flux_controlnet_depth_fal",
+     "elapsed": 15.66,
+     "wall": 15.65855079999892,
+     "timings": {
+      "requirement_analyzer": 0.0,
+      "visual_preprocessing": 0.0,
+      "layout_and_style.style_search": 0.34,
+      "layout_and_style_agent": 0.34,
+      "composer": 0.0,
+      "renderer.flux_controlnet_depth_fal": 14.82,
+      "renderer": 15.08,
+      "clip_evaluator.evaluate": 0.24,
+      "clip_evaluator": 0.24
+     },
+     "depth_scale": 0.65,
+     "strength": null,
+     "loras": [
+      "designbridge_v5_flux1dev_industrial.safetensors"
+     ],
+     "seed": 42,
+     "prompt": "Interior design visualization: a living room, industrial loft style, exposed concrete walls, exposed red brick, black steel frames, dark leather sofa, reclaimed dark wood, Edison bulb pendant lights, moody dim lighting. Photorealistic, high quality. Style profile: industrial loft (strength 0.85). Palette: primary #6A6A6A (gray), secondary #332D2B (charcoal), accent #D4A76A (tan). Dark and moody interior design, industrial modern aesthetic, minimalist forms, clean lines, textured dark wall panels, polished dark wood flooring, sleek gray painted walls, integrated warm LED strip lighting, black track lighting, geometric room divider, low-profile furniture, high contrast lighting, sophisticated ambiance.",
+     "img": "images/B_industrial_cn_lora.jpg",
+     "corr": 0.894967685348173,
+     "diff": 0.4732275071486928
+    },
+    "cn_nolora": {
+     "label": "ControlNet（無 LoRA）",
+     "path": "artifacts\\render\\ca5c6b0d-eae1-4678-a877-3ac881dde3d1_5ec6cb64.png",
+     "backend": "flux_controlnet_depth_fal",
+     "elapsed": 13.02,
+     "wall": 13.021726300008595,
+     "timings": {
+      "requirement_analyzer": 0.0,
+      "visual_preprocessing": 0.0,
+      "layout_and_style.style_search": 0.39,
+      "layout_and_style_agent": 0.39,
+      "composer": 0.0,
+      "renderer.flux_controlnet_depth_fal": 12.18,
+      "renderer": 12.5,
+      "clip_evaluator.evaluate": 0.13,
+      "clip_evaluator": 0.13
+     },
+     "depth_scale": 0.65,
+     "strength": null,
+     "loras": [],
+     "seed": 42,
+     "prompt": "Interior design visualization: a living room, industrial loft style, exposed concrete walls, exposed red brick, black steel frames, dark leather sofa, reclaimed dark wood, Edison bulb pendant lights, moody dim lighting. Photorealistic, high quality. Style profile: industrial loft (strength 0.85). Palette: primary #6A6A6A (gray), secondary #332D2B (charcoal), accent #D4A76A (tan). Dark and moody interior design, industrial modern aesthetic, minimalist forms, clean lines, textured dark wall panels, polished dark wood flooring, sleek gray painted walls, integrated warm LED strip lighting, black track lighting, geometric room divider, low-profile furniture, high contrast lighting, sophisticated ambiance.",
+     "img": "images/B_industrial_cn_nolora.jpg",
+     "corr": 0.8938756427026953,
+     "diff": 0.464860735237382
+    },
+    "i2i": {
+     "label": "img2img 0.85（無 LoRA）",
+     "path": "artifacts\\render\\ca5c6b0d-eae1-4678-a877-3ac881dde3d1_f556d6e5.png",
+     "backend": "flux_img2img_fal",
+     "elapsed": 11.15,
+     "wall": 11.147955899999943,
+     "timings": {
+      "requirement_analyzer": 0.0,
+      "visual_preprocessing": 0.0,
+      "layout_and_style.style_search": 0.34,
+      "layout_and_style_agent": 0.34,
+      "composer": 0.0,
+      "renderer.flux_img2img_fal": 10.3,
+      "renderer": 10.63,
+      "clip_evaluator.evaluate": 0.17,
+      "clip_evaluator": 0.17
+     },
+     "depth_scale": null,
+     "strength": 0.85,
+     "loras": [],
+     "seed": 42,
+     "prompt": "Interior design visualization: a living room, industrial loft style, exposed concrete walls, exposed red brick, black steel frames, dark leather sofa, reclaimed dark wood, Edison bulb pendant lights, moody dim lighting. Photorealistic, high quality. Style profile: industrial loft (strength 0.85). Palette: primary #6A6A6A (gray), secondary #332D2B (charcoal), accent #D4A76A (tan). Dark and moody interior design, industrial modern aesthetic, minimalist forms, clean lines, textured dark wall panels, polished dark wood flooring, sleek gray painted walls, integrated warm LED strip lighting, black track lighting, geometric room divider, low-profile furniture, high contrast lighting, sophisticated ambiance.",
+     "img": "images/B_industrial_i2i.jpg",
+     "corr": 0.8671263338912495,
+     "diff": 0.1552622322076979
+    }
+   }
+  },
+  {
+   "base": "B",
+   "style": "luxury",
+   "runs": {
+    "cn_lora": {
+     "label": "ControlNet（正式，含風格 LoRA）",
+     "path": "artifacts\\render\\ca5c6b0d-eae1-4678-a877-3ac881dde3d1_b4ee504a.png",
+     "backend": "flux_controlnet_depth_fal",
+     "elapsed": 14.78,
+     "wall": 14.777239499991992,
+     "timings": {
+      "requirement_analyzer": 0.0,
+      "visual_preprocessing": 0.0,
+      "layout_and_style.style_search": 0.33,
+      "layout_and_style_agent": 0.33,
+      "composer": 0.0,
+      "renderer.flux_controlnet_depth_fal": 13.96,
+      "renderer": 14.24,
+      "clip_evaluator.evaluate": 0.2,
+      "clip_evaluator": 0.2
+     },
+     "depth_scale": 0.65,
+     "strength": null,
+     "loras": [
+      "designbridge_v5_flux1dev_luxury.safetensors"
+     ],
+     "seed": 42,
+     "prompt": "Interior design visualization: a living room, luxury high-end glamour style, luxury high-end, polished marble, gold and brass accents, velvet upholstery, crystal chandelier, dark wood paneling, dramatic warm lighting. Photorealistic, high quality. Style profile: luxury high-end glamour (strength 0.85). Palette: primary #B5B0A8 (silver), secondary #4A3C35 (charcoal), accent #D4B07B (tan). Opulent and refined interior design, sophisticated ambiance, warm metallic accents, textured wall coverings with subtle patterns, soft ambient lighting, elegant curved forms, rich dark wood finishes, polished stone surfaces, plush textiles, high-end craftsmanship, serene and luxurious atmosphere.",
+     "img": "images/B_luxury_cn_lora.jpg",
+     "corr": 0.8827990489829312,
+     "diff": 0.3858303050676289
+    },
+    "cn_nolora": {
+     "label": "ControlNet（無 LoRA）",
+     "path": "artifacts\\render\\ca5c6b0d-eae1-4678-a877-3ac881dde3d1_ff8d16b7.png",
+     "backend": "flux_controlnet_depth_fal",
+     "elapsed": 14.33,
+     "wall": 14.32769730000291,
+     "timings": {
+      "requirement_analyzer": 0.0,
+      "visual_preprocessing": 0.0,
+      "layout_and_style.style_search": 0.35,
+      "layout_and_style_agent": 0.35,
+      "composer": 0.0,
+      "renderer.flux_controlnet_depth_fal": 13.52,
+      "renderer": 13.82,
+      "clip_evaluator.evaluate": 0.16,
+      "clip_evaluator": 0.16
+     },
+     "depth_scale": 0.65,
+     "strength": null,
+     "loras": [],
+     "seed": 42,
+     "prompt": "Interior design visualization: a living room, luxury high-end glamour style, luxury high-end, polished marble, gold and brass accents, velvet upholstery, crystal chandelier, dark wood paneling, dramatic warm lighting. Photorealistic, high quality. Style profile: luxury high-end glamour (strength 0.85). Palette: primary #B5B0A8 (silver), secondary #4A3C35 (charcoal), accent #D4B07B (tan). Opulent and refined interior design, sophisticated ambiance, warm metallic accents, textured wall coverings with subtle patterns, soft ambient lighting, elegant curved forms, rich dark wood finishes, polished stone surfaces, plush textiles, high-end craftsmanship, serene and luxurious atmosphere.",
+     "img": "images/B_luxury_cn_nolora.jpg",
+     "corr": 0.8925458130106477,
+     "diff": 0.3796930317265795
+    },
+    "i2i": {
+     "label": "img2img 0.85（無 LoRA）",
+     "path": "artifacts\\render\\ca5c6b0d-eae1-4678-a877-3ac881dde3d1_32998e7b.png",
+     "backend": "flux_img2img_fal",
+     "elapsed": 11.67,
+     "wall": 11.66934890000266,
+     "timings": {
+      "requirement_analyzer": 0.0,
+      "visual_preprocessing": 0.0,
+      "layout_and_style.style_search": 0.4,
+      "layout_and_style_agent": 0.4,
+      "composer": 0.0,
+      "renderer.flux_img2img_fal": 10.79,
+      "renderer": 11.08,
+      "clip_evaluator.evaluate": 0.19,
+      "clip_evaluator": 0.19
+     },
+     "depth_scale": null,
+     "strength": 0.85,
+     "loras": [],
+     "seed": 42,
+     "prompt": "Interior design visualization: a living room, luxury high-end glamour style, luxury high-end, polished marble, gold and brass accents, velvet upholstery, crystal chandelier, dark wood paneling, dramatic warm lighting. Photorealistic, high quality. Style profile: luxury high-end glamour (strength 0.85). Palette: primary #B5B0A8 (silver), secondary #4A3C35 (charcoal), accent #D4B07B (tan). Opulent and refined interior design, sophisticated ambiance, warm metallic accents, textured wall coverings with subtle patterns, soft ambient lighting, elegant curved forms, rich dark wood finishes, polished stone surfaces, plush textiles, high-end craftsmanship, serene and luxurious atmosphere.",
+     "img": "images/B_luxury_i2i.jpg",
+     "corr": 0.8827496952820171,
+     "diff": 0.15228343290441176
+    }
+   }
+  }
+ ]
+}
