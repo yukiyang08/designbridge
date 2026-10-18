@@ -57,6 +57,8 @@ export async function submitRefine() {
     })
     if (!res.ok) throw new Error(`${res.status}`)
     const data = await res.json()
+    // 後端所有修圖服務都失敗時會回傳原圖副本（backend=placeholder），不能當成功
+    if (data.backend === 'placeholder') throw new Error('AI 修圖服務沒有產生新圖，請查看後端訊息（例如 fal.ai 額度用完）')
     if (requestId === requestState.current) {
       const before = lastGeneratedImage.value
       result.value = { ...(result.value || {}), ...data, quotation_result: null }   // 圖變了，舊報價作廢

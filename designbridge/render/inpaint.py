@@ -614,7 +614,7 @@ def run_fal_inpainting(
         import base64
         import io
         import os
-        import urllib.request
+        import requests
         import fal_client
         from PIL import Image
 
@@ -675,7 +675,10 @@ def run_fal_inpainting(
         result_url = images[0]["url"]
         print(f"✅  fal.ai inpainting success → {result_url[:60]}...")
         out_path.parent.mkdir(parents=True, exist_ok=True)
-        urllib.request.urlretrieve(result_url, str(out_path))
+        # urllib 用 Windows 憑證庫會 CERTIFICATE_VERIFY_FAILED，改用 requests（內建 certifi）
+        resp = requests.get(result_url, timeout=120)
+        resp.raise_for_status()
+        out_path.write_bytes(resp.content)
         return True
 
     except Exception as e:
