@@ -1,13 +1,15 @@
 """Shared helpers/models for the DesignBridge API routers."""
 import os
+import re
 import threading
 from pathlib import Path
 from typing import Optional, List
 
-from fastapi import HTTPException
-from pydantic import BaseModel
+from fastapi import Header, HTTPException
+from pydantic import BaseModel, Field
 
 from designbridge import get_compiled_graph
+from designbridge.style.style_supabase import _get_supabase
 
 # 對外可存取的後端網址；非本機 8000 埠（換埠、部署、手機連區網）時用 API_PUBLIC_URL 覆蓋
 API_PUBLIC_URL = os.getenv("API_PUBLIC_URL", "http://localhost:8000").rstrip("/")
@@ -19,6 +21,25 @@ def _artifact_url(p) -> Optional[str]:
         return None
     normalized = str(p).replace("\\", "/")
     return f"{API_PUBLIC_URL}/{normalized}" if normalized.startswith("artifacts/") else None
+
+
+def get_user_id(authorization: Optional[str] = Header(None)) -> str:
+    """驗證前端帶來的 Supabase JWT，回傳 user_id；沒登入或 token 無效就 401。"""
+    token = (authorization or "").removeprefix("Bearer ").strip()
+    if not token:
+        raise HTTPException(status_code=401, detail="請先登入")
+    try:
+        return _get_supabase().auth.get_user(token).user.id
+    except Exception:
+        raise HTTPException(status_code=401, detail="登入已失效，請重新登入")
+
+
+def get_optional_user_id(authorization: Optional[str] = Header(None)) -> Optional[str]:
+    """有帶有效 token 就回 user_id，沒有就 None（給原本不用登入、但有登入時能多做事的端點）。"""
+    try:
+        return get_user_id(authorization)
+    except HTTPException:
+        return None
 
 
 ARTIFACTS_DIR = (Path(__file__).parent.parent / "artifacts").resolve()
@@ -33,8 +54,45 @@ def _is_artifact_file(p) -> bool:
     return path.is_relative_to(ARTIFACTS_DIR) and path.is_file()
 
 
-def _require_artifact_file(p, status: int = 400) -> None:
-    if not _is_artifact_file(p):
+_RENDER_NAME = re.compile(r"^[A-Za-z0-9._-]+$")
+
+
+def ensure_artifact(p, user_id: Optional[str] = None) -> bool:
+    """artifacts/ 是快取，Supabase Storage 才是正本：本機缺檔（換機器、清過資料夾）時，
+    從 Storage 把這位使用者自己的渲染圖補回「同一個路徑」，呼叫端與前端存的路徑都不用改。
+    只補 artifacts/render/ 底下的渲染圖；遮罩、上傳照片這類暫存缺了就是缺了。"""
+    if not p:
+        return False
+    if _is_artifact_file(p):
+        return True
+    if not user_id:
+        return False
+    try:
+        path = Path(p).resolve()
+    except (OSError, ValueError):
+        return False
+    # 擋 ../、任意絕對路徑，以及 render/ 以外的位置；檔名限制字元，避免被當 LIKE 萬用字元用
+    if not (path.is_relative_to(ARTIFACTS_DIR) and path.parent.name == "render"
+            and _RENDER_NAME.match(path.name)):
+        return False
+    try:
+        sb = _get_supabase()
+        rows = (sb.table("designs").select("image_path").eq("user_id", user_id)
+                .like("record->>generated_image_path", f"%{path.name}").limit(1).execute().data)
+        key = rows[0]["image_path"] if rows else None
+        if not key:
+            return False
+        data = sb.storage.from_("designs").download(key)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(data)
+        return True
+    except Exception as e:
+        print(f"[artifacts] 從 Storage 補回失敗：{e}")
+        return False
+
+
+def _require_artifact_file(p, status: int = 400, user_id: Optional[str] = None) -> None:
+    if not ensure_artifact(p, user_id):
         raise HTTPException(status_code=status, detail=f"找不到圖片：{p}")
 
 
@@ -67,6 +125,12 @@ def _layout_render_config() -> dict:
 
 class DesignRequest(BaseModel):
     text_prompt: str = ""
+    # 「我的設計」分組：同一個設計（一個家）底下可有多個空間；沒帶時各自獨立成一個設計
+    project_id: Optional[str] = Field(default=None, pattern=r"^[0-9a-fA-F-]{36}$")
+    space_id: Optional[str] = Field(default=None, max_length=64)
+    space_name: Optional[str] = Field(default=None, max_length=32)
+    space_dims: Optional[dict] = None   # 這個空間的尺寸 {w, d}（公尺）
+    cad_plan: Optional[dict] = None     # 整層 CAD 平面圖（/api/generate-room-plan 的回應 + 門窗修改）
     style_profile_id: Optional[str] = None
     initial_image_path: Optional[str] = None
     style_reference_image_path: Optional[str] = None

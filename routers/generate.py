@@ -5,17 +5,18 @@ import uuid
 from pathlib import Path
 from typing import Optional, List
 
-from fastapi import APIRouter, HTTPException, UploadFile, File
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
 from routers.common import (
+    get_user_id, get_optional_user_id, ensure_artifact,
     API_PUBLIC_URL, DesignRequest, _artifact_url, _build_user_input, _get_graph,
     _is_artifact_file, _layout_render_config, _require_artifact_file,
 )
 from designbridge.core.config import Config
 from designbridge.core.timing import collect_stages
-from routers.history import _save_history
+from routers.history import _save_history, save_panorama, save_quotation
 
 router = APIRouter()
 
@@ -84,8 +85,11 @@ def chat(request: ChatRequest):
 
 # 3. 建立 POST 路由
 @router.post("/api/generate")
-def generate_design(request: DesignRequest):
+def generate_design(request: DesignRequest, user_id: str = Depends(get_user_id)):
     try:
+        # 微調的底圖、換風格的上一張圖：本機沒有就從 Storage 補回（見 ensure_artifact）
+        ensure_artifact(request.initial_image_path, user_id)
+        ensure_artifact((request.plan or {}).get("generated_image_path"), user_id)
         # 準備 LangGraph 初始狀態
         user_input = _build_user_input(request)
         initial_state: dict = {"user_input": user_input}
@@ -203,7 +207,7 @@ def generate_design(request: DesignRequest):
         render_result = result.get("render_result") or {}
         generation_params = render_result.get("generation_params") or {}
 
-        _save_history({
+        _save_history(user_id, {
             "task_id": result.get("task_id"),
             "timestamp": time.strftime("%Y-%m-%dT%H:%M:%S"),
             "elapsed_seconds": round(elapsed, 2),
@@ -224,7 +228,15 @@ def generate_design(request: DesignRequest):
             "evaluation_result": result.get("evaluation_result"),
             "timings": timings,
             "timing_runs": timing_runs,
-        })
+            "structured_requirement": result.get("structured_requirement"),
+            "space_dims": request.space_dims,
+            # 投影深度/分割圖檔大且重算得出來，不存
+            "scene_graph": {k: v for k, v in scene_graph.items()
+                            if k not in ("projected_depth_path", "projected_seg_path")} or None,
+        }, floor_plan_path=floor_plan_path,
+            source_photo=request.initial_image_path, style_ref=request.style_reference_image_path,
+            project_id=request.project_id, space_id=request.space_id, space_name=request.space_name,
+            cad_plan=request.cad_plan)
 
         return response
 
@@ -240,18 +252,23 @@ class QuotationRequest(BaseModel):
     image_path: str
     structured_requirement: Optional[dict] = None
     selected_furniture: List[dict] = []
+    task_id: Optional[str] = None   # 帶了就把估價結果存回「我的設計」
 
 
 @router.post("/api/quotation")
-def get_quotation(req: QuotationRequest):
+def get_quotation(req: QuotationRequest, user_id: str = Depends(get_user_id)):
     """手動觸發估價（使用者點「重新估價」按鈕），可帶入使用者在家具查詢頁手動選擇的家具。"""
     from designbridge.pricing.quotation import build_quotation
     try:
-        return build_quotation(
+        ensure_artifact(req.image_path, user_id)   # 重新開啟的設計：本機沒有圖就從 Storage 補回
+        quotation = build_quotation(
             req.image_path,
             req.structured_requirement or {},
             preselected=req.selected_furniture,
         )
+        if req.task_id:
+            save_quotation(user_id, req.task_id, quotation)
+        return quotation
     except Exception as e:
         import traceback
         traceback.print_exc()
@@ -295,12 +312,12 @@ def _resolve_depth_for_panorama(request: PanoramaRequest, out_dir: Path) -> Path
 
 
 @router.post("/api/generate-panorama")
-def generate_panorama(request: PanoramaRequest):
+def generate_panorama(request: PanoramaRequest, user_id: Optional[str] = Depends(get_optional_user_id)):
     """按需生成 Text2Room 全景圖，獨立於主要生成流程。"""
     out_dir = Path("artifacts/room_mesh") / request.task_id
     image_path = Path(request.image_path)
 
-    _require_artifact_file(request.image_path, 404)
+    _require_artifact_file(request.image_path, 404, user_id)
 
     try:
         depth_path = _resolve_depth_for_panorama(request, out_dir)
@@ -326,4 +343,6 @@ def generate_panorama(request: PanoramaRequest):
     if not t2r or not t2r.get("panorama"):
         raise HTTPException(status_code=500, detail="全景圖生成失敗")
 
+    if user_id:   # 登入的使用者：環景也存雲端，之後從「我的設計」繼續編輯時看得到
+        save_panorama(user_id, request.task_id, t2r["panorama"])
     return {"room_panorama_url": _artifact_url(t2r["panorama"])}

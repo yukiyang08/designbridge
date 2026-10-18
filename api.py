@@ -15,7 +15,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
-from routers import floorplan, generate, history, style
+from routers import favorites, floorplan, generate, history, style
 
 
 @asynccontextmanager
@@ -64,7 +64,7 @@ app.add_middleware(
 )
 
 
-for _r in (history, style, floorplan, generate):
+for _r in (history, favorites, style, floorplan, generate):
     app.include_router(_r.router)
 
 

@@ -28,6 +28,7 @@ def search_styles(
     top_k: int = 3,
     diverse: bool = False,
     anchor_image_url: str = "",
+    space: str = "",
 ):
     """向量搜尋最相似的風格參考圖，回傳多筆候選供使用者選擇。
 
@@ -38,6 +39,9 @@ def search_styles(
     style_id 本身的英文字（"modern"）去 embedding——那只是「同分類裡隨便幾張」，不是真的
     跟使用者選的那張圖相似。改成撈出那張圖自己的 style_kb（description+tags）當查詢字，
     這樣才是真的用那張圖的內容去找最近鄰。
+
+    沒有文字查詢（query 空、也沒有 anchor）時不走 BGE，只用 space（房型，如「客廳」）+ style_id
+    做資料庫篩選，見 query_style_images_by_space；只有使用者真的打了描述才需要 embedding。
     """
     from designbridge.style.style_supabase import _STYLE_PROMPTS, _compose_style_kb_text, query_style_image_by_url
     from style_kb.styles import STYLES
@@ -49,12 +53,18 @@ def search_styles(
         anchor_rows = query_style_image_by_url(anchor_image_url.strip())
         if anchor_rows and anchor_rows[0].style_kb:
             q = _compose_style_kb_text({"style_kb": anchor_rows[0].style_kb})
-    q = q or sid or "interior design"
     try:
-        from designbridge.style.style_supabase import query_style_images_supabase, query_style_images_diverse
+        from designbridge.style.style_supabase import (
+            query_style_images_supabase, query_style_images_diverse, query_style_images_by_space,
+        )
 
-        client = _get_supabase()
-        if diverse and not sid:
+        if not q:
+            results = query_style_images_by_space(
+                space=space.strip() or "客廳", style_id=sid or None, per_style=3, top_k=min(top_k, 24),
+            )
+            if not sid:
+                results = results[: min(top_k, 24)]
+        elif diverse and not sid:
             # per_style=3（不是 1）是刻意留給前端「下一輪」用的池子——向量搜尋本身是
             # 決定性的，同樣的查詢字重打一次結果不會變，所以一次多要幾張，前端就能在
             # 池子裡輪替顯示，不用每次都重打一樣的 query 卻拿到一樣的結果。
@@ -68,17 +78,12 @@ def search_styles(
         if not results:
             return []
 
-        # 批次取 style_kb（兩筆查詢，不用 N+1）
-        image_urls = [r.image_url for r in results]
-        kb_res = client.table("style_images").select("image_url,style_kb").in_("image_url", image_urls).execute()
-        kb_map = {r["image_url"]: r.get("style_kb") for r in (kb_res.data or [])}
-
         candidates = []
         for row in results:
             url = row.image_url          # DB join key
             display_url = row.display_url  # actually-reachable URL to show/round-trip
             s_id = row.style_id
-            style_kb = kb_map.get(url)
+            style_kb = row.style_kb   # 查詢函式已經一併帶回，不用再查一次
             fallback = _STYLE_PROMPTS.get(s_id, _STYLE_PROMPTS.get("modern", {}))
 
             description = None

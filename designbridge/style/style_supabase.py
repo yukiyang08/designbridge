@@ -10,6 +10,7 @@ import hashlib
 import os
 from concurrent.futures import ThreadPoolExecutor, TimeoutError as FutureTimeoutError
 from dataclasses import dataclass
+from functools import lru_cache
 from pathlib import Path
 from typing import Any
 
@@ -44,10 +45,15 @@ def _get_text_embedding_model():
             if _text_embedding_model is None:
                 from sentence_transformers import SentenceTransformer
                 model_name = os.getenv("DESIGNBRIDGE_TEXT_EMBEDDING_MODEL", "BAAI/bge-m3")
-                _text_embedding_model = SentenceTransformer(model_name)
+                try:
+                    # 先只讀本機快取：預設每次載入都會連 HF 檢查版本，多花約 5 秒
+                    _text_embedding_model = SentenceTransformer(model_name, local_files_only=True)
+                except Exception:
+                    _text_embedding_model = SentenceTransformer(model_name)   # 還沒下載過就照常連線下載
     return _text_embedding_model
 
 
+@lru_cache(maxsize=64)
 def _encode_query_text(text: str):
     """Encode retrieval query with model-specific prompt format."""
     model = _get_text_embedding_model()
@@ -195,11 +201,74 @@ def query_style_images_diverse(text_query: str, per_style: int = 1) -> list[Supa
     written a style description, so the generic fallback query (room type label / "interior
     design") would otherwise cluster on whichever 1-2 styles embed closest to it instead of
     giving the user a candidate from every style to pick from."""
-    results: list[SupabaseStyleResult] = []
-    for sid in _STYLE_PROMPTS:
-        results.extend(_query_style_text_to_text(text_query=text_query, style_id=sid, top_k=per_style))
+    _encode_query_text(text_query)   # 先 embed 一次進快取，下面併行的 8 個查詢就不會各編一次
+    with ThreadPoolExecutor(max_workers=len(_STYLE_PROMPTS)) as pool:
+        groups = pool.map(
+            lambda sid: _query_style_text_to_text(text_query=text_query, style_id=sid, top_k=per_style),
+            list(_STYLE_PROMPTS),
+        )
+    results = [r for g in groups for r in g]
     results.sort(key=lambda r: r.similarity, reverse=True)
     return results
+
+
+_DEFAULT_SPACE = "客廳"
+
+
+def query_style_images_by_space(
+    space: str,
+    style_id: str | None = None,
+    per_style: int = 3,
+    top_k: int = 24,
+) -> list[SupabaseStyleResult]:
+    """使用者沒打風格描述時的推薦：只用 space 欄位篩房型，依 quality_score 排序，不需要 BGE。
+
+    style_id 為空 → 每個風格各取 per_style 張（8 個風格併行查詢），並交錯排列讓第一頁就有各風格；
+    指定 style_id → 該風格取 top_k 張。
+    房型資料太少（浴室、陽台只有個位數）就整個退回客廳，不混著用：過半數風格湊不滿 per_style 張，
+    或指定的那個風格不到 10 張（一頁），都視為太少。
+    similarity 一律 0（沒有向量比對，前端 similarity > 0 才會顯示百分比）。
+    """
+    from concurrent.futures import ThreadPoolExecutor
+
+    client = _get_supabase()
+    cols = "style_id,image_url,source_meta,style_kb"
+
+    def fetch(sid: str, n: int, sp: str) -> list[SupabaseStyleResult]:
+        rows = (
+            client.table("style_images").select(cols)
+            .eq("style_id", sid).eq("space", sp).not_.is_("style_kb", "null")
+            .order("quality_score", desc=True, nullsfirst=False).limit(n)
+            .execute().data or []
+        )
+        return [
+            SupabaseStyleResult(
+                style_id=r["style_id"],
+                image_url=r["image_url"],
+                display_url=_resolve_display_url(r),
+                style_name=(r.get("source_meta") or {}).get("style", r["style_id"]),
+                similarity=0.0,
+                style_kb=_pick_style_kb(r) or None,
+            )
+            for r in rows
+        ]
+
+    if style_id:
+        res = fetch(style_id, top_k, space)
+        # 少於一頁（前端每頁 10 張）就退回客廳，免得使用者只看到兩三個選項
+        return res if len(res) >= 10 else fetch(style_id, top_k, _DEFAULT_SPACE)
+
+    sids = list(_STYLE_PROMPTS)
+
+    def run(sp: str) -> list[list[SupabaseStyleResult]]:
+        with ThreadPoolExecutor(max_workers=len(sids)) as pool:
+            return list(pool.map(lambda sid: fetch(sid, per_style, sp), sids))
+
+    per = run(space)
+    if space != _DEFAULT_SPACE and sum(len(g) >= per_style for g in per) < len(sids) / 2:
+        per = run(_DEFAULT_SPACE)
+    # 交錯：每個風格的第 1 張、再第 2 張…，前端取前 N 張時各風格都有
+    return [r for group in zip(*[g + [None] * (per_style - len(g)) for g in per]) for r in group if r]
 
 
 def _pick_style_kb(row: dict[str, Any]) -> dict[str, Any]:
