@@ -36,9 +36,9 @@ def run_startup_warmup() -> None:
         _load_model()
 
     def _warm_text_embedder() -> None:
-        from designbridge.style.style_supabase import _get_text_embedding_model
+        from designbridge.style.style_supabase import _encode_query_text
 
-        _get_text_embedding_model()
+        _encode_query_text("warmup")   # 載入模型 + 吃掉第一次 encode 的初始化成本
 
     def _warm_sam2() -> None:
         from designbridge.render.inpaint import _get_sam2_predictor
@@ -61,8 +61,8 @@ def run_startup_warmup() -> None:
         if Config.ENABLE_SEGMENTATION:
             _load_upernet(Config.SEGMENTATION_MODEL)
 
-    _step("Pipeline CLIP evaluator (transformers)", _warm_clip_eval)
     _step("Text-to-text style embedder (sentence-transformers)", _warm_text_embedder)
+    _step("Pipeline CLIP evaluator (transformers)", _warm_clip_eval)
     _step("SAM 2 instance segmentation predictor", _warm_sam2)
     _step("Depth + segmentation models (transformers)", _warm_vision)
 
