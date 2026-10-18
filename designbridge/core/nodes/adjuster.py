@@ -137,6 +137,26 @@ replace_with: describe the new object only if action=replace, else null."""
         return {"action": "modify_style", "seg_labels": [], "replace_with": None}
 
 
+def _mask_region_png(image_path: str, mask: Any) -> bytes | None:
+    """裁出遮罩範圍（外加 25% 邊界）的原圖，給 Gemini 看要改的是什麼物件。"""
+    import io
+    from PIL import Image
+    try:
+        img = Image.open(image_path).convert("RGB")
+        m = mask.convert("L").resize(img.size, Image.NEAREST)
+        bbox = m.point(lambda v: 255 if v > 128 else 0).getbbox()
+        if not bbox:
+            return None
+        x0, y0, x1, y1 = bbox
+        px, py = int((x1 - x0) * 0.25) + 16, int((y1 - y0) * 0.25) + 16
+        crop = img.crop((max(0, x0 - px), max(0, y0 - py), min(img.width, x1 + px), min(img.height, y1 + py)))
+        buf = io.BytesIO()
+        crop.save(buf, format="PNG")
+        return buf.getvalue()
+    except Exception:
+        return None
+
+
 def adjuster_agent_stub(state: DesignBridgeState) -> dict[str, Any]:
     """
     Design Adjuster Agent：對初始圖片進行局部 inpainting。
@@ -351,17 +371,27 @@ def adjuster_agent_stub(state: DesignBridgeState) -> dict[str, Any]:
         if action_en:
             en_text = action_en
         else:
-            # 嘗試用 Gemini 翻譯成英文（FLUX 效果更好），失敗就直接用原文
+            # FLUX Fill 只會照 prompt 畫出遮罩內該有的東西，看不懂「改成藍色」這類指令；
+            # 沒寫物件名時會把物件畫成背景而整個消失。所以請 Gemini 看遮罩區域的裁切圖，
+            # 改寫成「修改後的樣子」的描述。
             en_text = user_text
             try:
                 from designbridge.render.llm import call_llm
-                obj_hint = f" The selected object is: {seg_labels[0]}." if seg_labels else ""
+                obj_hint = f" Segmentation label of the selected object: {seg_labels[0]}." if seg_labels else ""
+                region_png = _mask_region_png(image_path, mask)
                 translated = timed_call(
                     "adjuster.translate", task_id, call_llm,
-                    f"Translate this interior design modification request to English in one sentence.{obj_hint} "
-                    "Output ONLY the translated sentence itself — a single line, no markdown, no bullet points, "
-                    "no quotes, no explanation of how you translated it, no meta-commentary.\n\n"
-                    f"{user_text}",
+                    "You write prompts for an inpainting model (FLUX Fill) that repaints only a masked region of an "
+                    "interior photo; it cannot follow instructions, it only draws what the prompt describes."
+                    + (" The attached image is a crop around the masked region; the object to edit is the main subject in its center." if region_png else "")
+                    + obj_hint
+                    + f"\nUser's edit request (may be Chinese): {user_text}\n"
+                    "Write ONE English sentence describing what the masked region should look like AFTER the edit: "
+                    "name the object explicitly and keep its type, shape, size, position and details unless the request "
+                    "changes them; only apply the requested change. Describe, do not instruct (no 'change', 'make', "
+                    "'replace', 'it'). If the request removes the object, describe the empty background instead. "
+                    "Output ONLY the sentence — a single line, no markdown, no quotes, no explanation.",
+                    images=[region_png] if region_png else None,
                     max_tokens=500,
                     temperature=0.0,
                 )
