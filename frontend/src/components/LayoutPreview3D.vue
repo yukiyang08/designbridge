@@ -401,8 +401,11 @@ function buildScene() {
   const setback = camCfg.setback || 2.6
   const targetH = camCfg.target_h ?? 0.5
   const targetDepthFrac = camCfg.target_depth_frac ?? 0.58
+  // 斜角視角的左右位置；跟家具 worldX 用同一套鏡像換算
+  const eyeX = (0.5 - (camCfg.eye_x_frac ?? 0.5)) * roomWidth
+  const targetX = (0.5 - (camCfg.target_x_frac ?? 0.5)) * roomWidth
   camera = new THREE.PerspectiveCamera(vfovDeg, aspect, 0.05, 50)
-  camera.position.set(0, eyeHeight, -setback)
+  camera.position.set(eyeX, eyeHeight, -setback)
 
   renderer = new THREE.WebGLRenderer({ antialias: true })
   renderer.setSize(width, height2)
@@ -429,7 +432,7 @@ function buildScene() {
   // 就是生圖實際會用的取景角度（候選角度評分後實際選中的那組，不一定等於這裡的 base
   // 參數——這個 3D 預覽固定用 base，只是給使用者一個大致對齊的初始視角，之後仍可自由拖曳旋轉）。
   controls = new OrbitControls(camera, renderer.domElement)
-  controls.target.set(0, targetH, targetDepthFrac * roomDepth)
+  controls.target.set(targetX, targetH, targetDepthFrac * roomDepth)
   controls.update()
 
   if (props.editable) {

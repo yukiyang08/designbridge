@@ -291,18 +291,54 @@ def furniture_parts(
 
 @dataclass(frozen=True)
 class CameraParams:
-    """The one shared camera parameterization both projection paths now use."""
+    """The one shared camera parameterization both projection paths now use.
+
+    setback 為負代表站在房間內（離近牆 |setback| 公尺）；eye_x_frac / target_x_frac
+    是相機與瞄準點在房寬上的比例，兩者都 0.5 即舊的正面一點透視。
+    """
 
     eye_height: float = 1.35
     setback: float = 0.6
     target_h: float = 1.1
     target_depth_frac: float = 0.6
     fov_v_deg: float = 60.0
+    eye_x_frac: float = 0.5
+    target_x_frac: float = 0.5
+
+    def mirrored(self) -> "CameraParams":
+        """左右鏡像（斜角視角換到另一個角落）。"""
+        return replace(self, eye_x_frac=1.0 - self.eye_x_frac, target_x_frac=1.0 - self.target_x_frac)
+
+    @property
+    def is_oblique(self) -> bool:
+        return abs(self.eye_x_frac - 0.5) > 1e-6 or abs(self.target_x_frac - 0.5) > 1e-6
+
+    def summary(self) -> str:
+        return (
+            f"eye=({self.eye_x_frac:.2f}W, {self.eye_height:.2f}m, setback {self.setback:.2f}) "
+            f"target=({self.target_x_frac:.2f}W, {self.target_h:.2f}m, {self.target_depth_frac:.2f}D) "
+            f"fov_v={self.fov_v_deg:.0f}°"
+        )
+
+
+def base_camera_from_config() -> CameraParams:
+    """Config 裡的 base 相機（候選 0）；三條投影路徑與前端預覽共用。"""
+    from designbridge.core.config import Config
+
+    return CameraParams(
+        eye_height=Config.LAYOUT_CAM_EYE_H,
+        setback=Config.LAYOUT_CAM_SETBACK,
+        target_h=Config.LAYOUT_CAM_TARGET_H,
+        target_depth_frac=Config.LAYOUT_CAM_TARGET_DEPTH_FRAC,
+        fov_v_deg=Config.LAYOUT_CAM_FOV,
+        eye_x_frac=Config.LAYOUT_CAM_EYE_X_FRAC,
+        target_x_frac=Config.LAYOUT_CAM_TARGET_X_FRAC,
+    )
 
 
 class LookAtCamera:
-    """Pinhole camera at (room_w/2, eye_height, -setback), aimed at a point
-    inside the room. A true 3-DOF look-at camera (position + target + up)
+    """Pinhole camera at (eye_x_frac*room_w, eye_height, -setback), aimed at a
+    point inside the room. A true 3-DOF look-at camera (position + target + up)
     rather than a single-axis pitch, so it stays correctly framed at any
     elevation/setback.
     """
@@ -317,12 +353,17 @@ class LookAtCamera:
         # image aspect ratio automatically.
         self.f = (img_h / 2.0) / math.tan(math.radians(params.fov_v_deg) / 2.0)
         self.eye = np.array(
-            [room_w / 2.0, params.eye_height, -float(params.setback)], dtype=np.float64
+            [float(params.eye_x_frac) * room_w, params.eye_height, -float(params.setback)],
+            dtype=np.float64,
         )
         self.room_d = room_d
 
         target = np.array(
-            [room_w / 2.0, float(params.target_h), float(params.target_depth_frac) * room_d],
+            [
+                float(params.target_x_frac) * room_w,
+                float(params.target_h),
+                float(params.target_depth_frac) * room_d,
+            ],
             dtype=np.float64,
         )
         fwd = target - self.eye
@@ -343,6 +384,19 @@ class LookAtCamera:
 def _quad(a, b, c, d) -> list[np.ndarray]:
     a, b, c, d = (np.array(v, dtype=np.float64) for v in (a, b, c, d))
     return [np.stack([a, b, c]), np.stack([a, c, d])]
+
+
+def _inward_quad(a, b, c, d, center: np.ndarray) -> list[np.ndarray]:
+    """房殼用的 quad，繞序調成法向量朝向房間中心（背面剔除依此判斷）。"""
+    tris = _quad(a, b, c, d)
+    n = np.cross(tris[0][1] - tris[0][0], tris[0][2] - tris[0][0])
+    if np.dot(n, center - tris[0][0]) < 0:
+        tris = [t[[0, 2, 1]] for t in tris]
+    return tris
+
+
+# 房殼 id（地板、天花板、牆）：只有這些做背面剔除，家具盒子不剔除
+SHELL_IDS: frozenset[int] = frozenset({1, 2, 3})
 
 
 def box_faces(x0, x1, z0, z1, y0, y1) -> list[np.ndarray]:
@@ -396,11 +450,15 @@ def build_tagged_scene(
         for tri in faces:
             tagged.append((tri, oid))
 
-    _add(_quad([0, 0, 0], [W, 0, 0], [W, 0, D], [0, 0, D]), 1)  # floor
-    _add(_quad([0, H, 0], [W, H, 0], [W, H, D], [0, H, D]), 2)  # ceiling
-    _add(_quad([0, 0, D], [W, 0, D], [W, H, D], [0, H, D]), 3)  # far wall
-    _add(_quad([0, 0, 0], [0, 0, D], [0, H, D], [0, H, 0]), 3)  # left wall
-    _add(_quad([W, 0, 0], [W, 0, D], [W, H, D], [W, H, 0]), 3)  # right wall
+    # 房殼法向量統一朝內，rasterize_ids 會剔除背對相機的面：相機站在近牆外時近牆自動消失，
+    # 站進房內（斜角視角）時近牆補上，廣角邊緣才不會看到房間外面。
+    center = np.array([W / 2.0, H / 2.0, D / 2.0])
+    _add(_inward_quad([0, 0, 0], [W, 0, 0], [W, 0, D], [0, 0, D], center), 1)  # floor
+    _add(_inward_quad([0, H, 0], [W, H, 0], [W, H, D], [0, H, D], center), 2)  # ceiling
+    _add(_inward_quad([0, 0, D], [W, 0, D], [W, H, D], [0, H, D], center), 3)  # far wall
+    _add(_inward_quad([0, 0, 0], [0, 0, D], [0, H, D], [0, H, 0], center), 3)  # left wall
+    _add(_inward_quad([W, 0, 0], [W, 0, D], [W, H, D], [W, H, 0], center), 3)  # right wall
+    _add(_inward_quad([0, 0, 0], [W, 0, 0], [W, H, 0], [0, H, 0], center), 3)  # near wall
 
     next_id = start_id
     for item in placements or []:
@@ -476,6 +534,71 @@ def instance_summary(idbuf: np.ndarray, id_to_type: dict[int, str]) -> list[dict
 _NEAR = 0.05
 
 
+def clip_near(cp: np.ndarray, near: float = _NEAR) -> np.ndarray:
+    """把相機空間多邊形 (N,3) 裁到 z > near（Sutherland–Hodgman 單平面）。
+
+    相機站進房內時，地板/天花板的大三角形會跨過相機平面；整片丟掉會讓地板消失。
+    """
+    out: list[np.ndarray] = []
+    n = len(cp)
+    for i in range(n):
+        a, b = cp[i], cp[(i + 1) % n]
+        a_in, b_in = a[2] > near, b[2] > near
+        if a_in:
+            out.append(a)
+        if a_in != b_in:
+            t = (near - a[2]) / (b[2] - a[2])
+            out.append(a + t * (b - a))
+    return np.array(out) if out else np.zeros((0, 3))
+
+
+def _raster_cam_tri(
+    cp: np.ndarray, obj_id: int, cam: LookAtCamera, zbuf: np.ndarray, idbuf: np.ndarray,
+) -> None:
+    """光柵化一個已在相機空間、且全部在近平面前方的三角形。"""
+    H, W = zbuf.shape
+    zc = cp[:, 2]
+    sx = cam.cx + cam.f * cp[:, 0] / zc
+    sy = cam.cy - cam.f * cp[:, 1] / zc
+
+    minx = max(int(math.floor(sx.min())), 0)
+    maxx = min(int(math.ceil(sx.max())), W - 1)
+    miny = max(int(math.floor(sy.min())), 0)
+    maxy = min(int(math.ceil(sy.max())), H - 1)
+    if minx > maxx or miny > maxy:
+        return
+
+    x0, y0 = sx[0], sy[0]
+    x1, y1 = sx[1], sy[1]
+    x2, y2 = sx[2], sy[2]
+    denom = (y1 - y2) * (x0 - x2) + (x2 - x1) * (y0 - y2)
+    if abs(denom) < 1e-9:
+        return
+
+    gx, gy = np.meshgrid(
+        np.arange(minx, maxx + 1, dtype=np.float64),
+        np.arange(miny, maxy + 1, dtype=np.float64),
+    )
+    gxf, gyf = gx + 0.5, gy + 0.5
+    l0 = ((y1 - y2) * (gxf - x2) + (x2 - x1) * (gyf - y2)) / denom
+    l1 = ((y2 - y0) * (gxf - x2) + (x0 - x2) * (gyf - y2)) / denom
+    l2 = 1.0 - l0 - l1
+    inside = (l0 >= 0) & (l1 >= 0) & (l2 >= 0)
+    if not inside.any():
+        return
+
+    inv_z = l0 * (1.0 / zc[0]) + l1 * (1.0 / zc[1]) + l2 * (1.0 / zc[2])
+    inv_z[~inside] = 0.0
+    with np.errstate(divide="ignore", invalid="ignore"):
+        zpix = np.where(inv_z > 0, 1.0 / inv_z, np.inf)
+
+    sub_z = zbuf[miny:maxy + 1, minx:maxx + 1]
+    sub_id = idbuf[miny:maxy + 1, minx:maxx + 1]
+    upd = inside & (zpix < sub_z)
+    sub_z[upd] = zpix[upd]
+    sub_id[upd] = obj_id
+
+
 def rasterize_ids(
     tagged_tris: list[tuple[np.ndarray, int]], cam: LookAtCamera,
 ) -> tuple[np.ndarray, np.ndarray]:
@@ -485,56 +608,24 @@ def rasterize_ids(
     empty, smaller = nearer); ``idbuf`` is the winning object id per pixel
     (``0`` = empty/background).
     """
-    H, W = cam.img_h, cam.img_w
-    zbuf = np.full((H, W), np.inf, dtype=np.float64)
-    idbuf = np.zeros((H, W), dtype=np.int32)
+    zbuf = np.full((cam.img_h, cam.img_w), np.inf, dtype=np.float64)
+    idbuf = np.zeros((cam.img_h, cam.img_w), dtype=np.int32)
 
     for verts, obj_id in tagged_tris:
+        if obj_id in SHELL_IDS:
+            n = np.cross(verts[1] - verts[0], verts[2] - verts[0])
+            if np.dot(n, cam.eye - verts[0]) <= 0:
+                continue
         cp = cam.to_cam(verts)
         zc = cp[:, 2]
-        if np.any(zc <= _NEAR):
+        if np.all(zc > _NEAR):
+            _raster_cam_tri(cp, obj_id, cam, zbuf, idbuf)
             continue
-        sx = cam.cx + cam.f * cp[:, 0] / zc
-        sy = cam.cy - cam.f * cp[:, 1] / zc
-
-        minx = max(int(math.floor(sx.min())), 0)
-        maxx = min(int(math.ceil(sx.max())), W - 1)
-        miny = max(int(math.floor(sy.min())), 0)
-        maxy = min(int(math.ceil(sy.max())), H - 1)
-        if minx > maxx or miny > maxy:
+        if np.all(zc <= _NEAR):
             continue
-
-        x0, y0 = sx[0], sy[0]
-        x1, y1 = sx[1], sy[1]
-        x2, y2 = sx[2], sy[2]
-        denom = (y1 - y2) * (x0 - x2) + (x2 - x1) * (y0 - y2)
-        if abs(denom) < 1e-9:
-            continue
-
-        gx, gy = np.meshgrid(
-            np.arange(minx, maxx + 1, dtype=np.float64),
-            np.arange(miny, maxy + 1, dtype=np.float64),
-        )
-        gxf, gyf = gx + 0.5, gy + 0.5
-        l0 = ((y1 - y2) * (gxf - x2) + (x2 - x1) * (gyf - y2)) / denom
-        l1 = ((y2 - y0) * (gxf - x2) + (x0 - x2) * (gyf - y2)) / denom
-        l2 = 1.0 - l0 - l1
-        inside = (l0 >= 0) & (l1 >= 0) & (l2 >= 0)
-        if not inside.any():
-            continue
-
-        inv_z = l0 * (1.0 / zc[0]) + l1 * (1.0 / zc[1]) + l2 * (1.0 / zc[2])
-        inv_z[~inside] = 0.0
-        with np.errstate(divide="ignore", invalid="ignore"):
-            zpix = np.where(inv_z > 0, 1.0 / inv_z, np.inf)
-
-        sub_z = zbuf[miny:maxy + 1, minx:maxx + 1]
-        sub_id = idbuf[miny:maxy + 1, minx:maxx + 1]
-        upd = inside & (zpix < sub_z)
-        sub_z[upd] = zpix[upd]
-        sub_id[upd] = obj_id
-        zbuf[miny:maxy + 1, minx:maxx + 1] = sub_z
-        idbuf[miny:maxy + 1, minx:maxx + 1] = sub_id
+        poly = clip_near(cp)
+        for i in range(1, len(poly) - 1):
+            _raster_cam_tri(np.stack([poly[0], poly[i], poly[i + 1]]), obj_id, cam, zbuf, idbuf)
 
     return zbuf, idbuf
 
@@ -569,17 +660,28 @@ def generate_candidates(base: CameraParams, count: int = 6) -> list[CameraParams
     search would systematically drift toward a distant, flattened "establishing
     shot" — the base framing was tuned on purpose and candidates should fine-tune
     around it, not replace it.
+
+    斜角 base 會連同左右鏡像那一側一起產生，讓遮擋評分決定要站哪個角落。
     """
-    candidates = [base]
+    s = base.setback
+    if s > 0:
+        back, fwd = s * 1.12, max(0.3, s * 0.9)
+    else:
+        # 站在房內：用固定步距（乘法在 0 附近沒作用），且不退出近牆外，否則會看到房間外的空洞
+        back, fwd = min(s + 0.15, -0.15), s - 0.15
     deltas: list[dict[str, float]] = [
-        {"setback": base.setback * 1.12, "eye_height": base.eye_height + 0.15},
-        {"setback": max(0.3, base.setback * 0.9)},
+        {"setback": back, "eye_height": base.eye_height + 0.15},
+        {"setback": fwd},
         {"eye_height": max(0.8, base.eye_height - 0.2)},
-        {"target_depth_frac": min(0.85, base.target_depth_frac + 0.10)},
+        {"target_depth_frac": min(1.0, base.target_depth_frac + 0.10)},
         {"target_depth_frac": max(0.3, base.target_depth_frac - 0.10)},
     ]
-    for d in deltas[: max(0, count - 1)]:
-        candidates.append(replace(base, **d))
+    sides = [base, base.mirrored()] if base.is_oblique else [base]
+    candidates: list[CameraParams] = []
+    for side in sides:
+        candidates.append(side)
+        for d in deltas[: max(0, count - 1)]:
+            candidates.append(replace(side, **d))
     return candidates
 
 
@@ -587,10 +689,34 @@ def _framing_drift(params: CameraParams, base: CameraParams) -> float:
     """How far ``params`` has strayed from the tuned ``base`` framing, as a unitless
     fraction. Used to keep candidate selection from trading a marginal occlusion
     gain for a noticeably different (usually more distant/wide-looking) shot."""
-    return (
-        abs(params.setback - base.setback) / max(base.setback, 0.1)
-        + abs(params.eye_height - base.eye_height) / max(base.eye_height, 0.1)
-    )
+    def _drift(ref: CameraParams) -> float:
+        return (
+            abs(params.setback - ref.setback) / max(abs(ref.setback), 0.1)
+            + abs(params.eye_height - ref.eye_height) / max(ref.eye_height, 0.1)
+            + abs(params.eye_x_frac - ref.eye_x_frac)
+        )
+
+    # 換到鏡像角落不算偏離構圖
+    return min(_drift(base), _drift(base.mirrored())) if base.is_oblique else _drift(base)
+
+
+def _clearance_penalty(cam: LookAtCamera, by_id: dict[int, list[tuple[np.ndarray, int]]]) -> float:
+    """相機站進房內（斜角視角）時，離家具太近會被巨大前景塞滿、甚至站進家具裡。
+
+    依相機到最近家具 footprint 的水平距離扣分：<0.3m 直接重罰，0.3~0.9m 線性遞減。
+    """
+    ex, ez = float(cam.eye[0]), float(cam.eye[2])
+    nearest = math.inf
+    for tris in by_id.values():
+        pts = np.concatenate([t for t, _ in tris])
+        dx = max(pts[:, 0].min() - ex, 0.0, ex - pts[:, 0].max())
+        dz = max(pts[:, 2].min() - ez, 0.0, ez - pts[:, 2].max())
+        nearest = min(nearest, math.hypot(dx, dz))
+    if nearest < 0.3:
+        return 1.0
+    if nearest < 0.9:
+        return 0.25 * (0.9 - nearest) / 0.6
+    return 0.0
 
 
 def _furniture_ids(id_to_type: dict[int, str]) -> list[int]:
@@ -614,10 +740,11 @@ def score_camera(
     Pieces that fall entirely outside the frame are penalized separately, and a
     small penalty discourages drifting far from ``base`` (see ``_framing_drift``)
     so a marginal occlusion gain can't justify a noticeably different shot.
+    相機離家具太近另外扣分（見 ``_clearance_penalty``）。
     """
     cam = LookAtCamera(room_w, room_d, img_w, img_h, params)
     zbuf, idbuf = rasterize_ids(tagged_tris, cam)
-    drift_penalty = 0.08 * _framing_drift(params, base)
+    drift_penalty = 0.08 * _framing_drift(params, base) + _clearance_penalty(cam, by_id)
 
     if not furn_ids:
         return -drift_penalty, {"cam": cam, "zbuf": zbuf, "idbuf": idbuf, "ratios": {}, "off_frame": 0}

@@ -119,6 +119,8 @@ def _layout_render_config() -> dict:
             "target_h": Config.LAYOUT_CAM_TARGET_H,
             "target_depth_frac": Config.LAYOUT_CAM_TARGET_DEPTH_FRAC,
             "fov_v_deg": Config.LAYOUT_CAM_FOV,
+            "eye_x_frac": Config.LAYOUT_CAM_EYE_X_FRAC,
+            "target_x_frac": Config.LAYOUT_CAM_TARGET_X_FRAC,
         },
     }
 

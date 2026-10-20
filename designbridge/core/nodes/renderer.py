@@ -575,16 +575,10 @@ def renderer(state: DesignBridgeState) -> dict[str, Any]:
             # scored by furniture occlusion and the best one picked once here, then
             # pinned for both calls below — otherwise each call would independently
             # auto-select and could pick two different angles for the same job.
-            from designbridge.layout.camera_projection import CameraParams, select_best_camera
+            from designbridge.layout.camera_projection import base_camera_from_config, select_best_camera
             from dataclasses import asdict
 
-            _base_cam = CameraParams(
-                eye_height=Config.LAYOUT_CAM_EYE_H,
-                setback=Config.LAYOUT_CAM_SETBACK,
-                target_h=Config.LAYOUT_CAM_TARGET_H,
-                target_depth_frac=Config.LAYOUT_CAM_TARGET_DEPTH_FRAC,
-                fov_v_deg=Config.LAYOUT_CAM_FOV,
-            )
+            _base_cam = base_camera_from_config()
             if Config.LAYOUT_CAMERA_AUTO_SELECT:
                 _chosen_cam, _picked = select_best_camera(
                     _base_cam, _rw, _rd, 2.70, output_width, output_height,
@@ -593,11 +587,7 @@ def renderer(state: DesignBridgeState) -> dict[str, Any]:
                 )
                 generation_params["layout_camera_score"] = _picked["score"]
                 print(
-                    f"[renderer] 候選角度評分選用相機："
-                    f"eye_height={_chosen_cam.eye_height:.2f} setback={_chosen_cam.setback:.2f} "
-                    f"target_h={_chosen_cam.target_h:.2f} "
-                    f"target_depth_frac={_chosen_cam.target_depth_frac:.2f} "
-                    f"fov_v={_chosen_cam.fov_v_deg:.0f}°（分數 {_picked['score']:.3f}）"
+                    f"[renderer] 候選角度評分選用相機：{_chosen_cam.summary()}（分數 {_picked['score']:.3f}）"
                 )
             else:
                 _chosen_cam = _base_cam

@@ -38,6 +38,7 @@ from designbridge.layout.camera_projection import (
     CameraParams,
     FURNITURE_HEIGHTS,
     LookAtCamera,
+    base_camera_from_config,
     build_tagged_scene,
     depth_to_gray,
     furniture_height,
@@ -101,15 +102,7 @@ def _room_dims(space_info: dict) -> tuple[float, float, float]:
 
 
 def _base_camera_params(overrides: dict[str, Any] | None) -> CameraParams:
-    from designbridge.core.config import Config
-
-    base = CameraParams(
-        eye_height=Config.LAYOUT_CAM_EYE_H,
-        setback=Config.LAYOUT_CAM_SETBACK,
-        target_h=Config.LAYOUT_CAM_TARGET_H,
-        target_depth_frac=Config.LAYOUT_CAM_TARGET_DEPTH_FRAC,
-        fov_v_deg=Config.LAYOUT_CAM_FOV,
-    )
+    base = base_camera_from_config()
     return replace(base, **overrides) if overrides else base
 
 
@@ -128,7 +121,8 @@ def project_scene_graph_to_depth(
     """把 furniture_placements 投影成透視深度圖（近亮遠暗），可選輸出 segmentation。
 
     ``camera_overrides``：覆寫 base `CameraParams` 的欄位（`eye_height` /
-    `setback` / `target_h` / `target_depth_frac` / `fov_v_deg`），當成候選 0。
+    `setback` / `target_h` / `target_depth_frac` / `fov_v_deg` / `eye_x_frac` /
+    `target_x_frac`），當成候選 0。
     ``auto_select_camera``：是否在候選 0 周圍再產生幾個候選站位、依家具遮擋程度
     評分自動挑最好的一個（預設讀 `Config.LAYOUT_CAMERA_AUTO_SELECT`）。關掉時只用
     候選 0，等同過去的固定站位行為。
@@ -156,10 +150,7 @@ def project_scene_graph_to_depth(
         if furniture_placements:
             _p = chosen_params
             print(
-                f"[scene_graph_to_depth] 候選角度評分選用相機："
-                f"eye_height={_p.eye_height:.2f} setback={_p.setback:.2f} "
-                f"target_h={_p.target_h:.2f} target_depth_frac={_p.target_depth_frac:.2f} "
-                f"fov_v={_p.fov_v_deg:.0f}°（分數 {camera_score:.3f}）"
+                f"[scene_graph_to_depth] 候選角度評分選用相機：{_p.summary()}（分數 {camera_score:.3f}）"
             )
     else:
         chosen_params = base_params

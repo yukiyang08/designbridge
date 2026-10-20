@@ -96,13 +96,16 @@ class Config:
     # 深度圖裡家具畫成粗略語意輪廓（床、沙發、桌）而非方塊；關掉低矮家具會被畫成地墊
     ENABLE_SEMANTIC_SHAPES: bool = _flag("DESIGNBRIDGE_ENABLE_SEMANTIC_SHAPES", "true")
 
-    # 佈局控制圖的鏡頭：接近視線高度、看向房間中心（舊的高視角會留黑邊、畫成娃娃屋）
-    # 1024x576 調出來的；回到舊值：EYE_H=2.2 SETBACK=2.6 TARGET_H=0.5 TARGET_DEPTH_FRAC=0.58 FOV=58
+    # 佈局控制圖的鏡頭：站在近側一角、看向對角牆角的兩點透視斜角視角（左右角落由遮擋評分挑）。
+    # SETBACK 為負代表站在房內。回到正面視角：EYE_X_FRAC=0.5 TARGET_X_FRAC=0.5 SETBACK=1.6
+    # TARGET_DEPTH_FRAC=0.6 FOV=65
     LAYOUT_CAM_EYE_H: float = float(os.getenv("DESIGNBRIDGE_LAYOUT_CAM_EYE_H", "1.6"))
-    LAYOUT_CAM_SETBACK: float = float(os.getenv("DESIGNBRIDGE_LAYOUT_CAM_SETBACK", "1.6"))
+    LAYOUT_CAM_SETBACK: float = float(os.getenv("DESIGNBRIDGE_LAYOUT_CAM_SETBACK", "-0.3"))
     LAYOUT_CAM_TARGET_H: float = float(os.getenv("DESIGNBRIDGE_LAYOUT_CAM_TARGET_H", "0.9"))
-    LAYOUT_CAM_TARGET_DEPTH_FRAC: float = float(os.getenv("DESIGNBRIDGE_LAYOUT_CAM_TARGET_DEPTH_FRAC", "0.6"))
-    LAYOUT_CAM_FOV: float = float(os.getenv("DESIGNBRIDGE_LAYOUT_CAM_FOV", "65"))
+    LAYOUT_CAM_TARGET_DEPTH_FRAC: float = float(os.getenv("DESIGNBRIDGE_LAYOUT_CAM_TARGET_DEPTH_FRAC", "1.0"))
+    LAYOUT_CAM_FOV: float = float(os.getenv("DESIGNBRIDGE_LAYOUT_CAM_FOV", "58"))
+    LAYOUT_CAM_EYE_X_FRAC: float = float(os.getenv("DESIGNBRIDGE_LAYOUT_CAM_EYE_X_FRAC", "0.06"))
+    LAYOUT_CAM_TARGET_X_FRAC: float = float(os.getenv("DESIGNBRIDGE_LAYOUT_CAM_TARGET_X_FRAC", "0.9"))
 
     # ── ControlNet（有深度圖的流程）：照片深度 / 投影深度 ──────────────────
     # 重排佈局時的深度來源：controlnet（現行）| kontext（品質不穩，僅供參考）

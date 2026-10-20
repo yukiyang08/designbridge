@@ -123,3 +123,6 @@ ablation_tests/
 docs/experiments/images/controlnet_test/
 
 
+
+# 深度圖相機角度生圖測試（本機用，不 push）
+camera_angle_tests/

@@ -37,7 +37,9 @@ from designbridge.core.config import Config
 from designbridge.layout.camera_projection import (
     CameraParams,
     LookAtCamera,
+    base_camera_from_config,
     build_tagged_scene,
+    clip_near,
     depth_to_gray,
     furniture_height,
     nearest_wall_world,
@@ -69,13 +71,7 @@ _BOX_EDGES = [
 
 
 def _base_camera_params(cam_kwargs: dict | None) -> CameraParams:
-    base = CameraParams(
-        eye_height=Config.LAYOUT_CAM_EYE_H,
-        setback=Config.LAYOUT_CAM_SETBACK,
-        target_h=Config.LAYOUT_CAM_TARGET_H,
-        target_depth_frac=Config.LAYOUT_CAM_TARGET_DEPTH_FRAC,
-        fov_v_deg=Config.LAYOUT_CAM_FOV,
-    )
+    base = base_camera_from_config()
     return replace(base, **cam_kwargs) if cam_kwargs else base
 
 
@@ -101,10 +97,7 @@ def _resolve_camera(
     )
     if furniture_placements:
         print(
-            f"[layout_projection] 候選角度評分選用相機："
-            f"eye_height={chosen.eye_height:.2f} setback={chosen.setback:.2f} "
-            f"target_h={chosen.target_h:.2f} target_depth_frac={chosen.target_depth_frac:.2f} "
-            f"fov_v={chosen.fov_v_deg:.0f}°（分數 {picked['score']:.3f}）"
+            f"[layout_projection] 候選角度評分選用相機：{chosen.summary()}（分數 {picked['score']:.3f}）"
         )
     return picked["cam"]
 
@@ -223,26 +216,32 @@ def render_layout_edge_map(
         img = Image.new("L", (img_w, img_h), 0)
         draw = ImageDraw.Draw(img)
 
-        def project(pts: np.ndarray) -> np.ndarray:
-            cp = cam.to_cam(pts)
+        def project_cam(cp: np.ndarray) -> np.ndarray:
             sx = cam.cx + cam.f * cp[:, 0] / cp[:, 2]
             sy = cam.cy - cam.f * cp[:, 1] / cp[:, 2]
             return np.stack([sx, sy, cp[:, 2]], axis=1)
 
         def draw_edges(corners: np.ndarray, edges, width: int, hidden_line: bool):
-            sc = project(corners)
+            cc = cam.to_cam(corners)
             for a, b in edges:
-                za, zb = sc[a, 2], sc[b, 2]
-                if za <= NEAR or zb <= NEAR:
+                # 相機站在房內時房殼邊線會跨過相機平面，裁掉後面那段而不是整條丟掉
+                seg = cc[[a, b]]
+                if seg[0, 2] <= NEAR and seg[1, 2] <= NEAR:
                     continue
+                if seg[0, 2] <= NEAR or seg[1, 2] <= NEAR:
+                    seg = clip_near(seg, NEAR)[:2]
+                    if len(seg) < 2:
+                        continue
+                sc = project_cam(seg)
+                za, zb = sc[0, 2], sc[1, 2]
                 if not hidden_line:
-                    draw.line([(sc[a, 0], sc[a, 1]), (sc[b, 0], sc[b, 1])], fill=255, width=width)
+                    draw.line([(sc[0, 0], sc[0, 1]), (sc[1, 0], sc[1, 1])], fill=255, width=width)
                     continue
                 # Sample the edge; keep only points that are the frontmost surface
                 # (their depth ≈ z-buffer at that pixel, within tolerance).
                 n = 48
                 ts = np.linspace(0.0, 1.0, n)
-                pts = sc[a, :2][None, :] * (1 - ts)[:, None] + sc[b, :2][None, :] * ts[:, None]
+                pts = sc[0, :2][None, :] * (1 - ts)[:, None] + sc[1, :2][None, :] * ts[:, None]
                 zs = za * (1 - ts) + zb * ts
                 prev = None
                 for (px, py), z in zip(pts, zs):
