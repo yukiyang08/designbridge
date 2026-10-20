@@ -377,7 +377,8 @@ const lockedModel = computed({
 })
 
 // ── Furniture palette ─────────────────────────────────────────────
-const paletteRoomType = ref(props.roomType)
+// 上傳平面圖的未命名空間房型是 room，沒有對應家具清單，先給客廳清單，使用者可再切換
+const paletteRoomType = ref(FURNITURE_BY_ROOM[props.roomType] ? props.roomType : 'living_room')
 const paletteCatalog = computed(() => FURNITURE_BY_ROOM[paletteRoomType.value] || [])
 
 // ── 尺寸標示模式 ─────────────────────────────────────────────────

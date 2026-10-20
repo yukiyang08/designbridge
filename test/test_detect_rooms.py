@@ -1,5 +1,5 @@
 """
-測試 detect_rooms_in_floor_plan()：能否從一張整戶平面圖抓出每個房間的邊界框。
+測試 detect_rooms_in_floor_plan()：能否從一張整戶平面圖切出每個房間（輪廓或邊界框）。
 
 執行方式（在專案根目錄）：
     python test/test_detect_rooms.py <平面圖圖片路徑>
@@ -36,7 +36,8 @@ def run(image_path: str):
 
     print(f"[PASS] 偵測到 {len(rooms)} 個空間：")
     for r in rooms:
-        print(f"  - {r['room_type']:<12} x={r['x']:.2f} y={r['y']:.2f} w={r['w']:.2f} h={r['h']:.2f}")
+        print(f"  - {r['id']:<8} {r.get('label', ''):<6} {r['room_type']:<12} "
+              f"x={r['x']:.2f} y={r['y']:.2f} w={r['w']:.2f} h={r['h']:.2f}")
 
     img = Image.open(src).convert("RGB")
     W, H = img.size
@@ -44,8 +45,11 @@ def run(image_path: str):
     for r in rooms:
         box = (r["x"] * W, r["y"] * H, (r["x"] + r["w"]) * W, (r["y"] + r["h"]) * H)
         color = "red" if r["room_type"] == "other" else "lime"
-        draw.rectangle(box, outline=color, width=3)
-        draw.text((box[0] + 4, box[1] + 4), r["room_type"], fill=color)
+        if r.get("polygon"):  # 依牆線切出的輪廓
+            draw.polygon([(x * W, y * H) for x, y in r["polygon"]], outline=color, width=3)
+        else:
+            draw.rectangle(box, outline=color, width=3)
+        draw.text((box[0] + 4, box[1] + 4), f'{r["id"]} {r["room_type"]}', fill=color)
 
     OUT_DIR.mkdir(parents=True, exist_ok=True)
     out_path = OUT_DIR / f"{src.stem}_boxes.png"

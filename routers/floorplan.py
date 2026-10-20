@@ -259,6 +259,7 @@ class CropFloorPlanRequest(BaseModel):
     y: float
     w: float
     h: float
+    polygon: Optional[List[List[float]]] = None  # 正規化 [[x, y], ...]；有給就把房間外塗白
 
 
 @router.post("/api/crop-floor-plan")
@@ -271,6 +272,16 @@ def crop_floor_plan(request: CropFloorPlanRequest):
 
         img = Image.open(request.image_path)
         img_w, img_h = img.size
+        if request.polygon and len(request.polygon) >= 3:
+            from PIL import ImageDraw
+
+            # 外框裁切常包到隔壁房間（L 型房尤其明顯），家具解析會把鄰房家具算進來
+            img = img.convert("RGB")
+            mask = Image.new("L", img.size, 0)
+            ImageDraw.Draw(mask).polygon(
+                [(px * img_w, py * img_h) for px, py in request.polygon], fill=255
+            )
+            img = Image.composite(img, Image.new("RGB", img.size, "white"), mask)
         pad = 0.03  # 留一點邊界，避免牆線剛好被切到
         x0 = max(0.0, request.x - pad)
         y0 = max(0.0, request.y - pad)

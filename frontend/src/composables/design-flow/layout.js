@@ -11,6 +11,7 @@ import {
 import { nextStep, goToStepKey } from './navigation'
 import { scheduleSearch } from './style'
 import { uploadFile } from './common'
+import { FURNITURE_BY_ROOM } from '@/config/furniture'
 
 /* ══ Step: 空間設定 → 產生 2D 平面圖 ══════════════════════ */
 
@@ -115,17 +116,45 @@ export async function handleRoomSelected(room) {
     const res = await jsonFetch('/api/crop-floor-plan', {
       image_path: uploadedPlanPath.value,
       x: room.x, y: room.y, w: room.w, h: room.h,
+      polygon: room.polygon || undefined,
     })
     if (!res.ok) throw new Error(`${res.status}`)
     const { path: croppedPath } = await res.json()
     if (requestId !== requestState.current) return
     uploadedPlanUrl.value = mediaUrl(croppedPath)
 
+    if (room.room_type === 'other') {
+      openEmptyRoom(croppedPath, room)
+      return
+    }
     await parseFloorPlanAndProceed(croppedPath, requestId, room.room_type)
   } catch (e) {
     if (requestId === requestState.current) error.value = `裁切房間失敗：${e.message}`
     if (requestId === requestState.current) loading.value = false
   }
+}
+
+// 佈局引擎不支援的房型（浴室、陽台、未命名空間）：不跑家具辨識，直接進空白的家具配置，
+// 讓使用者自己擺。房間尺寸和 /api/parse-floor-plan 用同一套坪數換算。
+function openEmptyRoom(croppedPath, room) {
+  let w = customRoomW.value, d = customRoomD.value
+  if (!(w && d)) {
+    const m2 = spaceSizePing.value * 3.306
+    w = Math.round(Math.sqrt(m2 * 5 / 4) * 10) / 10
+    d = Math.round(Math.sqrt(m2 * 4 / 5) * 10) / 10
+  }
+  floorPlanPath.value = croppedPath
+  floorPlanUrl.value = mediaUrl(croppedPath)
+  sceneGraph.value = null
+  layoutRenderConfig.value = null
+  editPlacements.value = []
+  roomW.value = w
+  roomD.value = d
+  // 浴室／陽台有對應的家具清單；其他未知空間用中性的 room，家具面板會退回預設清單
+  roomTypeForPlan.value = FURNITURE_BY_ROOM[room.space_type] ? room.space_type : 'room'
+  loading.value = false
+  goToStepKey('plan')
+  if (extraPrompt.value.trim()) scheduleSearch()
 }
 
 // 呼叫 /api/parse-floor-plan → 塞進可編輯的 scene_graph → 進「繪製平面圖」步驟。
