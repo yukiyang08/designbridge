@@ -48,10 +48,14 @@ _DEFAULT_FURNITURE: dict[str, list[dict]] = {
         {"type": "wardrobe", "x": 0.08, "y": 0.08, "w": 0.18, "h": 0.08},
         {"type": "nightstand", "x": 0.24, "y": 0.58, "w": 0.07, "h": 0.07},
     ],
+    # 客廳在左 55%（與前端 LIVING_ROOM_PRESET 同一套相對位置）、餐廳在右
     "living_dining": [
-        {"type": "sofa", "x": 0.08, "y": 0.55, "w": 0.30, "h": 0.13},
-        {"type": "coffee_table", "x": 0.16, "y": 0.42, "w": 0.15, "h": 0.10},
-        {"type": "tv_unit", "x": 0.08, "y": 0.08, "w": 0.22, "h": 0.07},
+        {"type": "tv_unit", "x": 0.14, "y": 0.14, "w": 0.22, "h": 0.07},
+        {"type": "plant", "x": 0.31, "y": 0.02, "w": 0.05, "h": 0.05},
+        {"type": "coffee_table", "x": 0.19, "y": 0.42, "w": 0.15, "h": 0.10},
+        {"type": "armchair", "x": 0.02, "y": 0.46, "w": 0.10, "h": 0.11},
+        {"type": "side_table", "x": 0.48, "y": 0.61, "w": 0.06, "h": 0.07},
+        {"type": "sofa", "x": 0.12, "y": 0.72, "w": 0.30, "h": 0.13},
         {"type": "dining_table", "x": 0.58, "y": 0.55, "w": 0.20, "h": 0.15},
         {"type": "chair", "x": 0.58, "y": 0.42, "w": 0.08, "h": 0.08, "facing": "down"},
         {"type": "chair", "x": 0.68, "y": 0.42, "w": 0.08, "h": 0.08, "facing": "down"},

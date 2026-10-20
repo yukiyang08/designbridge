@@ -7,11 +7,13 @@ import {
   floorPlanUrl, floorPlanPath, sceneGraph, layoutRenderConfig, editPlacements,
   roomW, roomD, roomTypeForPlan,
   floorPlanUpload, uploadedPlanUrl, uploadedPlanPath, detectedRooms,
+  cadDefaultPlacements,
 } from './state'
 import { nextStep, goToStepKey } from './navigation'
 import { scheduleSearch } from './style'
 import { uploadFile } from './common'
 import { FURNITURE_BY_ROOM } from '@/config/furniture'
+import { enterUploadedWholeFloor } from './cad'
 
 /* ══ Step: 空間設定 → 產生 2D 平面圖 ══════════════════════ */
 
@@ -83,14 +85,20 @@ export async function useUploadedPlan() {
 
     // 先看看這張圖是不是含多個房間（整戶圖）——是的話讓使用者先選一間，
     // 免得所有房間的家具被混進同一個矩形房間框裡。
-    let rooms = []
+    let rooms = [], plan = null
     try {
       const roomsRes = await jsonFetch('/api/detect-rooms', { image_path: path })
-      if (roomsRes.ok) rooms = (await roomsRes.json()).rooms || []
+      if (roomsRes.ok) ({ rooms = [], plan = null } = await roomsRes.json())
     } catch {
       rooms = [] // 偵測失敗就當單一房間處理，不擋住原本的流程
     }
     if (requestId !== requestState.current) return
+
+    // 整戶圖切出了整層資料：接進整層流程（整層進度、總覽、批次套用風格）
+    if (plan?.rooms?.length > 1) {
+      enterUploadedWholeFloor(plan)
+      return
+    }
 
     if (rooms.length > 1) {
       detectedRooms.value = rooms
@@ -178,6 +186,11 @@ export async function parseFloorPlanAndProceed(path, requestId, roomTypeOverride
     const placements = (data.furniture_placements || []).map((p, i) => ({
       id: p.id || `item_${i}`, type: p.type, x: p.x, y: p.y, w: p.w, h: p.h, rotation: p.rotation || 0,
     }))
+    roomW.value = data.room_w || 5.0
+    roomD.value = data.room_d || 4.0
+    roomTypeForPlan.value = data.room_type || roomTypeOverride || roomType.value
+    // 客廳沒辨識到家具時給預設擺法，使用者不用從空房間開始擺
+    const preset = placements.length ? [] : cadDefaultPlacements(roomTypeForPlan.value, roomW.value, roomD.value)
     if (placements.length) {
       floorPlanPath.value = data.floor_plan_path || path
       floorPlanUrl.value = data.floor_plan_url || mediaUrl(path)
@@ -188,11 +201,9 @@ export async function parseFloorPlanAndProceed(path, requestId, roomTypeOverride
       floorPlanPath.value = path
       floorPlanUrl.value = mediaUrl(path)
       sceneGraph.value = null
-      editPlacements.value = []
+      editPlacements.value = preset
+      if (preset.length) await updateFloorPlan()   // 依預設家具重畫 2D 平面圖
     }
-    roomW.value = data.room_w || 5.0
-    roomD.value = data.room_d || 4.0
-    roomTypeForPlan.value = data.room_type || roomTypeOverride || roomType.value
     goToStepKey('plan')
     if (extraPrompt.value.trim()) scheduleSearch()
   } catch (e) {

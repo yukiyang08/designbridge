@@ -396,14 +396,41 @@ function buildScene() {
   const width = container.clientWidth || 640
   const height2 = container.clientHeight || 480
   const aspect = width / height2
-  const vfovDeg = camCfg.fov_v_deg || 58
-  const eyeHeight = camCfg.eye_height || 2.2
-  const setback = camCfg.setback || 2.6
+  let vfovDeg = camCfg.fov_v_deg || 58
+  let eyeHeight = camCfg.eye_height || 2.2
+  let setback = camCfg.setback ?? 2.6
   const targetH = camCfg.target_h ?? 0.5
   const targetDepthFrac = camCfg.target_depth_frac ?? 0.58
+  let eyeXFrac = camCfg.eye_x_frac ?? 0.5
+  let targetXFrac = camCfg.target_x_frac ?? 0.5
+  // 小房間最低觀看距離：跟後端 camera_projection.fit_camera_to_room 同一條規則，預覽才對得上生成
+  if (camCfg.min_view_dist) {
+    const tz = targetDepthFrac * roomDepth
+    const dist = Math.hypot((targetXFrac - eyeXFrac) * roomWidth, tz + setback)
+    // 房內退得開就只調後退距離；得退到近牆外才整套調整
+    const inside = Math.sqrt(Math.max(camCfg.min_view_dist ** 2 - ((targetXFrac - eyeXFrac) * roomWidth) ** 2, 0)) - tz
+    if (dist < camCfg.min_view_dist && inside <= 0) {
+      setback = inside
+    } else if (dist < camCfg.min_view_dist) {
+      const rad = Math.PI / 180
+      eyeXFrac = 0.5 + (eyeXFrac - 0.5) * 0.5
+      targetXFrac = 0.5 + (targetXFrac - 0.5) * 0.5
+      const dx = (targetXFrac - eyeXFrac) * roomWidth
+      vfovDeg = 2 * Math.atan(Math.tan(vfovDeg * rad / 2) * dist / camCfg.min_view_dist) / rad
+      setback = Math.sqrt(Math.max(camCfg.min_view_dist ** 2 - dx * dx, 0)) - tz
+      // 畫面左右要落在近牆開口內，否則會看到側牆外的空白（同後端 _fov_inside_opening）
+      if (setback > 0) {
+        const ex = eyeXFrac * roomWidth, tx = targetXFrac * roomWidth
+        const view = Math.atan2(tx - ex, tz + setback)
+        const half = Math.min(...[0, roomWidth].map(cx => Math.abs(view - Math.atan2(cx - ex, setback)))) * 0.9
+        vfovDeg = Math.min(vfovDeg, 2 * Math.atan(Math.tan(half) / aspect) / rad)
+      }
+      eyeHeight = Math.max(eyeHeight, camCfg.small_room_eye_h || eyeHeight)
+    }
+  }
   // 斜角視角的左右位置；跟家具 worldX 用同一套鏡像換算
-  const eyeX = (0.5 - (camCfg.eye_x_frac ?? 0.5)) * roomWidth
-  const targetX = (0.5 - (camCfg.target_x_frac ?? 0.5)) * roomWidth
+  const eyeX = (0.5 - eyeXFrac) * roomWidth
+  const targetX = (0.5 - targetXFrac) * roomWidth
   camera = new THREE.PerspectiveCamera(vfovDeg, aspect, 0.05, 50)
   camera.position.set(eyeX, eyeHeight, -setback)
 

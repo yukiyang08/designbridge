@@ -178,9 +178,16 @@ def detect_rooms_in_floor_plan(image_path: str) -> list[dict] | None:
 
 # 家具面板認得、但佈局引擎還不支援的空間；只用來預選家具清單，room_type 仍是 other
 _EXTRA_SPACE_TYPES = ("bathroom", "balcony")
+# 動線空間（玄關、走廊、走道）：切割時保留自己的範圍、不讓隔壁房間吃掉，但不輸出成房間
+_CIRCULATION = "circulation"
+_CIRCULATION_WORDS = ("玄關", "走廊", "走道", "過道", "通道", "廊道", "門廳", "入口")
+# 不收單獨的 hall：living hall 是客廳
+_CIRCULATION_WORDS_EN = ("entrance", "entry", "foyer", "corridor", "hallway", "passage")
 # 改了提示詞就換版本號，舊快取自動失效
 _SEED_PROMPT_VERSION = "v3"
 _SEED_CACHE_DIR = Path("artifacts/cache/room_seeds")
+# 逐區辨識的提示詞版本（快取檔名用）；改了逐區辨識的提示詞就換
+_LABEL_PROMPT_VERSION = "v4"
 # 合併被切開的同一間房時，小塊面積上限（相對大塊）
 _MERGE_MAX_RATIO = 0.35
 # 逐區辨識平行問幾次取多數
@@ -199,7 +206,8 @@ def _room_seed_prompt() -> str:
         "or the edge of the room).\n"
         "`label` = the room name exactly as written on the drawing; use an empty string "
         "if no name is written for that room. Do not invent names.\n"
-        f"`room_type` = one of {types_csv}, or \"other\" for anything else. When no "
+        f"`room_type` = one of {types_csv}, \"circulation\" for an entrance/foyer, "
+        "corridor or hallway, or \"other\" for anything else. When no "
         "name is written, infer it from fixtures (bed → bedroom, toilet/bathtub → "
         "bathroom, stove/sink counter → kitchen).\n"
         "A bay window (凸窗: an angled or boxed window bump on an exterior wall) belongs to "
@@ -247,7 +255,17 @@ def _room_seeds(image_path: str) -> list[dict] | None:
 def _apply_type(target: dict, raw_type: Any) -> None:
     raw = str(raw_type or "other").lower().replace(" ", "_")
     target["room_type"] = _normalize_room_type(raw)
-    target["space_type"] = raw if raw in _KNOWN_ROOM_TYPES + _EXTRA_SPACE_TYPES else "other"
+    target["space_type"] = raw if raw in _KNOWN_ROOM_TYPES + _EXTRA_SPACE_TYPES + (_CIRCULATION,) else "other"
+
+
+def _is_circulation(room: dict) -> bool:
+    """玄關、走廊、走道這類動線空間：類型被判成 circulation，或圖上寫的房名有對應字眼。"""
+    if room.get("space_type") == _CIRCULATION:
+        return True
+    label = str(room.get("label") or "")
+    low = label.lower()
+    return any(w in label for w in _CIRCULATION_WORDS) or any(
+        w in low.replace("-", " ").split() for w in _CIRCULATION_WORDS_EN)
 
 
 def _detect_rooms_by_segmentation(image_path: str) -> list[dict] | None:
@@ -266,7 +284,11 @@ def _detect_rooms_by_segmentation(image_path: str) -> list[dict] | None:
         return None
     if rooms:
         _relabel_rooms(image_path, rooms)
-    return rooms
+        # 動線空間切割時保有自己的範圍（隔壁房間不會吃進來），這裡才拿掉，那一塊就空著
+        rooms = [r for r in rooms if not _is_circulation(r)]
+        for i, r in enumerate(rooms, 1):
+            r["id"] = f"room_{i}"
+    return rooms or None
 
 
 def _mark(i: int) -> str:
@@ -334,7 +356,7 @@ def _relabel_unwritten(image_path: str, rooms: list[dict]) -> None:
     digest = hashlib.sha256(
         Path(image_path).read_bytes() + json.dumps([r["polygon"] for r in rooms]).encode()
     ).hexdigest()[:32]
-    cache = _SEED_CACHE_DIR / f"{digest}_labels_{_SEED_PROMPT_VERSION}.json"
+    cache = _SEED_CACHE_DIR / f"{digest}_labels_{_LABEL_PROMPT_VERSION}.json"
     answers = None
     if cache.is_file():
         try:
@@ -349,8 +371,8 @@ def _relabel_unwritten(image_path: str, rooms: list[dict]) -> None:
             f"({', '.join(_mark(i) for i in range(1, len(rooms) + 1))}). Black numbers on "
             "the drawing are dimensions, not marks.\n"
             "For EVERY letter, say what space that region is:\n"
-            f"- `room_type`: one of {types_csv}, or \"other\" (entrance, corridor, "
-            "storage, closet, laundry...).\n"
+            f"- `room_type`: one of {types_csv}, \"circulation\" for an entrance/foyer, corridor "
+            "or hallway, or \"other\" (storage, closet, laundry...).\n"
             "- `label`: the room name written on the drawing inside that region, exactly "
             "as written; empty string if none is written. Do not invent names.\n"
             "Use fixtures to decide when nothing is written: bed → bedroom, toilet or "

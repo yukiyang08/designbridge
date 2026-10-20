@@ -56,13 +56,14 @@ def _call_llm_layout(prompt: str) -> list[FurnitureItem]:
 
 def _default_layout(room_type: str) -> list[FurnitureItem]:
     presets: dict[str, list[FurnitureItem]] = {
+        # 電視櫃靠上牆、沙發在下方正對電視，茶几居中；扶手椅在左側、邊桌靠右牆
         "living_room": [
-            FurnitureItem("sofa_1", "sofa", 0.10, 0.58, 0.30, 0.13),
-            FurnitureItem("coffee_table_1", "coffee_table", 0.18, 0.46, 0.15, 0.10),
-            FurnitureItem("tv_unit_1", "tv_unit", 0.28, 0.08, 0.22, 0.07),
-            FurnitureItem("armchair_1", "armchair", 0.52, 0.52, 0.11, 0.11),
-            FurnitureItem("rug_1", "rug", 0.08, 0.42, 0.38, 0.24),
-            FurnitureItem("plant_1", "plant", 0.76, 0.10, 0.06, 0.06),
+            FurnitureItem("tv_unit_1", "tv_unit", 0.30, 0.13, 0.30, 0.10),
+            FurnitureItem("plant_1", "plant", 0.58, 0.02, 0.05, 0.05),
+            FurnitureItem("coffee_table_1", "coffee_table", 0.42, 0.42, 0.15, 0.10),
+            FurnitureItem("armchair_1", "armchair", 0.05, 0.44, 0.15, 0.15),
+            FurnitureItem("side_table_1", "side_table", 0.90, 0.60, 0.08, 0.08),
+            FurnitureItem("sofa_1", "sofa", 0.29, 0.69, 0.40, 0.20),
         ],
         "bedroom": [
             FurnitureItem("bed_1", "bed", 0.30, 0.28, 0.22, 0.28),

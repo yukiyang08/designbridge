@@ -70,8 +70,9 @@ _BOX_EDGES = [
 ]
 
 
-def _base_camera_params(cam_kwargs: dict | None) -> CameraParams:
-    base = base_camera_from_config()
+def _base_camera_params(cam_kwargs: dict | None, room_w: float, room_d: float) -> CameraParams:
+    # 先依房間尺寸調 base，再套呼叫端釘住的參數：renderer 選好的相機原樣使用，不會被再調一次
+    base = base_camera_from_config(room_w, room_d)
     return replace(base, **cam_kwargs) if cam_kwargs else base
 
 
@@ -87,7 +88,7 @@ def _resolve_camera(
     for one render job), use it directly — no rescoring. Otherwise run the same
     occlusion-based candidate selection ``scene_graph_to_depth`` uses.
     """
-    base = _base_camera_params(cam_kwargs)
+    base = _base_camera_params(cam_kwargs, room_w, room_d)
     if cam_kwargs or not Config.LAYOUT_CAMERA_AUTO_SELECT:
         return LookAtCamera(room_w, room_d, img_w, img_h, base)
     chosen, picked = select_best_camera(

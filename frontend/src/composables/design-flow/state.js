@@ -73,6 +73,12 @@ export const CAD_ROOM_TYPE_TO_EDITOR = {
   kitchen: 'kitchen',
   bathroom: 'bathroom',
   balcony: 'balcony',
+  // 上傳平面圖切出的房間（floorplan_upload_plan.py）直接用編輯器字彙；認不出的空間給中性的
+  // room，家具面板退回預設清單
+  living_room: 'living_room',
+  dining_room: 'dining_room',
+  study: 'study',
+  other: 'room',
 }
 
 // 選完房間後的預設家具擺法——跟 layout_agent.py 的 _default_layout 同一種做法
@@ -84,13 +90,37 @@ export const CAD_ROOM_TYPE_TO_EDITOR = {
 // 對衛浴／陽台反而是錯的結果。
 // 每種房型一個 builder：用公尺貼牆擺（真實家具尺寸，見 config/furniture.js），再換成歸一化座標。
 // 門／窗位置沒有納入考量——開門範圍內預設就有家具也沒關係，編輯器允許把它拖出來（見 LayoutEditor 的 doorKeepouts）。
+// 客廳預設擺法（家具中心點，佔客廳區域寬深的比例）：電視櫃靠上、沙發在下方正對電視，
+// 茶几居中，扶手椅在左、邊桌靠右。尺寸用真實尺寸，房間大小不同時家具不會被拉伸。
+// 順序即優先度：小房間擺不下時 settlePlacements 會挪動後面的，所以次要家具放後面
+const LIVING_ROOM_PRESET = [
+  ['sofa', 0.49, 0.79], ['tv_unit', 0.45, 0.18], ['coffee_table', 0.49, 0.47],
+  ['side_table', 0.94, 0.64], ['armchair', 0.12, 0.51], ['plant', 0.61, 0.05],
+]
+function putLivingRoom(put, zoneX, zoneW, D) {
+  for (const [type, cx, cy] of LIVING_ROOM_PRESET) {
+    const [rw, rd] = furnitureRealSize(type)
+    put(type, zoneX + cx * zoneW - rw / 2, cy * D - rd / 2)
+  }
+}
+
 const CAD_DEFAULT_LAYOUT = {
+  // 上傳平面圖點進客廳、卻沒辨識到家具時也用這份（見 layout.js parseFloorPlanAndProceed）
+  living_room: (W, D, put) => putLivingRoom(put, 0, W, D),
   bedroom: (W, D, put) => {
     const bx = (W - 1.5) / 2
     put('bed', bx, 0.05)                         // 床頭靠上牆、置中
     put('nightstand', bx - 0.5, 0.05)
     put('nightstand', bx + 1.55, 0.05)
     put('wardrobe', 0.05, D - 0.65)              // 衣櫃靠下牆
+  },
+  dining_room: (W, D, put) => {
+    const cx = W / 2, cy = D / 2
+    put('dining_table', cx - 0.7, cy - 0.4)
+    put('chair', cx - 0.55, cy - 0.9)
+    put('chair', cx + 0.1, cy - 0.9)
+    put('chair', cx - 0.55, cy + 0.45)
+    put('chair', cx + 0.1, cy + 0.45)
   },
   living_dining: (W, D, put) => {
     if (W * D < 18) {                            // 單獨的餐廳（客餐廳合一的房間都比這大）：只擺餐桌椅
@@ -102,10 +132,8 @@ const CAD_DEFAULT_LAYOUT = {
       put('chair', cx + 0.1, cy + 0.45)
       return
     }
-    const lx = W * 0.3, dx = W * 0.74            // 客廳在左、餐廳在右
-    put('tv_unit', lx - 0.8, 0.05)
-    put('coffee_table', lx - 0.5, 1.3)
-    put('sofa', lx - 1.0, 2.2)
+    const dx = W * 0.78                          // 客廳在左 55%、餐廳在右
+    putLivingRoom(put, 0, W * 0.55, D)
     put('dining_table', dx - 0.7, D / 2 - 0.4)
     put('chair', dx - 0.55, D / 2 - 0.9)
     put('chair', dx + 0.1, D / 2 - 0.9)

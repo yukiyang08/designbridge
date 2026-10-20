@@ -106,6 +106,10 @@ class Config:
     LAYOUT_CAM_FOV: float = float(os.getenv("DESIGNBRIDGE_LAYOUT_CAM_FOV", "58"))
     LAYOUT_CAM_EYE_X_FRAC: float = float(os.getenv("DESIGNBRIDGE_LAYOUT_CAM_EYE_X_FRAC", "0.06"))
     LAYOUT_CAM_TARGET_X_FRAC: float = float(os.getenv("DESIGNBRIDGE_LAYOUT_CAM_TARGET_X_FRAC", "0.9"))
+    # 小房間（浴室、廁所）相機離瞄準點太近，前景會被設備塞滿：不足這個水平距離（公尺）就沿房深
+    # 往後退（可退到近牆外，近牆會被剔除），同時把眼高提到 SMALL_ROOM_EYE_H。主臥以上的房間不受影響
+    LAYOUT_CAM_MIN_VIEW_DIST: float = float(os.getenv("DESIGNBRIDGE_LAYOUT_CAM_MIN_VIEW_DIST", "3.5"))
+    LAYOUT_CAM_SMALL_ROOM_EYE_H: float = float(os.getenv("DESIGNBRIDGE_LAYOUT_CAM_SMALL_ROOM_EYE_H", "1.8"))
 
     # ── ControlNet（有深度圖的流程）：照片深度 / 投影深度 ──────────────────
     # 重排佈局時的深度來源：controlnet（現行）| kontext（品質不穩，僅供參考）

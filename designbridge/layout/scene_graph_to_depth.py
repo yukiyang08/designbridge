@@ -101,8 +101,9 @@ def _room_dims(space_info: dict) -> tuple[float, float, float]:
     return w, d, h
 
 
-def _base_camera_params(overrides: dict[str, Any] | None) -> CameraParams:
-    base = base_camera_from_config()
+def _base_camera_params(overrides: dict[str, Any] | None, room_w: float, room_d: float) -> CameraParams:
+    # 先依房間尺寸調 base，再套覆寫：renderer 選好的相機原樣使用，不會被再調一次
+    base = base_camera_from_config(room_w, room_d)
     return replace(base, **overrides) if overrides else base
 
 
@@ -135,7 +136,7 @@ def project_scene_graph_to_depth(
     space_info = space_info or {}
     w_img, h_img = image_size
     room_w, room_d, room_h = _room_dims(space_info)
-    base_params = _base_camera_params(camera_overrides)
+    base_params = _base_camera_params(camera_overrides, room_w, room_d)
 
     use_auto = Config.LAYOUT_CAMERA_AUTO_SELECT if auto_select_camera is None else auto_select_camera
     if use_auto:

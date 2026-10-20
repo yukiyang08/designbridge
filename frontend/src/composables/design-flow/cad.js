@@ -1,12 +1,12 @@
-import { jsonFetch } from '@/config/api'
+import { jsonFetch, mediaUrl } from '@/config/api'
 import {
   requestState, cadDefaultPlacements, CAD_ROOM_TYPE_TO_EDITOR,
   error, loading, loadingMsg, result,
   cadCounts, cadTotalPing, cadRoomW, cadRoomD, cadExtraRooms, cadPlanResult, cadRendering, cadRenderError,
-  cadActiveRoomId, cadRoomStatus, cadRoomSnapshots, cadBatch, openingEdits, roomGeometry, cadOverview,
+  cadActiveRoomId, cadRoomStatus, cadRoomSnapshots, cadBatch, openingEdits, roomGeometry, cadOverview, cadRenderTokens,
   roomW, roomD, roomTypeForPlan, editPlacements,
   floorPlanPath, floorPlanUrl, sceneGraph, layoutRenderConfig, lastGeneratedImage,
-  uploadedPlanUrl, panoUrl, panoError,
+  uploadedPlanUrl, panoUrl, panoError, planSource,
 } from './state'
 import { goToStepKey } from './navigation'
 import { cancelCadBatch } from './cadBatch'
@@ -28,6 +28,30 @@ export async function fetchRoomPlan() {
   return data
 }
 
+// 換一張整層平面圖時清掉上一張的所有進度：房間 id（room_1、bedroom_0…）會撞名，
+// 不清掉就會還原到舊平面圖的快照
+function resetCadProgress() {
+  cadActiveRoomId.value = null
+  cadRoomStatus.value = {}
+  cadRoomSnapshots.value = {}
+  cadOverview.value = false
+  cadRendering.value = {}
+  cadRenderError.value = {}
+  for (const k of Object.keys(cadRenderTokens)) cadRenderTokens[k]++   // 舊平面圖還在跑的渲染作廢
+  openingEdits.value = {}
+  cancelCadBatch()
+}
+
+// 上傳的整戶平面圖切出多間房（/api/detect-rooms 回傳的 plan）：轉進整層流程，
+// 整層進度、總覽、批次套用風格、存雲端都沿用 CAD 房型生成那一套
+export function enterUploadedWholeFloor(plan) {
+  resetCadProgress()
+  planSource.value = 'cad'
+  cadPlanResult.value = plan
+  loading.value = false
+  goToStepKey('roomProgram')
+}
+
 export async function submitRoomProgram() {
   const requestId = ++requestState.current
   error.value = ''
@@ -41,16 +65,7 @@ export async function submitRoomProgram() {
     const data = await res.json()
     if (!res.ok) throw new Error(data.detail || `${res.status}`)
     if (requestId !== requestState.current) return
-    // 新的一層：舊的房間 id（bedroom_0…）會跟新分區撞名，不清掉就會還原到舊平面圖的快照
-    cadActiveRoomId.value = null
-    cadRoomStatus.value = {}
-    cadRoomSnapshots.value = {}
-    cadOverview.value = false
-    cadRendering.value = {}
-    cadRenderError.value = {}
-    for (const k of Object.keys(cadRenderTokens)) cadRenderTokens[k]++   // 舊平面圖還在跑的渲染作廢（房間 id 會撞名）
-    openingEdits.value = {}
-    cancelCadBatch()
+    resetCadProgress()
     cadPlanResult.value = data
     if ((data.rooms || []).length > 1) {
       // 多房間：房間選擇器就在這一頁的表單下方展開，不跳頁，使用者直接點房間繼續。
@@ -157,6 +172,11 @@ export async function handleCadRoomSelected(room, requestId = ++requestState.cur
     roomD.value = room.h
     roomTypeForPlan.value = CAD_ROOM_TYPE_TO_EDITOR[room.room_type] || 'living_room'
     sceneGraph.value = null
+    layoutRenderConfig.value = null
+    if (cadPlanResult.value?.source === 'upload') {
+      await prepareUploadedRoom(room, requestId)
+      return
+    }
     editPlacements.value = cadDefaultPlacements(roomTypeForPlan.value, roomW.value, roomD.value, roomGeometry.value)
 
     const res = await jsonFetch('/api/render-floor-plan', {
@@ -176,6 +196,63 @@ export async function handleCadRoomSelected(room, requestId = ++requestState.cur
   } finally {
     if (requestId === requestState.current) loading.value = false
   }
+}
+
+// 佈局引擎支援的房型才跑家具辨識；浴室、陽台、未知空間交給使用者自己擺
+const DETECTABLE = new Set(['living_room', 'bedroom', 'kitchen', 'dining_room', 'study'])
+
+// 上傳平面圖的房間第一次點進來：從原圖裁出這間（房外塗白），支援的房型用 Gemini 辨識圖上的家具；
+// 辨識不到時套預設擺法（目前只有客廳），其他房型給空白配置。房間尺寸用整層資料換算好的公尺。
+async function prepareUploadedRoom(room, requestId) {
+  const plan = cadPlanResult.value
+  loadingMsg.value = { title: '準備房間中', sub: '裁出這間房並辨識家具' }
+  const crop = await jsonFetch('/api/crop-floor-plan', {
+    image_path: plan.image_path, ...room.bbox_norm, polygon: room.polygon,
+  })
+  if (!crop.ok) throw new Error(`裁切 ${crop.status}`)
+  const { path: croppedPath } = await crop.json()
+  if (requestId !== requestState.current) return
+  uploadedPlanUrl.value = mediaUrl(croppedPath)   // 「對照原始上傳平面圖」顯示這間的裁切圖
+
+  const type = roomTypeForPlan.value
+  if (DETECTABLE.has(type)) {
+    const res = await jsonFetch('/api/parse-floor-plan', {
+      image_path: croppedPath, room_type: type, room_w: roomW.value, room_d: roomD.value,
+    })
+    if (!res.ok) throw new Error(`家具辨識 ${res.status}`)
+    const data = await res.json()
+    if (requestId !== requestState.current) return
+    const placements = (data.furniture_placements || []).map((p, i) => ({
+      id: p.id || `item_${i}`, type: p.type, x: p.x, y: p.y, w: p.w, h: p.h, rotation: p.rotation || 0,
+    }))
+    if (placements.length) {
+      editPlacements.value = placements
+      sceneGraph.value = data.scene_graph || null
+      layoutRenderConfig.value = data.layout_render_config || null
+      floorPlanPath.value = data.floor_plan_path || croppedPath
+      floorPlanUrl.value = data.floor_plan_url || mediaUrl(croppedPath)
+      goToStepKey('plan')
+      return
+    }
+  }
+
+  // 沒辨識到家具：客廳給預設擺法並重畫 2D 平面圖；其他房型空白，底圖用裁切圖
+  const preset = type === 'living_room' ? cadDefaultPlacements(type, roomW.value, roomD.value, roomGeometry.value) : []
+  editPlacements.value = preset
+  if (preset.length) {
+    const res = await jsonFetch('/api/render-floor-plan', {
+      furniture_placements: preset, room_w: roomW.value, room_d: roomD.value, room_type: type,
+    })
+    if (!res.ok) throw new Error(`${res.status}`)
+    const data = await res.json()
+    if (requestId !== requestState.current) return
+    floorPlanPath.value = data.floor_plan_path || croppedPath
+    floorPlanUrl.value = data.floor_plan_url || mediaUrl(croppedPath)
+  } else {
+    floorPlanPath.value = croppedPath
+    floorPlanUrl.value = mediaUrl(croppedPath)
+  }
+  goToStepKey('plan')
 }
 
 // 縮圖上點別間房——只有目前這間已經渲染完成（cadRoomStatus === 'done'）才會被呼叫

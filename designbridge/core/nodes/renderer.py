@@ -578,7 +578,7 @@ def renderer(state: DesignBridgeState) -> dict[str, Any]:
             from designbridge.layout.camera_projection import base_camera_from_config, select_best_camera
             from dataclasses import asdict
 
-            _base_cam = base_camera_from_config()
+            _base_cam = base_camera_from_config(_rw, _rd)
             if Config.LAYOUT_CAMERA_AUTO_SELECT:
                 _chosen_cam, _picked = select_best_camera(
                     _base_cam, _rw, _rd, 2.70, output_width, output_height,
