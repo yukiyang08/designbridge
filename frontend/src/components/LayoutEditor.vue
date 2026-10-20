@@ -783,4 +783,16 @@ onBeforeUnmount(() => viewportObserver?.disconnect())
   .palette { order: 1; }
 }
 .switch-input { width: 36px; height: 20px; accent-color: #756d66; cursor: pointer; }
+
+/* 手機：畫布優先，工具列與家具面板收成單行橫向捲動，不再把畫布擠到畫面下方 */
+@media (max-width: 640px) {
+  .toolbar { flex-wrap: nowrap; overflow-x: auto; }
+  .tool-btn { flex: none; }
+  .board-viewport { order: 1; height: min(60vh, 480px); }
+  .palette { order: 2; width: 100%; box-sizing: border-box; }
+  .props-panel { order: 3; }
+  .palette-list { display: flex; overflow-x: auto; max-height: none; padding-bottom: 0.2rem; }
+  .palette-item { flex: none; min-width: 72px; }
+  .palette-hint { display: none; }
+}
 </style>

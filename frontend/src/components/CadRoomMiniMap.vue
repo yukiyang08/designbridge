@@ -526,10 +526,6 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey))
 </template>
 
 <style scoped>
-/* 這是卡片內部 grid 的第二欄（見 StudioView.vue 的 .studio-card.has-minimap），
-   不是另外浮在旁邊的獨立白卡，所以不用自己的背景/陰影/圓角去模仿一個框——
-   淡底色只是跟主內容拉開一點視覺區隔，不是「第二個框框」。
-   position: sticky 讓它在卡片內容比視窗高、需要捲動時還留在看得到的地方。 */
 .cad-minimap {
   position: sticky;
   top: 24px;

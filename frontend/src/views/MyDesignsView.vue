@@ -13,6 +13,9 @@ import AppNav from '@/components/shell/AppNav.vue'
 import sceneBg from '@/assets/figma/room-bg.png'
 
 const router = useRouter()
+const badImg = reactive({})   // 載入失敗的圖片網址（雲端上傳失敗或網址過期），改顯示「無圖」
+const imgOk = (u) => !!u && !badImg[u]
+const markBad = (u) => { if (u) badImg[u] = true }
 const { startFlow, extraPrompt, selectedStyle, noStyleReference, restoreProject } = useDesignFlow()
 
 const records = ref([])
@@ -253,7 +256,7 @@ function reuseDesign(r) {
       <div v-if="loading" class="grid" aria-busy="true">
         <div v-for="n in 6" :key="n" class="card skeleton"></div>
       </div>
-      <div v-else-if="projects.length === 0" class="empty-state">
+      <div v-else-if="projects.length === 0 && !error" class="empty-state">
         <p>還沒有任何設計</p>
         <p class="empty-hint">每次生成的設計都會自動存在這裡。</p>
         <button class="db-btn" @click="router.push('/start')">開始新的設計</button>
@@ -263,12 +266,12 @@ function reuseDesign(r) {
         <article v-for="p in projects" :key="p.id" class="card" @click="openDetail(p)">
           <div :class="['card-img-wrap', { mosaic: p.spaces.length > 1 }]">
             <div class="main-cell">
-              <img v-if="p.cover.generated_image_url" :src="p.cover.generated_image_url" alt="" class="card-img" loading="lazy" />
+              <img v-if="imgOk(p.cover.generated_image_url)" :src="p.cover.generated_image_url" alt="" class="card-img" loading="lazy" @error="markBad(p.cover.generated_image_url)" />
               <div v-else class="card-no-img">無圖</div>
             </div>
             <div v-if="p.spaces.length > 1" class="side-col">
               <div v-for="(s, i) in p.spaces.slice(1, 3)" :key="s.id" class="side-cell" :title="s.name">
-                <img v-if="s.renders[0].generated_image_url" :src="s.renders[0].generated_image_url" alt="" class="card-img" loading="lazy" />
+                <img v-if="imgOk(s.renders[0].generated_image_url)" :src="s.renders[0].generated_image_url" alt="" class="card-img" loading="lazy" @error="markBad(s.renders[0].generated_image_url)" />
                 <span v-if="i === 1 && p.spaces.length > 3" class="more">+{{ p.spaces.length - 3 }}</span>
               </div>
             </div>
@@ -325,7 +328,7 @@ function reuseDesign(r) {
         <div v-if="activeRender" class="panel-body">
           <div class="viewer">
             <div class="stage">
-              <img v-if="mainImage" :src="mainImage" alt="" :class="['main-img', { cover: mainImage === activeRender.generated_image_url }]" title="點擊放大" @click="zoomed = true" />
+              <img v-if="imgOk(mainImage)" :src="mainImage" @error="markBad(mainImage)" alt="" :class="['main-img', { cover: mainImage === activeRender.generated_image_url }]" title="點擊放大" @click="zoomed = true" />
               <div v-else class="card-no-img">無圖</div>
               <div v-if="imageKinds.length > 1" class="kinds">
                 <button
@@ -340,7 +343,7 @@ function reuseDesign(r) {
                 :class="['ver', { on: r.task_id === activeRender.task_id }]"
                 :title="formatTime(r.timestamp)" @click="activeTaskId = r.task_id; imgKind = 'render'"
               >
-                <img v-if="r.generated_image_url" :src="r.generated_image_url" alt="" />
+                <img v-if="imgOk(r.generated_image_url)" :src="r.generated_image_url" alt="" @error="markBad(r.generated_image_url)" />
                 <span>{{ i === 0 ? '最新' : formatTime(r.timestamp).slice(5) }}</span>
               </button>
             </div>

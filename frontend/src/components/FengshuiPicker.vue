@@ -273,4 +273,13 @@ function clearAll() {
 @media (max-width: 600px) {
   .fengshui { padding-inline: 0.5rem; }
 }
+/* 手機：每條規則縮成一行（只留名稱與勾選），說明文字勾起來才展開 */
+@media (max-width: 640px) {
+  .fs-grid { grid-template-columns: 1fr; gap: 0.45rem; }
+  .fs-card { align-items: center; padding: 0.55rem 0.75rem; }
+  .fs-diagram { width: 40px; height: 30px; }
+  .fs-desc, .fs-fix { display: none; }
+  .fs-card.is-active .fs-desc { display: block; }
+  .fs-label { font-size: 0.98rem; }
+}
 </style>
