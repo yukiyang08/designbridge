@@ -80,7 +80,11 @@ def extract(args) -> None:
         img = Image.open(img_path).convert("RGB")
         for i, raw in enumerate(detected):
             bbox = raw.get("bbox") or []
-            crop = crop_image_by_bbox(img, bbox) if len(bbox) == 4 else None
+            # LLM 偶爾回傳上下顛倒的 bbox，比照正式流程略過該件
+            try:
+                crop = crop_image_by_bbox(img, bbox) if len(bbox) == 4 else None
+            except ValueError:
+                crop = None
             if crop is None:
                 continue
             # 與正式流程一致：shelf 併入 storage
@@ -166,10 +170,15 @@ def score(args) -> None:
         items.append([(s, h == 1) for s, h in zip(sims, hits) if s is not None])
 
     skipped = len(rows) - len(items)
+    # 商品庫沒有對應類別（窗簾、other）的家具任何門檻都不會有候選，不計入覆蓋率分母
+    no_kb = sum(1 for c in items if not c)
+    items = [c for c in items if c]
     if not items:
         print("❌ 沒有已標註完成的資料（hit_1~hit_3 請填 1 或 0）")
         return
     print(f"已標註 {len(items)} 件" + (f"（{skipped} 件未標註完成，未計入）" if skipped else ""))
+    if no_kb:
+        print(f"另有 {no_kb} 件商品庫無對應類別，未計入")
     print(f"\n{'門檻':>6} | {'覆蓋率':>8} | {'Top-1 命中率':>12} | {'Top-3 命中率':>12}")
     print("-" * 50)
     for t in args.thresholds:
