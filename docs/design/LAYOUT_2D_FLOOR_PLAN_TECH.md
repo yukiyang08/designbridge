@@ -130,15 +130,13 @@ Python 函式名）、`order`（執行順序）、`parameters`（可調參數）
 房間窄到無解時，enforcer 保持原位、verifier 回報 `False`——
 硬把家具塞進牆裡只會製造假的合規。
 
-#### 14 條規則
+#### 12 條規則
 
 `order` 就是執行順序，排在後面的會覆蓋前面的結果，所以同一件家具的規則要照
 「先挪配角、再定主角」排：先把鏡子挪到定位（10），才用鏡子的最終位置去判斷床（12）。
 
 | order | trigger | 規則 | enforce | 標的 |
 |---|---|---|---|---|
-| 4 | `bed_not_facing_door` | 床腳不對門 | `bed_not_facing_door` | bed / bunk_bed |
-| 5 | `sofa_not_back_to_door` | 沙發不背門 | `sofa_not_back_to_door` | sofa / loveseat |
 | 6 | `desk_not_facing_window` | 書桌不背窗 | `desk_not_facing_window` | desk |
 | 7 | `desk_not_back_to_door` | 書桌不背門 | `desk_not_back_to_door` | desk |
 | 8 | `door_not_facing_stove` | 開門不見灶 | `door_sightline_clear` | stove |

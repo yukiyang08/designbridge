@@ -5,6 +5,7 @@ from __future__ import annotations
 import uuid
 from typing import Any
 
+from designbridge.core.config import Config
 from designbridge.core.state import DesignBridgeState
 from designbridge.core.timing import timed_call
 from designbridge.style.style_apply import build_style_params
@@ -44,7 +45,9 @@ def layout_and_style_agent_stub(state: DesignBridgeState) -> dict[str, Any]:
             existing_scene_graph, req.get("space_info") or {}, task_id, output_size,
         )
         layout_status = "reused_from_step1"
-    elif hint_layout:
+    elif hint_layout or (Config.ENABLE_PRODUCT_MESHES and not user_input.get("initial_image")):
+        # 開啟 IKEA 商品時，沒照片的流程（例如跳過排版）也要先排版，家具才綁得到商品；
+        # 有照片但沒要求重排時維持原樣，使用者自己的家具不被換掉
         from designbridge.layout.layout_agent import run_layout_agent
         from designbridge.render.render_prompt import _resolve_output_size
 
@@ -59,6 +62,9 @@ def layout_and_style_agent_stub(state: DesignBridgeState) -> dict[str, Any]:
                 "layout_and_style.layout_agent", task_id,
                 run_layout_agent, req, task_id,
                 existing_layout=existing_layout, output_size=output_size,
+                # 照片錨定投影要用照片的深度/分割（b613dad0 原本有傳，之後在合併時遺失）
+                vision_features=state.get("vision_features"),
+                image_path=user_input.get("initial_image"),
             )
             scene_graph = result.get("scene_graph")
             layout_intermediate = result.get("intermediate_outputs") or {}

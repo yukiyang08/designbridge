@@ -4,6 +4,15 @@ description: 風水：床頭靠實牆，不睡在窗戶底下
 type: fengshui
 trigger: bed_head_not_under_window
 order: 13
+label: 床頭不靠窗
+category: backing
+severity: 3
+rooms: [bedroom, kids_room]
+requires:
+- [bed, bunk_bed]
+needs: [window]
+reason: 床頭要有靠；窗邊有冷風、噪音和光線，睡在窗下容易受涼、睡不好。
+remedy: 床無法換牆時，用厚床頭板加遮光窗簾，讓床頭有實靠。
 enforce:
   - not_backed_by_opening
 prompt_addition: "bed headboard against a solid wall, never under or against a window"

@@ -1,276 +1,162 @@
 <script setup>
 /**
- * 風水禁忌選單——主畫面的一個區塊，不是進階設定裡的一排 chip。
+ * 風水建議開關——主畫面只問「要不要套用」，不要求使用者看懂 14 條規則。
  *
- * 會拉出來的理由：這些規則是**硬約束**，勾了之後排版會實際把家具移開位置，
- * 對結果的影響跟房型、家具一個等級；收在摺疊面板裡多數人不會展開，等於做了沒人用。
- *
- * 每張卡片直接寫出「是什麼」跟「會怎麼改」，因為「開門不見灶」「穿堂煞」這種詞
- * 只給四個字的話，看得懂的人不需要它、看不懂的人也不會去勾。
- *
- * 與目前房型無關的規則不藏起來、只收進摺疊區：房型是使用者隨時會改的欄位，
- * 而且自訂房型（「和室」「更衣室」）對不上任何清單，全部藏掉會變成永遠選不到。
+ * 開啟後依房型自動挑規則（relevantFengshuiOptions），細調收在摺疊區、依四個原則分組；
+ * 取消勾選的規則記在 fengshuiExcluded，換房型時其餘規則照樣自動帶入。
  */
 import { computed } from 'vue'
-import { Icon } from '@iconify/vue'
-import { FENGSHUI_OPTIONS } from '@/composables/useDesignFlow'
+import { useDesignFlow, FENGSHUI_GROUPS, relevantFengshuiOptions } from '@/composables/useDesignFlow'
 import { FENGSHUI_DIAGRAMS } from './fengshuiDiagrams'
 
 const props = defineProps({
-  /** 目前的房型，用來決定哪些規則排在前面（可不給，不給就全部視為相關）。 */
   roomType: { type: String, default: '' },
-  /** 多房間批次時，只把適用於其中任一房型的規則排在前面。 */
-  roomTypes: { type: Array, default: () => [] },
-  /** 標題下方那句話；不同入口（排家具／上傳照片）可以換句話講。 */
-  hint: {
-    type: String,
-    default: '勾選的項目會變成硬性條件，排版時實際把家具移出禁忌位置。',
-  },
+  /** 開關下方那句話；不同入口（排家具／上傳照片）講法不同。 */
+  hint: { type: String, default: '開啟後，排版時會自動把家具移出風水禁忌的位置。' },
 })
 
-const rules = defineModel({ type: Array, default: () => [] })
+const { fengshuiEnabled, fengshuiExcluded } = useDesignFlow()
 
-const relevant = computed(() => {
-  const hit = FENGSHUI_OPTIONS.filter(o =>
-    props.roomTypes.length
-      ? props.roomTypes.some(type => o.rooms.includes(type))
-      : o.rooms.includes(props.roomType),
-  )
-  // 自訂房型（「和室」「更衣室」）對不上任何清單。此時全部當成相關，
-  // 否則主格子會是空的、所有選項都躲在收合區裡，等於整個區塊消失。
-  return hit.length ? hit : FENGSHUI_OPTIONS
-})
-const others = computed(() => FENGSHUI_OPTIONS.filter(o => !relevant.value.includes(o)))
+const options = computed(() => relevantFengshuiOptions(props.roomType))
+const activeCount = computed(() => options.value.filter(o => !fengshuiExcluded.value.includes(o.value)).length)
+const groups = computed(() => FENGSHUI_GROUPS
+  .map(g => ({ ...g, items: options.value.filter(o => o.group === g.key) }))
+  .filter(g => g.items.length))
 
-const selectedCount = computed(
-  () => FENGSHUI_OPTIONS.filter(o => rules.value.includes(o.value)).length,
-)
-const allRelevantOn = computed(
-  () => relevant.value.length > 0 && relevant.value.every(o => rules.value.includes(o.value)),
-)
-
-function toggle(value) {
-  rules.value = rules.value.includes(value)
-    ? rules.value.filter(v => v !== value)
-    : [...rules.value, value]
-}
-
-/** 一鍵套用這個房型的全部規則；已經全開時再按一次就是全關，按鈕才不會按了沒反應。 */
-function toggleRelevant() {
-  const values = relevant.value.map(o => o.value)
-  rules.value = allRelevantOn.value
-    ? rules.value.filter(v => !values.includes(v))
-    : [...new Set([...rules.value, ...values])]
-}
-
-function clearAll() {
-  rules.value = []
+function toggleRule(value) {
+  fengshuiExcluded.value = fengshuiExcluded.value.includes(value)
+    ? fengshuiExcluded.value.filter(v => v !== value)
+    : [...fengshuiExcluded.value, value]
 }
 </script>
 
 <template>
   <section class="fengshui">
-    <header class="fs-head">
-      <h2 class="db-col-title fs-title">風水禁忌</h2>
-      <p class="fs-hint">{{ hint }}</p>
-    </header>
-
-    <div class="fs-bar">
-      <span class="fs-count">
-        <template v-if="selectedCount">已選 {{ selectedCount }} 條</template>
-        <template v-else>尚未勾選，不勾就不會限制排版</template>
+    <label class="fs-switch">
+      <span class="fs-switch-text">
+        <span class="fs-title">套用風水建議</span>
+        <span class="fs-hint">{{ hint }}</span>
       </span>
-      <div class="fs-bar-actions">
-        <button v-if="relevant.length" type="button" class="fs-link" @click="toggleRelevant">
-          {{ allRelevantOn ? '取消這些' : '全部套用' }}
-        </button>
-        <button v-if="selectedCount" type="button" class="fs-link" @click="clearAll">
-          全部清除
-        </button>
-      </div>
-    </div>
+      <input v-model="fengshuiEnabled" type="checkbox" role="switch" class="fs-switch-input" />
+      <span class="fs-switch-track" aria-hidden="true"><span class="fs-switch-thumb" /></span>
+    </label>
 
-    <div class="fs-grid">
-      <button
-        v-for="opt in relevant" :key="opt.value"
-        type="button"
-        class="fs-card"
-        :class="{ 'is-active': rules.includes(opt.value) }"
-        :aria-pressed="rules.includes(opt.value)"
-        @click="toggle(opt.value)"
-      >
-        <span v-if="FENGSHUI_DIAGRAMS[opt.value]" class="fs-diagram" aria-hidden="true" v-html="FENGSHUI_DIAGRAMS[opt.value]" />
-        <Icon v-else :icon="opt.icon" class="fs-icon" aria-hidden="true" />
-        <span class="fs-text">
-          <span class="fs-label">{{ opt.label }}</span>
-          <span class="fs-desc">{{ opt.desc }}</span>
-        </span>
-        <Icon
-          :icon="rules.includes(opt.value) ? 'mdi:check-circle' : 'mdi:circle-outline'"
-          class="fs-check"
-          aria-hidden="true"
-        />
-      </button>
-    </div>
+    <div v-if="fengshuiEnabled" class="fs-body">
+      <p class="fs-summary">
+        已依這個空間自動套用 <strong>{{ activeCount }}</strong> 條規則，涵蓋：
+      </p>
+      <ul class="fs-groups">
+        <li v-for="g in groups" :key="g.key" class="fs-group-chip" :title="g.desc">{{ g.label }}</li>
+      </ul>
 
-    <details v-if="others.length" class="fs-more">
-      <summary class="fs-summary">
-        其他空間的規則（{{ others.length }}）
-        <span v-if="others.some(o => rules.includes(o.value))" class="fs-more-badge">
-          已選 {{ others.filter(o => rules.includes(o.value)).length }}
-        </span>
-      </summary>
-      <div class="fs-grid fs-grid--compact">
-        <button
-          v-for="opt in others" :key="opt.value"
-          type="button"
-          class="fs-card fs-card--compact"
-          :class="{ 'is-active': rules.includes(opt.value) }"
-          :aria-pressed="rules.includes(opt.value)"
-          @click="toggle(opt.value)"
-        >
-          <span v-if="FENGSHUI_DIAGRAMS[opt.value]" class="fs-diagram" aria-hidden="true" v-html="FENGSHUI_DIAGRAMS[opt.value]" />
-          <Icon v-else :icon="opt.icon" class="fs-icon" aria-hidden="true" />
-          <span class="fs-text">
-            <span class="fs-label">{{ opt.label }}</span>
-            <span class="fs-desc">{{ opt.desc }}</span>
-          </span>
-          <Icon
-            :icon="rules.includes(opt.value) ? 'mdi:check-circle' : 'mdi:circle-outline'"
-            class="fs-check"
-            aria-hidden="true"
-          />
-        </button>
-      </div>
-    </details>
+      <details class="fs-more">
+        <summary>細調規則</summary>
+        <div v-for="g in groups" :key="g.key" class="fs-group">
+          <p class="fs-group-title">{{ g.label }}<span>{{ g.desc }}</span></p>
+          <label v-for="opt in g.items" :key="opt.value" class="fs-rule">
+            <input
+              type="checkbox"
+              :checked="!fengshuiExcluded.includes(opt.value)"
+              @change="toggleRule(opt.value)"
+            />
+            <span v-if="FENGSHUI_DIAGRAMS[opt.value]" class="fs-diagram" aria-hidden="true" v-html="FENGSHUI_DIAGRAMS[opt.value]" />
+            <span class="fs-rule-text">
+              <span class="fs-rule-label">{{ opt.label }}</span>
+              <span class="fs-rule-desc">{{ opt.desc }}</span>
+            </span>
+          </label>
+        </div>
+      </details>
+    </div>
   </section>
 </template>
 
 <style scoped>
 .fengshui {
   margin-top: 1.5rem;
-  padding: 1.5rem clamp(1rem, 3vw, 2rem) 1.6rem;
+  padding: 1.25rem clamp(1rem, 3vw, 2rem);
   border-top: 1px solid #e6e2d8;
-  /* 勾選狀態原本用全站共用的 --db-accent-soft/-deep（米杏底+卡其邊），跟其他一般
-     互動元件同色，勾了之後對比太弱、看起來不像硬性條件。這裡只加深同一組色相、
-     邊框改墨色，維持低彩度調性但拉開對比——只有這個元件在用，不升級成全站 token。 */
-  --fs-active-bg: #faf8f2;
-  --fs-active-border: #2b2822;
 }
 
-.fs-head { text-align: center; }
-.fs-title { margin-bottom: 0.4rem; }
-.fs-hint {
-  margin: 0 auto;
-  max-width: 46ch;
-  color: var(--db-text-soft);
-  font-size: 0.88rem;
-  line-height: 1.6;
-}
-
-.fs-bar {
+.fs-switch {
   display: flex;
-  flex-wrap: wrap;
   align-items: center;
-  justify-content: space-between;
-  gap: 0.5rem;
-  margin: 1.1rem 0 0.8rem;
-}
-.fs-count { color: var(--db-text-soft); font-size: 0.85rem; }
-.fs-bar-actions { display: flex; gap: 0.9rem; }
-.fs-link {
-  border: none;
-  background: none;
-  padding: 0;
-  color: var(--db-text);
-  font-family: var(--db-font-body);
-  font-size: 0.85rem;
-  text-decoration: underline;
-  text-underline-offset: 3px;
+  gap: 1rem;
   cursor: pointer;
 }
-.fs-link:hover { color: var(--db-accent-deep); }
-
-/* auto-fill + minmax：窄畫面自動掉成一欄，不需要另外寫 media query */
-.fs-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(244px, 1fr));
-  gap: 0.7rem;
-}
-
-.fs-card {
-  display: flex;
-  align-items: flex-start;
-  gap: 0.7rem;
-  padding: 0.85rem 0.9rem;
-  border: 2px solid transparent;
-  border-radius: var(--db-radius-chip);
-  background: var(--db-chip-soft);
-  color: var(--db-text);
-  text-align: left;
-  cursor: pointer;
-  transition: background 0.16s, border-color 0.16s, box-shadow 0.16s;
-}
-.fs-card:hover:not(.is-active) { background: #e4e4e4; }
-.fs-card.is-active {
-  background: var(--fs-active-bg);
-  border-color: var(--fs-active-border);
-  box-shadow: var(--db-shadow-soft);
-}
-
-.fs-icon { flex: none; width: 22px; height: 22px; margin-top: 2px; color: var(--db-text-soft); }
-.fs-card.is-active .fs-icon { color: var(--db-text); }
-.fs-diagram { flex: none; width: 64px; height: 48px; color: var(--db-text-soft); }
-.fs-diagram :deep(svg) { display: block; width: 100%; height: 100%; }
-.fs-card.is-active .fs-diagram { color: var(--db-text); }
-
-.fs-text { display: flex; flex-direction: column; gap: 0.15rem; min-width: 0; flex: 1; }
-.fs-label {
+.fs-switch-text { display: flex; flex-direction: column; gap: 0.2rem; flex: 1; min-width: 0; }
+.fs-title {
   font-family: var(--db-font-display);
-  font-style: normal;
   font-weight: 600;
-  font-size: 1.05rem;
-  line-height: 1.3;
+  font-size: 1.15rem;
 }
-.fs-desc { color: var(--db-text-soft); font-size: 0.8rem; line-height: 1.5; }
-/* 「會怎麼改」只在勾起來之後才需要看，平常淡出去不跟說明搶注意力 */
-.fs-fix {
-  margin-top: 0.15rem;
-  color: var(--db-secondary);
-  font-size: 0.75rem;
-  line-height: 1.45;
-  opacity: 0.75;
-}
-.fs-card.is-active .fs-fix { opacity: 1; color: var(--db-text-soft); }
+.fs-hint { color: var(--db-text-soft); font-size: 0.85rem; line-height: 1.55; }
 
-.fs-check { flex: none; width: 19px; height: 19px; margin-top: 3px; color: var(--db-placeholder); }
-.fs-card.is-active .fs-check { color: var(--fs-active-border); }
+.fs-switch-input { position: absolute; opacity: 0; pointer-events: none; }
+.fs-switch-track {
+  flex: none;
+  position: relative;
+  width: 46px;
+  height: 26px;
+  border-radius: var(--db-radius-pill);
+  background: var(--db-chip);
+  transition: background 0.16s;
+}
+.fs-switch-thumb {
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25);
+  transition: transform 0.16s;
+}
+.fs-switch-input:checked + .fs-switch-track { background: var(--db-ink); }
+.fs-switch-input:checked + .fs-switch-track .fs-switch-thumb { transform: translateX(20px); }
+.fs-switch-input:focus-visible + .fs-switch-track { outline: 2px solid var(--db-accent-ink); outline-offset: 2px; }
+
+.fs-body { margin-top: 1rem; }
+.fs-summary { margin: 0 0 0.5rem; font-size: 0.88rem; color: var(--db-text-soft); }
+.fs-summary strong { color: var(--db-text); }
+.fs-groups { display: flex; flex-wrap: wrap; gap: 0.45rem; margin: 0; padding: 0; list-style: none; }
+.fs-group-chip {
+  padding: 0.3rem 0.8rem;
+  border-radius: var(--db-radius-pill);
+  background: var(--db-accent-soft);
+  font-size: 0.85rem;
+}
 
 .fs-more { margin-top: 0.9rem; }
-.fs-summary {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.5rem;
-  padding: 0.35rem 0;
+.fs-more summary {
   color: var(--db-text-soft);
   font-size: 0.85rem;
   cursor: pointer;
-  list-style: revert;
 }
-.fs-summary:hover { color: var(--db-text); }
-.fs-more[open] .fs-summary { margin-bottom: 0.6rem; }
-.fs-more-badge {
-  padding: 0.1rem 0.5rem;
-  border-radius: var(--db-radius-pill);
-  background: var(--db-accent);
-  color: var(--db-on-accent);
-  font-size: 0.72rem;
-}
+.fs-more summary:hover { color: var(--db-text); }
+.fs-group { margin-top: 0.8rem; }
+.fs-group-title { margin: 0 0 0.35rem; font-weight: 600; font-size: 0.9rem; }
+.fs-group-title span { margin-left: 0.5rem; font-weight: 400; color: var(--db-text-soft); font-size: 0.8rem; }
 
-.fs-card--compact { padding: 0.65rem 0.8rem; }
-.fs-card--compact .fs-label { font-size: 0.98rem; }
+.fs-rule {
+  display: flex;
+  align-items: center;
+  gap: 0.7rem;
+  padding: 0.45rem 0.6rem;
+  border-radius: var(--db-radius-chip);
+  cursor: pointer;
+}
+.fs-rule:hover { background: var(--db-chip-soft); }
+.fs-rule input { flex: none; width: 16px; height: 16px; accent-color: var(--db-ink); }
+.fs-diagram { flex: none; width: 44px; height: 33px; color: var(--db-text-soft); }
+.fs-diagram :deep(svg) { display: block; width: 100%; height: 100%; }
+.fs-rule-text { display: flex; flex-direction: column; min-width: 0; }
+.fs-rule-label { font-size: 0.92rem; }
+.fs-rule-desc { color: var(--db-text-soft); font-size: 0.78rem; line-height: 1.45; }
 
 @media (max-width: 600px) {
   .fengshui { padding-inline: 0.5rem; }
+  .fs-group-title span { display: block; margin-left: 0; }
 }
 </style>

@@ -36,14 +36,10 @@ export const FENGSHUI_DIAGRAMS = {
     `${room}${window(4, BAD)}<path d="M6 19h68" stroke-width="1.5"/>${burners(32)}`),
   door_not_facing_toilet: svg(
     `${roomDoorBottom}<rect x="35" y="8" width="10" height="6"/><ellipse cx="40" cy="23" rx="6" ry="8"/>${sight(40, 52, 40, 32)}`),
-  bed_not_facing_door: svg(
-    `${roomDoorBottom}<rect x="31" y="8" width="18" height="26"/><rect x="33" y="10" width="14" height="6" stroke-width="1.5"/>${sight(40, 52, 40, 36)}`),
   bed_head_not_under_window: svg(
     `<path d="M6 6h68v48H6z"/>${window(4, BAD)}${bed}`),
   door_not_facing_stove: svg(
     `${roomDoorBottom}<path d="M6 17h68" stroke-width="1.5"/>${burners(32)}${sight(40, 52, 40, 19)}`),
-  sofa_not_back_to_door: svg(
-    `${roomDoorTop}<rect x="26" y="28" width="28" height="4" fill="currentColor"/><rect x="26" y="32" width="28" height="10"/>${sight(40, 8, 40, 26)}`),
   door_not_facing_window: svg(
     `${roomDoorBottom}${window(6)}${sight(40, 52, 40, 12)}`),
   stove_away_from_water: svg(

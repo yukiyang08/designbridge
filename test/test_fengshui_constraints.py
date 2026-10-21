@@ -60,7 +60,7 @@ def test_new_cards_are_registered():
     """新增的卡片要被 registry 讀到，否則勾了也不會有任何作用。"""
     cards = get_constraint_registry().load()
     for trigger in (
-        "bed_not_facing_door", "sofa_not_back_to_door", "desk_not_facing_window",
+        "desk_not_facing_window",
         "desk_not_back_to_door", "door_not_facing_stove", "door_not_facing_toilet",
         "door_not_facing_mirror", "door_not_facing_bed", "mirror_not_facing_bed",
         "bed_head_not_under_window", "sofa_not_back_to_window", "stove_not_under_window",
@@ -73,7 +73,7 @@ def test_new_cards_are_registered():
             assert key in _ENFORCERS, f"{trigger} 的 {key} 沒有對應的 enforcer"
             assert key in _VERIFIERS, f"{trigger} 的 {key} 沒有對應的 verifier"
     fengshui = [c for c in cards.values() if c.constraint_type == "fengshui"]
-    assert len(fengshui) == 14, f"預期 14 條風水規則，實際 {len(fengshui)}"
+    assert len(fengshui) == 12, f"預期 12 條風水規則，實際 {len(fengshui)}"
     # 前端的風水選單要跟後端卡片一對一，少一條就是勾不到、多一條就是勾了沒作用
     ui, backend = _frontend_fengshui_values(), {c.trigger for c in fengshui}
     assert ui == backend, (

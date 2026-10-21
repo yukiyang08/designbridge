@@ -155,9 +155,11 @@ class FurnitureItem:
     # Not serialized — it is a within-run marker telling the optimizer to leave it alone
     # and the scorer not to penalise it for being exactly where it was asked to go.
     pinned: bool = False
+    # 綁定的 IKEA SKU（product_meshes.assign_products 填入）；空字串 = 沒有對應商品
+    product_id: str = ""
 
     def to_dict(self) -> dict[str, Any]:
-        return {
+        d = {
             "id": self.id,
             "type": self.type,
             "x": round(self.x, 4),
@@ -166,6 +168,9 @@ class FurnitureItem:
             "h": round(self.h, 4),
             "rotation": self.rotation,
         }
+        if self.product_id:
+            d["product_id"] = self.product_id
+        return d
 
 
 

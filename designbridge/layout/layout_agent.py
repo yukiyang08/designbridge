@@ -509,6 +509,10 @@ def run_layout_agent(
     size = space_info.get("estimated_size") or {}
     _fp_room_w = float(size.get("width", 4.0))
     _fp_room_d = float(size.get("depth", 4.0))
+    if Config.ENABLE_PRODUCT_MESHES:
+        # 在畫平面圖前綁 SKU，平面圖、深度圖、3D 預覽都用商品真實尺寸
+        from designbridge.layout.product_meshes import assign_products
+        assign_products(best_items, _fp_room_w, _fp_room_d)
     floor_plan_path = _generate_floor_plan(best_items, task_id, room_type, _fp_room_w, _fp_room_d)
 
     preserve_types = _classify_preserved(best_items, constraints)
@@ -539,6 +543,7 @@ def run_layout_agent(
         output_size=output_size,
         preserve_types=preserve_types,
         preserve_mask=preserve_mask,
+        photo_path=image_path,
     )
 
     layout_prompt = _build_layout_prompt(best_items, constraints)

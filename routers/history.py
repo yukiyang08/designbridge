@@ -147,6 +147,9 @@ def save_quotation(user_id: str, task_id: str, quotation: dict) -> None:
 @router.get("/api/history")
 def get_history(limit: int = 0, user_id: str = Depends(get_user_id)):
     """目前使用者的設計，新到舊。limit=0 表示全部。"""
+    # 本機免登入模式（DEV_NO_AUTH）沒有使用者：沒有雲端資料可讀寫
+    if not user_id:
+        return []
     sb = _get_supabase()
     q = sb.table("designs").select("record,image_path,floor_plan_path,source_photo_path,style_ref_path,title,quotation,project_id,space_id,space_name").eq("user_id", user_id).order("created_at", desc=True)
     if limit > 0:
@@ -181,6 +184,9 @@ def get_history(limit: int = 0, user_id: str = Depends(get_user_id)):
 
 @router.delete("/api/history")
 def delete_history(task_ids: List[str] = Query(...), user_id: str = Depends(get_user_id)):
+    # 本機免登入模式（DEV_NO_AUTH）沒有使用者：沒有雲端資料可讀寫
+    if not user_id:
+        raise HTTPException(status_code=404, detail="本機免登入模式沒有雲端紀錄")
     sb = _get_supabase()
     rows = sb.table("designs").delete().eq("user_id", user_id).in_("task_id", task_ids).execute().data
     paths = [p for r in rows for p in (r.get("image_path"), r.get("floor_plan_path"), r.get("source_photo_path"), r.get("style_ref_path"), r.get("pano_path")) if p]
@@ -199,6 +205,9 @@ def delete_history(task_ids: List[str] = Query(...), user_id: str = Depends(get_
 def get_project(project_id: str, user_id: str = Depends(get_user_id)):
     """一個設計的完整還原資料：整層平面圖、設定、各空間目前採用的那一版（圖用簽名網址）。
     舊設計沒有 project_spaces 時，從 designs 取每個空間最新一筆推出來。"""
+    # 本機免登入模式（DEV_NO_AUTH）沒有使用者：沒有雲端資料可讀寫
+    if not user_id:
+        raise HTTPException(status_code=404, detail="找不到這個設計")
     sb = _get_supabase()
     proj = (sb.table("projects").select("id,title,plan_source,settings,cad_plan,cad_svg_path")
             .eq("id", project_id).eq("user_id", user_id).limit(1).execute().data)
@@ -290,6 +299,9 @@ def _check_size(obj, what: str) -> None:
 @router.put("/api/projects/{project_id}/state")
 def put_project_state(project_id: str, body: ProjectState, user_id: str = Depends(get_user_id)):
     """前端在切房間、編輯器停手、批次完成時寫回「現在的狀態」。只更新有帶的欄位，沒帶的不會被清掉。"""
+    # 本機免登入模式（DEV_NO_AUTH）沒有使用者：沒有雲端資料可讀寫
+    if not user_id:
+        raise HTTPException(status_code=404, detail="找不到這個設計")
     sb = _get_supabase()
     if not sb.table("projects").select("id").eq("id", project_id).eq("user_id", user_id).limit(1).execute().data:
         raise HTTPException(status_code=404, detail="找不到這個設計")

@@ -22,10 +22,15 @@ def _write_projection_meta(res: dict, task_id: str) -> None:
     instances = meta.get("instances")
     if not instances:
         return
+    payload: dict[str, Any] = {"instances": instances}
+    # 有 IKEA 商品網格時，renderer 靠這三個欄位鎖住家具像素
+    if res.get("color_path"):
+        payload["color_path"] = res["color_path"]
+        payload["product_mask_path"] = res.get("product_mask_path")
+        payload["products"] = (res.get("meta") or {}).get("products") or []
     out = Path(Config.ARTIFACTS_DIR) / "layout" / f"{task_id}_projection.json"
     try:
         out.parent.mkdir(parents=True, exist_ok=True)
-        payload = {"instances": instances}
         if "camera" in meta:
             payload["camera"] = meta["camera"]
             payload["camera_score"] = meta.get("camera_score")
@@ -45,6 +50,7 @@ def _generate_projected_depth(
     output_size: tuple[int, int] | None = None,
     preserve_types: frozenset[str] = frozenset(),
     preserve_mask: Any = None,
+    photo_path: str | None = None,
 ) -> tuple[str | None, str | None, str]:
     """Project furniture boxes into a perspective depth map (+ segmentation) for ControlNet.
 
@@ -92,6 +98,9 @@ def _generate_projected_depth(
                 output_size=output_size,
                 preserve_types=preserve_types,
                 preserve_mask=preserve_mask,
+                room_w=float(((space_info or {}).get("estimated_size") or {}).get("width", 5.0) or 5.0),
+                room_d=float(((space_info or {}).get("estimated_size") or {}).get("depth", 4.0) or 4.0),
+                photo_path=photo_path,
             )
             if res is not None:
                 mode = "photo_anchored"
@@ -151,6 +160,7 @@ def reproject_scene_graph(
             x=float(p.get("x", 0)), y=float(p.get("y", 0)),
             w=float(p.get("w", 0.1)), h=float(p.get("h", 0.1)),
             rotation=float(p.get("rotation", 0.0)),
+            product_id=str(p.get("product_id") or ""),
         )
         for p in placements
     ]
@@ -162,6 +172,9 @@ def reproject_scene_graph(
     room_w = float(scene_graph.get("room_w") or _size.get("width", 4.0) or 4.0)
     room_d = float(scene_graph.get("room_d") or _size.get("depth", 4.0) or 4.0)
     room_type = str(scene_graph.get("room_type") or "living_room")
+    if Config.ENABLE_PRODUCT_MESHES:
+        from designbridge.layout.product_meshes import assign_products
+        assign_products(items, room_w, room_d)
 
     floor_plan_path = _generate_floor_plan(
         items, task_id, room_type=room_type, room_w=room_w, room_d=room_d

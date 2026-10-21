@@ -5,14 +5,19 @@
  * 設計稿目前沒有指向這條路的入口卡，但後端 /api/parse-floor-plan 與流程邏輯都保留著。
  * 要重新開放：在 StartView 的 ENTRIES 補一筆 { source: 'upload', ... } 即可。
  */
+import { watch } from 'vue'
 import AdvancedPanel from '@/components/shell/AdvancedPanel.vue'
+import PlanParseIssue from '@/components/steps/PlanParseIssue.vue'
 import { ROOM_OPTIONS } from '@/config/furniture'
 import { useDesignFlow, ASPECT_OPTIONS } from '@/composables/useDesignFlow'
 
 const {
   floorPlanUpload, roomType, spaceSizePing, customRoomW, customRoomD, outputAspect,
-  loading, useUploadedPlan,
+  loading, useUploadedPlan, planParseIssue,
 } = useDesignFlow()
+
+// 換了一張圖，上一張的解析結果就不適用了
+watch(() => floorPlanUpload.preview, () => { planParseIssue.value = null })
 </script>
 
 <template>
@@ -28,6 +33,8 @@ const {
       <img :src="floorPlanUpload.preview" alt="已上傳的平面配置圖" />
       <button type="button" class="clear-btn" title="移除" @click="floorPlanUpload.remove()">✕</button>
     </div>
+
+    <PlanParseIssue />
 
     <AdvancedPanel hint="房型・坪數・長寬・比例">
       <div class="adv-grid">
@@ -58,7 +65,7 @@ const {
     </AdvancedPanel>
 
     <div class="actions">
-      <button class="db-btn" :disabled="loading || !floorPlanUpload.preview" @click="useUploadedPlan">
+      <button v-if="!planParseIssue" class="db-btn" :disabled="loading || !floorPlanUpload.preview" @click="useUploadedPlan">
         解析平面圖
       </button>
     </div>

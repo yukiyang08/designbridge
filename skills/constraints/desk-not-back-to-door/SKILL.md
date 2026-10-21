@@ -4,6 +4,15 @@ description: 風水：書桌座位不背對門口，坐時能側身見門
 type: fengshui
 trigger: desk_not_back_to_door
 order: 7
+label: 書桌不背門
+category: backing
+severity: 2
+rooms: [study, bedroom, kids_room]
+requires:
+- [desk]
+needs: [door]
+reason: 背對門口工作容易被身後的動靜分心，坐著也沒有安全感。
+remedy: 桌上放一面小鏡子看得到身後，或改用側對門的擺法。
 enforce:
   - desk_not_back_to_door
 prompt_addition: "desk positioned so the seated person is not with their back to the doorway, able to see the entrance from the chair"

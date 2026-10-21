@@ -23,6 +23,7 @@ from designbridge.render.render_backends import (
     _render_flux_controlnet_depth_fal,
     _render_flux_depth_controlnet_fal,
     _render_flux_fal,
+    _render_product_mesh_fal,
 )
 from designbridge.style.style_apply import resolve_style_loras
 
@@ -179,18 +180,22 @@ _FURNITURE_DESC: dict[str, str] = {
 }
 
 
-def _projection_instances(depth_path: str) -> list[dict]:
-    """讀取深度圖旁的投影 meta（每件家具在影像上的實際 bbox）。沒有就回空 list。"""
+def _projection_meta(depth_path: str) -> dict:
+    """讀取深度圖旁的投影 meta（家具實際 bbox、商品網格彩色 pass）。沒有就回空 dict。"""
     meta = Path(str(depth_path)).with_name(
         Path(str(depth_path)).name.replace("_projected_depth", "_projection").rsplit(".", 1)[0] + ".json"
     )
     if not meta.is_file():
-        return []
+        return {}
     try:
-        return json.loads(meta.read_text(encoding="utf-8")).get("instances") or []
+        return json.loads(meta.read_text(encoding="utf-8")) or {}
     except (OSError, ValueError) as e:
         print(f"⚠️ 讀取投影 meta 失敗（{e}）")
-        return []
+        return {}
+
+
+def _projection_instances(depth_path: str) -> list[dict]:
+    return _projection_meta(depth_path).get("instances") or []
 
 
 def _instances_to_spatial_text(instances: list[dict]) -> str:
@@ -484,6 +489,60 @@ def renderer(state: DesignBridgeState) -> dict[str, Any]:
         depth_conditioning_scale = min(depth_conditioning_scale, Config.REAL_PHOTO_DEPTH_MAX_CONDITIONING_SCALE)
     effective_depth_path = depth_path if depth_conditioning_scale >= 0.20 else None
 
+    # IKEA 商品網格：家具像素直接來自商品模型，擴散模型只生成房間與補光影。
+    # 不看 hint_layout：使用者在平面圖步驟擺好家具、描述只講風格時 hint_layout 是 false，
+    # 但 scene_graph 已經有綁好商品的投影，照樣要用
+    _proj_depth_src = str(scene_graph_data.get("projected_depth_path") or "")
+    _product_meta = (
+        _projection_meta(_proj_depth_src)
+        if Config.ENABLE_PRODUCT_MESHES and _proj_depth_src and Path(_proj_depth_src).is_file() else {}
+    )
+    _product_depth = (
+        _fit_condition_image(_proj_depth_src, output_size, render_dir / "conditions", f"{task_id}_product_depth")
+        if _product_meta.get("color_path") else None
+    )
+    if (
+        backend == "placeholder"
+        and Config.FAL_KEY
+        and _product_meta.get("color_path") and Path(str(_product_meta["color_path"])).is_file()
+        and _product_meta.get("product_mask_path") and Path(str(_product_meta["product_mask_path"])).is_file()
+        and _product_depth and Path(str(_product_depth)).is_file()
+    ):
+        _product_prompt = (
+            "Photorealistic interior photograph. Keep every existing furniture piece exactly "
+            "as it is — same shape, color and material; only render the room around it, with "
+            "natural lighting and soft contact shadows. " + prompt
+        )
+        if timed_call(
+            "renderer.product_mesh_fal", task_id,
+            _render_product_mesh_fal,
+            _product_prompt,
+            str(_product_meta["color_path"]), str(_product_meta["product_mask_path"]),
+            str(_product_depth), out_path,
+            room_strength=Config.PRODUCT_ROOM_INPAINT_STRENGTH,
+            harmonize_strength=Config.PRODUCT_HARMONIZE_STRENGTH,
+            depth_conditioning_scale=Config.PRODUCT_DEPTH_CONDITIONING_SCALE,
+            output_size=output_size,
+            loras=style_loras,
+            seed=seed,
+        ):
+            backend = "product_mesh_fal"
+            generation_params["model"] = "fal-ai/flux-general inpainting + image-to-image"
+            generation_params["product_skus"] = [p.get("sku") for p in _product_meta.get("products") or []]
+            generation_params["product_room_strength"] = Config.PRODUCT_ROOM_INPAINT_STRENGTH
+            generation_params["product_harmonize_strength"] = Config.PRODUCT_HARMONIZE_STRENGTH
+            controlnet_inputs["product_color"] = str(_product_meta["color_path"])
+            controlnet_inputs["product_mask"] = str(_product_meta["product_mask_path"])
+            controlnet_inputs["depth"] = str(_product_depth)
+    elif Config.ENABLE_PRODUCT_MESHES and backend == "placeholder":
+        _why = (
+            "沒有家具佈局（例如照片流程只換風格）" if not _proj_depth_src
+            else "家具都沒有對應的 IKEA 商品模型" if not _product_meta.get("color_path")
+            else "缺少 FAL_KEY 或條件圖"
+        )
+        print(f"[renderer] 未使用 IKEA 商品網格：{_why}")
+        generation_params["product_mesh_skipped"] = _why
+
     # FLUX depth ControlNet（需 FAL_KEY）：約束力遠強於 Kontext LoRA，讓投影深度控制家具擺位
     if (
         backend == "placeholder"
@@ -714,7 +773,9 @@ def renderer(state: DesignBridgeState) -> dict[str, Any]:
 
     # 這輪完全沒有深度可用時（純文字/無 hint_layout），對生成圖補跑深度估計存進 vision_features，
     # 下次換風格才有結構可鎖，避免整張重新構圖。
-    if not vision.get("depth") and not using_projected_depth and backend != "placeholder" and Path(path_str).is_file():
+    # 商品網格路徑的結構來自 scene graph 投影，換風格時會重新投影，不需要補估深度
+    if (not vision.get("depth") and not using_projected_depth
+            and backend not in ("placeholder", "product_mesh_fal") and Path(path_str).is_file()):
         try:
             from designbridge.layout.vision import run_depth_estimation
             new_depth_path, _ = timed_call(

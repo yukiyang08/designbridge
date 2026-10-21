@@ -4,17 +4,20 @@
  *
  * 照片會當成 /api/generate 的 initial_image_path：visual_preprocessing 抽視覺特徵、
  * requirement agent 把照片一起餵給 Gemini，所以不需要新的後端端點。
+ *
+ * 風水健檢（PhotoFengshuiAudit）是選用的：分析現況擺法，可以一鍵把違規的規則帶進生成。
  */
 import AdvancedPanel from '@/components/shell/AdvancedPanel.vue'
 import FengshuiPicker from '@/components/FengshuiPicker.vue'
 import StyleSuggestions from '@/components/StyleSuggestions.vue'
+import PhotoFengshuiAudit from '@/components/PhotoFengshuiAudit.vue'
 import { ROOM_OPTIONS } from '@/config/furniture'
 import { useDesignFlow, ASPECT_OPTIONS } from '@/composables/useDesignFlow'
 import { API_BASE } from '@/config/api'
 
 const {
   spacePhoto, roomType, spaceSizePing, outputAspect, extraPrompt,
-  fengshuiRules, loading, submitPhoto, scheduleSearch,
+  loading, submitPhoto, scheduleSearch,
   showSuggestions, styleCandidates, candidatesLoading, candidatesError, confirmedStyle,
   confirmStyle, clearConfirmedStyle, fetchStyleCandidates, showNextRound,
 } = useDesignFlow()
@@ -34,12 +37,11 @@ const {
       <button type="button" class="clear-btn" title="移除" @click="spacePhoto.remove()">✕</button>
     </div>
 
-    <!-- 風水禁忌擺在主畫面，理由同 StepSpaceSetup.vue：硬約束不該藏在摺疊面板裡。
-         這條路徑不排家具，規則走的是 prompt 通道（SKILL.md 的 prompt_addition）。 -->
+    <PhotoFengshuiAudit v-if="spacePhoto.preview" />
+
     <FengshuiPicker
-      v-model="fengshuiRules"
       :room-type="roomType"
-      hint="這條路徑不排家具，勾選的項目會寫進生成效果圖的描述裡。"
+      hint="開啟後，生成效果圖時會依風水重新擺放家具。"
     />
 
     <!-- ══ 描述需求：跟其他路徑一樣直接在這一頁打字、背景跑風格推薦，

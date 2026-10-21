@@ -42,7 +42,6 @@ from designbridge.layout.camera_projection import (
     clip_near,
     depth_to_gray,
     furniture_height,
-    nearest_wall_world,
     rasterize_ids,
     select_best_camera,
 )
@@ -261,7 +260,9 @@ def render_layout_edge_map(
         # Furniture — visible silhouette only, thicker so it reads as the structure.
         # Drawn per decomposed part (seat/backrest, tabletop/legs, ...) rather than one
         # bounding box, so the wireframe itself hints the furniture category too.
-        for item in furniture_placements:
+        from designbridge.layout.facing import OPPOSITE, infer_fronts
+        fronts = infer_fronts(furniture_placements, W, D)
+        for idx, item in enumerate(furniture_placements):
             try:
                 x = float(item.get("x", 0.0)); y = float(item.get("y", 0.0))
                 w = float(item.get("w", 0.0)); h = float(item.get("h", 0.0))
@@ -285,8 +286,7 @@ def render_layout_edge_map(
                 continue
 
             from designbridge.layout.camera_projection import furniture_parts
-            back = nearest_wall_world(x0, x1, z0, z1, W, D)
-            parts = furniture_parts(ftype, x, y, w, h, height, back=back)
+            parts = furniture_parts(ftype, x, y, w, h, height, back=OPPOSITE[fronts[idx]])
             for u0, u1, v0, v1, pz0, pz1 in parts:
                 if pz1 <= pz0:
                     continue

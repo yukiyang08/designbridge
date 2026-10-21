@@ -537,3 +537,108 @@ def _render_flux_depth_controlnet_fal(
         traceback.print_exc()
         return False
 
+
+
+def _fal_flux_general(endpoint: str, arguments: dict) -> bytes:
+    import fal_client
+    import requests
+
+    result = fal_client.subscribe(endpoint, arguments=arguments, with_logs=False)
+    resp = requests.get(result["images"][0]["url"], timeout=60)
+    resp.raise_for_status()
+    return resp.content
+
+
+def _render_product_mesh_fal(
+    prompt: str,
+    color_path: str,
+    product_mask_path: str,
+    depth_path: str,
+    out_path: Path,
+    *,
+    room_strength: float = 1.0,
+    harmonize_strength: float = 0.3,
+    depth_conditioning_scale: float = 0.6,
+    num_steps: int = 28,
+    guidance_scale: float = 3.5,
+    output_size: tuple[int, int] = (1024, 1024),
+    loras: list[dict] | None = None,
+    seed: int | None = None,
+) -> bool:
+    """IKEA 商品網格的彩色投影當底圖：家具像素不重繪，只生成房間，再整張低強度補光影。
+
+    兩段都掛同一張深度圖當 ControlNet，房間結構與家具位置不會漂。
+    """
+    fal_key = Config.FAL_KEY
+    if not fal_key:
+        return False
+    try:
+        import io
+        import os
+
+        import fal_client
+        from PIL import Image, ImageFilter
+
+        os.environ["FAL_KEY"] = fal_key
+
+        def _upload(img: "Image.Image") -> str:
+            buf = io.BytesIO()
+            img.save(buf, format="PNG")
+            return fal_client.upload(buf.getvalue(), content_type="image/png")
+
+        color = Image.open(color_path).convert("RGB").resize(output_size, Image.LANCZOS)
+        product = Image.open(product_mask_path).convert("L").resize(output_size, Image.NEAREST)
+        # 白 = 重繪。家具邊緣內縮 2px 一起重繪，接縫與接觸陰影才融得進去
+        repaint = Image.eval(product.filter(ImageFilter.MinFilter(5)), lambda p: 255 - p)
+        depth = Image.open(depth_path).convert("L").resize(output_size, Image.LANCZOS)
+
+        color_url, mask_url, depth_url = _upload(color), _upload(repaint), _upload(depth)
+        width, height = output_size
+        common: dict = {
+            "prompt": prompt,
+            "num_inference_steps": num_steps,
+            "guidance_scale": guidance_scale,
+            "image_size": _FAL_SIZE_MAP.get((width, height), {"width": width, "height": height}),
+            "controlnet_unions": [{
+                "path": Config.FAL_DEPTH_CONTROLNET_MODEL,
+                "controls": [{
+                    "control_image_url": depth_url,
+                    "control_mode": Config.FAL_DEPTH_CONTROL_MODE,
+                    "conditioning_scale": depth_conditioning_scale,
+                    "start_percentage": 0.0,
+                    "end_percentage": 1.0,
+                }],
+            }],
+        }
+        if seed is not None:
+            common["seed"] = int(seed)
+        if loras:
+            common["loras"] = loras
+
+        print(f"☁️  fal.ai 商品網格 → 房間 inpaint（strength={room_strength}）")
+        room_bytes = _fal_flux_general("fal-ai/flux-general/inpainting", {
+            **common, "image_url": color_url, "mask_url": mask_url, "strength": room_strength,
+        })
+
+        out_path.parent.mkdir(parents=True, exist_ok=True)
+        if harmonize_strength > 0:
+            print(f"☁️  fal.ai 整張光影融合 img2img（strength={harmonize_strength}）")
+            room_url = fal_client.upload(room_bytes, content_type="image/png")
+            final_bytes = _fal_flux_general("fal-ai/flux-general/image-to-image", {
+                **common, "image_url": room_url, "strength": harmonize_strength,
+            })
+            out_path.with_name(out_path.stem + "_room.png").write_bytes(room_bytes)
+        else:
+            final_bytes = room_bytes
+        out_path.write_bytes(final_bytes)
+        print(f"✅ fal.ai 商品網格渲染完成：{out_path.name}")
+        return True
+    except ImportError:
+        print("⚠️  fal_client 未安裝，請執行：pip install fal-client")
+        return False
+    except Exception as e:
+        import traceback
+
+        print(f"⚠️  fal.ai 商品網格渲染失敗：{e}")
+        traceback.print_exc()
+        return False

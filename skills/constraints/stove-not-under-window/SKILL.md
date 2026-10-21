@@ -4,6 +4,15 @@ description: 風水：灶後不宜空，爐灶不背窗
 type: fengshui
 trigger: stove_not_under_window
 order: 15
+label: 灶後不宜空
+category: backing
+severity: 2
+rooms: [kitchen]
+requires:
+- [stove]
+needs: [window]
+reason: 爐灶背後要是實牆；背窗時風會吹熄爐火、吹動窗簾，有安全疑慮。
+remedy: 窗戶改成固定窗或加裝擋風板，窗簾換成不易燃的百葉。
 enforce:
   - not_backed_by_opening
 prompt_addition: "cooktop backed by a solid wall, not placed under or against a window"

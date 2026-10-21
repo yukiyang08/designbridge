@@ -126,3 +126,5 @@ docs/experiments/images/controlnet_test/
 
 # 深度圖相機角度生圖測試（本機用，不 push）
 camera_angle_tests/
+# IKEA 商品 3D 模型（product_mesh_build 產生，檔案大）
+designbridge/furniture_kb/meshes/

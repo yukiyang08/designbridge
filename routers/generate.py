@@ -207,36 +207,37 @@ def generate_design(request: DesignRequest, user_id: str = Depends(get_user_id))
         render_result = result.get("render_result") or {}
         generation_params = render_result.get("generation_params") or {}
 
-        _save_history(user_id, {
-            "task_id": result.get("task_id"),
-            "timestamp": time.strftime("%Y-%m-%dT%H:%M:%S"),
-            "elapsed_seconds": round(elapsed, 2),
-            "text_prompt": request.text_prompt,
-            "model_type": "flux",
-            "style_method": request.style_method,
-            "style_profile_id": request.style_profile_id,
-            "style_reference_image_path": style_ref_path,
-            "style_reference_image_url": style_ref_url,
-            "style_reference_source": style_ref_source,
-            "routing_decision": result.get("routing_decision"),
-            "generated_image_path": generated_image_path,
-            "generated_image_url": generated_image_url,
-            "style_params": result.get("style_params"),
-            "backend": generation_params.get("backend") or generation_params.get("model"),
-            "gemini_style_description": generation_params.get("gemini_style_description"),
-            "generation_params": generation_params,
-            "evaluation_result": result.get("evaluation_result"),
-            "timings": timings,
-            "timing_runs": timing_runs,
-            "structured_requirement": result.get("structured_requirement"),
-            "space_dims": request.space_dims,
-            # 投影深度/分割圖檔大且重算得出來，不存
-            "scene_graph": {k: v for k, v in scene_graph.items()
-                            if k not in ("projected_depth_path", "projected_seg_path")} or None,
-        }, floor_plan_path=floor_plan_path,
-            source_photo=request.initial_image_path, style_ref=request.style_reference_image_path,
-            project_id=request.project_id, space_id=request.space_id, space_name=request.space_name,
-            cad_plan=request.cad_plan)
+        if user_id:   # 本機免登入模式沒有使用者，不存雲端歷史
+            _save_history(user_id, {
+                "task_id": result.get("task_id"),
+                "timestamp": time.strftime("%Y-%m-%dT%H:%M:%S"),
+                "elapsed_seconds": round(elapsed, 2),
+                "text_prompt": request.text_prompt,
+                "model_type": "flux",
+                "style_method": request.style_method,
+                "style_profile_id": request.style_profile_id,
+                "style_reference_image_path": style_ref_path,
+                "style_reference_image_url": style_ref_url,
+                "style_reference_source": style_ref_source,
+                "routing_decision": result.get("routing_decision"),
+                "generated_image_path": generated_image_path,
+                "generated_image_url": generated_image_url,
+                "style_params": result.get("style_params"),
+                "backend": generation_params.get("backend") or generation_params.get("model"),
+                "gemini_style_description": generation_params.get("gemini_style_description"),
+                "generation_params": generation_params,
+                "evaluation_result": result.get("evaluation_result"),
+                "timings": timings,
+                "timing_runs": timing_runs,
+                "structured_requirement": result.get("structured_requirement"),
+                "space_dims": request.space_dims,
+                # 投影深度/分割圖檔大且重算得出來，不存
+                "scene_graph": {k: v for k, v in scene_graph.items()
+                                if k not in ("projected_depth_path", "projected_seg_path")} or None,
+            }, floor_plan_path=floor_plan_path,
+                source_photo=request.initial_image_path, style_ref=request.style_reference_image_path,
+                project_id=request.project_id, space_id=request.space_id, space_name=request.space_name,
+                cad_plan=request.cad_plan)
 
         return response
 
@@ -266,7 +267,7 @@ def get_quotation(req: QuotationRequest, user_id: str = Depends(get_user_id)):
             req.structured_requirement or {},
             preselected=req.selected_furniture,
         )
-        if req.task_id:
+        if req.task_id and user_id:
             save_quotation(user_id, req.task_id, quotation)
         return quotation
     except Exception as e:

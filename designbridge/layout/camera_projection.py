@@ -478,6 +478,7 @@ def build_tagged_scene(
     *,
     semantic_shapes: bool = True,
     start_id: int = 4,
+    fronts: list[str] | None = None,
 ) -> tuple[list[tuple[np.ndarray, int]], dict[int, str]]:
     """Assemble room-shell + furniture triangles, each tagged with an object id.
 
@@ -503,8 +504,14 @@ def build_tagged_scene(
     _add(_inward_quad([W, 0, 0], [W, 0, D], [W, H, D], [W, H, 0], center), 3)  # right wall
     _add(_inward_quad([0, 0, 0], [W, 0, 0], [W, H, 0], [0, H, 0], center), 3)  # near wall
 
+    # 椅背／床頭朝向跟平面圖上的箭頭同一套（facing.infer_fronts）；呼叫端只傳部分家具時
+    # 要自己帶整間房算出來的 fronts，不然「沙發面向茶几」會因為茶几不在清單裡而判錯
+    if fronts is None:
+        from designbridge.layout.facing import infer_fronts
+        fronts = infer_fronts(placements or [], room_w, room_d)
+
     next_id = start_id
-    for item in placements or []:
+    for idx, item in enumerate(placements or []):
         ftype = str(item.get("type", "default"))
         if not is_floor_standing(ftype):
             continue
@@ -526,8 +533,8 @@ def build_tagged_scene(
         id_to_type[obj_id] = ftype
 
         if semantic_shapes and height >= 0.10:
-            back = nearest_wall_world(x0, x1, z_near, z_far, room_w, room_d)
-            parts = furniture_parts(ftype, fx, fy, fw, fh, height, back=back)
+            from designbridge.layout.facing import OPPOSITE
+            parts = furniture_parts(ftype, fx, fy, fw, fh, height, back=OPPOSITE[fronts[idx]])
         else:
             parts = [(0.0, 1.0, 0.0, 1.0, 0.0, height)]
 

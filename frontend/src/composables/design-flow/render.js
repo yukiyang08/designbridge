@@ -4,7 +4,7 @@ import {
   error, loading, loadingMsg, result, submitKey, swappingStyle, styleSwapCache,
   spacePhoto, spacePhotoPath,
   styleRefImage, confirmedStyle, noStyleReference, selectedStyle, styleMethod,
-  editPlacements, sceneGraph, floorPlanPath,
+  editPlacements, sceneGraph, floorPlanPath, roomW, roomD,
   extraPrompt, fengshuiRules, outputAspect, roomTypeForPlan, spaceSizePing,
   planSource, cadActiveRoomId, cadRoomStatus, cadRoomSnapshots, cadRendering, cadRenderError, cadRenderTokens, lastGeneratedImage,
   panoLoading, panoUrl, panoError, projectId, spaceInfo,
@@ -65,6 +65,7 @@ export async function submit3D() {
   // 這段時間使用者可能已經切去別間，全域的家具、描述就不是這間房的了。
   const input = {
     placements: editPlacements.value, sceneGraph: sceneGraph.value, floorPlanPath: floorPlanPath.value,
+    roomW: roomW.value, roomD: roomD.value,
     roomTypeForPlan: roomTypeForPlan.value, extraPrompt: extraPrompt.value, spacePhotoPath: spacePhotoPath.value,
     fengshui: fengshuiRules.value, aspect: outputAspect.value, method: styleMethod.value,
     noRef: noStyleReference.value, selected: selectedStyle.value, confirmed: confirmedStyle.value,
@@ -96,6 +97,9 @@ export async function submit3D() {
           ...(input.sceneGraph || {}),
           furniture_placements: input.placements,
           floor_plan_path: input.floorPlanPath || input.sceneGraph?.floor_plan_path,
+          // 後端換算 IKEA 商品真實尺寸要用編輯器的房間大小，不然會退回 AI 猜的坪數
+          room_w: input.roomW,
+          room_d: input.roomD,
         }
       : undefined
 
