@@ -106,6 +106,10 @@ class Config:
     LAYOUT_CAM_FOV: float = float(os.getenv("DESIGNBRIDGE_LAYOUT_CAM_FOV", "58"))
     LAYOUT_CAM_EYE_X_FRAC: float = float(os.getenv("DESIGNBRIDGE_LAYOUT_CAM_EYE_X_FRAC", "0.06"))
     LAYOUT_CAM_TARGET_X_FRAC: float = float(os.getenv("DESIGNBRIDGE_LAYOUT_CAM_TARGET_X_FRAC", "0.9"))
+    # 小房間（浴室、廁所）相機離瞄準點太近，前景會被設備塞滿：不足這個水平距離（公尺）就沿房深
+    # 往後退（可退到近牆外，近牆會被剔除），同時把眼高提到 SMALL_ROOM_EYE_H。主臥以上的房間不受影響
+    LAYOUT_CAM_MIN_VIEW_DIST: float = float(os.getenv("DESIGNBRIDGE_LAYOUT_CAM_MIN_VIEW_DIST", "3.5"))
+    LAYOUT_CAM_SMALL_ROOM_EYE_H: float = float(os.getenv("DESIGNBRIDGE_LAYOUT_CAM_SMALL_ROOM_EYE_H", "1.8"))
 
     # ── ControlNet（有深度圖的流程）：照片深度 / 投影深度 ──────────────────
     # 重排佈局時的深度來源：controlnet（現行）| kontext（品質不穩，僅供參考）
@@ -169,6 +173,16 @@ class Config:
     # best-scoring one is used instead of always the fixed base station.
     LAYOUT_CAMERA_AUTO_SELECT: bool = _flag("DESIGNBRIDGE_LAYOUT_CAMERA_AUTO_SELECT", "true")
     LAYOUT_CAMERA_CANDIDATES: int = int(os.getenv("DESIGNBRIDGE_LAYOUT_CAMERA_CANDIDATES", "6"))
+
+    # ── IKEA 商品 3D 模型（product_meshes）──────────────────────────────
+    # 佈局家具綁定 IKEA SKU、深度圖改用真實模型，渲染時鎖住家具像素只生成房間
+    ENABLE_PRODUCT_MESHES: bool = _flag("DESIGNBRIDGE_ENABLE_PRODUCT_MESHES", "false")
+    PRODUCT_MESH_DIR: str = os.getenv("DESIGNBRIDGE_PRODUCT_MESH_DIR", "designbridge/furniture_kb/meshes")
+    # 房間區域重繪強度（家具區不重繪）；1.0 = 房間完全重新生成
+    PRODUCT_ROOM_INPAINT_STRENGTH: float = float(os.getenv("DESIGNBRIDGE_PRODUCT_ROOM_INPAINT_STRENGTH", "1.0"))
+    # 整張圖補光影的低強度 img2img；太高家具會被改掉，0 = 跳過
+    PRODUCT_HARMONIZE_STRENGTH: float = float(os.getenv("DESIGNBRIDGE_PRODUCT_HARMONIZE_STRENGTH", "0.3"))
+    PRODUCT_DEPTH_CONDITIONING_SCALE: float = float(os.getenv("DESIGNBRIDGE_PRODUCT_DEPTH_CONDITIONING_SCALE", "0.6"))
 
     @classmethod
     def get_gemini_api_key(cls) -> str:

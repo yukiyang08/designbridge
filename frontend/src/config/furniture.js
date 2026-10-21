@@ -3,7 +3,7 @@
 // FURNITURE_SIZES / scene_graph_to_depth.py 的 FURNITURE_HEIGHTS）。
 export const FURNITURE_LABEL_ZH = {
   sofa: '沙發', loveseat: '雙人沙發', armchair: '扶手椅', chair: '椅子',
-  coffee_table: '茶几', dining_table: '餐桌', desk: '書桌', nightstand: '床頭櫃',
+  coffee_table: '茶几', side_table: '邊桌', dining_table: '餐桌', desk: '書桌', nightstand: '床頭櫃',
   tv_unit: '電視櫃', tv: '電視',
   bed: '床', bunk_bed: '上下舖', bunk_ladder: '爬梯',
   wardrobe: '衣櫃', bookshelf: '書櫃', shelf: '層架',

@@ -73,6 +73,12 @@ export const CAD_ROOM_TYPE_TO_EDITOR = {
   kitchen: 'kitchen',
   bathroom: 'bathroom',
   balcony: 'balcony',
+  // 上傳平面圖切出的房間（floorplan_upload_plan.py）直接用編輯器字彙；認不出的空間給中性的
+  // room，家具面板退回預設清單
+  living_room: 'living_room',
+  dining_room: 'dining_room',
+  study: 'study',
+  other: 'room',
 }
 
 // 選完房間後的預設家具擺法——跟 layout_agent.py 的 _default_layout 同一種做法
@@ -84,13 +90,37 @@ export const CAD_ROOM_TYPE_TO_EDITOR = {
 // 對衛浴／陽台反而是錯的結果。
 // 每種房型一個 builder：用公尺貼牆擺（真實家具尺寸，見 config/furniture.js），再換成歸一化座標。
 // 門／窗位置沒有納入考量——開門範圍內預設就有家具也沒關係，編輯器允許把它拖出來（見 LayoutEditor 的 doorKeepouts）。
+// 客廳預設擺法（家具中心點，佔客廳區域寬深的比例）：電視櫃靠上、沙發在下方正對電視，
+// 茶几居中，扶手椅在左、邊桌靠右。尺寸用真實尺寸，房間大小不同時家具不會被拉伸。
+// 順序即優先度：小房間擺不下時 settlePlacements 會挪動後面的，所以次要家具放後面
+const LIVING_ROOM_PRESET = [
+  ['sofa', 0.49, 0.79], ['tv_unit', 0.45, 0.18], ['coffee_table', 0.49, 0.47],
+  ['side_table', 0.94, 0.64], ['armchair', 0.12, 0.51], ['plant', 0.61, 0.05],
+]
+function putLivingRoom(put, zoneX, zoneW, D) {
+  for (const [type, cx, cy] of LIVING_ROOM_PRESET) {
+    const [rw, rd] = furnitureRealSize(type)
+    put(type, zoneX + cx * zoneW - rw / 2, cy * D - rd / 2)
+  }
+}
+
 const CAD_DEFAULT_LAYOUT = {
+  // 上傳平面圖點進客廳、卻沒辨識到家具時也用這份（見 layout.js parseFloorPlanAndProceed）
+  living_room: (W, D, put) => putLivingRoom(put, 0, W, D),
   bedroom: (W, D, put) => {
     const bx = (W - 1.5) / 2
     put('bed', bx, 0.05)                         // 床頭靠上牆、置中
     put('nightstand', bx - 0.5, 0.05)
     put('nightstand', bx + 1.55, 0.05)
     put('wardrobe', 0.05, D - 0.65)              // 衣櫃靠下牆
+  },
+  dining_room: (W, D, put) => {
+    const cx = W / 2, cy = D / 2
+    put('dining_table', cx - 0.7, cy - 0.4)
+    put('chair', cx - 0.55, cy - 0.9)
+    put('chair', cx + 0.1, cy - 0.9)
+    put('chair', cx - 0.55, cy + 0.45)
+    put('chair', cx + 0.1, cy + 0.45)
   },
   living_dining: (W, D, put) => {
     if (W * D < 18) {                            // 單獨的餐廳（客餐廳合一的房間都比這大）：只擺餐桌椅
@@ -102,10 +132,8 @@ const CAD_DEFAULT_LAYOUT = {
       put('chair', cx + 0.1, cy + 0.45)
       return
     }
-    const lx = W * 0.3, dx = W * 0.74            // 客廳在左、餐廳在右
-    put('tv_unit', lx - 0.8, 0.05)
-    put('coffee_table', lx - 0.5, 1.3)
-    put('sofa', lx - 1.0, 2.2)
+    const dx = W * 0.78                          // 客廳在左 55%、餐廳在右
+    putLivingRoom(put, 0, W * 0.55, D)
     put('dining_table', dx - 0.7, D / 2 - 0.4)
     put('chair', dx - 0.55, D / 2 - 0.9)
     put('chair', dx + 0.1, D / 2 - 0.9)
@@ -167,91 +195,88 @@ export const ASPECT_OPTIONS = [
 //   · desc  ：chip 上直接顯示的一句話，使用者不必猜「開門不見灶」是什麼意思
 //   · rooms ：跟目前房型相關的規則排在前面，其餘收進「其他空間的規則」
 //   · fix   ：勾了之後排版實際會做的事，寫給會追問「所以它會怎麼改」的人
+//   · group ：對應 SKILL.md 的 category，細調清單依此分組（FENGSHUI_GROUPS）
 export const FENGSHUI_OPTIONS = [
   {
-    value: 'bed_not_facing_door', label: '床腳不對門', icon: 'mdi:bed',
-    desc: '床腳不正對門口，避免開門直衝床位',
-    fix: '床沿著牆橫移，讓床腳錯開門的中心線',
-    rooms: ['bedroom', 'kids_room'],
-  },
-  {
-    value: 'door_not_facing_bed', label: '開門不見床', icon: 'mdi:door-open',
+    value: 'door_not_facing_bed', group: 'door', label: '開門不見床', icon: 'mdi:door-open',
     desc: '整張床都不落在門口的正向視線上',
-    fix: '床整個推出門的視線帶，比「床腳不對門」更嚴格',
+    fix: '床整個推出門的視線帶',
     rooms: ['bedroom', 'kids_room'],
   },
   {
-    value: 'bed_head_not_under_window', label: '床頭不靠窗', icon: 'mdi:window-closed-variant',
+    value: 'bed_head_not_under_window', group: 'backing', label: '床頭不靠窗', icon: 'mdi:window-closed-variant',
     desc: '床頭要靠實牆，不睡在窗戶底下',
     fix: '床沿著同一面牆滑到沒有開窗的那一段',
     rooms: ['bedroom', 'kids_room'],
   },
   {
-    value: 'mirror_not_facing_bed', label: '鏡不照床', icon: 'mdi:mirror',
+    value: 'mirror_not_facing_bed', group: 'reflect', label: '鏡不照床', icon: 'mdi:mirror',
     desc: '鏡面不正對睡床，睡醒不會照到自己',
     fix: '移動的是床——鏡子掛在牆上，換牆等於換裝潢',
     rooms: ['bedroom', 'kids_room'],
   },
   {
-    value: 'door_not_facing_mirror', label: '門不對鏡', icon: 'mdi:mirror-rectangle',
+    value: 'door_not_facing_mirror', group: 'reflect', label: '門不對鏡', icon: 'mdi:mirror-rectangle',
     desc: '一進門不被鏡面正對回照',
     fix: '鏡子挪出門的正向視線帶',
     rooms: ['bedroom', 'living_room', 'bathroom'],
   },
   {
-    value: 'sofa_not_back_to_door', label: '沙發不背門', icon: 'mdi:sofa',
-    desc: '沙發背靠實牆、面向入口',
-    fix: '沙發往門的另一側推，背面不與門同側',
-    rooms: ['living_room', 'living_dining'],
-  },
-  {
-    value: 'sofa_not_back_to_window', label: '沙發不背窗', icon: 'mdi:sofa-outline',
+    value: 'sofa_not_back_to_window', group: 'backing', label: '沙發不背窗', icon: 'mdi:sofa-outline',
     desc: '沙發背後要有靠，不背對整片落地窗',
     fix: '沙發沿著牆滑到實牆段',
     rooms: ['living_room', 'living_dining'],
   },
   {
-    value: 'desk_not_back_to_door', label: '書桌不背門', icon: 'mdi:desk',
+    value: 'desk_not_back_to_door', group: 'backing', label: '書桌不背門', icon: 'mdi:desk',
     desc: '坐著的時候能側身看到門口',
     fix: '書桌沿牆推開，座位不再正背著門',
     rooms: ['study', 'bedroom', 'kids_room'],
   },
   {
-    value: 'desk_not_facing_window', label: '書桌不背窗', icon: 'mdi:desk-lamp',
+    value: 'desk_not_facing_window', group: 'reflect', label: '書桌不正對窗', icon: 'mdi:desk-lamp',
     desc: '側對窗戶取自然側光，避免正面眩光',
     fix: '書桌往室內推離窗戶中心線',
     rooms: ['study', 'bedroom', 'kids_room'],
   },
   {
-    value: 'door_not_facing_stove', label: '開門不見灶', icon: 'mdi:stove',
+    value: 'door_not_facing_stove', group: 'door', label: '開門不見灶', icon: 'mdi:stove',
     desc: '站在廚房門口看不到爐灶',
     fix: '爐灶橫向推出門的視線帶',
     rooms: ['kitchen'],
   },
   {
-    value: 'stove_not_under_window', label: '灶後不宜空', icon: 'mdi:fire',
+    value: 'stove_not_under_window', group: 'backing', label: '灶後不宜空', icon: 'mdi:fire',
     desc: '爐灶背後是實牆，不背對窗戶',
     fix: '爐灶沿著流理檯那面牆滑到實牆段',
     rooms: ['kitchen'],
   },
   {
-    value: 'stove_away_from_water', label: '水火不相容', icon: 'mdi:water-off',
+    value: 'stove_away_from_water', group: 'kitchen', label: '水火不相容', icon: 'mdi:water-off',
     desc: '爐灶與水槽、冰箱之間留出備料檯面',
     fix: '兩者互相推開至少 60 公分',
     rooms: ['kitchen'],
   },
   {
-    value: 'door_not_facing_toilet', label: '開門不見廁', icon: 'mdi:toilet',
+    value: 'door_not_facing_toilet', group: 'door', label: '開門不見廁', icon: 'mdi:toilet',
     desc: '馬桶不正對浴室門口',
     fix: '馬桶橫向推出門的視線帶',
     rooms: ['bathroom'],
   },
   {
-    value: 'door_not_facing_window', label: '穿堂煞', icon: 'mdi:weather-windy',
+    value: 'door_not_facing_window', group: 'door', label: '穿堂煞', icon: 'mdi:weather-windy',
     desc: '門正對對牆的窗，一進門氣就直穿出去',
     fix: '把一件高櫃／書架搬到門窗之間當屏風',
     rooms: ['living_room', 'living_dining', 'bedroom', 'study', 'kitchen', 'bathroom', 'kids_room'],
   },
+]
+
+// 14 條規則收成四個原則，使用者只需要懂這四個詞
+export const FENGSHUI_GROUPS = [
+  { key: 'door',    label: '門口沖煞',   desc: '床、爐灶、馬桶不正對門口，門窗不成一直線' },
+  { key: 'backing', label: '背後有靠',   desc: '床頭、沙發、爐灶、座位背後是實牆' },
+  { key: 'reflect', label: '鏡面與光線', desc: '鏡子不照床、不對門，書桌避開正面眩光' },
+  { key: 'kitchen', label: '水火分離',   desc: '爐灶與水槽、冰箱之間留出檯面' },
 ]
 
 /* ══ 模組層級狀態 ══════════════════════════════════════════ */
@@ -268,6 +293,9 @@ export const floorPlanUpload   = useImageField()
 export const uploadedPlanUrl   = ref('')
 export const uploadedPlanPath  = ref('')   // 原始（未裁切）上傳圖的本機路徑，選房間裁切時要用
 export const detectedRooms     = ref([])   // /api/detect-rooms 偵測到的房間清單，多間時才會用到
+// 平面圖解析沒結果時停下來讓使用者決定，不默默退回後備路徑：
+// { kind: 'rooms' | 'furniture', reason: 'failed' | 'empty', path, roomType }
+export const planParseIssue    = ref(null)
 
 // ── CAD 房型生成（designbridge/roomplan）──
 export const cadCounts     = ref({ bedroom_count: 2, living_count: 1, dining_count: 1, bathroom_count: 1, kitchen_count: 1, balcony_count: 1 })
@@ -346,12 +374,42 @@ export const customRoomD    = ref(null)
 export const furnitureItems = ref([])
 export const furnitureQty   = ref({})
 export const extraPrompt    = ref('')
-export const fengshuiRules  = ref([])
+// 風水只問「要不要套用」：開啟後依房型自動挑規則，細調時取消勾選的記在 excluded
+export const fengshuiEnabled  = ref(false)
+export const fengshuiExcluded = ref([])
+// 目前空間實際套用的規則清單（由上面兩個推出來）。可寫入：結果頁的勾選、專案還原會直接
+// 設定清單，這裡換算回開關＋排除項，兩種 UI 才不會各存一份互相打架
+export const fengshuiRules = computed({
+  get() {
+    if (!fengshuiEnabled.value) return []
+    return relevantRuleValues().filter(v => !fengshuiExcluded.value.includes(v))
+  },
+  set(list) {
+    const rules = list || []
+    fengshuiEnabled.value = rules.length > 0
+    if (rules.length) fengshuiExcluded.value = relevantRuleValues().filter(v => !rules.includes(v))
+  },
+})
+
+// 照片／不排家具路徑沒有平面圖步驟，房型在第一頁的 roomType
+function relevantRuleValues() {
+  const type = planSource.value === 'photo' || planSource.value === 'skip' ? roomType.value : roomTypeForPlan.value
+  const hit = FENGSHUI_OPTIONS.filter(o => o.rooms.includes(type))
+  return (hit.length ? hit : FENGSHUI_OPTIONS).map(o => o.value)
+}
 export const outputAspect   = ref('auto')
 
 // ── 空間照片（上傳照片入口）──
 export const spacePhoto     = useImageField()
 export const spacePhotoPath = ref('')
+
+// ── 風水＋動線健檢 ──
+export const fengshuiReport        = ref(null)    // /api/fengshui/audit 的回應（平面圖步驟即時更新）
+export const fengshuiReportLoading = ref(false)
+export const fengshuiLastFix       = ref(null)    // { moved, previous }：一鍵調整後可以復原
+export const photoAudit            = ref(null)    // /api/fengshui/photo-audit 的回應 { plan, report }
+export const photoAuditLoading     = ref(false)
+export const photoAuditError       = ref('')
 
 // ── 風格 ──
 export const selectedStyle       = ref('auto')
@@ -428,7 +486,7 @@ export const showSuggestions = computed(
 const DRAFT_KEY = 'db.flow'
 const DRAFT_FIELDS = {
   planSource, roomType, spaceSizePing, customRoomW, customRoomD, furnitureItems, furnitureQty,
-  extraPrompt, fengshuiRules, outputAspect, selectedStyle, noStyleReference, styleMethod,
+  extraPrompt, fengshuiEnabled, fengshuiExcluded, outputAspect, selectedStyle, noStyleReference, styleMethod,
   cadCounts, cadTotalPing, cadRoomW, cadRoomD, cadExtraRooms,   // 整層房型表單（幾房幾廳＋坪數＋長寬），重整後不用重填
 }
 

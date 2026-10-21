@@ -17,6 +17,7 @@ import { ref, reactive, computed, watch, defineAsyncComponent } from 'vue'
 import { useRouter } from 'vue-router'
 import AdvancedPanel from '@/components/shell/AdvancedPanel.vue'
 import FengshuiPicker from '@/components/FengshuiPicker.vue'
+import FengshuiReport from '@/components/FengshuiReport.vue'
 import StyleSuggestions from '@/components/StyleSuggestions.vue'
 import ImageUpload from '@/components/ImageUpload.vue'
 import DesignDetails from '@/components/steps/DesignDetails.vue'
@@ -31,7 +32,8 @@ import { API_BASE } from '@/config/api'
 const PanoramaViewer = defineAsyncComponent(() => import('@/components/PanoramaViewer.vue'))
 
 const {
-  planSource, extraPrompt, outputAspect, fengshuiRules, roomTypeForPlan, roomType,
+  planSource, extraPrompt, outputAspect, roomTypeForPlan, roomType,
+  editPlacements, fengshuiEnabled, fengshuiReport,
   selectedStyle, noStyleReference, styleRefImage,
   styleOptions, styleLoading, styleError, fetchStyleOptions,
   styleCandidates, candidatesLoading, candidatesError, confirmedStyle, showSuggestions,
@@ -89,6 +91,8 @@ const isOriginalActive = computed(() => !!result.value && result.value === style
 const showFengshui = computed(
   () => planSource.value === 'cad' || planSource.value === 'upload',
 )
+// 有平面圖的路徑在上一步就算好健檢報告了，生成後附在結果下方
+const showFengshuiReport = computed(() => !!fengshuiReport.value && editPlacements.value.length > 0)
 
 // 排家具路徑在這一頁才打描述，打字時重查風格推薦（debounce 在 scheduleSearch 裡）
 function onPromptInput() { scheduleSearch() }
@@ -260,8 +264,15 @@ function toFavoriteItem(item, c) {
       <!-- ══ 風水禁忌（只有 cad／upload 路徑在這裡出現，見 showFengshui）══ -->
       <FengshuiPicker
         v-if="showFengshui"
-        v-model="fengshuiRules"
         :room-type="roomTypeForPlan"
+      />
+
+      <!-- 風水開啟時，把這張圖對應配置的健檢報告附在結果下方 -->
+      <FengshuiReport
+        v-if="showFengshuiReport && fengshuiEnabled"
+        :report="fengshuiReport"
+        :placements="editPlacements"
+        enabled
       />
 
       <AdvancedPanel hint="指定風格・參考圖・風格轉移方式・輸出比例">

@@ -4,6 +4,15 @@ description: 風水：門不對鏡，鏡面不正對門口
 type: fengshui
 trigger: door_not_facing_mirror
 order: 10
+label: 門不對鏡
+category: reflect
+severity: 2
+rooms: [bedroom, living_room, bathroom]
+requires:
+- [mirror]
+needs: [door]
+reason: 一進門就被鏡子正對回照，傳統說法是把進門的氣反射出去；實際上進門看到人影也容易嚇一跳。
+remedy: 鏡子改掛側牆，或換成可收合的鏡櫃。
 enforce:
   - door_sightline_clear
 prompt_addition: "mirror placed off the direct line of sight from the doorway, never mounted facing the entrance"

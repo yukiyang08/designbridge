@@ -15,7 +15,7 @@
  */
 import { ref, computed, watch, nextTick, onBeforeUnmount, onMounted } from 'vue'
 import { CONCURRENCY } from '@/composables/design-flow/cadBatch'
-import FengshuiPicker from '@/components/FengshuiPicker.vue'
+import FengshuiChecklist from '@/components/FengshuiChecklist.vue'
 import { CAD_ROOM_TYPE_TO_EDITOR, FENGSHUI_OPTIONS } from '@/composables/design-flow/state'
 
 const props = defineProps({
@@ -419,7 +419,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey))
             風水禁忌
             <span class="batch-fengshui-count">{{ selectedFengshuiCount ? `已選 ${selectedFengshuiCount} 條` : '未限制' }}</span>
           </summary>
-          <FengshuiPicker
+          <FengshuiChecklist
             v-model="batchFengshuiRules"
             :room-types="candidateRoomTypes"
             hint="只套用到符合房型的房間；未勾選就不會限制排版。"

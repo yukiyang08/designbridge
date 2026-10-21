@@ -4,6 +4,15 @@ description: 風水：開門不見廁所，馬桶不正對門口
 type: fengshui
 trigger: door_not_facing_toilet
 order: 9
+label: 開門不見廁
+category: door
+severity: 3
+rooms: [bathroom]
+requires:
+- [toilet]
+needs: [door]
+reason: 開門就正對馬桶，不雅觀也缺乏隱私，氣味也容易往外散。
+remedy: 在門與馬桶之間加浴簾、隔屏，或把門改成側開。
 enforce:
   - door_sightline_clear
 prompt_addition: "toilet placed out of the direct line of sight from the doorway, screened from the entrance"

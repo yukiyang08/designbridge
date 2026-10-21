@@ -15,7 +15,8 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
-from routers import favorites, floorplan, generate, history, style
+from designbridge.core.config import Config
+from routers import favorites, fengshui, floorplan, generate, history, style
 
 
 @asynccontextmanager
@@ -48,6 +49,11 @@ style_images_dir = Path("style_kb/images")
 if style_images_dir.exists():
     app.mount("/style-images", StaticFiles(directory=str(style_images_dir)), name="style-images")
 
+# IKEA 商品 3D 模型（product_mesh_build 離線產生），前端 3D 預覽直接載 GLB
+product_mesh_dir = Path(Config.PRODUCT_MESH_DIR)
+product_mesh_dir.mkdir(parents=True, exist_ok=True)
+app.mount("/product-meshes", StaticFiles(directory=str(product_mesh_dir)), name="product-meshes")
+
 debug_console_dir = Path("debug-console")
 if debug_console_dir.exists():
     app.mount("/debug-console", StaticFiles(directory=str(debug_console_dir), html=True), name="debug-console")
@@ -64,7 +70,7 @@ app.add_middleware(
 )
 
 
-for _r in (history, favorites, style, floorplan, generate):
+for _r in (history, favorites, style, floorplan, generate, fengshui):
     app.include_router(_r.router)
 
 

@@ -31,6 +31,8 @@ python-dotenv>=1.0.0
 
 # 3D room mesh export (GLB for the 360° panorama / 3D viewer)
 trimesh>=4.0.0
+fast-simplification>=0.1.7   # 商品 3D 模型減面（product_mesh_build）
+DracoPy>=1.4.0               # 讀 IKEA 官方 Draco 壓縮模型
 
 # Supabase (vector search + storage)
 supabase>=2.4.0

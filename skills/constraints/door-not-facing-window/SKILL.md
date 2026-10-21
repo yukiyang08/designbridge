@@ -4,6 +4,14 @@ description: 風水：穿堂煞，門直通對牆的窗，中間要有屏風擋�
 type: fengshui
 trigger: door_not_facing_window
 order: 17
+label: 穿堂煞
+category: door
+severity: 3
+rooms: [living_room, living_dining, bedroom, study, kitchen, bathroom, kids_room]
+requires: []
+needs: [door, window]
+reason: 門正對對牆的窗，一進門氣就直穿出去；實際上強風對流、隱私也一眼看穿。
+remedy: 在門窗之間放玄關櫃、屏風或高型植栽擋一下。
 enforce:
   - door_window_screen
 prompt_addition: "a screen, console or tall cabinet placed between the entrance and the window opposite it, so the doorway does not look straight through to the glazing"

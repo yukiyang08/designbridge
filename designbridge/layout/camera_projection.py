@@ -321,11 +321,50 @@ class CameraParams:
         )
 
 
-def base_camera_from_config() -> CameraParams:
-    """Config 裡的 base 相機（候選 0）；三條投影路徑與前端預覽共用。"""
+def fit_camera_to_room(params: CameraParams, room_w: float, room_d: float,
+                       min_dist: float, small_eye_h: float) -> CameraParams:
+    """相機到瞄準點的水平距離不足 min_dist 時沿房深往後退（只會越過近牆、不會跑出側牆）。
+    房內退得開就只調後退距離；得退到近牆外的小房間（浴室、廁所）另外把眼高提到
+    small_eye_h、斜度減半，並收窄視角（推軌變焦）讓畫面落在近牆開口內，否則會看到側牆外的空白。
+    前端預覽（LayoutPreview3D.vue）有同一份規則。"""
+    ex, ez = params.eye_x_frac * room_w, -params.setback
+    tx, tz = params.target_x_frac * room_w, params.target_depth_frac * room_d
+    dist = math.hypot(tx - ex, tz - ez)
+    if dist >= min_dist:
+        return params
+    # 在房內往後退就夠：只調後退距離，其他不動，免得差一點點的房間整個換了鏡頭
+    inside = math.sqrt(max(min_dist ** 2 - (tx - ex) ** 2, 0.0)) - tz
+    if inside <= 0:
+        return replace(params, setback=inside)
+    # 站到房外還斜著看，視線會斜出側牆、看到牆外的空白：左右位置與瞄準點都往中線靠一半
+    exf = 0.5 + (params.eye_x_frac - 0.5) * 0.5
+    txf = 0.5 + (params.target_x_frac - 0.5) * 0.5
+    dx = (txf - exf) * room_w
+    need_dz = math.sqrt(max(min_dist ** 2 - dx ** 2, 0.0))
+    setback = need_dz - tz
+    fov = math.degrees(2 * math.atan(math.tan(math.radians(params.fov_v_deg) / 2) * dist / min_dist))
+    fov = min(fov, _fov_inside_opening(exf * room_w, -setback, txf * room_w, tz, room_w))
+    return replace(params, setback=setback, eye_height=max(params.eye_height, small_eye_h),
+                   fov_v_deg=fov, eye_x_frac=exf, target_x_frac=txf)
+
+
+def _fov_inside_opening(ex: float, ez: float, tx: float, tz: float, room_w: float,
+                        aspect: float = 16 / 9) -> float:
+    """站在近牆外時，讓畫面左右剛好落在近牆開口（x=0~room_w）內的最大垂直視角（度）。
+    超過就會看到側牆外的空白；以最寬的 16:9 估，比較方的輸出只會更窄。"""
+    if ez >= 0:
+        return 180.0
+    view = math.atan2(tx - ex, tz - ez)
+    half = min(abs(view - math.atan2(cx - ex, -ez)) for cx in (0.0, room_w)) * 0.9
+    return math.degrees(2 * math.atan(math.tan(half) / aspect))
+
+
+def base_camera_from_config(room_w: float | None = None, room_d: float | None = None) -> CameraParams:
+    """Config 裡的 base 相機（候選 0）；三條投影路徑與前端預覽共用。
+    給了房間尺寸就套最低觀看距離（見 fit_camera_to_room）。"""
     from designbridge.core.config import Config
 
-    return CameraParams(
+    base = CameraParams(
         eye_height=Config.LAYOUT_CAM_EYE_H,
         setback=Config.LAYOUT_CAM_SETBACK,
         target_h=Config.LAYOUT_CAM_TARGET_H,
@@ -334,6 +373,10 @@ def base_camera_from_config() -> CameraParams:
         eye_x_frac=Config.LAYOUT_CAM_EYE_X_FRAC,
         target_x_frac=Config.LAYOUT_CAM_TARGET_X_FRAC,
     )
+    if room_w and room_d:
+        base = fit_camera_to_room(base, room_w, room_d,
+                                  Config.LAYOUT_CAM_MIN_VIEW_DIST, Config.LAYOUT_CAM_SMALL_ROOM_EYE_H)
+    return base
 
 
 class LookAtCamera:
@@ -435,6 +478,7 @@ def build_tagged_scene(
     *,
     semantic_shapes: bool = True,
     start_id: int = 4,
+    fronts: list[str] | None = None,
 ) -> tuple[list[tuple[np.ndarray, int]], dict[int, str]]:
     """Assemble room-shell + furniture triangles, each tagged with an object id.
 
@@ -460,8 +504,14 @@ def build_tagged_scene(
     _add(_inward_quad([W, 0, 0], [W, 0, D], [W, H, D], [W, H, 0], center), 3)  # right wall
     _add(_inward_quad([0, 0, 0], [W, 0, 0], [W, H, 0], [0, H, 0], center), 3)  # near wall
 
+    # 椅背／床頭朝向跟平面圖上的箭頭同一套（facing.infer_fronts）；呼叫端只傳部分家具時
+    # 要自己帶整間房算出來的 fronts，不然「沙發面向茶几」會因為茶几不在清單裡而判錯
+    if fronts is None:
+        from designbridge.layout.facing import infer_fronts
+        fronts = infer_fronts(placements or [], room_w, room_d)
+
     next_id = start_id
-    for item in placements or []:
+    for idx, item in enumerate(placements or []):
         ftype = str(item.get("type", "default"))
         if not is_floor_standing(ftype):
             continue
@@ -483,8 +533,8 @@ def build_tagged_scene(
         id_to_type[obj_id] = ftype
 
         if semantic_shapes and height >= 0.10:
-            back = nearest_wall_world(x0, x1, z_near, z_far, room_w, room_d)
-            parts = furniture_parts(ftype, fx, fy, fw, fh, height, back=back)
+            from designbridge.layout.facing import OPPOSITE
+            parts = furniture_parts(ftype, fx, fy, fw, fh, height, back=OPPOSITE[fronts[idx]])
         else:
             parts = [(0.0, 1.0, 0.0, 1.0, 0.0, height)]
 
@@ -740,11 +790,13 @@ def score_camera(
     Pieces that fall entirely outside the frame are penalized separately, and a
     small penalty discourages drifting far from ``base`` (see ``_framing_drift``)
     so a marginal occlusion gain can't justify a noticeably different shot.
-    相機離家具太近另外扣分（見 ``_clearance_penalty``）。
+    相機離家具太近另外扣分（見 ``_clearance_penalty``），畫面露出房間外的空白也扣分。
     """
     cam = LookAtCamera(room_w, room_d, img_w, img_h, params)
     zbuf, idbuf = rasterize_ids(tagged_tris, cam)
-    drift_penalty = 0.08 * _framing_drift(params, base) + _clearance_penalty(cam, by_id)
+    # 看到房間外的空白（站在近牆外、視野超出開口時）會被生成模型亂補，候選往後退時常發生
+    empty = float(np.isinf(zbuf).mean())
+    drift_penalty = 0.08 * _framing_drift(params, base) + _clearance_penalty(cam, by_id) + 5.0 * empty
 
     if not furn_ids:
         return -drift_penalty, {"cam": cam, "zbuf": zbuf, "idbuf": idbuf, "ratios": {}, "off_frame": 0}

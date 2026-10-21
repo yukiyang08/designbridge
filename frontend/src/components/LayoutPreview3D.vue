@@ -4,9 +4,13 @@ import * as THREE from 'three'
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js'
 import { RoomEnvironment } from 'three/examples/jsm/environments/RoomEnvironment.js'
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js'
+import { DRACOLoader } from 'three/examples/jsm/loaders/DRACOLoader.js'
 import { furnitureLabel } from '@/config/furniture'
+import { API_BASE } from '@/config/api'
 
 const _gltfLoader = new GLTFLoader()
+// IKEA 官方商品模型是 Draco 壓縮的；解碼器從 three 複製到 public/draco/
+_gltfLoader.setDRACOLoader(new DRACOLoader().setDecoderPath('/draco/'))
 
 const FURNITURE_MODEL_URL = {
   sofa: '/models/Sofa_01/Sofa_01_1k.gltf',
@@ -48,6 +52,9 @@ const props = defineProps({
   geometry: { type: Object, default: null },      // { wallT, openings }（CAD 路徑才有，見 utils/roomGeometry）
   editable: { type: Boolean, default: false },    // true 時可拖曳家具調整位置
   highlightId: { type: String, default: '' },     // 外部指定要標示的家具 id（顯示它的標籤）
+  // 家具 id → 正面朝向（up/down/left/right，後端 facing.py 推算，跟平面圖箭頭、生圖一致）。
+  // 沒給時沿用 item.rotation（舊行為）
+  facing: { type: Object, default: null },
 })
 
 // 拖曳結束後回傳更新過的 furniture_placements（跟 sceneGraph.furniture_placements 同格式）
@@ -238,6 +245,50 @@ function buildFurnitureMesh(type, w, height, d, colorHex) {
   return group
 }
 
+// 有綁 IKEA SKU 的家具載商品 GLB（已是真實尺寸、底面中心為原點、正面朝 +Z），
+// 朝向規則與後端 product_meshes.placement_yaw 相同：背靠最近的牆
+const HAS_BACK = new Set([
+  'sofa', 'loveseat', 'armchair', 'chair', 'bed', 'bunk_bed',
+  'wardrobe', 'bookshelf', 'shelf', 'cabinet', 'dresser', 'tv_unit',
+])
+
+function productYaw(item, roomWidth, roomDepth) {
+  if (HAS_BACK.has(item.type)) {
+    const dists = {
+      far: item.y, near: 1 - (item.y + item.h), left: item.x, right: 1 - (item.x + item.w),
+    }
+    const back = Object.keys(dists).reduce((a, b) => (dists[b] < dists[a] ? b : a))
+    // 場景 X 是鏡像的（見 buildScene 的 worldX）：平面圖左牆在 +X，背靠左牆要面向 -X
+    return { far: Math.PI, near: 0, left: -Math.PI / 2, right: Math.PI / 2 }[back]
+  }
+  // 桌、燈：模型 X 是長邊，footprint 長邊在深度方向就轉 90°
+  return item.w * roomWidth < item.h * roomDepth ? Math.PI / 2 : 0
+}
+
+// 正面朝向 → 繞 Y 的角度。場景 X 是鏡像的（平面圖左牆在 +X），所以朝左是 +X。
+// 程序化外形的正面在 -Z、商品 GLB 的正面在 +Z，兩者差半圈。
+const PROCEDURAL_YAW = { down: 0, up: Math.PI, left: -Math.PI / 2, right: Math.PI / 2 }
+const PRODUCT_YAW = { down: Math.PI, up: 0, left: Math.PI / 2, right: -Math.PI / 2 }
+
+function buildProductMesh(item, roomWidth, roomDepth, fallback, front) {
+  const group = new THREE.Group()
+  loadGltfCached(`${API_BASE}/product-meshes/${item.product_id}.glb`).then((gltf) => {
+    const model = gltf.scene.clone(true)
+    model.rotation.y = front ? PRODUCT_YAW[front] : productYaw(item, roomWidth, roomDepth)
+    model.traverse((child) => {
+      child.userData.dragRoot = group
+      if (child.isMesh) { child.castShadow = true; child.receiveShadow = true }
+    })
+    group.add(model)
+  }).catch((err) => {
+    console.warn(`[LayoutPreview3D] 商品模型 ${item.product_id} 載入失敗，改用程序化外形:`, err)
+    const box = fallback()
+    box.traverse((child) => { child.userData.dragRoot = group })
+    group.add(box)
+  })
+  return group
+}
+
 function makeLabel(text) {
   const canvas = document.createElement('canvas')
   canvas.width = 256
@@ -368,7 +419,17 @@ function buildScene() {
     const colorHex = CLAY_COLOR[FURNITURE_CATEGORY[item.type] || 'box']
     const w = Math.max(item.w || 0.1, 0.02) * roomWidth
     const d = Math.max(item.h || 0.1, 0.02) * roomDepth
-    const furnitureGroup = buildFurnitureMesh(item.type, w, height, d, colorHex)
+    const front = props.facing?.[item.id]
+    // 朝左右時家具的「寬」沿著平面圖的深度方向：先照正面朝前的尺寸建，再轉過去
+    const sideways = front === 'left' || front === 'right'
+    const procedural = () => {
+      const g = buildFurnitureMesh(item.type, sideways ? d : w, height, sideways ? w : d, colorHex)
+      if (front) g.rotation.y = PROCEDURAL_YAW[front]
+      return g
+    }
+    const furnitureGroup = item.product_id
+      ? buildProductMesh(item, roomWidth, roomDepth, procedural, front)
+      : procedural()
 
     const cx = (item.x || 0) + (item.w || 0) / 2
     const cy = (item.y || 0) + (item.h || 0) / 2
@@ -380,7 +441,8 @@ function buildScene() {
     const worldZ = (1 - cy) * roomDepth
     furnitureGroup.position.set(worldX, 0, worldZ)
     // X 鏡像會讓旋轉方向也跟著反過來，角度正負號要一起翻才會跟平面圖一致。
-    furnitureGroup.rotation.y = THREE.MathUtils.degToRad(item.rotation || 0)
+    // 商品模型的朝向已由 productYaw 決定，跟後端深度投影一致，不吃 item.rotation
+    if (!item.product_id && !front) furnitureGroup.rotation.y = THREE.MathUtils.degToRad(item.rotation || 0)
 
     const label = makeLabel(furnitureLabel(item.type))
     label.position.set(0, height + 0.15, 0)
@@ -396,14 +458,41 @@ function buildScene() {
   const width = container.clientWidth || 640
   const height2 = container.clientHeight || 480
   const aspect = width / height2
-  const vfovDeg = camCfg.fov_v_deg || 58
-  const eyeHeight = camCfg.eye_height || 2.2
-  const setback = camCfg.setback || 2.6
+  let vfovDeg = camCfg.fov_v_deg || 58
+  let eyeHeight = camCfg.eye_height || 2.2
+  let setback = camCfg.setback ?? 2.6
   const targetH = camCfg.target_h ?? 0.5
   const targetDepthFrac = camCfg.target_depth_frac ?? 0.58
+  let eyeXFrac = camCfg.eye_x_frac ?? 0.5
+  let targetXFrac = camCfg.target_x_frac ?? 0.5
+  // 小房間最低觀看距離：跟後端 camera_projection.fit_camera_to_room 同一條規則，預覽才對得上生成
+  if (camCfg.min_view_dist) {
+    const tz = targetDepthFrac * roomDepth
+    const dist = Math.hypot((targetXFrac - eyeXFrac) * roomWidth, tz + setback)
+    // 房內退得開就只調後退距離；得退到近牆外才整套調整
+    const inside = Math.sqrt(Math.max(camCfg.min_view_dist ** 2 - ((targetXFrac - eyeXFrac) * roomWidth) ** 2, 0)) - tz
+    if (dist < camCfg.min_view_dist && inside <= 0) {
+      setback = inside
+    } else if (dist < camCfg.min_view_dist) {
+      const rad = Math.PI / 180
+      eyeXFrac = 0.5 + (eyeXFrac - 0.5) * 0.5
+      targetXFrac = 0.5 + (targetXFrac - 0.5) * 0.5
+      const dx = (targetXFrac - eyeXFrac) * roomWidth
+      vfovDeg = 2 * Math.atan(Math.tan(vfovDeg * rad / 2) * dist / camCfg.min_view_dist) / rad
+      setback = Math.sqrt(Math.max(camCfg.min_view_dist ** 2 - dx * dx, 0)) - tz
+      // 畫面左右要落在近牆開口內，否則會看到側牆外的空白（同後端 _fov_inside_opening）
+      if (setback > 0) {
+        const ex = eyeXFrac * roomWidth, tx = targetXFrac * roomWidth
+        const view = Math.atan2(tx - ex, tz + setback)
+        const half = Math.min(...[0, roomWidth].map(cx => Math.abs(view - Math.atan2(cx - ex, setback)))) * 0.9
+        vfovDeg = Math.min(vfovDeg, 2 * Math.atan(Math.tan(half) / aspect) / rad)
+      }
+      eyeHeight = Math.max(eyeHeight, camCfg.small_room_eye_h || eyeHeight)
+    }
+  }
   // 斜角視角的左右位置；跟家具 worldX 用同一套鏡像換算
-  const eyeX = (0.5 - (camCfg.eye_x_frac ?? 0.5)) * roomWidth
-  const targetX = (0.5 - (camCfg.target_x_frac ?? 0.5)) * roomWidth
+  const eyeX = (0.5 - eyeXFrac) * roomWidth
+  const targetX = (0.5 - targetXFrac) * roomWidth
   camera = new THREE.PerspectiveCamera(vfovDeg, aspect, 0.05, 50)
   camera.position.set(eyeX, eyeHeight, -setback)
 
@@ -541,6 +630,12 @@ onBeforeUnmount(() => {
 watch(() => props.highlightId, applyHighlight)
 
 watch(() => props.sceneGraph, () => {
+  disposeScene()
+  buildScene()
+})
+
+// 健檢每次都回新物件；值沒變就不重建，不然轉好的視角會被重設
+watch(() => JSON.stringify(props.facing || {}), () => {
   disposeScene()
   buildScene()
 })

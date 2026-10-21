@@ -4,6 +4,16 @@ description: 風水：鏡不照床，鏡面不正對睡床
 type: fengshui
 trigger: mirror_not_facing_bed
 order: 12
+label: 鏡不照床
+category: reflect
+severity: 2
+rooms: [bedroom, kids_room]
+requires:
+- [mirror]
+- [bed, bunk_bed]
+needs: []
+reason: 鏡子正對床，半夜醒來看到鏡中人影容易受驚嚇。
+remedy: 鏡子改裝在衣櫃門內側，或睡覺時用布簾蓋住。
 enforce:
   - item_sightline_clear
 prompt_addition: "mirror positioned so it does not reflect the bed, mounted on a wall out of the bed's line of sight"

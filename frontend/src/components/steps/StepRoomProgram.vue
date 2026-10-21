@@ -29,6 +29,9 @@ const {
 } = useDesignFlow()
 
 // 有一間做到一半（還沒渲染完）：這時選別間會被擋，把原因和出口直接擺在畫面上
+// 整層資料來自上傳的平面圖（不是房型設定產生的）
+const isUploaded = computed(() => cadPlanResult.value?.source === 'upload')
+
 const pendingRoom = computed(() => {
   const id = cadActiveRoomId.value
   if (!id || cadRoomStatus.value[id] === 'done' || cadRendering.value[id]) return null
@@ -206,9 +209,10 @@ const suggestedId = computed(() =>
 </script>
 
 <template>
-  <div class="room-program-step">
+  <div class="room-program-step" :class="{ 'is-uploaded': isUploaded }">
     <!-- ── 左：設定 ───────────────────────────────────────── -->
-    <aside class="setup" aria-label="房型設定">
+    <!-- 平面圖是使用者上傳的（見 cad.js enterUploadedWholeFloor）：沒有幾房幾廳可調，整個隱藏 -->
+    <aside v-if="!isUploaded" class="setup" aria-label="房型設定">
       <div class="setup-head">
         <h2 class="setup-title">房型設定</h2>
         <!-- 這一步預設是「整層房屋」（CAD 房型切割）；點「單間」直接切到原本單房間
@@ -331,10 +335,11 @@ const suggestedId = computed(() =>
             <template v-if="doneCount">已完成 {{ doneCount }} / {{ rooms.length }} 間。</template>
             <template v-else>建議從客廳開始。做完一間後，可以一鍵把這間的風格套用到其他房間。</template>
           </p>
+          <p v-for="w in (isUploaded && cadPlanResult.warnings) || []" :key="w" class="plan-sub plan-warn">{{ w }}</p>
           </div>
           <button type="button" class="upload-btn" :disabled="loading" title="已有設計師的平面圖？AI 幫你辨識房間與家具" @click="startFlow('upload')">
             <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 16V4M7 9l5-5 5 5M4 16v3a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-3"/></svg>
-            上傳自己的 CAD 平面圖
+            {{ isUploaded ? '重新上傳平面圖' : '上傳自己的 CAD 平面圖' }}
           </button>
         </header>
 
@@ -387,6 +392,8 @@ const suggestedId = computed(() =>
   gap: clamp(1.25rem, 3vw, 2.5rem);
   align-items: start;
 }
+.room-program-step.is-uploaded { grid-template-columns: minmax(0, 1fr); }
+.plan-warn { color: var(--db-danger, #b3261e); }
 
 /* ── 左：設定。桌機固定在畫面上，往下捲平面圖時還看得到 ── */
 .setup {

@@ -2,16 +2,19 @@ import { mediaUrl, jsonFetch } from '@/config/api'
 import {
   requestState, timers,
   error, loading, loadingMsg, result,
-  furnitureItems, furnitureQty, extraPrompt, fengshuiRules,
+  furnitureItems, furnitureQty, extraPrompt, fengshuiLastFix,
   roomType, spaceSizePing, customRoomW, customRoomD,
   floorPlanUrl, floorPlanPath, sceneGraph, layoutRenderConfig, editPlacements,
   roomW, roomD, roomTypeForPlan,
-  floorPlanUpload, uploadedPlanUrl, uploadedPlanPath, detectedRooms,
+  floorPlanUpload, uploadedPlanUrl, uploadedPlanPath, detectedRooms, planParseIssue,
+  cadDefaultPlacements,
 } from './state'
 import { nextStep, goToStepKey } from './navigation'
 import { scheduleSearch } from './style'
 import { uploadFile } from './common'
 import { FURNITURE_BY_ROOM } from '@/config/furniture'
+import { enterUploadedWholeFloor } from './cad'
+import { fengshuiRulesFor } from './fengshui'
 
 /* ══ Step: 空間設定 → 產生 2D 平面圖 ══════════════════════ */
 
@@ -37,7 +40,7 @@ export async function submitLayout() {
         t => Array(Math.max(1, furnitureQty.value[t] || 1)).fill(t),
       ),
       text_prompt:    extraPrompt.value,
-      fengshui_rules: fengshuiRules.value,
+      fengshui_rules: fengshuiRulesFor(roomType.value),
     })
     if (!res.ok) throw new Error(`${res.status}`)
     const data = await res.json()
@@ -52,6 +55,7 @@ export async function submitLayout() {
     roomW.value = data.room_w || 5.0
     roomD.value = data.room_d || 4.0
     roomTypeForPlan.value = data.room_type || roomType.value
+    fengshuiLastFix.value = null
     nextStep()
     scheduleSearch()
   } catch (e) {
@@ -72,6 +76,7 @@ export async function useUploadedPlan() {
   }
   const requestId = ++requestState.current
   error.value = ''
+  planParseIssue.value = null
   loading.value = true
   loadingMsg.value = { title: '上傳平面圖中', sub: '處理你的平面配置圖' }
   result.value = null
@@ -80,30 +85,84 @@ export async function useUploadedPlan() {
     if (requestId !== requestState.current) return
     uploadedPlanUrl.value = mediaUrl(path)
     uploadedPlanPath.value = path
-
-    // 先看看這張圖是不是含多個房間（整戶圖）——是的話讓使用者先選一間，
-    // 免得所有房間的家具被混進同一個矩形房間框裡。
-    let rooms = []
-    try {
-      const roomsRes = await jsonFetch('/api/detect-rooms', { image_path: path })
-      if (roomsRes.ok) rooms = (await roomsRes.json()).rooms || []
-    } catch {
-      rooms = [] // 偵測失敗就當單一房間處理，不擋住原本的流程
-    }
-    if (requestId !== requestState.current) return
-
-    if (rooms.length > 1) {
-      detectedRooms.value = rooms
-      loading.value = false
-      nextStep() // → 'roomPick'
-      return
-    }
-
-    await parseFloorPlanAndProceed(path, requestId, rooms[0]?.room_type)
+    await detectRoomsAndProceed(path, requestId)
   } catch (e) {
     if (requestId === requestState.current) error.value = `解析平面圖失敗：${e.message}`
     if (requestId === requestState.current) loading.value = false
   }
+}
+
+// 先看看這張圖是不是含多個房間（整戶圖）——是的話讓使用者先選一間，
+// 免得所有房間的家具被混進同一個矩形房間框裡。
+// 一間都沒辨識出來時停在這一步讓使用者決定（重試／當單一房間），不默默跳過。
+async function detectRoomsAndProceed(path, requestId) {
+  loading.value = true
+  loadingMsg.value = { title: '辨識房間中', sub: 'AI 判斷這張圖有幾個房間' }
+  let rooms = [], plan = null
+  let reason = 'empty'
+  try {
+    const roomsRes = await jsonFetch('/api/detect-rooms', { image_path: path })
+    if (!roomsRes.ok) throw new Error(`${roomsRes.status}`)
+    ;({ rooms = [], plan = null } = await roomsRes.json())
+  } catch {
+    reason = 'failed'
+  }
+  if (requestId !== requestState.current) return
+
+  // 整戶圖切出了整層資料：接進整層流程（整層進度、總覽、批次套用風格）
+  if (plan?.rooms?.length > 1) {
+    enterUploadedWholeFloor(plan)
+    return
+  }
+
+  if (!rooms.length) {
+    planParseIssue.value = { kind: 'rooms', reason, path }
+    loading.value = false
+    return
+  }
+  if (rooms.length > 1) {
+    detectedRooms.value = rooms
+    loading.value = false
+    nextStep() // → 'roomPick'
+    return
+  }
+  await parseFloorPlanAndProceed(path, requestId, rooms[0].room_type)
+}
+
+/* ── 解析沒結果時的出口（PlanParseIssue.vue 的按鈕）── */
+
+export async function retryPlanParse() {
+  const issue = planParseIssue.value
+  if (!issue) return
+  const requestId = ++requestState.current
+  error.value = ''
+  planParseIssue.value = null
+  if (issue.kind === 'rooms') await detectRoomsAndProceed(issue.path, requestId)
+  else await parseFloorPlanAndProceed(issue.path, requestId, issue.roomType)
+}
+
+// 辨識不出房間：整張圖當成一間房去解析家具
+export async function parseAsSingleRoom() {
+  const issue = planParseIssue.value
+  if (!issue) return
+  const requestId = ++requestState.current
+  error.value = ''
+  planParseIssue.value = null
+  await parseFloorPlanAndProceed(issue.path, requestId)
+}
+
+// 解析不到家具：不排家具，整張平面圖當結構參考生成（原本默默走的後備路徑）
+export function continueWithoutFurniture() {
+  const issue = planParseIssue.value
+  if (!issue) return
+  planParseIssue.value = null
+  floorPlanPath.value = issue.path
+  floorPlanUrl.value = mediaUrl(issue.path)
+  sceneGraph.value = null
+  editPlacements.value = []
+  roomTypeForPlan.value = issue.roomType || roomType.value
+  fengshuiLastFix.value = null
+  goToStepKey('plan')
 }
 
 // ── 使用者從「選擇房間」步驟選定房間後裁切 + 解析 ──
@@ -178,6 +237,17 @@ export async function parseFloorPlanAndProceed(path, requestId, roomTypeOverride
     const placements = (data.furniture_placements || []).map((p, i) => ({
       id: p.id || `item_${i}`, type: p.type, x: p.x, y: p.y, w: p.w, h: p.h, rotation: p.rotation || 0,
     }))
+    const resolvedType = data.room_type || roomTypeOverride || roomType.value
+    // 客廳沒辨識到家具時給預設擺法；連預設都沒有才停下來讓使用者決定
+    const preset = placements.length ? [] : cadDefaultPlacements(resolvedType, data.room_w || 5.0, data.room_d || 4.0)
+    if (!placements.length && !preset.length) {
+      planParseIssue.value = { kind: 'furniture', reason: 'empty', path, roomType: roomTypeOverride }
+      return
+    }
+    roomW.value = data.room_w || 5.0
+    roomD.value = data.room_d || 4.0
+    roomTypeForPlan.value = resolvedType
+    fengshuiLastFix.value = null
     if (placements.length) {
       floorPlanPath.value = data.floor_plan_path || path
       floorPlanUrl.value = data.floor_plan_url || mediaUrl(path)
@@ -188,15 +258,15 @@ export async function parseFloorPlanAndProceed(path, requestId, roomTypeOverride
       floorPlanPath.value = path
       floorPlanUrl.value = mediaUrl(path)
       sceneGraph.value = null
-      editPlacements.value = []
+      editPlacements.value = preset
+      await updateFloorPlan()   // 依預設家具重畫 2D 平面圖
     }
-    roomW.value = data.room_w || 5.0
-    roomD.value = data.room_d || 4.0
-    roomTypeForPlan.value = data.room_type || roomTypeOverride || roomType.value
     goToStepKey('plan')
     if (extraPrompt.value.trim()) scheduleSearch()
-  } catch (e) {
-    if (requestId === requestState.current) error.value = `解析平面圖失敗：${e.message}`
+  } catch {
+    if (requestId === requestState.current) {
+      planParseIssue.value = { kind: 'furniture', reason: 'failed', path, roomType: roomTypeOverride }
+    }
   } finally {
     if (requestId === requestState.current) loading.value = false
   }

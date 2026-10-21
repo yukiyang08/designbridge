@@ -4,6 +4,15 @@ description: 風水：沙發背後有靠，不背對窗戶
 type: fengshui
 trigger: sofa_not_back_to_window
 order: 14
+label: 沙發不背窗
+category: backing
+severity: 1
+rooms: [living_room, living_dining]
+requires:
+- [sofa, loveseat]
+needs: [window]
+reason: 沙發背後要有靠；背對大窗容易逆光，坐久也背後發涼。
+remedy: 沙發與窗之間留出走道並放矮櫃，或加厚窗簾。
 enforce:
   - not_backed_by_opening
 prompt_addition: "sofa backed by a solid wall rather than a window, no seating with its back to the glazing"
@@ -29,8 +38,3 @@ parameters:
 
 與 `bed-head-not-under-window` 共用 `not_backed_by_opening`，只是 `types` 換成
 沙發：沙發貼的那面牆若開著窗且與沙發重疊，就沿牆滑到實牆段。
-
-## Notes
-
-與 `sofa-not-back-to-door`（沙發不背門）互補、可同時啟用：
-那條管門、這條管窗，各自只看自己的開口類型。

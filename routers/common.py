@@ -5,7 +5,7 @@ import threading
 from pathlib import Path
 from typing import Optional, List
 
-from fastapi import Header, HTTPException
+from fastapi import Header, HTTPException, Request
 from pydantic import BaseModel, Field
 
 from designbridge import get_compiled_graph
@@ -23,10 +23,23 @@ def _artifact_url(p) -> Optional[str]:
     return f"{API_PUBLIC_URL}/{normalized}" if normalized.startswith("artifacts/") else None
 
 
-def get_user_id(authorization: Optional[str] = Header(None)) -> str:
-    """驗證前端帶來的 Supabase JWT，回傳 user_id；沒登入或 token 無效就 401。"""
+# 本機開發用：前端還沒設定 Supabase anon key、沒辦法登入時，讓本機請求以「未登入」身分通過。
+# 只認本機連線，部署後就算 .env 誤開也不會生效；這種請求不存雲端歷史紀錄
+DEV_NO_AUTH = os.getenv("DESIGNBRIDGE_DEV_NO_AUTH", "false").lower() in ("1", "true", "yes")
+_LOCAL_HOSTS = {"127.0.0.1", "::1", "localhost"}
+if DEV_NO_AUTH:
+    print("⚠️  DESIGNBRIDGE_DEV_NO_AUTH=true：本機請求不需登入，生成結果不會存進雲端歷史")
+
+
+def get_user_id(request: Request, authorization: Optional[str] = Header(None)) -> str:
+    """驗證前端帶來的 Supabase JWT，回傳 user_id；沒登入或 token 無效就 401。
+
+    DEV_NO_AUTH 開啟且請求來自本機、又沒帶 token 時回傳空字串（呼叫端據此跳過雲端存檔）。
+    """
     token = (authorization or "").removeprefix("Bearer ").strip()
     if not token:
+        if DEV_NO_AUTH and request.client and request.client.host in _LOCAL_HOSTS:
+            return ""
         raise HTTPException(status_code=401, detail="請先登入")
     try:
         return _get_supabase().auth.get_user(token).user.id
@@ -34,10 +47,10 @@ def get_user_id(authorization: Optional[str] = Header(None)) -> str:
         raise HTTPException(status_code=401, detail="登入已失效，請重新登入")
 
 
-def get_optional_user_id(authorization: Optional[str] = Header(None)) -> Optional[str]:
+def get_optional_user_id(request: Request, authorization: Optional[str] = Header(None)) -> Optional[str]:
     """有帶有效 token 就回 user_id，沒有就 None（給原本不用登入、但有登入時能多做事的端點）。"""
     try:
-        return get_user_id(authorization)
+        return get_user_id(request, authorization) or None
     except HTTPException:
         return None
 
@@ -121,6 +134,8 @@ def _layout_render_config() -> dict:
             "fov_v_deg": Config.LAYOUT_CAM_FOV,
             "eye_x_frac": Config.LAYOUT_CAM_EYE_X_FRAC,
             "target_x_frac": Config.LAYOUT_CAM_TARGET_X_FRAC,
+            "min_view_dist": Config.LAYOUT_CAM_MIN_VIEW_DIST,
+            "small_room_eye_h": Config.LAYOUT_CAM_SMALL_ROOM_EYE_H,
         },
     }
 

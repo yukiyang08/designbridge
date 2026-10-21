@@ -9,9 +9,11 @@
  *  · 沒有「更新平面圖」按鈕：拖曳/加/刪/轉家具都會在鬆手 0.5 秒後自動重繪
  *    （debounce 在 useDesignFlow 的 onEditorChange 裡），不需要使用者自己按。
  *    submit3D 送出前也會補跑一次，確保用的是最新的平面圖。
+ *  · 風水＋動線健檢跟著家具即時更新：家具座標在這一步定案，報告放在這裡才對得上。
  */
-import { computed, defineAsyncComponent } from 'vue'
+import { computed, defineAsyncComponent, watch } from 'vue'
 import LayoutEditor from '@/components/LayoutEditor.vue'
+import FengshuiReport from '@/components/FengshuiReport.vue'
 import { useDesignFlow } from '@/composables/useDesignFlow'
 
 // three.js 約 700KB，只有切到 3D 才下載
@@ -19,9 +21,29 @@ const LayoutPreview3D = defineAsyncComponent(() => import('@/components/LayoutPr
 
 const {
   editPlacements, roomW, roomD, roomTypeForPlan, roomGeometry, setOpeningEdit, layoutViewMode, layoutRenderConfig,
-  onEditorChange,
-  nextStep, prevStep, scheduleSearch, loading,
+  floorPlanUrl, uploadedPlanUrl, onEditorChange,
+  nextStep, prevStep, scheduleSearch, loading, planSource,
+  fengshuiEnabled, fengshuiExcluded, fengshuiReport, fengshuiReportLoading, fengshuiLastFix,
+  scheduleFengshuiAudit, applyFengshuiFix, undoFengshuiFix,
 } = useDesignFlow()
+
+// 打開時順便把現有的違規家具推開；關掉只是不再套用，已經調整的位置不動
+function onFengshuiToggle(on) {
+  if (on) applyFengshuiFix()
+  else fengshuiEnabled.value = false
+}
+
+// 使用者自己動了家具，一鍵調整的「復原」就不該再蓋掉這些修改
+function onUserEdit(next) {
+  fengshuiLastFix.value = null
+  onEditorChange(next)
+}
+
+watch(
+  [editPlacements, roomW, roomD, roomTypeForPlan, roomGeometry, fengshuiEnabled, fengshuiExcluded],
+  () => scheduleFengshuiAudit(),
+  { immediate: true, deep: true },
+)
 
 const editSceneGraph = computed(() => ({ furniture_placements: editPlacements.value }))
 const editSpaceInfo = computed(() => ({
@@ -54,9 +76,10 @@ function goNext() {
         v-model:room-d="roomD"
         :room-type="roomTypeForPlan"
         :geometry="roomGeometry"
+        :facing="fengshuiReport?.facing || {}"
         @opening-change="setOpeningEdit"
-        @update:placements="onEditorChange"
-        @room-size-changed="onEditorChange(editPlacements)"
+        @update:placements="onUserEdit"
+        @room-size-changed="onUserEdit(editPlacements)"
       />
       <LayoutPreview3D
         v-else
@@ -64,10 +87,27 @@ function goNext() {
         :render-config="layoutRenderConfig"
         :space-info="editSpaceInfo"
         :geometry="roomGeometry"
+        :facing="fengshuiReport?.facing || null"
         editable
-        @layout-changed="onEditorChange"
+        @layout-changed="onUserEdit"
       />
     </div>
+
+    <FengshuiReport
+      :report="editPlacements.length ? fengshuiReport : null"
+      :placements="editPlacements"
+      :room-w="roomW"
+      :room-d="roomD"
+      :enabled="fengshuiEnabled"
+      :loading="fengshuiReportLoading"
+      :last-fix="fengshuiLastFix"
+      fixable
+      toggleable
+      @toggle="onFengshuiToggle"
+      @enable="applyFengshuiFix"
+      @fix="applyFengshuiFix"
+      @undo="undoFengshuiFix"
+    />
 
     <p v-if="!editPlacements.length" class="empty-hint">
       未辨識到家具座標，將以整張平面圖作為結構參考生成 3D 渲染圖。

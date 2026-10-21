@@ -4,6 +4,16 @@ description: 風水：水火不相容，爐灶與水槽、冰箱保持距離
 type: fengshui
 trigger: stove_away_from_water
 order: 16
+label: 水火不相容
+category: kitchen
+severity: 3
+rooms: [kitchen]
+requires:
+- [stove]
+- [sink, fridge]
+needs: []
+reason: 爐灶（火）和水槽、冰箱（水）緊鄰，傳統上視為水火相沖；實務上中間也需要留備料檯面。
+remedy: 兩者之間至少留一段 60 公分的檯面，或用木質砧板、隔板隔開。
 enforce:
   - group_separation
 prompt_addition: "cooktop kept well clear of the sink and refrigerator, with worktop separating the hot and wet zones"

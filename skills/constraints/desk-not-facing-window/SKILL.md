@@ -4,6 +4,15 @@ description: 風水：書桌不正對窗，側對窗戶獲得自然側光而非�
 type: fengshui
 trigger: desk_not_facing_window
 order: 6
+label: 書桌不正對窗
+category: reflect
+severity: 1
+rooms: [study, bedroom, kids_room]
+requires:
+- [desk]
+needs: [window]
+reason: 正對窗戶會有眩光，眼睛容易疲勞；側對窗戶的側光最適合閱讀。
+remedy: 加百葉窗或紗簾柔化光線。
 enforce:
   - desk_not_facing_window
 prompt_addition: "desk placed with its side to the window rather than directly facing it, good natural side-light without glare"

@@ -4,6 +4,15 @@ description: 風水：開門不見灶，爐灶不正對門口
 type: fengshui
 trigger: door_not_facing_stove
 order: 8
+label: 開門不見灶
+category: door
+severity: 3
+rooms: [kitchen]
+requires:
+- [stove]
+needs: [door]
+reason: 進門就看見爐灶，傳統說法是漏財；實際上門口的風會吹動爐火，油煙也會往外散。
+remedy: 在門與爐灶之間加拉門、半牆或門簾。
 enforce:
   - door_sightline_clear
 prompt_addition: "kitchen stove placed out of the direct line of sight from the doorway, not visible straight through the entrance"

@@ -11,23 +11,26 @@
  *  - render.js      空間照片、3D 渲染、360° 環景
  *  - refine.js      微調編輯
  *  - quotation.js   預算估計、收藏
+ *  - fengshui.js    風水規則挑選、平面圖健檢／一鍵調整、照片健檢
  *
  * 這裡只做組裝，不放邏輯——拆檔前後 useDesignFlow() 回傳的形狀完全一致，
  * 呼叫端（各 Step 元件）不用改。
  */
 
-export { STEP_FLOWS, ASPECT_OPTIONS, FENGSHUI_OPTIONS } from './design-flow/state'
+export { STEP_FLOWS, ASPECT_OPTIONS, FENGSHUI_OPTIONS, FENGSHUI_GROUPS } from './design-flow/state'
+export { relevantFengshuiOptions } from './design-flow/fengshui'
 export { ORIGINAL_STYLE_KEY } from './design-flow/render'
 
 import {
   planSource, stepIndex, steps, currentStep, isLastStep,
-  floorPlanUrl, floorPlanPath, sceneGraph, floorPlanUpload, uploadedPlanUrl, detectedRooms,
+  floorPlanUrl, floorPlanPath, sceneGraph, floorPlanUpload, uploadedPlanUrl, detectedRooms, planParseIssue,
   cadCounts, cadTotalPing, cadRoomW, cadRoomD, cadExtraRooms, cadPlanResult, cadActiveRoomId, cadRoomStatus, cadRendering,
   cadBatch, cadBatchRunning, cadRoomSnapshots, cadOverview, cadQuoting,
   editPlacements, roomW, roomD, roomTypeForPlan, layoutViewMode, layoutRenderConfig,
   roomType, spaceSizePing, customRoomW, customRoomD,
-  furnitureItems, furnitureQty, extraPrompt, fengshuiRules, outputAspect,
+  furnitureItems, furnitureQty, extraPrompt, fengshuiEnabled, fengshuiExcluded, fengshuiRules, outputAspect,
   spacePhoto, spacePhotoPath,
+  fengshuiReport, fengshuiReportLoading, fengshuiLastFix, photoAudit, photoAuditLoading, photoAuditError,
   selectedStyle, noStyleReference, styleMethod, styleRefImage,
   styleOptions, styleLoading, styleError,
   styleCandidates, candidatesLoading, candidatesError, candidatesSearched, confirmedStyle, matchedStylePreview,
@@ -49,6 +52,7 @@ import {
 } from './design-flow/style'
 import {
   submitLayout, useUploadedPlan, handleRoomSelected, onEditorChange, updateFloorPlan,
+  retryPlanParse, parseAsSingleRoom, continueWithoutFurniture,
 } from './design-flow/layout'
 import { applyToRooms, cancelCadBatch } from './design-flow/cadBatch'
 import { submitRoomProgram, fetchRoomPlan, handleCadRoomSelected, jumpToCadRoom, abandonCadRoom, setOpeningEdit } from './design-flow/cad'
@@ -56,6 +60,10 @@ import { submitPhoto, submit3D, swapStyle, restoreOriginal, generatePanorama } f
 import { handleMaskReady, submitRefine, undoRefine, canUndoRefine, refining } from './design-flow/refine'
 import { fetchQuotation, quoteRooms } from './design-flow/quotation'
 import { restoreProject } from './design-flow/projectSync'
+import {
+  fengshuiRulesFor, scheduleFengshuiAudit, applyFengshuiFix, undoFengshuiFix,
+  runPhotoAudit, movePhotoDoor, adoptPhotoAudit,
+} from './design-flow/fengshui'
 
 export function useDesignFlow() {
   return {
@@ -65,6 +73,7 @@ export function useDesignFlow() {
     // 平面圖
     floorPlanUrl, floorPlanPath, sceneGraph, floorPlanUpload, uploadedPlanUrl,
     detectedRooms, handleRoomSelected,
+    planParseIssue, retryPlanParse, parseAsSingleRoom, continueWithoutFurniture,
     // CAD 房型生成
     cadCounts, cadTotalPing, cadRoomW, cadRoomD, cadExtraRooms, cadPlanResult, submitRoomProgram, fetchRoomPlan, handleCadRoomSelected,
     cadActiveRoomId, cadRoomStatus, jumpToCadRoom, abandonCadRoom,
@@ -75,9 +84,13 @@ export function useDesignFlow() {
     onEditorChange, updateFloorPlan,
     // 空間設定
     roomType, spaceSizePing, customRoomW, customRoomD,
-    furnitureItems, furnitureQty, extraPrompt, fengshuiRules, outputAspect,
+    furnitureItems, furnitureQty, extraPrompt, outputAspect,
     // 空間照片
     spacePhoto, spacePhotoPath,
+    // 風水＋動線健檢
+    fengshuiEnabled, fengshuiExcluded, fengshuiRules, fengshuiRulesFor,
+    fengshuiReport, fengshuiReportLoading, fengshuiLastFix, scheduleFengshuiAudit, applyFengshuiFix, undoFengshuiFix,
+    photoAudit, photoAuditLoading, photoAuditError, runPhotoAudit, movePhotoDoor, adoptPhotoAudit,
     // 風格
     selectedStyle, noStyleReference, styleMethod, styleRefImage,
     styleOptions, styleLoading, styleError,

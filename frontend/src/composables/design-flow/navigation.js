@@ -2,7 +2,7 @@ import { cancelCadBatch } from './cadBatch'
 import {
   steps, stepIndex, error, planSource,
   floorPlanUrl, floorPlanPath, sceneGraph, editPlacements, layoutViewMode, layoutRenderConfig,
-  floorPlanUpload, uploadedPlanUrl, uploadedPlanPath, detectedRooms,
+  floorPlanUpload, uploadedPlanUrl, uploadedPlanPath, detectedRooms, planParseIssue,
   cadPlanResult, cadActiveRoomId, cadRoomStatus, cadRoomSnapshots, openingEdits, cadOverview,
   spacePhoto, spacePhotoPath, spaceImage, styleRefImage,
   result, loading,
@@ -48,6 +48,7 @@ export function resetFlow() {
   uploadedPlanUrl.value = ''
   uploadedPlanPath.value = ''
   detectedRooms.value = []
+  planParseIssue.value = null
   cadPlanResult.value = null
   cadActiveRoomId.value = null
   cadRoomStatus.value = {}

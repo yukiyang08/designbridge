@@ -1,11 +1,12 @@
 import { jsonFetch } from '@/config/api'
 import {
-  CAD_ROOM_TYPE_TO_EDITOR, cadDefaultPlacements, FENGSHUI_OPTIONS,
-  error, result, extraPrompt, outputAspect, styleMethod, fengshuiRules,
+  CAD_ROOM_TYPE_TO_EDITOR, cadDefaultPlacements,
+  error, result, extraPrompt, outputAspect, styleMethod, fengshuiEnabled, fengshuiExcluded,
   styleRefImage, confirmedStyle, noStyleReference, selectedStyle,
   cadPlanResult, cadRoomStatus, cadRoomSnapshots, cadBatch, cadBatchRunning, projectId, cadPlanPayload,
 } from './state'
 import { uploadFile } from './common'
+import { relevantFengshuiOptions, geometryOpenings } from './fengshui'
 import { buildRoomGeometry } from '@/utils/roomGeometry'
 
 /* ══ 把目前這間房的設定套用到其他房間，一次生成 ═══════════════
@@ -55,14 +56,32 @@ async function buildBase() {
     no_style_reference: noStyleReference.value,
     output_aspect: outputAspect.value,
     style_method: styleMethod.value,
-    fengshui: [...fengshuiRules.value],
+    fengshui: { enabled: fengshuiEnabled.value, excluded: [...fengshuiExcluded.value] },
     style_params: result.value?.style_params || null,
   }
 }
 
 async function renderOne(room, base, run) {
   const editorType = CAD_ROOM_TYPE_TO_EDITOR[room.room_type] || 'living_room'
-  const placements = cadDefaultPlacements(editorType, room.w, room.h, buildRoomGeometry(room, cadPlanResult.value))
+  const geometry = buildRoomGeometry(room, cadPlanResult.value)
+  // 風水規則跟房型有關，客廳的禁忌套到臥室沒有意義
+  const fengshuiRules = base.fengshui.enabled
+    ? relevantFengshuiOptions(editorType).map(o => o.value).filter(v => !base.fengshui.excluded.includes(v))
+    : []
+  let placements = cadDefaultPlacements(editorType, room.w, room.h, geometry)
+  // 預設擺法沒經過排版引擎，風水開啟時在這裡把違規家具推開
+  if (fengshuiRules.length && placements.length) {
+    try {
+      const fixed = await post('/api/fengshui/fix', {
+        placements, room_w: room.w, room_d: room.h, room_type: editorType,
+        ...geometryOpenings(geometry, room.w, room.h), rules: fengshuiRules,
+      }, run)
+      placements = fixed.placements
+    } catch (e) {
+      if (run.cancelled) throw e
+      // 修正失敗就用原本的擺法生成，規則仍會進描述
+    }
+  }
 
   const fp = await post('/api/render-floor-plan', {
     furniture_placements: placements, room_w: room.w, room_d: room.h, room_type: editorType,
@@ -77,11 +96,10 @@ async function renderOne(room, base, run) {
     refine_mode: false,
     output_aspect: base.output_aspect,
     style_method: base.style_method,
-    // 風水規則跟房型有關，客廳的禁忌套到臥室沒有意義
-    fengshui_rules: base.fengshui.filter(v => FENGSHUI_OPTIONS.find(o => o.value === v)?.rooms.includes(editorType)),
+    fengshui_rules: fengshuiRules,
     floor_plan_path: fp.floor_plan_path || undefined,
     scene_graph: placements.length
-      ? { furniture_placements: placements, floor_plan_path: fp.floor_plan_path }
+      ? { furniture_placements: placements, floor_plan_path: fp.floor_plan_path, room_w: room.w, room_d: room.h }
       : undefined,
     plan: base.style_params ? { style_params: base.style_params } : undefined,
     project_id: projectId.value,

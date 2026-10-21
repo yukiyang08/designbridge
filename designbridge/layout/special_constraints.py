@@ -21,6 +21,16 @@ class ConstraintSkillCard:
     prompt_addition: str
     order: int = 99
     parameters: dict = field(default_factory=dict)
+    # 以下給風水報告用：給使用者看的名稱、分組、權重、白話理由與化解法
+    label: str = ""
+    category: str = ""
+    severity: int = 1
+    rooms: list[str] = field(default_factory=list)
+    # 每一組至少要有一件家具在房裡，規則才適用（例：鏡不照床 = [[mirror], [bed, bunk_bed]]）
+    requires: list[list[str]] = field(default_factory=list)
+    needs: list[str] = field(default_factory=list)   # 需要的開口：door / window
+    reason: str = ""
+    remedy: str = ""
 
 
 # ── Registry ──────────────────────────────────────────────────────────────────
@@ -52,6 +62,14 @@ class ConstraintRegistry:
             prompt_addition=str(fm.get("prompt_addition", "")),
             order=int(fm.get("order", 99)),
             parameters=fm.get("parameters") or {},
+            label=str(fm.get("label", "")),
+            category=str(fm.get("category", "")),
+            severity=int(fm.get("severity", 1)),
+            rooms=list(fm.get("rooms") or []),
+            requires=[list(g) for g in (fm.get("requires") or [])],
+            needs=list(fm.get("needs") or []),
+            reason=str(fm.get("reason", "")),
+            remedy=str(fm.get("remedy", "")),
         )
 
     def load(self) -> dict[str, ConstraintSkillCard]:
@@ -137,56 +155,6 @@ def _sightline_band(opening: dict, margin: float) -> tuple[str, float, float]:
 
 # ── Enforcement functions (uniform signature: items, doors, windows, params) ──
 
-def _enforce_bed_not_facing_door(
-    items: list, doors: list, windows: list, params: dict
-) -> list:
-    if not doors:
-        return items
-    offset = float(params.get("offset", 0.12))
-    pad = float(params.get("pad", 0.02))
-
-    for item in items:
-        if item.type not in ("bed", "bunk_bed"):
-            continue
-        bed_cx = item.x + item.w / 2
-        bed_foot_y = item.y + item.h
-        for door in doors:
-            dx = float(door.get("x", 0.5))
-            dw = float(door.get("w", 0.10))
-            dy = float(door.get("y", 1.0))
-            door_cx = dx + dw / 2
-            if dy > bed_foot_y and abs(door_cx - bed_cx) < (item.w / 2 + dw / 2):
-                if bed_cx < 0.5:
-                    item.x = min(item.x + offset, 1.0 - item.w - pad)
-                else:
-                    item.x = max(item.x - offset, pad)
-    return items
-
-
-def _enforce_sofa_not_back_to_door(
-    items: list, doors: list, windows: list, params: dict
-) -> list:
-    if not doors:
-        return items
-    push = float(params.get("push_amount", 0.15))
-    door_hi = float(params.get("door_threshold_high", 0.7))
-    door_lo = float(params.get("door_threshold_low", 0.3))
-    sofa_hi = float(params.get("sofa_threshold_high", 0.65))
-    sofa_lo = float(params.get("sofa_threshold_low", 0.35))
-    pad = float(params.get("pad", 0.02))
-
-    for item in items:
-        if item.type not in ("sofa", "loveseat"):
-            continue
-        for door in doors:
-            dy = float(door.get("y", 0))
-            if dy > door_hi and item.y + item.h > sofa_hi:
-                item.y = max(pad, item.y - push)
-            elif dy < door_lo and item.y < sofa_lo:
-                item.y = min(1.0 - item.h - pad, item.y + push)
-    return items
-
-
 def _enforce_desk_not_facing_window(
     items: list, doors: list, windows: list, params: dict
 ) -> list:
@@ -217,15 +185,31 @@ _WALL_OPPOSITE: dict[str, str] = {
 }
 
 
+_CORNER_TIE = 0.03   # 兩面牆距離差在這以內，視為擺在牆角
+
+
 def _nearest_wall(item) -> str:
-    """家具靠的那面牆——四個邊裡離牆最近的那一邊。"""
+    """家具靠的那面牆——四個邊裡離牆最近的那一邊。
+
+    擺在牆角時兩面牆幾乎一樣近，只看最近會判錯（靠上牆的長電視櫃左端碰到左牆，
+    就被當成靠左牆）。這時改看家具的長邊：一般家具是長邊貼牆，床則是床頭（短邊）貼牆。
+    """
     dists = {
         "far": item.y,
         "near": 1.0 - (item.y + item.h),
         "left": item.x,
         "right": 1.0 - (item.x + item.w),
     }
-    return min(dists, key=dists.get)
+    best = min(dists, key=dists.get)
+    close = [k for k, d in dists.items() if d <= dists[best] + _CORNER_TIE]
+    if len(close) > 1 and abs(item.w - item.h) > 1e-6:
+        long_along_x = item.w > item.h
+        if item.type in ("bed", "bunk_bed"):
+            long_along_x = not long_along_x
+        preferred = [k for k in close if (k in ("far", "near")) == long_along_x]
+        if preferred:
+            return min(preferred, key=dists.get)
+    return best
 
 
 def _item_span(item, axis: str) -> tuple[float, float]:
@@ -545,64 +529,19 @@ _ENFORCERS: dict[str, Callable] = {
     "item_sightline_clear":      _enforce_item_sightline_clear,
     "group_separation":          _enforce_group_separation,
     "door_window_screen":        _enforce_door_window_screen,
-    "bed_not_facing_door":       _enforce_bed_not_facing_door,
-    "sofa_not_back_to_door":     _enforce_sofa_not_back_to_door,
     "desk_not_facing_window":    _enforce_desk_not_facing_window,
 }
 
 
 # ── Verification functions (post-placement satisfaction check) ─────────────────
-
-def _verify_bed_not_facing_door(
-    items: list, doors: list, windows: list, params: dict
-) -> bool:
-    if not doors:
-        return True
-    for item in items:
-        if item.type not in ("bed", "bunk_bed"):
-            continue
-        bed_cx = item.x + item.w / 2
-        bed_foot_y = item.y + item.h
-        for door in doors:
-            dx = float(door.get("x", 0.5))
-            dw = float(door.get("w", 0.10))
-            dy = float(door.get("y", 1.0))
-            door_cx = dx + dw / 2
-            if dy > bed_foot_y and abs(door_cx - bed_cx) < (item.w / 2 + dw / 2):
-                return False
-    return True
-
-
-def _verify_sofa_not_back_to_door(
-    items: list, doors: list, windows: list, params: dict
-) -> bool:
-    if not doors:
-        return True
-    door_hi = float(params.get("door_threshold_high", 0.7))
-    door_lo = float(params.get("door_threshold_low", 0.3))
-    sofa_hi = float(params.get("sofa_threshold_high", 0.65))
-    sofa_lo = float(params.get("sofa_threshold_low", 0.35))
-    for item in items:
-        if item.type not in ("sofa", "loveseat"):
-            continue
-        for door in doors:
-            dy = float(door.get("y", 0))
-            if dy > door_hi and item.y + item.h > sofa_hi:
-                return False
-            if dy < door_lo and item.y < sofa_lo:
-                return False
-    return True
-
+# 回傳違規家具的 id；空清單 = 滿足。報告要能指出「是哪一件」，所以不只回 bool。
 
 def _verify_door_sightline_clear(
     items: list, doors: list, windows: list, params: dict
-) -> bool:
-    if not doors:
-        return True
+) -> list[str]:
     blocked = set(params.get("blocked_types") or [])
-    if not blocked:
-        return True
     margin = float(params.get("margin", 0.03))
+    bad: list[str] = []
     for item in items:
         if item.type not in blocked:
             continue
@@ -610,17 +549,17 @@ def _verify_door_sightline_clear(
             axis, lo, hi = _sightline_band(door, margin)
             i_lo, i_hi = _item_span(item, axis)
             if i_hi > lo and hi > i_lo:
-                return False
-    return True
+                bad.append(item.id)
+                break
+    return bad
 
 
 def _verify_desk_not_back_to_door(
     items: list, doors: list, windows: list, params: dict
-) -> bool:
-    if not doors:
-        return True
+) -> list[str]:
     targets = set(params.get("desk_types") or ["desk"])
     margin = float(params.get("margin", 0.03))
+    bad: list[str] = []
     for item in items:
         if item.type not in targets:
             continue
@@ -631,27 +570,25 @@ def _verify_desk_not_back_to_door(
             axis, lo, hi = _sightline_band(door, margin)
             i_lo, i_hi = _item_span(item, axis)
             if i_hi > lo and hi > i_lo:
-                return False
-    return True
+                bad.append(item.id)
+                break
+    return bad
 
 
 def _verify_not_backed_by_opening(
     items: list, doors: list, windows: list, params: dict
-) -> bool:
+) -> list[str]:
     targets = set(params.get("types") or [])
-    if not targets:
-        return True
     kind = str(params.get("opening_kind", "window"))
     openings: list = []
     if kind in ("window", "both"):
         openings += windows
     if kind in ("door", "both"):
         openings += doors
-    if not openings:
-        return True
     margin = float(params.get("margin", 0.02))
     wall_threshold = float(params.get("wall_threshold", 0.12))
 
+    bad: list[str] = []
     for item in items:
         if item.type not in targets:
             continue
@@ -664,22 +601,20 @@ def _verify_not_backed_by_opening(
             axis, lo, hi = _sightline_band(opening, margin)
             i_lo, i_hi = _item_span(item, axis)
             if i_hi > lo and hi > i_lo:
-                return False
-    return True
+                bad.append(item.id)
+                break
+    return bad
 
 
 def _verify_item_sightline_clear(
     items: list, doors: list, windows: list, params: dict
-) -> bool:
+) -> list[str]:
     sources = set(params.get("source_types") or [])
     blocked = set(params.get("blocked_types") or [])
-    if not sources or not blocked:
-        return True
     margin = float(params.get("margin", 0.03))
     source_items = [it for it in items if it.type in sources]
-    if not source_items:
-        return True
 
+    bad: list[str] = []
     for item in items:
         if item.type not in blocked:
             continue
@@ -689,18 +624,17 @@ def _verify_item_sightline_clear(
             axis, lo, hi = _item_facing_band(src, margin)
             i_lo, i_hi = _item_span(item, axis)
             if i_hi > lo and hi > i_lo:
-                return False
-    return True
+                bad += [src.id, item.id]
+    return list(dict.fromkeys(bad))
 
 
 def _verify_group_separation(
     items: list, doors: list, windows: list, params: dict
-) -> bool:
+) -> list[str]:
     group_a = set(params.get("group_a") or [])
     group_b = set(params.get("group_b") or [])
-    if not group_a or not group_b:
-        return True
     min_gap = float(params.get("min_gap", 0.12))
+    bad: list[str] = []
     for a in items:
         if a.type not in group_a:
             continue
@@ -708,38 +642,29 @@ def _verify_group_separation(
             if b is a or b.type not in group_b:
                 continue
             if _rect_overlap(a.x, a.y, a.w, a.h, b.x, b.y, b.w, b.h, min_gap):
-                return False
-    return True
+                bad += [a.id, b.id]
+    return list(dict.fromkeys(bad))
 
 
 def _verify_door_window_screen(
     items: list, doors: list, windows: list, params: dict
-) -> bool:
-    """沒有直通帶、或房間裡根本沒有可當屏風的家具時，這條規則無從施力，回報滿足。"""
-    if not doors or not windows:
-        return True
+) -> list[str]:
+    """門窗成一線而帶上沒有東西擋就算違規——房裡沒有可當屏風的家具也一樣，
+    那正是要建議使用者加一件屏風的情況。違規的是門本身，回傳 `door`。"""
     blocker_types = set(params.get("blocker_types") or [])
-    if not blocker_types:
-        return True
     margin = float(params.get("margin", 0.03))
-    bands = _straight_through_bands(doors, windows, margin)
-    if not bands:
-        return True
-    if not any(it.type in blocker_types for it in items):
-        return True
-    return all(
-        _band_is_blocked(items, axis, lo, hi, blocker_types)
-        for axis, lo, hi, _ in bands
-    )
+    for axis, lo, hi, _ in _straight_through_bands(doors, windows, margin):
+        if not _band_is_blocked(items, axis, lo, hi, blocker_types):
+            return ["door"]
+    return []
 
 
 def _verify_desk_not_facing_window(
     items: list, doors: list, windows: list, params: dict
-) -> bool:
-    if not windows:
-        return True
+) -> list[str]:
     win_wall = float(params.get("window_wall_threshold", 0.15))
     desk_thr = float(params.get("desk_threshold", 0.20))
+    bad: list[str] = []
     for item in items:
         if item.type != "desk":
             continue
@@ -749,13 +674,12 @@ def _verify_desk_not_facing_window(
             ww = float(window.get("w", 0.15))
             if (wy < win_wall and item.y < desk_thr
                     and abs((item.x + item.w / 2) - (wx + ww / 2)) < (item.w / 2 + ww / 2)):
-                return False
-    return True
+                bad.append(item.id)
+                break
+    return bad
 
 
 _VERIFIERS: dict[str, Callable] = {
-    "bed_not_facing_door":   _verify_bed_not_facing_door,
-    "sofa_not_back_to_door": _verify_sofa_not_back_to_door,
     "door_sightline_clear":  _verify_door_sightline_clear,
     "desk_not_back_to_door": _verify_desk_not_back_to_door,
     "not_backed_by_opening": _verify_not_backed_by_opening,
@@ -850,6 +774,6 @@ def verify_special_constraints(
         for enforce_key in card.enforce:
             verifier = _VERIFIERS.get(enforce_key)
             if verifier:
-                ok = verifier(items, doors, windows, card.parameters)
+                ok = not verifier(items, doors, windows, card.parameters)
                 result[card.trigger] = result.get(card.trigger, True) and ok
     return result

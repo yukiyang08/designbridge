@@ -32,6 +32,8 @@ Config.HF_TOKEN = "fake"
 Config.ENABLE_HF_INFERENCE = True
 Config.ENABLE_LAYOUT_CONTROLNET = True
 Config.ENABLE_LAYOUT_DEPTH_PROJECTION = True
+# 黃金樣本是預設設定下的結果；.env 開了 IKEA 商品網格也不該影響它
+Config.ENABLE_PRODUCT_MESHES = False
 
 _BACKENDS = {
     "_render_hf_inference": "hf_inference",

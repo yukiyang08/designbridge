@@ -1,5 +1,5 @@
 import { hasDraft } from '../composables/design-flow/state'
-import { useAuth } from '../composables/useAuth'
+import { useAuth, authEnabled } from '../composables/useAuth'
 import { createRouter, createWebHistory } from 'vue-router'
 import HeroView from '../views/HeroView.vue'
 import StartView from '../views/StartView.vue'
@@ -40,6 +40,8 @@ router.beforeEach(to => (to.name === 'studio' && !hasDraft() ? { name: 'start' }
 const AUTH_PAGES = ['start', 'account', 'designs', 'cart']
 router.beforeEach(async to => {
   if (!AUTH_PAGES.includes(to.name)) return true
+  // 本機沒設定 Supabase 時不擋，否則會被導去一個無法完成的登入
+  if (!authEnabled) return true
   const { user, ready, signInWithGoogle } = useAuth()
   await ready
   if (user.value) return true

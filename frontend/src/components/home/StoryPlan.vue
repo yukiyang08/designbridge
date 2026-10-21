@@ -97,7 +97,7 @@ const renderStyle = computed(() => {
         </svg>
 
         <div class="tags" :style="sizeTags"><b>牆體隔間</b><b>門窗位置</b><b>尺寸與面積標註</b></div>
-        <div class="tags" :style="checkTags"><b>動線順暢</b><b>門不對鏡</b><b>沙發不背門</b></div>
+        <div class="tags" :style="checkTags"><b>動線順暢</b><b>門不對鏡</b><b>開門不見床</b></div>
 
         <img class="render" :src="renderImg" alt="" loading="lazy" :style="renderStyle" />
       </div>

@@ -245,8 +245,15 @@ def detect_rooms(request: DetectRoomsRequest):
     try:
         from designbridge.layout.floorplan_parse import detect_rooms_in_floor_plan
 
-        rooms = detect_rooms_in_floor_plan(request.image_path)
-        return {"rooms": rooms or []}
+        rooms = detect_rooms_in_floor_plan(request.image_path) or []
+        plan = None
+        # 整戶圖（多間房、有切割輪廓）：另外給一份整層流程格式的資料，前端接進整層進度
+        if len(rooms) > 1 and all(r.get("polygon") for r in rooms):
+            from designbridge.layout.floorplan_upload_plan import build_upload_plan
+
+            plan = build_upload_plan(request.image_path, rooms)
+            plan["svg_url"] = _artifact_url(plan["svg_path"])
+        return {"rooms": rooms, "plan": plan}
     except Exception as e:
         import traceback
         traceback.print_exc()

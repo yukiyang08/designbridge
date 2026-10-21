@@ -8,7 +8,7 @@
  *  · 坪數收進「進階設定」：多數情況用預設值就好，擺在主畫面會跟房型搶注意力。
  *  · 其餘設計稿沒畫、但會影響生成結果的欄位（自訂長寬、輸出比例、家具數量）
  *    同樣收在進階設定，一個都沒刪。
- *  · 風水禁忌反過來從進階設定拉回主畫面（FengshuiPicker.vue）：它是會真的搬動
+ *  · 風水建議反過來從進階設定拉回主畫面（FengshuiPicker.vue）：它是會真的搬動
  *    家具的硬約束，跟房型／家具同一個等級，收在摺疊面板裡等於做了沒人用。
  */
 import { ref, computed, watch } from 'vue'
@@ -23,7 +23,7 @@ import { API_BASE } from '@/config/api'
 
 const {
   planSource, roomType, roomTypeForPlan, spaceSizePing, customRoomW, customRoomD, outputAspect,
-  furnitureItems, furnitureQty, extraPrompt, fengshuiRules,
+  furnitureItems, furnitureQty, extraPrompt,
   loading, submitLayout, nextStep, scheduleSearch, startFlow, submit3D,
   showSuggestions, styleCandidates, candidatesLoading, candidatesError, confirmedStyle,
   confirmStyle, clearConfirmedStyle, fetchStyleCandidates, showNextRound,
@@ -267,9 +267,12 @@ function submit() {
       </section>
     </div>
 
-    <!-- ══ 風水禁忌 ══
-         原本收在進階設定裡，但這些是會實際搬動家具的硬約束，不是微調參數。 -->
-    <FengshuiPicker v-model="fengshuiRules" :room-type="roomType" />
+    <!-- ══ 風水建議 ══
+         會實際搬動家具，跟房型／家具同一個等級，不收進進階設定。 -->
+    <FengshuiPicker
+      :room-type="roomType"
+      :hint="isSkip ? '開啟後，生成效果圖時會避開風水禁忌的擺法。' : '開啟後，排版時會自動把家具移出風水禁忌的位置。'"
+    />
 
     <!-- ══ 描述需求：只有不排家具路徑需要在這裡填 ══
          排家具路徑的描述留在下一步（選風格那頁），第一頁專心決定房型／家具／坪數。 -->

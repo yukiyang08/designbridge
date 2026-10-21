@@ -18,7 +18,11 @@ const props = defineProps({
   placements: { type: Array, default: () => [] },
   roomType: { type: String, default: 'living_room' },  // 家具面板預設分類
   geometry: { type: Object, default: null },            // 這間房的牆厚／門／窗（CAD 路徑才有，見 utils/roomGeometry）
+  // 家具 id → 正面朝向（up/down/left/right），由後端 facing.py 推算，生圖時家具也照這個方向擺
+  facing: { type: Object, default: () => ({}) },
 })
+
+const FACING_TEXT = { up: '上', down: '下', left: '左', right: '右' }
 const emit = defineEmits(['update:placements', 'room-size-changed', 'opening-change'])
 
 // 公尺，點畫布外框可直接調整（雙向綁定回父層，3D 預覽/最終渲染跟著用同一組數字）
@@ -524,6 +528,15 @@ onBeforeUnmount(() => viewportObserver?.disconnect())
             <span class="node-label">{{ labelOf(item.type) }}</span>
             <span v-if="showDims" class="node-size">{{ cmOf(item.w, roomW) }}×{{ cmOf(item.h, roomD) }}</span>
             <Icon v-if="item.locked" icon="mdi:lock-outline" class="node-lock" />
+            <template v-if="facing[item.id]">
+              <span class="node-front" :class="`to-${facing[item.id]}`"></span>
+              <!-- 選取時上方有旋轉／刪除鈕，朝上的徽章會撞到，只留正面那條邊 -->
+              <span
+                v-if="!(selectedId === item.id && facing[item.id] === 'up')"
+                class="node-facing" :class="`to-${facing[item.id]}`"
+                :title="`正面朝${FACING_TEXT[facing[item.id]]}`"
+              ><Icon icon="mdi:arrow-up-bold" width="13" /></span>
+            </template>
 
             <template v-if="selectedId === item.id && !item.locked">
               <button class="node-btn rotate" title="旋轉 90°"
@@ -605,7 +618,7 @@ onBeforeUnmount(() => viewportObserver?.disconnect())
     </div>
 
     <span v-if="editorNotice" class="hint hint-notice" role="status">{{ editorNotice }}</span>
-    <span v-else class="hint">拖動移動 · 右下角縮放 · ⟳ 旋轉 · 靠牆自動吸附 · 點選外框可調整房間尺寸 · 「尺寸」可顯示標註</span>
+    <span v-else class="hint">拖動移動 · 右下角縮放 · ⟳ 旋轉 · 靠牆自動吸附 · 點選外框可調整房間尺寸 · 「尺寸」可顯示標註 · 橘色箭頭＝家具正面朝向</span>
   </div>
 </template>
 
@@ -738,6 +751,21 @@ onBeforeUnmount(() => viewportObserver?.disconnect())
 .node-lock {
   position: absolute; top: 2px; right: 2px; color: #6b4f30; pointer-events: none;
 }
+/* 朝向：正面那條邊加粗上色，邊的中間再放一個跨在邊上的箭頭徽章 */
+.node-front { position: absolute; background: #c8641e; pointer-events: none; }
+.node-front.to-up    { top: -1.5px; left: -1.5px; right: -1.5px; height: 4px; border-radius: 3px 3px 0 0; }
+.node-front.to-down  { bottom: -1.5px; left: -1.5px; right: -1.5px; height: 4px; border-radius: 0 0 3px 3px; }
+.node-front.to-left  { left: -1.5px; top: -1.5px; bottom: -1.5px; width: 4px; border-radius: 3px 0 0 3px; }
+.node-front.to-right { right: -1.5px; top: -1.5px; bottom: -1.5px; width: 4px; border-radius: 0 3px 3px 0; }
+.node-facing {
+  position: absolute; z-index: 2; width: 18px; height: 18px; border-radius: 50%;
+  background: #c8641e; color: #fff; border: 1.5px solid #fff; box-shadow: 0 1px 3px rgba(0,0,0,0.25);
+  display: flex; align-items: center; justify-content: center; cursor: help;
+}
+.node-facing.to-up    { top: 0; left: 50%; transform: translate(-50%, -50%); }
+.node-facing.to-down  { bottom: 0; left: 50%; transform: translate(-50%, 50%) rotate(180deg); }
+.node-facing.to-left  { left: 0; top: 50%; transform: translate(-50%, -50%) rotate(-90deg); }
+.node-facing.to-right { right: 0; top: 50%; transform: translate(50%, -50%) rotate(90deg); }
 
 .node-btn {
   position: absolute; width: 18px; height: 18px; border-radius: 50%;

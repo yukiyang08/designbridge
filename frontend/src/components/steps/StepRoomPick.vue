@@ -8,6 +8,7 @@
  */
 import { useDesignFlow } from '@/composables/useDesignFlow'
 import RoomPicker from '@/components/RoomPicker.vue'
+import PlanParseIssue from '@/components/steps/PlanParseIssue.vue'
 
 const { detectedRooms, uploadedPlanUrl, handleRoomSelected, prevStep } = useDesignFlow()
 </script>
@@ -19,6 +20,7 @@ const { detectedRooms, uploadedPlanUrl, handleRoomSelected, prevStep } = useDesi
     </div>
 
     <RoomPicker :imageUrl="uploadedPlanUrl" :rooms="detectedRooms" @select-room="handleRoomSelected" />
+    <PlanParseIssue />
 
     <div class="actions">
       <button class="db-btn db-btn--ghost db-btn--sm" @click="prevStep">← 上一步</button>
