@@ -128,3 +128,6 @@ docs/experiments/images/controlnet_test/
 camera_angle_tests/
 # IKEA 商品 3D 模型（product_mesh_build 產生，檔案大）
 designbridge/furniture_kb/meshes/
+
+# IKEA 爬蟲斷點快取
+designbridge/furniture_kb/.ikea_scrape_cache.jsonl
