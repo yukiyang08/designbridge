@@ -1,5 +1,5 @@
 # designbridge/furniture_kb.py
-"""IKEA 家具知識庫搜尋。
+"""家具知識庫搜尋（IKEA 與其他品牌，見 _BRANDS）。
   主要路徑：Supabase pgvector RPC（match_ikea_products）
   Fallback 1：本地 numpy cosine 搜尋（ikea_embeddings.npz，Supabase 未設定或呼叫失敗時使用）
   Fallback 2：本地 JSON 關鍵字搜尋
@@ -13,8 +13,8 @@ from pathlib import Path
 from typing import Any
 
 _BASE = Path(__file__).parent.parent / "furniture_kb"
-_LOCAL_KB_PATH  = _BASE / "ikea_tw.json"
-_EMB_PATH       = _BASE / "ikea_embeddings.npz"
+# 每個品牌一份 {brand}_tw.json + {brand}_embeddings.npz，依此順序接起來，商品與向量的 index 對應
+_BRANDS = ("ikea", "scanteak")
 
 # ── 快取 ────────────────────────────────────────────────────────────────────────
 
@@ -29,16 +29,23 @@ TABLE = "ikea_products"
 RPC_NAME = "match_ikea_products"
 
 
+def _load_brand_items(brand: str) -> list[dict]:
+    path = _BASE / f"{brand}_tw.json"
+    if not path.exists():
+        return []
+    try:
+        items = json.loads(path.read_text(encoding="utf-8"))
+    except Exception:
+        return []
+    for item in items:
+        item.setdefault("brand", "IKEA" if brand == "ikea" else brand)
+    return items
+
+
 def _load_local_kb() -> list[dict]:
     global _kb_cache
     if _kb_cache is None:
-        if _LOCAL_KB_PATH.exists():
-            try:
-                _kb_cache = json.loads(_LOCAL_KB_PATH.read_text(encoding="utf-8"))
-            except Exception:
-                _kb_cache = []
-        else:
-            _kb_cache = []
+        _kb_cache = [item for brand in _BRANDS for item in _load_brand_items(brand)]
     return _kb_cache
 
 
@@ -46,16 +53,25 @@ def _load_embeddings():
     """載入本地 numpy embedding 矩陣，lazy cache。回傳 ndarray (N,512) 或 None。"""
     global _emb_cache
     if _emb_cache is None:
-        if _EMB_PATH.exists():
-            try:
-                import numpy as np
-                data = np.load(str(_EMB_PATH))
-                _emb_cache = data["embeddings"].astype("float32")   # (N, 512)
-            except Exception as e:
-                print(f"[furniture_kb] 載入 embedding 失敗：{e}")
-                _emb_cache = False          # 標記為「已嘗試但失敗」
-        else:
-            _emb_cache = False
+        import numpy as np
+        parts = []
+        for brand in _BRANDS:
+            n = len(_load_brand_items(brand))
+            path = _BASE / f"{brand}_embeddings.npz"
+            emb = None
+            if path.exists():
+                try:
+                    emb = np.load(str(path))["embeddings"].astype("float32")
+                except Exception as e:
+                    print(f"[furniture_kb] 載入 {path.name} 失敗：{e}")
+            if emb is None or emb.shape[0] != n:
+                # 缺向量或筆數不符：補零向量維持 index 對應（相似度 0，不會被選中）
+                if n:
+                    print(f"[furniture_kb] {brand} 向量缺少或筆數不符（{n} 件），請執行 build_ikea_embeddings.py --brand {brand}")
+                emb = np.zeros((n, 512), dtype="float32")
+            parts.append(emb)
+        matrix = np.concatenate(parts) if parts else np.zeros((0, 512), dtype="float32")
+        _emb_cache = matrix if matrix.any() else False   # 全部是零 = 沒有可用向量
     return _emb_cache if _emb_cache is not False else None
 
 

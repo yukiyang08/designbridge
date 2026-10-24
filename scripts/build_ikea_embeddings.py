@@ -8,6 +8,7 @@ embedding 矩陣與 JSON 陣列順序一致，furniture_kb.py 直接以 index �
 用法：
     python scripts/build_ikea_embeddings.py
     python scripts/build_ikea_embeddings.py --rebuild   # 忽略已有 .npz，全部重跑
+    python scripts/build_ikea_embeddings.py --brand scanteak --rebuild   # 其他品牌
 """
 
 from __future__ import annotations
@@ -22,8 +23,9 @@ import httpx
 import numpy as np
 from PIL import Image
 
-KB_PATH  = Path(__file__).parent.parent / "designbridge" / "furniture_kb" / "ikea_tw.json"
-EMB_PATH = Path(__file__).parent.parent / "designbridge" / "furniture_kb" / "ikea_embeddings.npz"
+_KB_DIR  = Path(__file__).parent.parent / "designbridge" / "furniture_kb"
+KB_PATH  = _KB_DIR / "ikea_tw.json"
+EMB_PATH = _KB_DIR / "ikea_embeddings.npz"
 DIM = 512
 
 
@@ -45,7 +47,12 @@ def encode(model, pil_img: Image.Image) -> np.ndarray:
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--rebuild", action="store_true", help="忽略已有 .npz，全部重新計算")
+    parser.add_argument("--brand", default="ikea", help="品牌檔名前綴：讀 {brand}_tw.json、寫 {brand}_embeddings.npz")
     args = parser.parse_args()
+
+    global KB_PATH, EMB_PATH
+    KB_PATH = _KB_DIR / f"{args.brand}_tw.json"
+    EMB_PATH = _KB_DIR / f"{args.brand}_embeddings.npz"
 
     if not KB_PATH.exists():
         print(f"[embed] 找不到 {KB_PATH}，請先執行 scripts/scrape_ikea.py")
