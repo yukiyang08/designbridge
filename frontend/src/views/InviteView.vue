@@ -15,7 +15,8 @@ onMounted(async () => {
     if (!res.ok) throw new Error(res.status)
     router.replace('/designs')
   } catch (e) {
-    error.value = e.message === '404' ? '這個邀請連結已失效' : '加入失敗，請稍後再試'
+    error.value = e.message === '404' ? '這個邀請連結已失效'
+      : e.message === '401' ? '請先登入後再開啟邀請連結' : '加入失敗，請稍後再試'
   }
 })
 </script>

@@ -4,7 +4,7 @@
 Caption 格式：
   [style] [space], [key elements], [materials], [color tone], [lighting], [atmosphere]
 
-Dependencies: pip install httpx google-generativeai supabase python-dotenv
+Dependencies: pip install httpx supabase python-dotenv
 
 Usage (from project root):
     python -m style_kb.extraction.generate_captions_supabase --dry-run

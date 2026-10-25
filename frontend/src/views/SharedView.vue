@@ -1,6 +1,6 @@
 <script setup>
 /** 唯讀分享頁：不用登入，只看設計的標題、各空間目前那一版的圖與描述。 */
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { apiUrl } from '@/config/api'
 import sceneBg from '@/assets/figma/room-bg.png'
@@ -11,15 +11,20 @@ const error = ref('')
 const activeIdx = ref(0)
 const active = computed(() => data.value?.spaces[activeIdx.value] || null)
 
-onMounted(async () => {
+// 同一個頁面換 token（瀏覽器上一頁／下一頁）時要重新載入
+watch(() => route.params.token, async token => {
+  data.value = null
+  error.value = ''
+  activeIdx.value = 0
   try {
-    const res = await fetch(apiUrl(`/api/shared/${encodeURIComponent(route.params.token)}`))
+    const res = await fetch(apiUrl(`/api/shared/${encodeURIComponent(token)}`))
     if (!res.ok) throw new Error(res.status)
-    data.value = await res.json()
+    const body = await res.json()
+    if (token === route.params.token) data.value = body
   } catch (e) {
     error.value = e.message === '404' ? '這個分享連結已失效' : '無法載入設計'
   }
-})
+}, { immediate: true })
 </script>
 
 <template>

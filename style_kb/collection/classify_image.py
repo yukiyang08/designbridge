@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import mimetypes
 from pathlib import Path
 from typing import Optional
 
@@ -60,28 +61,20 @@ CLASSIFICATION_PROMPT = """分析這張室內設計圖片，判斷其主要風�
 
 def _classify_image_with_gemini(image_path: Path) -> dict:
     """用 Gemini 分類單張圖片。"""
-    try:
-        import google.generativeai as genai
-    except ImportError:
-        raise RuntimeError("google-generativeai 未安裝")
-    
-    api_key = Config.get_gemini_api_key()
-    genai.configure(api_key=api_key)
-    model = genai.GenerativeModel(Config.GEMINI_MODEL)
-    
-    # 上傳圖片
-    print(f"上傳圖片到 Gemini...")
-    uploaded = genai.upload_file(path=str(image_path))
-    
-    # 調用 Gemini
-    print(f"分析中...")
-    response = model.generate_content(
-        [uploaded, CLASSIFICATION_PROMPT],
-        generation_config=genai.GenerationConfig(
-            temperature=Config.GEMINI_TEMPERATURE,
-        ),
+    from google.genai import types
+    from designbridge.render.llm import get_gemini_client
+
+    client = get_gemini_client()
+    mime = mimetypes.guess_type(str(image_path))[0] or "image/jpeg"
+
+    print("分析中...")
+    response = client.models.generate_content(
+        model=Config.GEMINI_MODEL,
+        contents=[types.Part.from_bytes(data=Path(image_path).read_bytes(), mime_type=mime),
+                  CLASSIFICATION_PROMPT],
+        config=types.GenerateContentConfig(temperature=Config.GEMINI_TEMPERATURE),
     )
-    
+
     text = (getattr(response, "text", "") or "").strip()
     
     # 解析 JSON
@@ -93,12 +86,7 @@ def _classify_image_with_gemini(image_path: Path) -> dict:
         text = text[:-3]
     text = text.strip()
     
-    result = json.loads(text)
-    
-    # 清理上傳的文件
-    genai.delete_file(uploaded.name)
-    
-    return result
+    return json.loads(text)
 
 
 def classify_style(style_id: str, source: Optional[str] = None) -> None:

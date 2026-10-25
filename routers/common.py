@@ -70,14 +70,45 @@ def _is_artifact_file(p) -> bool:
 _RENDER_NAME = re.compile(r"^[A-Za-z0-9._-]+$")
 
 
-def member_owner_ids(sb, user_id: str) -> list:
-    """別人邀請我共編的設計，其擁有者的 id（這些設計的圖都記在擁有者名下）。"""
-    pids = [m["project_id"] for m in
+def member_project_ids(sb, user_id: str) -> list:
+    """別人邀請我共編的設計 id。"""
+    return [m["project_id"] for m in
             sb.table("project_members").select("project_id").eq("user_id", user_id).execute().data]
-    if not pids:
-        return []
-    return list({p["user_id"] for p in sb.table("projects").select("user_id").in_("id", pids).execute().data}
-                - {user_id})
+
+
+def _inside_artifacts(p) -> bool:
+    """路徑解析後是否落在 artifacts/ 底下（不要求檔案存在）。"""
+    try:
+        return Path(p).resolve().is_relative_to(ARTIFACTS_DIR)
+    except (OSError, ValueError):
+        return False
+
+
+def _walk_paths(obj):
+    """巢狀 dict/list 裡所有 *_path 欄位的字串值。"""
+    if isinstance(obj, dict):
+        for k, v in obj.items():
+            if isinstance(v, str) and k.endswith("_path"):
+                if v:
+                    yield v
+            else:
+                yield from _walk_paths(v)
+    elif isinstance(obj, list):
+        for v in obj:
+            yield from _walk_paths(v)
+
+
+def check_request_paths(req) -> None:
+    """請求帶來的本機路徑一律要在 artifacts/ 底下，否則會被拿來讀伺服器上任意檔案
+    （餵給渲染、或上傳到使用者的 Storage）。風格參考圖允許 http(s) 網址，由下載端擋內網。"""
+    paths = [req.initial_image_path, req.mask_image_path, req.floor_plan_path,
+             *_walk_paths(req.scene_graph), *_walk_paths(req.plan)]
+    ref = req.style_reference_image_path
+    if ref and not ref.startswith(("http://", "https://")):
+        paths.append(ref)
+    bad = next((p for p in paths if p and not _inside_artifacts(p)), None)
+    if bad:
+        raise HTTPException(status_code=400, detail=f"路徑不合法：{bad}")
 
 
 def ensure_artifact(p, user_id: Optional[str] = None) -> bool:
@@ -102,10 +133,10 @@ def ensure_artifact(p, user_id: Optional[str] = None) -> bool:
         sb = _get_supabase()
         rows = (sb.table("designs").select("image_path").eq("user_id", user_id)
                 .like("record->>generated_image_path", f"%{path.name}").limit(1).execute().data)
-        if not rows:   # 共編的設計：圖在擁有者名下
-            owners = member_owner_ids(sb, user_id)
-            if owners:
-                rows = (sb.table("designs").select("image_path").in_("user_id", owners)
+        if not rows:   # 共編的設計：圖在擁有者名下，只找分享給我的那幾個
+            pids = member_project_ids(sb, user_id)
+            if pids:
+                rows = (sb.table("designs").select("image_path").in_("project_id", pids)
                         .like("record->>generated_image_path", f"%{path.name}").limit(1).execute().data)
         key = rows[0]["image_path"] if rows else None
         if not key:

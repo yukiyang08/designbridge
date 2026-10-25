@@ -11,7 +11,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 
 from designbridge.style.style_supabase import _get_supabase
-from routers.common import _is_artifact_file, get_user_id, member_owner_ids
+from routers.common import _is_artifact_file, get_user_id
 
 router = APIRouter()
 
@@ -90,6 +90,8 @@ def _save_history(user_id: str, record: dict, floor_plan_path=None,
         role, owner = _role(sb, project_id, user_id)
         if role == "editor":
             user_id = owner
+        elif role is None and owner is not None:   # 別人的設計又沒權限：不能掛進去，另開新設計
+            project_id = None
     project_id = project_id or str(uuid.uuid4())   # 沒帶就自成一個設計
     # 同一設計第一次存才建；之後各空間的渲染圖掛在同一個 project 下
     sb.table("projects").upsert({"id": project_id, "user_id": user_id, "title": title},
@@ -442,7 +444,7 @@ def remove_member(project_id: str, member_id: str, user_id: str = Depends(get_us
 def accept_invite(token: str, user_id: str = Depends(get_user_id)):
     """登入者點邀請連結 → 成為這個設計的共編者（已是擁有者就不動）。"""
     if not user_id:
-        raise HTTPException(status_code=404, detail="邀請連結已失效")
+        raise HTTPException(status_code=401, detail="請先登入")
     sb = _get_supabase()
     p = sb.table("projects").select("id,user_id,title").eq("invite_token", token).limit(1).execute().data
     if not p:

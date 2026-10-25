@@ -3,11 +3,12 @@ import uuid
 from pathlib import Path
 from typing import Optional, List
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 
 from routers.common import (
     DesignRequest, _artifact_url, _build_user_input, _layout_render_config, _require_artifact_file,
+    check_request_paths, get_user_id,
 )
 
 router = APIRouter()
@@ -38,7 +39,7 @@ class RoomProgramRequest(BaseModel):
 
 
 @router.post("/api/generate-layout")
-def generate_layout(request: LayoutRequest):
+def generate_layout(request: LayoutRequest, user_id: str = Depends(get_user_id)):
     """Step 1: 根據坪數、家具清單生成 2D 平面配置圖。"""
     import math
     import uuid as _uuid
@@ -176,7 +177,7 @@ class ParseFloorPlanRequest(BaseModel):
 
 
 @router.post("/api/parse-floor-plan")
-def parse_floor_plan(request: ParseFloorPlanRequest):
+def parse_floor_plan(request: ParseFloorPlanRequest, user_id: str = Depends(get_user_id)):
     """Step 1（上傳）：用 Gemini 視覺解析使用者上傳的 2D 平面圖，抽出家具座標，
     回傳與 /api/generate-layout 相同形狀的結果，讓上傳圖也能走精準的佈局管線。"""
     import math
@@ -243,7 +244,7 @@ class DetectRoomsRequest(BaseModel):
 
 
 @router.post("/api/detect-rooms")
-def detect_rooms(request: DetectRoomsRequest):
+def detect_rooms(request: DetectRoomsRequest, user_id: str = Depends(get_user_id)):
     """整戶平面圖上傳後，先抓出每個房間的邊界框，讓使用者選要看哪一間。"""
     _require_artifact_file(request.image_path)
 
@@ -383,10 +384,11 @@ def render_floor_plan(request: FloorPlanRenderRequest):
 
 
 @router.post("/api/plan-layout")
-def plan_layout(request: DesignRequest):
+def plan_layout(request: DesignRequest, user_id: str = Depends(get_user_id)):
     """只跑 RA + 視覺前處理 + layout_agent，不生圖——給前端 3D 佈局預覽用，讓使用者能在
     真正花時間/花錢生圖之前先確認佈局。回傳的 dict 可以原樣塞進 /api/generate 的 `plan`
     欄位，跳過這裡已經做過的事，直接進 renderer。"""
+    check_request_paths(request)
     try:
         from designbridge.core.nodes import (
             requirement_analyzer, visual_preprocessing_local,

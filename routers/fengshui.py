@@ -1,10 +1,10 @@
 """風水＋動線健檢：報告、一鍵修正、照片健檢。"""
 from typing import List, Optional
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
-from routers.common import _require_artifact_file
+from routers.common import _require_artifact_file, get_user_id
 
 router = APIRouter()
 
@@ -61,7 +61,7 @@ def fengshui_fix(request: FixRequest):
 
 
 @router.post("/api/fengshui/photo-audit")
-def fengshui_photo_audit(request: PhotoAuditRequest):
+def fengshui_photo_audit(request: PhotoAuditRequest, user_id: str = Depends(get_user_id)):
     """照片 → Gemini 推估俯視平面 → 全部相關規則＋動線打分。"""
     _require_artifact_file(request.image_path)
     from designbridge.layout.fengshui_audit import audit_layout

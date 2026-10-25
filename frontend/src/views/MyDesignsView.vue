@@ -4,7 +4,7 @@
  * 底下分空間（客廳、主臥…），每個空間有多張渲染圖（每次生成／換風格／微調各一張）。
  * 資料來自 /api/history（Supabase designs 表，依 user_id 隔離），前端依 project_id 分組。
  */
-import { reactive, ref, computed, onMounted } from 'vue'
+import { reactive, ref, computed, onMounted, onBeforeUnmount } from 'vue'
 import { useRouter } from 'vue-router'
 import { authFetch, jsonFetch } from '@/config/api'
 import { cleanDescription } from '@/utils/text'
@@ -224,23 +224,29 @@ const shareKinds = [
     hint: '任何人有連結都能查看，不用登入，也不能修改。' },
 ]
 const shareOpen = ref(false)
+const onEsc = e => { if (e.key === 'Escape') shareOpen.value = false }
+onMounted(() => window.addEventListener('keydown', onEsc))
+onBeforeUnmount(() => window.removeEventListener('keydown', onEsc))
 const shareProject = ref(null)   // 卡片與詳情頁都能開分享，所以不綁 openProject
 const sharing = ref(null)
 const shareBusy = ref(false)
 const shareError = ref('')
 const copied = ref('')
 
+let shareSeq = 0   // 只採用最後一次請求的回應，避免切換設計時舊回應蓋掉新的
 async function shareRequest(call) {
+  const seq = ++shareSeq
   shareBusy.value = true
   shareError.value = ''
   try {
     const res = await call()
     if (!res.ok) throw new Error(res.status)
-    sharing.value = await res.json()
+    const data = await res.json()
+    if (seq === shareSeq) sharing.value = data
   } catch {
-    shareError.value = '操作失敗，請稍後再試'
+    if (seq === shareSeq) shareError.value = '操作失敗，請稍後再試'
   } finally {
-    shareBusy.value = false
+    if (seq === shareSeq) shareBusy.value = false
   }
 }
 const sharingUrl = () => `/api/projects/${shareProject.value.id}/sharing`
@@ -255,25 +261,28 @@ function stopShare(k) {
 }
 const toggleShare = (k, on) => shareRequest(() => jsonFetch(sharingUrl(), { [k.key]: on }, 'PUT'))
 const linkOf = k => new URL(router.resolve(`/${k.path}/${sharing.value[k.token]}`).href, location.origin).href
+let copiedTimer
 async function copyLink(k) {
   try {
     await navigator.clipboard.writeText(linkOf(k))
     copied.value = k.key
-    setTimeout(() => { copied.value = '' }, 1500)
+    clearTimeout(copiedTimer)
+    copiedTimer = setTimeout(() => { copied.value = '' }, 1500)
   } catch {
     shareError.value = '無法自動複製，請手動選取連結'
   }
 }
 async function removeMember(m) {
   if (!confirm(`確定移除 ${m.email || '這位成員'}？`)) return
-  await authFetch(`/api/projects/${shareProject.value.id}/members/${m.user_id}`, { method: 'DELETE' })
+  const res = await authFetch(`/api/projects/${shareProject.value.id}/members/${m.user_id}`, { method: 'DELETE' }).catch(() => null)
+  if (!res?.ok) { shareError.value = '移除失敗，請稍後再試'; return }
   shareRequest(() => authFetch(sharingUrl()))
 }
 async function leaveProject(p) {
   if (!confirm(`確定退出「${p.title}」？退出後需要重新取得邀請才能再編輯。`)) return
-  const res = await authFetch(`/api/projects/${p.id}/members/${user.value.id}`, { method: 'DELETE' })
-  if (!res.ok) { error.value = '退出失敗，請稍後再試'; return }
-  records.value = records.value.filter(r => r.project_id !== p.id)
+  const res = await authFetch(`/api/projects/${p.id}/members/${user.value.id}`, { method: 'DELETE' }).catch(() => null)
+  if (!res?.ok) { alert('退出失敗，請稍後再試'); return }   // 詳情視窗蓋住頁面錯誤列，所以用 alert
+  records.value = records.value.filter(r => (r.project_id || r.task_id) !== p.id)
   closeDetail()
 }
 
@@ -472,7 +481,7 @@ function reuseDesign(r) {
 
     <!-- 分享與共編（只有擁有者） -->
     <div v-if="shareOpen" class="overlay" @click.self="shareOpen = false">
-      <div class="panel share-panel" role="dialog" aria-modal="true">
+      <div class="panel share-panel" role="dialog" aria-modal="true" :aria-label="`分享 ${shareProject?.title}`">
         <header class="panel-head">
           <h2>分享「{{ shareProject?.title }}」</h2>
           <button type="button" class="x" aria-label="關閉" @click="shareOpen = false">✕</button>
@@ -500,7 +509,7 @@ function reuseDesign(r) {
             </template>
           </section>
 
-          <section v-if="sharing.invite_token" class="share-card">
+          <section v-if="sharing.invite_token || sharing.members.length" class="share-card">
             <strong>已加入的共編者（{{ sharing.members.length }}）</strong>
             <p v-if="!sharing.members.length" class="share-empty">還沒有人加入，把上面的邀請連結傳給對方吧。</p>
             <ul v-else class="members">

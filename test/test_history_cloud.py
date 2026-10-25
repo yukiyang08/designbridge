@@ -124,3 +124,47 @@ def test_parallel_room_saves_all_reach_cloud(tmp_path, monkeypatch):
     [t.join() for t in ts]
     assert sorted(r["space_id"] for r in s.db["designs"]) == sorted(rooms)
     assert all(r["image_path"] for r in s.db["designs"])
+
+
+def _share(sb):
+    for p in sb.db["projects"]:
+        p.update(share_token=None, invite_token=None, title="設計")
+
+
+def test_invite_makes_editor_who_sees_and_edits_but_cannot_delete(sb):
+    _share(sb)
+    # 非擁有者不能開邀請連結
+    with pytest.raises(HTTPException) as e:
+        history.put_sharing("p1", history.SharingBody(invite=True), user_id="B")
+    assert e.value.status_code == 404
+    token = history.put_sharing("p1", history.SharingBody(invite=True), user_id="A")["invite_token"]
+    assert history.put_sharing("p1", history.SharingBody(invite=True), user_id="A")["invite_token"] == token   # 已開就沿用
+
+    assert history.accept_invite(token, user_id="B")["project_id"] == "p1"
+    assert {r["title"] for r in history.get_history(limit=0, user_id="B")} == {"A的設計", "B的設計"}
+    roles = {r["title"]: r["role"] for r in history.get_history(limit=0, user_id="B")}
+    assert roles == {"A的設計": "editor", "B的設計": "owner"}
+
+    history.put_project_state("p1", history.ProjectState(settings={"x": 1}), user_id="B")
+    assert sb.db["projects"][0]["settings"] == {"x": 1}
+    assert history.delete_history(task_ids=["t1"], user_id="B") == {"deleted": 0}   # 共編者不能刪
+
+    history.remove_member("p1", "B", user_id="B")   # 共編者自己退出
+    assert [r["title"] for r in history.get_history(limit=0, user_id="B")] == ["B的設計"]
+
+
+def test_invite_revoked_or_unknown_token_is_404(sb):
+    _share(sb)
+    token = history.put_sharing("p1", history.SharingBody(invite=True), user_id="A")["invite_token"]
+    history.put_sharing("p1", history.SharingBody(invite=False), user_id="A")
+    for t in (token, "nope"):
+        with pytest.raises(HTTPException) as e:
+            history.accept_invite(t, user_id="B")
+        assert e.value.status_code == 404
+
+
+def test_cannot_attach_design_to_someone_elses_project(sb):
+    """沒有權限的人帶別人的 project_id 存檔：另開新設計，不能掛進對方（與其共編者）的設計。"""
+    history._save_history("B", {"task_id": "intruder"}, project_id="p1", space_id="main", space_name="x")
+    row = next(r for r in sb.db["designs"] if r["task_id"] == "intruder")
+    assert row["project_id"] != "p1" and row["user_id"] == "B"

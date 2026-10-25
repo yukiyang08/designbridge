@@ -1,5 +1,4 @@
 """Style KB search/preview, furniture catalog and style profile endpoints."""
-import os
 from typing import Optional
 
 from fastapi import APIRouter
@@ -8,18 +7,6 @@ from designbridge.style.style_apply import list_available_style_profiles
 from style_kb.styles import STYLES
 
 router = APIRouter()
-
-_supabase_client = None
-
-def _get_supabase():
-    global _supabase_client
-    if _supabase_client is None:
-        from supabase import create_client
-        _supabase_client = create_client(
-            os.environ["SUPABASE_URL"],
-            os.environ["SUPABASE_SERVICE_ROLE_KEY"],
-        )
-    return _supabase_client
 
 @router.get("/api/style-search")
 def search_styles(
