@@ -1,5 +1,5 @@
 <script setup>
-import { ref, onMounted, watch } from 'vue'
+import { ref, computed, onMounted, watch } from 'vue'
 import { apiUrl } from '@/config/api'
 import { useFurnitureSelection } from '@/composables/useFurnitureSelection'
 import AppNav from '@/components/shell/AppNav.vue'
@@ -20,8 +20,15 @@ const priceRanges = [
   { label: '15,000–30,000', min: 15000, max: 30000 },
   { label: '30,000 以上', min: 30000, max: null },
 ]
-const activePriceRange = ref(priceRanges[0])
+const priceIndex = ref(0)   // 下拉選單用 index，物件當 value 不好比對
+const activePriceRange = computed(() => priceRanges[priceIndex.value])
 const searchQuery = ref('')
+
+// 品牌、風格選項（含件數）由後端依家具資料庫算出，風格名稱沿用生成流程的風格清單
+const brands = ref([])
+const styles = ref([])
+const activeBrand = ref('')
+const activeStyle = ref('')
 
 const categoryLabels = {
   sofa: '沙發',
@@ -40,6 +47,13 @@ async function fetchCategories() {
   } catch {}
 }
 
+async function fetchFilters() {
+  try {
+    const res = await fetch(apiUrl('/api/furniture/filters'))
+    if (res.ok) ({ brands: brands.value, styles: styles.value } = await res.json())
+  } catch {}
+}
+
 async function fetchFurniture() {
   loading.value = true
   error.value = ''
@@ -48,6 +62,8 @@ async function fetchFurniture() {
     if (activeCategory.value) params.set('category', activeCategory.value)
     if (activePriceRange.value.min != null) params.set('min_price', activePriceRange.value.min)
     if (activePriceRange.value.max != null) params.set('max_price', activePriceRange.value.max)
+    if (activeBrand.value) params.set('brand', activeBrand.value)
+    if (activeStyle.value) params.set('style', activeStyle.value)
     const qs = params.toString()
     const res = await fetch(apiUrl(`/api/furniture${qs ? `?${qs}` : ''}`))
     if (!res.ok) throw new Error(String(res.status))
@@ -67,11 +83,14 @@ function selectCategory(cat) {
   activeCategory.value = cat
 }
 
-function selectPriceRange(range) {
-  activePriceRange.value = range
+const hasExtraFilters = computed(() => priceIndex.value !== 0 || activeBrand.value || activeStyle.value)
+function clearExtraFilters() {
+  priceIndex.value = 0
+  activeBrand.value = ''
+  activeStyle.value = ''
 }
 
-watch([activeCategory, activePriceRange], fetchFurniture)
+watch([activeCategory, activePriceRange, activeBrand, activeStyle], fetchFurniture)
 
 let searchTimer = null
 watch(searchQuery, () => {
@@ -80,7 +99,7 @@ watch(searchQuery, () => {
 })
 
 onMounted(async () => {
-  await fetchCategories()
+  await Promise.all([fetchCategories(), fetchFilters()])
   await fetchFurniture()
 })
 </script>
@@ -99,18 +118,36 @@ onMounted(async () => {
       </div>
     </header>
 
-    <div class="search-bar">
-      <svg class="search-icon" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
-        <circle cx="11" cy="11" r="7"/>
-        <line x1="21" y1="21" x2="16.65" y2="16.65"/>
-      </svg>
-      <input
-        v-model="searchQuery"
-        type="text"
-        class="search-input"
-        placeholder="輸入關鍵字搜尋家具名稱…"
-      />
-      <button v-if="searchQuery" class="search-clear" @click="searchQuery = ''">✕</button>
+    <div class="toolbar">
+      <div class="search-bar">
+        <svg class="search-icon" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="11" cy="11" r="7"/>
+          <line x1="21" y1="21" x2="16.65" y2="16.65"/>
+        </svg>
+        <input
+          v-model="searchQuery"
+          type="text"
+          class="search-input"
+          placeholder="輸入關鍵字搜尋家具名稱…"
+        />
+        <button v-if="searchQuery" class="search-clear" @click="searchQuery = ''">✕</button>
+      </div>
+      <div class="filter-selects">
+        <select v-model.number="priceIndex" :class="['filter-select', { active: priceIndex !== 0 }]" aria-label="價位">
+          <option v-for="(range, idx) in priceRanges" :key="range.label" :value="idx">
+            {{ idx === 0 ? '價位' : range.label }}
+          </option>
+        </select>
+        <select v-model="activeBrand" :class="['filter-select', { active: activeBrand }]" aria-label="品牌">
+          <option value="">品牌</option>
+          <option v-for="b in brands" :key="b.value" :value="b.value">{{ b.label }}（{{ b.count.toLocaleString() }}）</option>
+        </select>
+        <select v-model="activeStyle" :class="['filter-select', { active: activeStyle }]" aria-label="風格">
+          <option value="">風格</option>
+          <option v-for="st in styles" :key="st.value" :value="st.value">{{ st.label }}（{{ st.count.toLocaleString() }}）</option>
+        </select>
+        <button v-if="hasExtraFilters" type="button" class="clear-filters" @click="clearExtraFilters">清除篩選</button>
+      </div>
     </div>
 
     <div class="category-tabs">
@@ -130,22 +167,12 @@ onMounted(async () => {
       </button>
     </div>
 
-    <div class="price-tabs">
-      <button
-        v-for="range in priceRanges"
-        :key="range.label"
-        :class="['price-tab', { active: activePriceRange.label === range.label }]"
-        @click="selectPriceRange(range)"
-      >
-        {{ range.label }}
-      </button>
-    </div>
-
     <div v-if="loading" class="state-msg">載入中…</div>
     <div v-else-if="error" class="state-msg error">{{ error }}</div>
-    <div v-else-if="furniture.length === 0" class="state-msg">此分類尚無家具</div>
+    <div v-else-if="furniture.length === 0" class="state-msg">沒有符合條件的家具</div>
+    <p v-else class="result-count">共 {{ furniture.length.toLocaleString() }} 件</p>
 
-    <div v-else class="grid">
+    <div v-if="!loading && !error && furniture.length" class="grid">
       <div
         v-for="item in furniture"
         :key="item.id || item.url"
@@ -167,6 +194,7 @@ onMounted(async () => {
           </span>
         </div>
         <div class="card-body">
+          <span v-if="item.brand" class="card-brand">{{ item.brand }}</span>
           <p class="card-name">{{ item.name }}</p>
           <p class="card-price">{{ item.currency || 'TWD' }} {{ Number(item.price || 0).toLocaleString() }}</p>
           <div class="card-actions">
@@ -206,7 +234,24 @@ onMounted(async () => {
 .clear-btn { border: 0; background: none; padding: 0 0.4rem; font-size: 0.82rem; color: var(--db-text-soft); cursor: pointer; text-decoration: underline; }
 .clear-btn:hover { color: var(--db-danger); }
 
-.search-bar { position: relative; margin-bottom: 1rem; max-width: 420px; }
+.toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 0.6rem 0.75rem; margin-bottom: 1rem; }
+.search-bar { position: relative; flex: 1 1 260px; max-width: 420px; }
+.filter-selects { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; }
+.filter-select {
+  appearance: none; padding: 0.45rem 2rem 0.45rem 0.9rem; border: 1px solid #d8d4cb; border-radius: var(--db-radius-pill);
+  background: #fff url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath d='M1 1l4 4 4-4' fill='none' stroke='%23888' stroke-width='1.5'/%3E%3C/svg%3E") no-repeat right 0.8rem center;
+  color: var(--db-text); font-size: 0.85rem; font-family: inherit; cursor: pointer;
+}
+.filter-select:focus-visible { outline: none; border-color: var(--db-accent-deep); box-shadow: 0 0 0 3px var(--db-accent-soft); }
+.filter-select.active { border-color: var(--db-accent-deep); background-color: var(--db-accent-soft); }
+.clear-filters { border: 0; background: none; padding: 0 0.25rem; font-size: 0.8rem; color: var(--db-text-soft); text-decoration: underline; cursor: pointer; }
+.clear-filters:hover { color: var(--db-danger); }
+/* 窄螢幕：三個下拉平分同一行，不要各佔一層 */
+@media (max-width: 560px) {
+  .filter-selects { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); width: 100%; }
+  .filter-select { width: 100%; min-width: 0; padding: 0.42rem 1.5rem 0.42rem 0.7rem; background-position: right 0.55rem center; font-size: 0.8rem; text-overflow: ellipsis; }
+  .clear-filters { grid-column: 1 / -1; justify-self: start; }
+}
 .search-icon { position: absolute; top: 50%; left: 0.9rem; transform: translateY(-50%); color: var(--db-text-soft); pointer-events: none; }
 .search-input {
   width: 100%; box-sizing: border-box; padding: 0.55rem 2.2rem 0.55rem 2.5rem;
@@ -222,14 +267,16 @@ onMounted(async () => {
 }
 .search-clear:hover { color: var(--db-danger); }
 
-.category-tabs, .price-tabs { display: flex; gap: 0.5rem; flex-wrap: wrap; margin-bottom: 0.85rem; }
-.cat-tab, .price-tab {
+.category-tabs { display: flex; gap: 0.5rem; flex-wrap: wrap; margin-bottom: 0.85rem; }
+.cat-tab {
   padding: 0.35rem 1rem; border: 1px solid #d8d4cb; border-radius: var(--db-radius-pill);
   background: #fff; color: var(--db-text); font-size: 0.88rem; cursor: pointer;
 }
-.price-tab { padding: 0.25rem 0.8rem; font-size: 0.82rem; color: var(--db-text-soft); }
-.cat-tab:hover:not(.active), .price-tab:hover:not(.active) { background: var(--db-chip-soft); }
-.cat-tab.active, .price-tab.active { background: var(--db-accent); border-color: var(--db-accent); color: var(--db-on-accent); }
+.cat-tab:hover:not(.active) { background: var(--db-chip-soft); }
+.cat-tab.active { background: var(--db-accent); border-color: var(--db-accent); color: var(--db-on-accent); }
+
+.result-count { margin: 0.25rem 0 0; font-size: 0.8rem; color: var(--db-text-soft); }
+.card-brand { align-self: flex-start; padding: 0.05rem 0.5rem; border-radius: var(--db-radius-pill); background: var(--db-chip-soft); font-size: 0.7rem; color: var(--db-text-soft); }
 
 .state-msg { text-align: center; color: var(--db-text-soft); padding: 3rem; }
 .state-msg.error { color: var(--db-danger); }
