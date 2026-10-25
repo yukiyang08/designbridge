@@ -38,8 +38,13 @@ def _layout_facts_text(state: DesignBridgeState, req: dict[str, Any]) -> str:
 
     furniture_placements = scene_graph.get("furniture_placements") or []
     if furniture_placements:
-        from designbridge.core.nodes.renderer import _furniture_to_spatial_text
-        parts.append(_furniture_to_spatial_text(furniture_placements))
+        from designbridge.core.nodes.renderer import (
+            _furniture_to_spatial_text, _instances_to_spatial_text, _projection_instances,
+        )
+        # 優先用家具在投影深度圖上的實際落點（相機站位不同，平面圖的「左／後」不一定是畫面的左／後）
+        proj = scene_graph.get("projected_depth_path")
+        spatial = _instances_to_spatial_text(_projection_instances(str(proj))) if proj else ""
+        parts.append(spatial or _furniture_to_spatial_text(furniture_placements))
 
     layout_prompt = (scene_graph.get("layout_prompt") or "").strip()
     if not layout_prompt and req.get("hint_layout"):
@@ -71,7 +76,7 @@ def composer_node(state: DesignBridgeState) -> dict[str, Any]:
     stale old-style description and builds a neutral room_type+new_style template
     instead (is_style_swap, below), which by construction doesn't conflict with the
     same style's own style_prompt. There's nothing left to reconcile, so the Gemini
-    round-trip (~12-18s per PERFORMANCE_NOTES.md) is pure latency with no upside —
+    round-trip (~12-18s per docs/experiments/PERFORMANCE_NOTES.md) is pure latency with no upside —
     skip it and let the non-LLM concatenation in renderer.py's fallback handle it.
     Furniture facts still need this node: weaving new-style material words onto a
     fixed list of furniture is real merge work an LLM-free concatenation can't do.
