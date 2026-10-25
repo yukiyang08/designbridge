@@ -18,7 +18,8 @@ def quotation_agent(state: DesignBridgeState) -> dict[str, Any]:
 
     try:
         from designbridge.pricing.quotation import build_quotation
-        result = build_quotation(image_path, req)
+        style_id = (state.get("style_params") or {}).get("style_profile_id") or ""
+        result = build_quotation(image_path, req, style_id=style_id)
         total = len(result["furniture_list"])
         matched = result["kb_match_count"]
         print(f"[quotation] KB match: {matched}/{total} items")

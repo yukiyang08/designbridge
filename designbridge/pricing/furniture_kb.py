@@ -200,6 +200,100 @@ def _find_top_k_local(
     return results
 
 
+# ── 推薦：細分類篩選、風格加分、同系列去重 ───────────────────────────────────────
+
+# 偵測到的家具名稱 → 只在這些細分類裡找（例如茶几不跟餐桌比）；沒對應到的名稱不篩選
+_SUBCATEGORY_RULES: dict[str, list[tuple[str, set[str]]]] = {
+    "table": [(r"桌椅組|一桌|餐桌組", {"table-chair-set"}),
+              (r"茶几|茶幾|邊桌|邊几|邊幾|咖啡桌|角几|角幾|矮桌", {"coffee-side-table"}),
+              (r"化妝桌|梳妝", {"dressing-table", "desk"}),
+              (r"書桌|工作桌|電腦桌|辦公桌", {"desk"}),
+              (r"餐桌|吧台|吧檯", {"dining-table"})],
+    "chair": [(r"吧台椅|吧檯椅|高腳", {"bar-stool"}),
+              (r"書桌椅|辦公椅|電腦椅|工作椅", {"desk-chair"}),
+              (r"腳凳|腳椅", {"footstool", "stool"}),
+              (r"長凳|長椅", {"bench"}),
+              (r"凳", {"stool", "footstool"}),
+              (r"單椅|扶手椅|休閒椅|沙發椅|搖椅|躺椅|單人沙發|主人椅", {"armchair"}),
+              (r"餐椅", {"dining-chair"})],
+    "sofa": [(r"沙發床", {"sofa-bed", "sofa"})],
+    "storage": [(r"電視櫃|視聽櫃", {"tv-bench"}),
+                (r"床頭櫃|床邊櫃|床頭几", {"bedside-table"}),
+                (r"衣櫃|衣櫥", {"wardrobe"}),
+                (r"斗櫃|抽屜櫃|五斗|收納抽屜", {"chest-of-drawers"}),
+                (r"展示櫃|玻璃櫃|酒櫃", {"display-cabinet", "sideboard"}),
+                (r"書櫃|書架", {"bookcase", "open-storage"}),
+                (r"層架|置物架|開放式|格櫃", {"open-storage", "bookcase"}),
+                (r"餐櫃|邊櫃|收納櫃|櫥櫃|矮櫃", {"sideboard", "chest-of-drawers"})],
+    "lamp": [(r"吊燈", {"pendant-lamp"}),
+             (r"吸頂燈|天花板燈|嵌燈|筒燈", {"ceiling-lamp"}),
+             (r"落地燈|立燈", {"floor-lamp"}),
+             (r"桌燈|檯燈|台燈", {"table-lamp", "desk-lamp"}),
+             (r"壁燈", {"wall-lamp"})],
+    "rug": [(r"走道|長條", {"runner"})],
+}
+STYLE_BONUS = 0.0    # 商品風格跟渲染圖相同時排序分數加多少；風格標籤還不夠準、效果也量不出來，先關閉
+_POOL_SIZE = 40      # 先依大類別取這麼多候選，再篩選、去重
+
+
+def subcategories_for(category: str, detected_name: str) -> set[str]:
+    import re
+    for pattern, subs in _SUBCATEGORY_RULES.get(category, []):
+        if re.search(pattern, detected_name or ""):
+            return subs
+    return set()
+
+
+def recommend_products(
+    query_embedding: list[float],
+    category: str = "",
+    detected_name: str = "",
+    style_id: str = "",
+    top_k: int = 3,
+    min_similarity: float = MIN_SIMILARITY,
+    style_bonus: float = STYLE_BONUS,
+    search=None,
+) -> list[dict]:
+    """估價推薦：向量搜尋取候選後，排除桌椅組、依細分類篩選、風格相符加分、同系列只留一件，
+    最後才套用相似度門檻。
+
+    細分類有商品就只在細分類裡推薦，達不到門檻寧可不推薦（茶几不推薦餐桌）；
+    商品庫完全沒有該細分類時才退回整個大類。門檻放在最後，推薦結果才不會隨門檻改變。
+    search 預設為 find_top_k_by_embedding（評估腳本可傳入本地搜尋）。
+    """
+    search = search or find_top_k_by_embedding
+    pool = search(query_embedding, category, _POOL_SIZE, 0.0)
+    # Supabase 回傳的欄位不含 style_tags，用網址對回本地資料補上
+    local = {item.get("url"): item for item in _load_local_kb()}
+    pool = [{**local.get(h.get("url"), {}), **h} for h in pool]
+
+    subs = subcategories_for(category, detected_name)
+    if "table-chair-set" not in subs:
+        pool = [h for h in pool if h.get("subcategory") != "table-chair-set"]
+    if subs:
+        preferred = [h for h in pool if h.get("subcategory") in subs]
+        if preferred:
+            pool = preferred
+
+    for h in pool:
+        bonus = style_bonus if style_id and style_id in (h.get("style_tags") or []) else 0.0
+        h["score"] = round(float(h.get("similarity") or 0) + bonus, 4)
+    pool.sort(key=lambda h: h["score"], reverse=True)
+
+    results, seen = [], set()
+    for h in pool:
+        # 同系列不同顏色、尺寸只留一件，3 個推薦才會是 3 種款式
+        key = (h.get("brand"), h.get("series")) if h.get("series") else (h.get("brand"), h.get("name"))
+        if key in seen:
+            continue
+        seen.add(key)
+        if float(h.get("similarity") or 0) >= min_similarity:
+            results.append(h)
+        if len(results) >= top_k:
+            break
+    return results
+
+
 # ── 關鍵字搜尋（text fallback）─────────────────────────────────────────────────
 
 def _score_item(item: dict, query: str, category: str) -> float:

@@ -1,6 +1,6 @@
 # designbridge/quotation.py
 """估價 Agent 核心邏輯（Path 2）：
-  Gemini Vision bbox 偵測 → SAM2/bbox crop → CLIP embedding → Supabase pgvector 搜尋 → top-3 候選
+  Gemini Vision bbox 偵測 → bbox 裁切 → CLIP embedding → 向量搜尋 → 細分類篩選／風格加分／同系列去重 → top-3 候選
 """
 
 from __future__ import annotations
@@ -154,13 +154,13 @@ def _estimate_price_llm(name_zh: str) -> int:
 
 # ── Main build function ────────────────────────────────────────────────────────
 
-def _process_furniture_item(raw: dict, img: Any) -> tuple[FurnitureItem, bool]:
+def _process_furniture_item(raw: dict, img: Any, style_id: str = "") -> tuple[FurnitureItem, bool]:
     """Resolve one detected furniture item to KB candidates. Returns (item, matched_kb).
 
     Independent per item (own crop/embedding/DB lookup), so build_quotation runs
     this concurrently across all detected items instead of one at a time.
     """
-    from designbridge.pricing.furniture_kb import find_top_k_by_embedding, search_kb
+    from designbridge.pricing.furniture_kb import recommend_products, search_kb
 
     name_zh: str = raw.get("name_zh") or raw.get("name_en") or "家具"
     category: str = raw.get("category") or ""
@@ -179,7 +179,7 @@ def _process_furniture_item(raw: dict, img: Any) -> tuple[FurnitureItem, bool]:
             crop = crop_image_by_bbox(img, bbox_ratio)
             if crop is not None:
                 emb = get_clip_embedding(crop)
-                kb_hits = find_top_k_by_embedding(emb, category=category, top_k=3)
+                kb_hits = recommend_products(emb, category=category, detected_name=name_zh, style_id=style_id, top_k=3)
                 if kb_hits:
                     matched_kb = True
                     sims = [round(float(h.get("similarity") or 0), 4) for h in kb_hits]
@@ -238,13 +238,14 @@ def build_quotation(
     image_path: str,
     req: dict,
     preselected: list[dict] | None = None,
+    style_id: str = "",
 ) -> QuotationResultJSON:
     """
     1. detect_furniture_gemini() → 家具清單 + bbox
     2. 每件家具（平行處理，見 _process_furniture_item）：
        a. 依 bbox 裁切 crop
        b. CLIP embedding
-       c. find_top_k_by_embedding() → top-3 IKEA 候選（Supabase pgvector）
+       c. recommend_products() → top-3 候選（向量搜尋後依細分類篩選、渲染圖風格加分、同系列去重）
        d. fallback：search_kb()（本地 JSON）
        e. 最終 fallback：LLM 估算
     3. 併入 preselected（使用者在「家具查詢」頁手動勾選的家具，直接視為已確定候選）
@@ -282,7 +283,7 @@ def build_quotation(
     _load_embeddings()
 
     with ThreadPoolExecutor(max_workers=min(8, max(1, len(detected)))) as executor:
-        results = list(executor.map(lambda raw: _process_furniture_item(raw, img), detected))
+        results = list(executor.map(lambda raw: _process_furniture_item(raw, img, style_id), detected))
 
     furniture_list: list[FurnitureItem] = [item for item, _ in results]
     kb_match_count = sum(1 for _, matched in results if matched)

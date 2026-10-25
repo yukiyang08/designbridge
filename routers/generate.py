@@ -254,6 +254,7 @@ class QuotationRequest(BaseModel):
     structured_requirement: Optional[dict] = None
     selected_furniture: List[dict] = []
     task_id: Optional[str] = None   # 帶了就把估價結果存回「我的設計」
+    style_profile_id: Optional[str] = None   # 渲染圖的風格，推薦時同風格商品加分
 
 
 @router.post("/api/quotation")
@@ -266,6 +267,7 @@ def get_quotation(req: QuotationRequest, user_id: str = Depends(get_user_id)):
             req.image_path,
             req.structured_requirement or {},
             preselected=req.selected_furniture,
+            style_id=req.style_profile_id or "",
         )
         if req.task_id and user_id:
             save_quotation(user_id, req.task_id, quotation)

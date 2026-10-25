@@ -35,6 +35,7 @@ export async function fetchQuotation() {
       structured_requirement: result.value?.structured_requirement || null,
       selected_furniture: selectedFurniture.value,
       task_id: result.value?.task_id || null,
+      style_profile_id: result.value?.style_params?.style_profile_id || null,
     })
     if (!res.ok) throw new Error(`${res.status}`)
     const data = await res.json()
@@ -65,6 +66,7 @@ async function quoteRoom(roomId) {
       structured_requirement: snap.result?.structured_requirement || null,
       selected_furniture: selectedFurniture.value,
       task_id: snap.result?.task_id || null,
+      style_profile_id: snap.result?.style_params?.style_profile_id || null,
     })
     if (!res.ok) throw new Error(`${res.status}`)
     const data = await res.json()
