@@ -70,6 +70,16 @@ def _is_artifact_file(p) -> bool:
 _RENDER_NAME = re.compile(r"^[A-Za-z0-9._-]+$")
 
 
+def member_owner_ids(sb, user_id: str) -> list:
+    """別人邀請我共編的設計，其擁有者的 id（這些設計的圖都記在擁有者名下）。"""
+    pids = [m["project_id"] for m in
+            sb.table("project_members").select("project_id").eq("user_id", user_id).execute().data]
+    if not pids:
+        return []
+    return list({p["user_id"] for p in sb.table("projects").select("user_id").in_("id", pids).execute().data}
+                - {user_id})
+
+
 def ensure_artifact(p, user_id: Optional[str] = None) -> bool:
     """artifacts/ 是快取，Supabase Storage 才是正本：本機缺檔（換機器、清過資料夾）時，
     從 Storage 把這位使用者自己的渲染圖補回「同一個路徑」，呼叫端與前端存的路徑都不用改。
@@ -92,6 +102,11 @@ def ensure_artifact(p, user_id: Optional[str] = None) -> bool:
         sb = _get_supabase()
         rows = (sb.table("designs").select("image_path").eq("user_id", user_id)
                 .like("record->>generated_image_path", f"%{path.name}").limit(1).execute().data)
+        if not rows:   # 共編的設計：圖在擁有者名下
+            owners = member_owner_ids(sb, user_id)
+            if owners:
+                rows = (sb.table("designs").select("image_path").in_("user_id", owners)
+                        .like("record->>generated_image_path", f"%{path.name}").limit(1).execute().data)
         key = rows[0]["image_path"] if rows else None
         if not key:
             return False

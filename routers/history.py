@@ -1,5 +1,6 @@
 """我的設計：每次生成存進 Supabase designs 表（依 user_id 隔離），圖片放 Storage。"""
 import json
+import secrets
 import time
 import uuid
 from datetime import datetime, timezone
@@ -10,7 +11,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 
 from designbridge.style.style_supabase import _get_supabase
-from routers.common import _is_artifact_file, get_user_id
+from routers.common import _is_artifact_file, get_user_id, member_owner_ids
 
 router = APIRouter()
 
@@ -85,6 +86,10 @@ def _save_history(user_id: str, record: dict, floor_plan_path=None,
     sb = _get_supabase()
     tid = record["task_id"]
     title = (record.get("text_prompt") or "").strip()[:30] or "未命名設計"
+    if project_id:   # 被邀請的編輯者在別人的設計裡生成：圖與紀錄都記在擁有者名下
+        role, owner = _role(sb, project_id, user_id)
+        if role == "editor":
+            user_id = owner
     project_id = project_id or str(uuid.uuid4())   # 沒帶就自成一個設計
     # 同一設計第一次存才建；之後各空間的渲染圖掛在同一個 project 下
     sb.table("projects").upsert({"id": project_id, "user_id": user_id, "title": title},
@@ -109,6 +114,28 @@ def _save_history(user_id: str, record: dict, floor_plan_path=None,
 
 def _now() -> str:
     return datetime.now(timezone.utc).isoformat()
+
+
+def _role(sb, project_id: str, user_id: str):
+    """(身分, 擁有者 id)：身分是 owner / editor（被邀請的共編者）/ None（沒權限或設計不存在）。"""
+    p = sb.table("projects").select("user_id").eq("id", project_id).limit(1).execute().data
+    if not p:
+        return None, None
+    owner = p[0]["user_id"]
+    if owner == user_id:
+        return "owner", owner
+    m = (sb.table("project_members").select("user_id").eq("project_id", project_id)
+         .eq("user_id", user_id).limit(1).execute().data)
+    return ("editor" if m else None), owner
+
+
+def _task_owner(sb, user_id: str, task_id: str):
+    """這一版設計記在誰名下；呼叫者不是擁有者也不是共編者就回 None。"""
+    d = sb.table("designs").select("user_id,project_id").eq("task_id", task_id).limit(1).execute().data
+    if not d:
+        return None
+    role, owner = _role(sb, d[0]["project_id"], user_id)
+    return owner if role else None
 
 
 def _sync_space_state(sb, user_id: str, project_id: str, space_id: str, space_name, record: dict) -> None:
@@ -138,8 +165,9 @@ def save_panorama(user_id: str, task_id: str, local) -> str | None:
     try:
         sb = _get_supabase()
         key = _upload(sb, user_id, task_id, local, "_pano")
-        if key:
-            sb.table("designs").update({"pano_path": key}).eq("user_id", user_id).eq("task_id", task_id).execute()
+        owner = _task_owner(sb, user_id, task_id) if key else None
+        if owner:
+            sb.table("designs").update({"pano_path": key}).eq("user_id", owner).eq("task_id", task_id).execute()
         return key
     except Exception as e:
         print(f"[history] 環景存檔失敗：{e}")
@@ -147,23 +175,31 @@ def save_panorama(user_id: str, task_id: str, local) -> str | None:
 
 
 def save_quotation(user_id: str, task_id: str, quotation: dict) -> None:
-    _get_supabase().table("designs").update({"quotation": quotation})         .eq("user_id", user_id).eq("task_id", task_id).execute()
+    sb = _get_supabase()
+    owner = _task_owner(sb, user_id, task_id)
+    if owner:
+        sb.table("designs").update({"quotation": quotation}).eq("user_id", owner).eq("task_id", task_id).execute()
 
 
 @router.get("/api/history")
 def get_history(limit: int = 0, user_id: str = Depends(get_user_id)):
-    """目前使用者的設計，新到舊。limit=0 表示全部。"""
+    """目前使用者的設計（含被邀請共編的），新到舊。limit=0 表示全部。"""
     # 本機免登入模式（DEV_NO_AUTH）沒有使用者：沒有雲端資料可讀寫
     if not user_id:
         return []
     sb = _get_supabase()
-    q = sb.table("designs").select("record,image_path,floor_plan_path,source_photo_path,style_ref_path,title,quotation,project_id,space_id,space_name").eq("user_id", user_id).order("created_at", desc=True)
+    cols = "created_at,record,image_path,floor_plan_path,source_photo_path,style_ref_path,title,quotation,project_id,space_id,space_name"
+    rows = sb.table("designs").select(cols).eq("user_id", user_id).execute().data
+    shared = [m["project_id"] for m in
+              sb.table("project_members").select("project_id").eq("user_id", user_id).execute().data]
+    if shared:
+        rows += sb.table("designs").select(cols).in_("project_id", shared).execute().data
+    rows.sort(key=lambda r: r.get("created_at") or "", reverse=True)
     if limit > 0:
-        q = q.limit(limit)
-    rows = q.execute().data
+        rows = rows[:limit]
     pids = list({r["project_id"] for r in rows})
     projects = {p["id"]: p for p in (
-        sb.table("projects").select("id,cad_plan,cad_svg_path").in_("id", pids).execute().data if pids else [])}
+        sb.table("projects").select("id,user_id,cad_plan,cad_svg_path").in_("id", pids).execute().data if pids else [])}
     paths = [p for r in rows for p in (r["image_path"], r["floor_plan_path"], r["source_photo_path"], r["style_ref_path"]) if p]
     paths += [p["cad_svg_path"] for p in projects.values() if p["cad_svg_path"]]
     signed = {}
@@ -181,6 +217,7 @@ def get_history(limit: int = 0, user_id: str = Depends(get_user_id)):
         proj = projects.get(r["project_id"]) or {}
         rec["cad_svg_url"] = signed.get(proj.get("cad_svg_path"))
         rec["cad_summary"] = _cad_summary(proj.get("cad_plan"))
+        rec["role"] = "owner" if proj.get("user_id") == user_id else "editor"
         rec["title"] = r["title"]
         rec["project_id"], rec["space_id"], rec["space_name"] = r["project_id"], r["space_id"], r["space_name"]
         rec["quotation"] = r["quotation"]
@@ -209,12 +246,20 @@ def delete_history(task_ids: List[str] = Query(...), user_id: str = Depends(get_
 
 @router.get("/api/projects/{project_id}")
 def get_project(project_id: str, user_id: str = Depends(get_user_id)):
-    """一個設計的完整還原資料：整層平面圖、設定、各空間目前採用的那一版（圖用簽名網址）。
-    舊設計沒有 project_spaces 時，從 designs 取每個空間最新一筆推出來。"""
+    """擁有者或共編者的完整還原資料，多一個 role 欄位。"""
     # 本機免登入模式（DEV_NO_AUTH）沒有使用者：沒有雲端資料可讀寫
     if not user_id:
         raise HTTPException(status_code=404, detail="找不到這個設計")
     sb = _get_supabase()
+    role, owner = _role(sb, project_id, user_id)
+    if not role:
+        raise HTTPException(status_code=404, detail="找不到這個設計")
+    return {**_load_project(sb, project_id, owner), "role": role}
+
+
+def _load_project(sb, project_id: str, user_id: str) -> dict:
+    """一個設計的完整還原資料：整層平面圖、設定、各空間目前採用的那一版（圖用簽名網址）。
+    舊設計沒有 project_spaces 時，從 designs 取每個空間最新一筆推出來。user_id 是擁有者。"""
     proj = (sb.table("projects").select("id,title,plan_source,settings,cad_plan,cad_svg_path")
             .eq("id", project_id).eq("user_id", user_id).limit(1).execute().data)
     if not proj:
@@ -309,8 +354,10 @@ def put_project_state(project_id: str, body: ProjectState, user_id: str = Depend
     if not user_id:
         raise HTTPException(status_code=404, detail="找不到這個設計")
     sb = _get_supabase()
-    if not sb.table("projects").select("id").eq("id", project_id).eq("user_id", user_id).limit(1).execute().data:
+    role, owner = _role(sb, project_id, user_id)
+    if not role:
         raise HTTPException(status_code=404, detail="找不到這個設計")
+    user_id = owner   # 共編者寫入的資料也記在擁有者名下
     _check_size(body.settings, "設定")
     for s in body.spaces:
         _check_size(s.placements, "家具擺放")
@@ -334,3 +381,91 @@ def put_project_state(project_id: str, body: ProjectState, user_id: str = Depend
             rows.append(row)
         sb.table("project_spaces").upsert(rows, on_conflict="project_id,space_id").execute()
     return {"ok": True}
+
+
+# ── 分享與共編：唯讀連結、邀請連結、成員 ──────────────────────────────────────────
+
+def _owner_only(sb, project_id: str, user_id: str) -> None:
+    if not user_id or _role(sb, project_id, user_id)[0] != "owner":
+        raise HTTPException(status_code=404, detail="找不到這個設計")
+
+
+def _sharing_state(sb, project_id: str) -> dict:
+    p = sb.table("projects").select("share_token,invite_token").eq("id", project_id).limit(1).execute().data[0]
+    members = []
+    for m in sb.table("project_members").select("user_id").eq("project_id", project_id).execute().data:
+        try:
+            email = sb.auth.admin.get_user_by_id(m["user_id"]).user.email
+        except Exception:
+            email = None
+        members.append({"user_id": m["user_id"], "email": email})
+    return {"share_token": p["share_token"], "invite_token": p["invite_token"], "members": members}
+
+
+@router.get("/api/projects/{project_id}/sharing")
+def get_sharing(project_id: str, user_id: str = Depends(get_user_id)):
+    sb = _get_supabase()
+    _owner_only(sb, project_id, user_id)
+    return _sharing_state(sb, project_id)
+
+
+class SharingBody(BaseModel):
+    share: Optional[bool] = None    # 唯讀分享連結：True 開（已開則沿用）、False 關
+    invite: Optional[bool] = None   # 邀請共編連結
+
+
+@router.put("/api/projects/{project_id}/sharing")
+def put_sharing(project_id: str, body: SharingBody, user_id: str = Depends(get_user_id)):
+    sb = _get_supabase()
+    _owner_only(sb, project_id, user_id)
+    cur = _sharing_state(sb, project_id)
+    patch = {}
+    for flag, col in ((body.share, "share_token"), (body.invite, "invite_token")):
+        if flag is not None:
+            patch[col] = (cur[col] or secrets.token_urlsafe(16)) if flag else None
+    if patch:
+        sb.table("projects").update(patch).eq("id", project_id).execute()
+    return _sharing_state(sb, project_id)
+
+
+@router.delete("/api/projects/{project_id}/members/{member_id}")
+def remove_member(project_id: str, member_id: str, user_id: str = Depends(get_user_id)):
+    """擁有者移除共編者，或共編者自己退出。"""
+    sb = _get_supabase()
+    if member_id != user_id:
+        _owner_only(sb, project_id, user_id)
+    sb.table("project_members").delete().eq("project_id", project_id).eq("user_id", member_id).execute()
+    return {"ok": True}
+
+
+@router.post("/api/invite/{token}")
+def accept_invite(token: str, user_id: str = Depends(get_user_id)):
+    """登入者點邀請連結 → 成為這個設計的共編者（已是擁有者就不動）。"""
+    if not user_id:
+        raise HTTPException(status_code=404, detail="邀請連結已失效")
+    sb = _get_supabase()
+    p = sb.table("projects").select("id,user_id,title").eq("invite_token", token).limit(1).execute().data
+    if not p:
+        raise HTTPException(status_code=404, detail="邀請連結已失效")
+    if p[0]["user_id"] != user_id:
+        sb.table("project_members").upsert({"project_id": p[0]["id"], "user_id": user_id},
+                                           on_conflict="project_id,user_id").execute()
+    return {"project_id": p[0]["id"], "title": p[0]["title"]}
+
+
+@router.get("/api/shared/{token}")
+def get_shared(token: str):
+    """唯讀分享頁：不用登入，只給標題與各空間目前那一版的圖與描述。"""
+    sb = _get_supabase()
+    p = sb.table("projects").select("id,user_id").eq("share_token", token).limit(1).execute().data
+    if not p:
+        raise HTTPException(status_code=404, detail="分享連結已失效")
+    data = _load_project(sb, p[0]["id"], p[0]["user_id"])
+    spaces = []
+    for s in data["spaces"]:
+        r = s["render"]
+        if r:
+            spaces.append({"name": s.get("space_name"), "image_url": r.get("generated_image_url"),
+                           "prompt": r.get("text_prompt"), "pano_url": s.get("pano_url"),
+                           "style": (r.get("style_params") or {}).get("style_profile_name")})
+    return {"title": data["title"], "spaces": spaces}

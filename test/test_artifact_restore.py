@@ -124,6 +124,7 @@ def test_save_panorama_uploads_png_and_records_key(tmp_path, monkeypatch):
             return Q()
 
     monkeypatch.setattr(history, "_get_supabase", lambda: SB())
+    monkeypatch.setattr(history, "_task_owner", lambda _sb, uid, _tid: uid)
     assert history.save_panorama("u1", "t1", str(pano)) == "u1/t1_pano.png"   # key 固定 _pano.png
     assert ("upload", "u1/t1_pano.png", b"PNG") in calls
     assert ("update", {"pano_path": "u1/t1_pano.png"}) in calls
