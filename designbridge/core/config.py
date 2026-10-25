@@ -183,9 +183,3 @@ class Config:
     # 整張圖補光影的低強度 img2img；太高家具會被改掉，0 = 跳過
     PRODUCT_HARMONIZE_STRENGTH: float = float(os.getenv("DESIGNBRIDGE_PRODUCT_HARMONIZE_STRENGTH", "0.3"))
     PRODUCT_DEPTH_CONDITIONING_SCALE: float = float(os.getenv("DESIGNBRIDGE_PRODUCT_DEPTH_CONDITIONING_SCALE", "0.6"))
-
-    @classmethod
-    def get_gemini_api_key(cls) -> str:
-        if cls.GEMINI_API_KEY:
-            return cls.GEMINI_API_KEY
-        raise ValueError("GEMINI_API_KEY not set. Please set it in .env or as environment variable.")

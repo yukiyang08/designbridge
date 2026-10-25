@@ -207,6 +207,14 @@ def _gemini_client_and_config(
     return client, cfg
 
 
+def get_gemini_client():
+    """離線腳本用：認證方式跟主流程一致（有 service-account.json 走 Vertex，否則 API key）。"""
+    keys = _resolve_gemini_api_keys()
+    if not keys:
+        raise _no_key_error()
+    return _get_client(keys[0])
+
+
 def _no_key_error() -> RuntimeError:
     return RuntimeError(
         "未設定 Gemini 認證。擇一：\n"
