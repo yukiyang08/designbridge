@@ -1,8 +1,7 @@
 # designbridge/furniture_kb.py
 """IKEA 家具知識庫搜尋。
-  主要路徑：Supabase pgvector RPC（match_ikea_products）
-  Fallback 1：本地 numpy cosine 搜尋（ikea_embeddings.npz，Supabase 未設定或呼叫失敗時使用）
-  Fallback 2：本地 JSON 關鍵字搜尋
+  向量比對：Supabase pgvector RPC（match_ikea_products），失敗丟 RuntimeError，由呼叫端決定改用關鍵字或 LLM 估價
+  關鍵字搜尋與家具瀏覽：本地 ikea_tw.json（隨程式部署的靜態資料）
 """
 
 from __future__ import annotations
@@ -14,12 +13,10 @@ from typing import Any
 
 _BASE = Path(__file__).parent.parent / "furniture_kb"
 _LOCAL_KB_PATH  = _BASE / "ikea_tw.json"
-_EMB_PATH       = _BASE / "ikea_embeddings.npz"
 
 # ── 快取 ────────────────────────────────────────────────────────────────────────
 
 _kb_cache: list[dict] | None = None
-_emb_cache: Any = None          # numpy (N, 512) float32，與 _kb_cache 等長
 _supabase_client: Any = None
 
 # CLIP cosine similarity 門檻：低於此值視為「無合適候選」，不硬塞結果
@@ -42,27 +39,10 @@ def _load_local_kb() -> list[dict]:
     return _kb_cache
 
 
-def _load_embeddings():
-    """載入本地 numpy embedding 矩陣，lazy cache。回傳 ndarray (N,512) 或 None。"""
-    global _emb_cache
-    if _emb_cache is None:
-        if _EMB_PATH.exists():
-            try:
-                import numpy as np
-                data = np.load(str(_EMB_PATH))
-                _emb_cache = data["embeddings"].astype("float32")   # (N, 512)
-            except Exception as e:
-                print(f"[furniture_kb] 載入 embedding 失敗：{e}")
-                _emb_cache = False          # 標記為「已嘗試但失敗」
-        else:
-            _emb_cache = False
-    return _emb_cache if _emb_cache is not False else None
-
-
-# ── Supabase pgvector（主要路徑）───────────────────────────────────────────────
+# ── Supabase pgvector───────────────────────────────────────────────
 
 def _get_supabase_client():
-    """取得 Supabase client，未設定環境變數則回傳 None（不拋錯，讓上層 fallback）。"""
+    """取得 Supabase client，未設定環境變數則回傳 None（不拋錯）。"""
     global _supabase_client
     if _supabase_client is None:
         url = os.environ.get("SUPABASE_URL", "")
@@ -84,11 +64,11 @@ def _find_top_k_supabase(
     category: str,
     top_k: int,
     min_similarity: float,
-) -> list[dict] | None:
-    """呼叫 Supabase RPC match_ikea_products。回傳 None 代表呼叫失敗（讓上層改走本地 fallback）。"""
+) -> list[dict]:
+    """呼叫 Supabase RPC match_ikea_products。無達標候選回空 list；未設定或呼叫失敗丟 RuntimeError。"""
     client = _get_supabase_client()
     if client is None:
-        return None
+        raise RuntimeError("Supabase 未設定（SUPABASE_URL／SUPABASE_SERVICE_ROLE_KEY），無法做向量比對")
     try:
         res = client.rpc(RPC_NAME, {
             "query_embedding": query_embedding,
@@ -98,11 +78,10 @@ def _find_top_k_supabase(
         }).execute()
         return res.data or []
     except Exception as e:
-        print(f"[furniture_kb] Supabase RPC 呼叫失敗，改用本地 fallback：{e}")
-        return None
+        raise RuntimeError(f"match_ikea_products 呼叫失敗：{e}") from e
 
 
-# ── 向量搜尋（本地 numpy fallback）─────────────────────────────────────────────
+# ── 向量搜尋 ───────────────────────────────────────────────────────────────────
 
 def find_top_k_by_embedding(
     query_embedding: list[float],
@@ -110,63 +89,8 @@ def find_top_k_by_embedding(
     top_k: int = 3,
     min_similarity: float = MIN_SIMILARITY,
 ) -> list[dict]:
-    """
-    向量搜尋入口：優先呼叫 Supabase pgvector RPC，失敗或未設定環境變數則
-    fallback 到本地 numpy cosine 搜尋（ikea_embeddings.npz）。
-
-    相似度低於 min_similarity 的候選不會被回傳（視為「無合適候選」），
-    避免硬塞不相關的 top-3 結果。若最終沒有任何候選達標，回傳空 list。
-    """
-    supabase_hits = _find_top_k_supabase(query_embedding, category, top_k, min_similarity)
-    if supabase_hits is not None:
-        return supabase_hits
-
-    return _find_top_k_local(query_embedding, category, top_k, min_similarity)
-
-
-def _find_top_k_local(
-    query_embedding: list[float],
-    category: str = "",
-    top_k: int = 3,
-    min_similarity: float = MIN_SIMILARITY,
-) -> list[dict]:
-    """本地 numpy cosine 搜尋，embedding 矩陣與 ikea_tw.json 順序對應。"""
-    import numpy as np
-
-    matrix = _load_embeddings()
-    kb = _load_local_kb()
-
-    if matrix is None or len(kb) == 0:
-        return []
-
-    if len(kb) != len(matrix):
-        print(f"[furniture_kb] KB({len(kb)}) 與 embedding({len(matrix)}) 長度不符，跳過向量搜尋")
-        return []
-
-    q = np.array(query_embedding, dtype="float32")
-    scores = matrix @ q                     # (N,) cosine similarity（已 L2 normalize）
-    order = np.argsort(scores)[::-1]        # 由高到低
-
-    results = []
-    below_threshold_logged = False
-    for idx in order:
-        if len(results) >= top_k:
-            break
-        item = kb[int(idx)]
-        if category and item.get("category") != category:
-            continue
-        sim = float(scores[idx])
-        if sim < min_similarity:
-            if not below_threshold_logged:
-                print(
-                    f"[furniture_kb] 相似度 {sim:.4f} < 門檻 {min_similarity}，"
-                    f"停止搜尋（category={category or 'any'}，已找到 {len(results)} 筆）"
-                )
-                below_threshold_logged = True
-            break
-        results.append({**item, "similarity": round(sim, 4)})
-
-    return results
+    """Supabase pgvector 向量搜尋；相似度低於 min_similarity 的候選不回傳，無達標則回空 list；服務故障丟 RuntimeError。"""
+    return _find_top_k_supabase(query_embedding, category, top_k, min_similarity)
 
 
 # ── 關鍵字搜尋（text fallback）─────────────────────────────────────────────────
@@ -188,7 +112,7 @@ def _score_item(item: dict, query: str, category: str) -> float:
 
 
 def search_kb(query: str, category: str = "", top_k: int = 3) -> list[dict]:
-    """本地 JSON 關鍵字搜尋（向量搜尋失敗時的 fallback）。"""
+    """本地 JSON 關鍵字搜尋（向量比對無候選時使用）。"""
     kb = _load_local_kb()
     if not kb:
         return []
