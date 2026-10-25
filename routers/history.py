@@ -1,5 +1,6 @@
 """我的設計：每次生成存進 Supabase designs 表（依 user_id 隔離），圖片放 Storage。"""
 import json
+import time
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
@@ -15,6 +16,7 @@ router = APIRouter()
 
 _BUCKET = "designs"
 _SIGNED_TTL = 24 * 3600
+_UPLOAD_TRIES = 3
 
 
 def _upload(sb, user_id: str, task_id: str, local, suffix_tag: str = "") -> str | None:
@@ -22,12 +24,16 @@ def _upload(sb, user_id: str, task_id: str, local, suffix_tag: str = "") -> str 
     if not (local and Path(local).is_file()):
         return None
     key = f"{user_id}/{task_id}{suffix_tag}{Path(local).suffix}"
-    try:
-        sb.storage.from_(_BUCKET).upload(key, Path(local).read_bytes(), {"upsert": "true"})
-        return key
-    except Exception as e:
-        print(f"[history] 上傳失敗：{e}")
-        return None
+    data = Path(local).read_bytes()
+    for attempt in range(_UPLOAD_TRIES):   # 整層並行生成時偶發連線失敗，重試幾次才放棄
+        try:
+            sb.storage.from_(_BUCKET).upload(key, data, {"upsert": "true"})
+            return key
+        except Exception as e:
+            print(f"[history] 上傳失敗（{attempt + 1}/{_UPLOAD_TRIES}）：{e}")
+            if attempt < _UPLOAD_TRIES - 1:
+                time.sleep(0.5 * (attempt + 1))
+    return None
 
 
 def _save_cad_plan(sb, user_id: str, project_id: str, cad_plan: dict) -> None:
