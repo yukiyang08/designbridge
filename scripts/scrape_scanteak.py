@@ -25,6 +25,8 @@ from typing import Optional
 
 import requests
 
+from furniture_fields import color_of, series_of
+
 API = "https://www.scanteak.com.tw/wp-json/wc/store/v1/products"
 OUTPUT_PATH = Path(__file__).parent.parent / "designbridge" / "furniture_kb" / "scanteak_tw.json"
 BRAND = "詩肯柚木"
@@ -76,6 +78,18 @@ def classify(name: str) -> Optional[tuple[str, str]]:
     return None
 
 
+def _dims(p: dict) -> dict[str, float]:
+    """API 的 length / width / height（公分）→ 寬 / 深 / 高；空字串代表沒填。"""
+    raw = p.get("dimensions") or {}
+    out = {}
+    for src, label in (("length", "寬度"), ("width", "深度"), ("height", "高度")):
+        try:
+            out[label] = float(raw.get(src) or "")
+        except ValueError:
+            pass
+    return out
+
+
 def fetch_all() -> list[dict]:
     products: list[dict] = []
     page = 1
@@ -108,16 +122,24 @@ def main() -> None:
             skipped.append(name)
             continue
         price = amount // (10 ** int(prices.get("currency_minor_unit") or 0))
+        dims = _dims(p)
         items.append({
             "name": name,
             "category": cls[0],
             "subcategory": cls[1],
             "brand": BRAND,
+            "series": series_of(name),
+            "product_code": (p.get("sku") or str(p.get("id"))).strip(" ."),
+            "color": color_of(name),
             "price": price,
             "currency": prices.get("currency_code") or "TWD",
+            "width_cm": dims.get("寬度"),
+            "depth_cm": dims.get("深度"),
+            "height_cm": dims.get("高度"),
+            "dims": dims,
             "url": p.get("permalink") or "",
             "image_url": image,
-            "style_tags": [],
+            "style_tags": [],   # 由 scripts/tag_furniture_styles.py 用 CLIP 向量標
         })
 
     OUTPUT_PATH.write_text(json.dumps(items, ensure_ascii=False, indent=2), encoding="utf-8")

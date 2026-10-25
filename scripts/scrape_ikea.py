@@ -32,6 +32,7 @@ import argparse
 import html
 import json
 import re
+import sys
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
@@ -39,6 +40,10 @@ from pathlib import Path
 from typing import Optional
 
 import requests
+
+sys.path.insert(0, str(Path(__file__).parent.parent))
+from designbridge.layout.product_mesh_build import parse_dims_cm   # 跟 3D 模型共用同一套尺寸解析
+from furniture_fields import color_of, dims_to_cm, series_of
 
 BASE_URL = "https://www.ikea.com.tw"
 SITEMAP_PIP = f"{BASE_URL}/dairyfarm/tw/static_content/sitemaps/taiwan/sitemap-pip-zh.xml"
@@ -82,12 +87,16 @@ SUBCATEGORIES: dict[str, tuple[str, str]] = {
 # 名稱含這些字的是配件或零件，不是整件家具；出現在「附…」「含…」後面的是商品本身附帶的
 #（「扶手椅附椅墊」「書櫃附門板組合」），不算。布套、椅套無論怎麼寫都是套子
 _COVER_RE = re.compile(r"(椅套|沙發套|布套|套組件|套[，,]|套$)")
-_ACCESSORY_RE = re.compile(r"(椅墊|座墊|坐墊|靠墊|床墊|床腳|椅腳|沙發腳|桌腳|腳座|零件|配件|替換|框架|門板|背板|層板|抽屜面板|把手|旋鈕|燈泡|燈罩$)")
+_ACCESSORY_RE = re.compile(r"(椅墊|座墊|坐墊|靠墊|床墊|床腳|椅腳|沙發腳|桌腳|腳座|零件|配件|替換|框架|門板|背板|層板|抽屜面板|把手|旋鈕|燈泡|燈罩|椅框|支腳|底座)")
 _INCLUDED_RE = re.compile(r"[附含][^，,\s]*")
 
 
 def _is_accessory(name: str) -> bool:
-    if re.match(r"^[^\s，,]+\s+扶手[，,]", name):   # 單獨販售的扶手零件（「MALMKÖPING 扶手，…」）
+    if re.match(r"^[^\s，,]+\s+(?:扶手|抽屜)[，,]", name):   # 單獨販售的扶手、抽屜（「MALMKÖPING 扶手，…」）
+        return True
+    # 名稱主體（逗號前）以零件結尾的就是零件本身，例如「KRILLE 附輪桌腳」不能因為有「附」就放行
+    head = re.sub(r"[附含](?:燈罩|燈泡|椅墊|床墊|靠墊)$", "", re.split(r"[，,]", name, 1)[0])   # 「落地燈附燈罩」是整盞燈
+    if re.search(r"(桌腳|椅腳|支腳|底座|燈罩)$", head):
         return True
     return bool(_COVER_RE.search(name) or _ACCESSORY_RE.search(_INCLUDED_RE.sub("", name)))
 # 桌類裡混了成套販售的桌椅（「一桌二椅」「餐桌附4張餐椅」），另外標成桌椅組 table-chair-set
@@ -102,7 +111,7 @@ HEADERS = {
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120 Safari/537.36",
     "Accept-Language": "zh-TW,zh;q=0.9",
 }
-_HEAD_BYTES = 160_000   # og 標籤都在 <head> 前段，整頁 ~640KB 不用全部下載
+_HEAD_BYTES = 140_000   # og 標籤在 <head>、「尺寸」區塊約在 75KB 處，整頁 640KB～1.2MB 不用全部下載
 _REQUEST_GAP = 0.35     # 每個執行緒兩次請求間隔（秒），3 個執行緒約每秒 8 次
 
 
@@ -112,7 +121,7 @@ def _meta(text: str, prop: str) -> Optional[str]:
 
 
 def fetch_product(url: str) -> Optional[dict]:
-    """讀商品頁前段，回傳 name / price / image_url；失敗回傳 None。"""
+    """讀商品頁前段，回傳 name / price / image_url / dims；失敗回傳 None。"""
     try:
         with requests.get(url, headers=HEADERS, timeout=30, stream=True) as r:
             if r.status_code != 200:
@@ -120,7 +129,7 @@ def fetch_product(url: str) -> Optional[dict]:
             buf = b""
             for chunk in r.iter_content(16_384):
                 buf += chunk
-                if len(buf) >= _HEAD_BYTES or b"</head>" in buf:
+                if len(buf) >= _HEAD_BYTES:
                     break
         text = buf.decode("utf-8", errors="ignore")
         title = _meta(text, "og:title") or ""
@@ -129,7 +138,7 @@ def fetch_product(url: str) -> Optional[dict]:
         image = _meta(text, "og:image") or ""
         if not name or not price:
             return None
-        return {"name": name, "price": int(float(price)), "image_url": image}
+        return {"name": name, "price": int(float(price)), "image_url": image, "dims": parse_dims_cm(text)}
     except Exception:
         return None
 
@@ -167,7 +176,7 @@ def scrape(limit: int = 0, workers: int = 3) -> list[dict]:
     targets = list_product_urls(limit)
     print(f"sitemap 中符合的商品頁：{len(targets)} 件")
     cache = _load_cache()   # 中斷後重跑不重抓已成功的頁面
-    todo = [t for t in targets if t[0] not in cache]
+    todo = [t for t in targets if "dims" not in cache.get(t[0], {})]   # 舊快取沒有尺寸的也重抓
     print(f"已快取 {len(targets) - len(todo)} 件，要抓 {len(todo)} 件")
 
     lock = threading.Lock()
@@ -209,16 +218,25 @@ def scrape(limit: int = 0, workers: int = 3) -> list[dict]:
             continue
         if category == "table" and _TABLE_SET_RE.search(name):
             subcategory = "table-chair-set"
+        width, depth, height = dims_to_cm(row.get("dims") or {}, category)
+        code = re.search(r"-(?:art|spr)-(\d+)", url)
         items.append({
             "name": name,
             "category": category,
             "subcategory": subcategory,
             "brand": "IKEA",
+            "series": series_of(name),
+            "product_code": code.group(1) if code else None,
+            "color": color_of(name),
             "price": row["price"],
             "currency": "TWD",
+            "width_cm": width,
+            "depth_cm": depth,
+            "height_cm": height,
+            "dims": row.get("dims") or {},
             "url": url,
             "image_url": row["image_url"],
-            "style_tags": [],
+            "style_tags": [],   # 由 scripts/tag_furniture_styles.py 用 CLIP 向量標
         })
     print(f"略過：抓取失敗 {skipped['missing']}、沒有圖片 {skipped['no_image']}、配件 {skipped['accessory']}、沙發模組 {skipped['module']}")
     return items

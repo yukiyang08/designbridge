@@ -173,15 +173,24 @@ def get_furniture_categories():
     return list_categories()
 
 
+@router.get("/api/furniture/filters")
+def get_furniture_filters():
+    """家具查詢頁的品牌、風格篩選選項與件數。"""
+    from designbridge.pricing.furniture_kb import list_filters
+    return list_filters()
+
+
 @router.get("/api/furniture")
 def get_furniture(
     category: str = "",
     min_price: Optional[float] = None,
     max_price: Optional[float] = None,
+    brand: str = "",
+    style: str = "",
 ):
-    """瀏覽 / 篩選家具清單（分類 + 價位區間）。"""
+    """瀏覽 / 篩選家具清單（分類 + 價位區間 + 品牌 + 風格）。"""
     from designbridge.pricing.furniture_kb import list_furniture
-    return list_furniture(category=category, min_price=min_price, max_price=max_price)
+    return list_furniture(category=category, min_price=min_price, max_price=max_price, brand=brand, style=style)
 
 
 @router.get("/api/style-profiles")

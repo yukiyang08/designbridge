@@ -14,7 +14,7 @@ from typing import Any
 
 _BASE = Path(__file__).parent.parent / "furniture_kb"
 # 每個品牌一份 {brand}_tw.json + {brand}_embeddings.npz，依此順序接起來，商品與向量的 index 對應
-_BRANDS = ("ikea", "scanteak")
+_BRANDS = ("ikea", "scanteak", "hola")
 
 # ── 快取 ────────────────────────────────────────────────────────────────────────
 
@@ -223,10 +223,26 @@ def list_categories() -> list[str]:
     return sorted({item.get("category", "") for item in kb if item.get("category")})
 
 
+def list_filters() -> dict:
+    """家具查詢頁的品牌、風格篩選選項與件數（依件數多到少）。"""
+    from collections import Counter
+    from style_kb.styles import STYLES
+    kb = _load_local_kb()
+    brands = Counter(item.get("brand") or "IKEA" for item in kb)
+    styles = Counter(tag for item in kb for tag in item.get("style_tags") or [])
+    names = dict(STYLES)
+    return {
+        "brands": [{"value": b, "label": b, "count": n} for b, n in brands.most_common()],
+        "styles": [{"value": s, "label": names.get(s, s), "count": n} for s, n in styles.most_common()],
+    }
+
+
 def list_furniture(
     category: str = "",
     min_price: float | None = None,
     max_price: float | None = None,
+    brand: str = "",
+    style: str = "",
 ) -> list[dict]:
     """回傳符合分類 / 價位區間的家具清單（本地 JSON KB）。
 
@@ -237,6 +253,10 @@ def list_furniture(
     results = []
     for item in kb:
         if category and item.get("category") != category:
+            continue
+        if brand and (item.get("brand") or "IKEA") != brand:
+            continue
+        if style and style not in (item.get("style_tags") or []):
             continue
         price = item.get("price")
         if price is None:
