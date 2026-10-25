@@ -144,7 +144,7 @@ onMounted(async () => {
         </select>
         <select v-model="activeStyle" :class="['filter-select', { active: activeStyle }]" aria-label="風格">
           <option value="">風格</option>
-          <option v-for="st in styles" :key="st.value" :value="st.value">{{ st.label }}（{{ st.count.toLocaleString() }}）</option>
+          <option v-for="st in styles" :key="st.value" :value="st.value">{{ st.label }}</option>
         </select>
         <button v-if="hasExtraFilters" type="button" class="clear-filters" @click="clearExtraFilters">清除篩選</button>
       </div>

@@ -20,6 +20,7 @@ _BRANDS = ("ikea", "scanteak", "hola")
 
 _kb_cache: list[dict] | None = None
 _emb_cache: Any = None          # numpy (N, 512) float32，與 _kb_cache 等長
+_cache_stamp: tuple | None = None   # 各品牌資料檔的修改時間，變了就重新載入
 _supabase_client: Any = None
 
 # CLIP cosine similarity 門檻：低於此值視為「無合適候選」，不硬塞結果
@@ -42,8 +43,21 @@ def _load_brand_items(brand: str) -> list[dict]:
     return items
 
 
+def _refresh_if_changed() -> None:
+    """資料檔重抓或重標風格後自動重新載入；uvicorn --reload 只看程式碼，不會因 JSON 變動重啟。"""
+    global _kb_cache, _emb_cache, _cache_stamp
+    stamp = tuple(
+        p.stat().st_mtime if p.exists() else 0
+        for brand in _BRANDS
+        for p in (_BASE / f"{brand}_tw.json", _BASE / f"{brand}_embeddings.npz")
+    )
+    if stamp != _cache_stamp:
+        _kb_cache, _emb_cache, _cache_stamp = None, None, stamp
+
+
 def _load_local_kb() -> list[dict]:
     global _kb_cache
+    _refresh_if_changed()
     if _kb_cache is None:
         _kb_cache = [item for brand in _BRANDS for item in _load_brand_items(brand)]
     return _kb_cache
@@ -52,6 +66,7 @@ def _load_local_kb() -> list[dict]:
 def _load_embeddings():
     """載入本地 numpy embedding 矩陣，lazy cache。回傳 ndarray (N,512) 或 None。"""
     global _emb_cache
+    _refresh_if_changed()
     if _emb_cache is None:
         import numpy as np
         parts = []
