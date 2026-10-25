@@ -1,7 +1,8 @@
 # designbridge/furniture_kb.py
 """IKEA 家具知識庫搜尋。
   向量比對：Supabase pgvector RPC（match_ikea_products），失敗丟 RuntimeError，由呼叫端決定改用關鍵字或 LLM 估價
-  關鍵字搜尋與家具瀏覽：本地 ikea_tw.json（隨程式部署的靜態資料）
+  家具瀏覽：Supabase ikea_products
+  關鍵字搜尋：本地 ikea_tw.json（隨程式部署的靜態資料）
 """
 
 from __future__ import annotations
@@ -125,10 +126,29 @@ def search_kb(query: str, category: str = "", top_k: int = 3) -> list[dict]:
 
 # ── 家具查詢（供前端瀏覽 / 篩選使用）───────────────────────────────────────────
 
+_PAGE = 1000  # PostgREST 單次最多回 1000 筆
+
+
+def _select_all(columns: str, apply=lambda q: q) -> list[dict]:
+    """分頁取出 ikea_products 全部符合列；Supabase 未設定或失敗丟 RuntimeError。"""
+    client = _get_supabase_client()
+    if client is None:
+        raise RuntimeError("Supabase 未設定（SUPABASE_URL／SUPABASE_SERVICE_ROLE_KEY），無法瀏覽家具")
+    rows: list[dict] = []
+    try:
+        while True:
+            q = apply(client.table(TABLE).select(columns)).order("id").range(len(rows), len(rows) + _PAGE - 1)
+            page = q.execute().data or []
+            rows += page
+            if len(page) < _PAGE:
+                return rows
+    except Exception as e:
+        raise RuntimeError(f"讀取 {TABLE} 失敗：{e}") from e
+
+
 def list_categories() -> list[str]:
-    """回傳本地 KB 中所有出現過的家具分類（依名稱排序）。"""
-    kb = _load_local_kb()
-    return sorted({item.get("category", "") for item in kb if item.get("category")})
+    """回傳 Supabase 中所有出現過的家具分類（依名稱排序）。"""
+    return sorted({r["category"] for r in _select_all("category") if r.get("category")})
 
 
 def list_furniture(
@@ -136,22 +156,19 @@ def list_furniture(
     min_price: float | None = None,
     max_price: float | None = None,
 ) -> list[dict]:
-    """回傳符合分類 / 價位區間的家具清單（本地 JSON KB）。
+    """回傳符合分類 / 價位區間的家具清單（Supabase ikea_products）。
 
     - category 為空字串代表不篩選分類
     - min_price / max_price 為 None 代表不限制該端
     """
-    kb = _load_local_kb()
-    results = []
-    for item in kb:
-        if category and item.get("category") != category:
-            continue
-        price = item.get("price")
-        if price is None:
-            continue
-        if min_price is not None and price < min_price:
-            continue
-        if max_price is not None and price > max_price:
-            continue
-        results.append(item)
-    return results
+    def apply(q):
+        q = q.not_.is_("price", "null")
+        if category:
+            q = q.eq("category", category)
+        if min_price is not None:
+            q = q.gte("price", min_price)
+        if max_price is not None:
+            q = q.lte("price", max_price)
+        return q
+
+    return _select_all("name,category,price,currency,url,image_url,style_tags", apply)
