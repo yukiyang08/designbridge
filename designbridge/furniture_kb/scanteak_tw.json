@@ -4,1528 +4,3372 @@
     "category": "sofa",
     "subcategory": "sofa",
     "brand": "詩肯柚木",
+    "series": "KULLAN",
+    "product_code": "11128-4",
+    "color": "柚木",
     "price": 72990,
     "currency": "TWD",
+    "width_cm": 264.0,
+    "depth_cm": 87.0,
+    "height_cm": 76.0,
+    "dims": {
+      "寬度": 264.0,
+      "深度": 87.0,
+      "高度": 76.0
+    },
     "url": "https://www.scanteak.com.tw/product/t11128-kullan-4s/",
     "image_url": "https://images.scanteak.com.tw/wp-content/uploads/2024/06/%E6%9F%9A%E6%9C%A8%E5%AE%98%E7%B6%B2-4S.jpg",
-    "style_tags": []
+    "style_tags": [
+      "american",
+      "classic"
+    ]
   },
   {
     "name": "LUNNA 實心柚木床架",
     "category": "bed",
     "subcategory": "bed-frame",
     "brand": "詩肯柚木",
+    "series": "LUNNA",
+    "product_code": "T30111",
+    "color": "柚木",
     "price": 35990,
     "currency": "TWD",
+    "width_cm": null,
+    "depth_cm": null,
+    "height_cm": null,
+    "dims": {},
     "url": "https://www.scanteak.com.tw/product/t30111-lunna/",
     "image_url": "https://images.scanteak.com.tw/wp-content/uploads/2026/05/%E6%9F%9A%E6%9C%A8%E5%AE%98%E7%B6%B2.jpg",
-    "style_tags": []
+    "style_tags": [
+      "classic",
+      "japanese"
+    ]
   },
   {
     "name": "GRENAR 實心柚木大茶几",
     "category": "table",
     "subcategory": "coffee-side-table",
     "brand": "詩肯柚木",
+    "series": "GRENAR",
+    "product_code": "T10580",
+    "color": "柚木",
     "price": 11990,
     "currency": "TWD",
+    "width_cm": 120.0,
+    "depth_cm": 51.0,
+    "height_cm": 55.0,
+    "dims": {
+      "寬度": 120.0,
+      "深度": 51.0,
+      "高度": 55.0
+    },
     "url": "https://www.scanteak.com.tw/product/t10580/",
     "image_url": "https://images.scanteak.com.tw/wp-content/uploads/2026/01/%E5%AE%98%E7%B6%B2.jpg",
-    "style_tags": []
+    "style_tags": [
+      "classic",
+      "nordic"
+    ]
   },
   {
     "name": "DURA 天然大理石 四門邊櫃",
     "category": "storage",
     "subcategory": "sideboard",
     "brand": "詩肯柚木",
+    "series": "DURA",
+    "product_code": "T50131",
+    "color": "大理石",
     "price": 48990,
     "currency": "TWD",
+    "width_cm": 180.0,
+    "depth_cm": 42.0,
+    "height_cm": 76.5,
+    "dims": {
+      "寬度": 180.0,
+      "深度": 42.0,
+      "高度": 76.5
+    },
     "url": "https://www.scanteak.com.tw/product/t50131/",
     "image_url": "https://images.scanteak.com.tw/wp-content/uploads/2025/12/%E5%AE%98%E7%B6%B202.jpg",
-    "style_tags": []
+    "style_tags": [
+      "nordic",
+      "luxury"
+    ]
   },
   {
     "name": "GLANS 天然大理石兩門三抽屜邊櫃",
     "category": "storage",
     "subcategory": "sideboard",
     "brand": "詩肯柚木",
+    "series": "GLANS",
+    "product_code": "53129",
+    "color": "大理石",
     "price": 48990,
     "currency": "TWD",
+    "width_cm": 160.0,
+    "depth_cm": 46.0,
+    "height_cm": 78.0,
+    "dims": {
+      "寬度": 160.0,
+      "深度": 46.0,
+      "高度": 78.0
+    },
     "url": "https://www.scanteak.com.tw/product/53129-glans/",
     "image_url": "https://images.scanteak.com.tw/wp-content/uploads/2025/12/53129.jpg",
-    "style_tags": []
+    "style_tags": [
+      "nordic"
+    ]
   },
   {
     "name": "IMMER 實心柚木床架",
     "category": "bed",
     "subcategory": "bed-frame",
     "brand": "詩肯柚木",
+    "series": "IMMER",
+    "product_code": "T31850",
+    "color": "柚木",
     "price": 16990,
     "currency": "TWD",
+    "width_cm": null,
+    "depth_cm": null,
+    "height_cm": null,
+    "dims": {},
     "url": "https://www.scanteak.com.tw/product/t31850-immer/",
     "image_url": "https://images.scanteak.com.tw/wp-content/uploads/2025/09/%E5%AE%98%E7%B6%B2-2.jpg",
-    "style_tags": []
+    "style_tags": [
+      "classic",
+      "nordic"
+    ]
   },
   {
     "name": "SPEGEL 實心柚木化妝桌",
     "category": "table",
     "subcategory": "dressing-table",
     "brand": "詩肯柚木",
+    "series": "SPEGEL",
+    "product_code": "T30089",
+    "color": "柚木",
     "price": 19990,
     "currency": "TWD",
+    "width_cm": 80.0,
+    "depth_cm": 45.0,
+    "height_cm": 127.0,
+    "dims": {
+      "寬度": 80.0,
+      "深度": 45.0,
+      "高度": 127.0
+    },
     "url": "https://www.scanteak.com.tw/product/t30089-spegel/",
     "image_url": "https://images.scanteak.com.tw/wp-content/uploads/2025/09/T30089%E5%AE%98%E7%B6%B2.jpg",
-    "style_tags": []
+    "style_tags": [
+      "american"
+    ]
   },
   {
     "name": "VINGE 實心柚木電視櫃(180cm)",
     "category": "storage",
     "subcategory": "tv-bench",
     "brand": "詩肯柚木",
+    "series": "VINGE",
+    "product_code": "T50182-1",
+    "color": "柚木",
     "price": 29990,
     "currency": "TWD",
+    "width_cm": 180.0,
+    "depth_cm": 45.0,
+    "height_cm": 55.0,
+    "dims": {
+      "寬度": 180.0,
+      "深度": 45.0,
+      "高度": 55.0
+    },
     "url": "https://www.scanteak.com.tw/product/t50182-180/",
     "image_url": "https://images.scanteak.com.tw/wp-content/uploads/2025/08/%E5%AE%98%E7%B6%B2-1.jpg",
-    "style_tags": []
+    "style_tags": [
+      "nordic",
+      "classic"
+    ]
   },
   {
     "name": "VINGE 實心柚木電視櫃(150cm)",
     "category": "storage",
     "subcategory": "tv-bench",
     "brand": "詩肯柚木",
+    "series": "VINGE",
+    "product_code": "T50182",
+    "color": "柚木",
     "price": 25990,
     "currency": "TWD",
+    "width_cm": 150.0,
+    "depth_cm": 45.0,
+    "height_cm": 55.0,
+    "dims": {
+      "寬度": 150.0,
+      "深度": 45.0,
+      "高度": 55.0
+    },
     "url": "https://www.scanteak.com.tw/product/t50182-150/",
     "image_url": "https://images.scanteak.com.tw/wp-content/uploads/2025/08/%E5%AE%98%E7%B6%B2.jpg",
-    "style_tags": []
+    "style_tags": [
+      "classic",
+      "nordic"
+    ]
   },
   {
     "name": "VID 多功能收納櫃",
     "category": "storage",
     "subcategory": "sideboard",
     "brand": "詩肯柚木",
+    "series": "VID",
+    "product_code": "T53151",
+    "color": null,
     "price": 17990,
     "currency": "TWD",
+    "width_cm": 80.0,
+    "depth_cm": 40.0,
+    "height_cm": 110.0,
+    "dims": {
+      "寬度": 80.0,
+      "深度": 40.0,
+      "高度": 110.0
+    },
     "url": "https://www.scanteak.com.tw/product/t53151-vid/",
     "image_url": "https://images.scanteak.com.tw/wp-content/uploads/2025/08/T53151-VID%E6%9C%89%E9%96%80%E9%9E%8B%E6%AB%83%E5%AE%98%E7%B6%B2.jpg",
-    "style_tags": []
+    "style_tags": [
+      "nordic",
+      "luxury"
+    ]
   },
   {
     "name": "KODDA 1人座實心柚木沙發",
     "category": "chair",
     "subcategory": "armchair",
     "brand": "詩肯柚木",
+    "series": "KODDA",
+    "product_code": "T10251-1-1",
+    "color": "柚木",
     "price": 19990,
     "currency": "TWD",
+    "width_cm": 75.0,
+    "depth_cm": 85.0,
+    "height_cm": 80.0,
+    "dims": {
+      "寬度": 75.0,
+      "深度": 85.0,
+      "高度": 80.0
+    },
     "url": "https://www.scanteak.com.tw/product/t10251-kodda-1s/",
     "image_url": "https://images.scanteak.com.tw/wp-content/uploads/2025/08/T10251-KODDA-%E6%B2%99%E7%99%BC%E6%B2%99%E6%A3%95%E8%89%B2_1S%E5%AE%98%E7%B6%B2.jpg",
-    "style_tags": []
+    "style_tags": [
+      "classic",
+      "country"
+    ]
   },
   {
     "name": "KODDA 2人座實心柚木沙發",
     "category": "sofa",
     "subcategory": "sofa",
     "brand": "詩肯柚木",
+    "series": "KODDA",
+    "product_code": "T10251-1",
+    "color": "柚木",
     "price": 29990,
     "currency": "TWD",
+    "width_cm": 135.0,
+    "depth_cm": 85.0,
+    "height_cm": 80.0,
+    "dims": {
+      "寬度": 135.0,
+      "深度": 85.0,
+      "高度": 80.0
+    },
     "url": "https://www.scanteak.com.tw/product/t10251-kodda-2s/",
     "image_url": "https://images.scanteak.com.tw/wp-content/uploads/2025/08/T10251-KODDA-%E6%B2%99%E7%99%BC%E6%B2%99%E6%A3%95%E8%89%B2_2S%E5%AE%98%E7%B6%B2.jpg",
-    "style_tags": []
+    "style_tags": [
+      "classic",
+      "luxury"
+    ]
   },
   {
     "name": "KODDA 3人座實心柚木沙發",
     "category": "sofa",
     "subcategory": "sofa",
     "brand": "詩肯柚木",
+    "series": "KODDA",
+    "product_code": "T10251",
+    "color": "柚木",
     "price": 43990,
     "currency": "TWD",
+    "width_cm": 180.0,
+    "depth_cm": 85.0,
+    "height_cm": 80.0,
+    "dims": {
+      "寬度": 180.0,
+      "深度": 85.0,
+      "高度": 80.0
+    },
     "url": "https://www.scanteak.com.tw/product/t10251-kodda-3s/",
     "image_url": "https://images.scanteak.com.tw/wp-content/uploads/2025/08/T10251-KODDA-%E6%B2%99%E7%99%BC%E6%B2%99%E6%A3%95%E8%89%B2_3S%E5%AE%98%E7%B6%B2.jpg",
-    "style_tags": []
+    "style_tags": [
+      "classic"
+    ]
   },
   {
     "name": "SOL 2人座實心柚木沙發",
     "category": "sofa",
     "subcategory": "sofa",
     "brand": "詩肯柚木",
+    "series": "SOL",
+    "product_code": "T11130-2",
+    "color": "柚木",
     "price": 56990,
     "currency": "TWD",
+    "width_cm": 141.0,
+    "depth_cm": 80.0,
+    "height_cm": 88.0,
+    "dims": {
+      "寬度": 141.0,
+      "深度": 80.0,
+      "高度": 88.0
+    },
     "url": "https://www.scanteak.com.tw/product/t11130-sol-sofa-2-seater/",
     "image_url": "https://images.scanteak.com.tw/wp-content/uploads/2025/07/2S%E5%AE%98%E7%B6%B2-1.jpg",
-    "style_tags": []
+    "style_tags": [
+      "classic"
+    ]
   },
   {
     "name": "LUNA 實心柚木茶几",
     "category": "table",
     "subcategory": "coffee-side-table",
     "brand": "詩肯柚木",
+    "series": "LUNA",
+    "product_code": "T10159",
+    "color": "柚木",
     "price": 9990,
     "currency": "TWD",
+    "width_cm": 70.0,
+    "depth_cm": 70.0,
+    "height_cm": 40.0,
+    "dims": {
+      "寬度": 70.0,
+      "深度": 70.0,
+      "高度": 40.0
+    },
     "url": "https://www.scanteak.com.tw/product/t10159-luna/",
     "image_url": "https://images.scanteak.com.tw/wp-content/uploads/2025/07/T10159.jpg",
-    "style_tags": []
+    "style_tags": [
+      "classic",
+      "nordic"
+    ]
   },
   {
     "name": "LIVA 實心柚木展示架",
     "category": "storage",
     "subcategory": "open-storage",
     "brand": "詩肯柚木",
+    "series": "LIVA",
+    "product_code": "T50157",
+    "color": "柚木",
     "price": 14990,
     "currency": "TWD",
+    "width_cm": 90.0,
+    "depth_cm": 35.0,
+    "height_cm": 90.0,
+    "dims": {
+      "寬度": 90.0,
+      "深度": 35.0,
+      "高度": 90.0
+    },
     "url": "https://www.scanteak.com.tw/product/t50157-liva/",
     "image_url": "https://images.scanteak.com.tw/wp-content/uploads/2025/07/T10157.jpg",
-    "style_tags": []
+    "style_tags": [
+      "classic",
+      "nordic"
+    ]
   },
   {
     "name": "VEGA 實心柚木大茶几",
     "category": "table",
     "subcategory": "coffee-side-table",
     "brand": "詩肯柚木",
+    "series": "VEGA",
+    "product_code": "T10154",
+    "color": "柚木",
     "price": 13990,
     "currency": "TWD",
+    "width_cm": 100.0,
+    "depth_cm": 60.0,
+    "height_cm": 40.0,
+    "dims": {
+      "寬度": 100.0,
+      "深度": 60.0,
+      "高度": 40.0
+    },
     "url": "https://www.scanteak.com.tw/product/t10154-vega/",
     "image_url": "https://images.scanteak.com.tw/wp-content/uploads/2025/07/T10154.jpg",
-    "style_tags": []
+    "style_tags": [
+      "classic",
+      "nordic"
+    ]
   },
   {
     "name": "KYLA 實心柚木吧檯椅",
     "category": "chair",
     "subcategory": "bar-stool",
     "brand": "詩肯柚木",
+    "series": "KYLA",
+    "product_code": "T20093",
+    "color": "柚木",
     "price": 8990,
     "currency": "TWD",
+    "width_cm": 48.0,
+    "depth_cm": 52.0,
+    "height_cm": 101.5,
+    "dims": {
+      "寬度": 48.0,
+      "深度": 52.0,
+      "高度": 101.5
+    },
     "url": "https://www.scanteak.com.tw/product/t20093-c/",
     "image_url": "https://images.scanteak.com.tw/wp-content/uploads/2025/07/t-1.jpg",
-    "style_tags": []
+    "style_tags": [
+      "classic",
+      "nordic"
+    ]
   },
   {
     "name": "KYLA 實心柚木中島椅",
     "category": "chair",
     "subcategory": "bar-stool",
     "brand": "詩肯柚木",
+    "series": "KYLA",
+    "product_code": "T20092",
+    "color": "柚木",
     "price": 7990,
     "currency": "TWD",
+    "width_cm": 48.0,
+    "depth_cm": 51.5,
+    "height_cm": 89.0,
+    "dims": {
+      "寬度": 48.0,
+      "深度": 51.5,
+      "高度": 89.0
+    },
     "url": "https://www.scanteak.com.tw/product/t20092-c/",
     "image_url": "https://images.scanteak.com.tw/wp-content/uploads/2025/07/t.jpg",
-    "style_tags": []
+    "style_tags": [
+      "classic"
+    ]
   },
   {
     "name": "SOL 3人座實心柚木沙發",
     "category": "sofa",
     "subcategory": "sofa",
     "brand": "詩肯柚木",
+    "series": "SOL",
+    "product_code": "T12130",
+    "color": "柚木",
     "price": 66990,
     "currency": "TWD",
+    "width_cm": 208.0,
+    "depth_cm": 80.0,
+    "height_cm": 88.0,
+    "dims": {
+      "寬度": 208.0,
+      "深度": 80.0,
+      "高度": 88.0
+    },
     "url": "https://www.scanteak.com.tw/product/t12130-sol-sofa-3-seater/",
     "image_url": "https://images.scanteak.com.tw/wp-content/uploads/2025/07/3S%E5%AE%98%E7%B6%B2-1.jpg",
-    "style_tags": []
+    "style_tags": [
+      "classic"
+    ]
   },
   {
     "name": "SKAP 實心柚木餐櫃(下櫃)",
     "category": "storage",
     "subcategory": "sideboard",
     "brand": "詩肯柚木",
+    "series": "SKAP",
+    "product_code": "53107-1",
+    "color": "柚木",
     "price": 35990,
     "currency": "TWD",
+    "width_cm": 125.0,
+    "depth_cm": 40.5,
+    "height_cm": 90.0,
+    "dims": {
+      "寬度": 125.0,
+      "深度": 40.5,
+      "高度": 90.0
+    },
     "url": "https://www.scanteak.com.tw/product/53107-skapunder/",
     "image_url": "https://images.scanteak.com.tw/wp-content/uploads/2025/06/%E4%B8%8B%E6%AB%83%E5%AE%98%E7%B6%B2.jpg",
-    "style_tags": []
+    "style_tags": [
+      "nordic",
+      "classic"
+    ]
   },
   {
     "name": "SKAP 實心柚木餐櫃(上櫃)",
     "category": "storage",
     "subcategory": "sideboard",
     "brand": "詩肯柚木",
+    "series": "SKAP",
+    "product_code": "53107",
+    "color": "柚木",
     "price": 29990,
     "currency": "TWD",
+    "width_cm": 125.0,
+    "depth_cm": 40.5,
+    "height_cm": 101.0,
+    "dims": {
+      "寬度": 125.0,
+      "深度": 40.5,
+      "高度": 101.0
+    },
     "url": "https://www.scanteak.com.tw/product/53107-skaptop/",
     "image_url": "https://images.scanteak.com.tw/wp-content/uploads/2025/06/%E4%B8%8A%E6%AB%83%E5%AE%98%E7%B6%B2.jpg",
-    "style_tags": []
+    "style_tags": [
+      "nordic"
+    ]
   },
   {
     "name": "LESA 實心柚木丹麥展示架(80CM)",
     "category": "storage",
     "subcategory": "open-storage",
     "brand": "詩肯柚木",
+    "series": "LESA",
+    "product_code": "50217",
+    "color": "柚木",
     "price": 4990,
     "currency": "TWD",
+    "width_cm": 38.0,
+    "depth_cm": 28.0,
+    "height_cm": 80.0,
+    "dims": {
+      "寬度": 38.0,
+      "深度": 28.0,
+      "高度": 80.0
+    },
     "url": "https://www.scanteak.com.tw/product/50217-lesa80cm/",
     "image_url": "https://images.scanteak.com.tw/wp-content/uploads/2025/06/2-2.jpg",
-    "style_tags": []
+    "style_tags": [
+      "classic",
+      "nordic"
+    ]
   },
   {
     "name": "KARRY 實心柚木丹麥移動邊几",
     "category": "table",
     "subcategory": "coffee-side-table",
     "brand": "詩肯柚木",
+    "series": "KARRY",
+    "product_code": "50216",
+    "color": "柚木",
     "price": 6990,
     "currency": "TWD",
+    "width_cm": 57.0,
+    "depth_cm": 36.0,
+    "height_cm": 63.0,
+    "dims": {
+      "寬度": 57.0,
+      "深度": 36.0,
+      "高度": 63.0
+    },
     "url": "https://www.scanteak.com.tw/product/50216-karry/",
     "image_url": "https://images.scanteak.com.tw/wp-content/uploads/2025/06/2-1.jpg",
-    "style_tags": []
+    "style_tags": [
+      "nordic",
+      "industrial"
+    ]
   },
   {
     "name": "GLATT 實心柚木大茶几",
     "category": "table",
     "subcategory": "coffee-side-table",
     "brand": "詩肯柚木",
+    "series": "GLATT",
+    "product_code": "10226",
+    "color": "柚木",
     "price": 9990,
     "currency": "TWD",
+    "width_cm": 110.0,
+    "depth_cm": 60.0,
+    "height_cm": 35.0,
+    "dims": {
+      "寬度": 110.0,
+      "深度": 60.0,
+      "高度": 35.0
+    },
     "url": "https://www.scanteak.com.tw/product/10226-glatt/",
     "image_url": "https://images.scanteak.com.tw/wp-content/uploads/2025/06/2.jpg",
-    "style_tags": []
+    "style_tags": [
+      "nordic",
+      "industrial"
+    ]
   },
   {
     "name": "NOTA 實心柚木書桌椅",
     "category": "chair",
     "subcategory": "desk-chair",
     "brand": "詩肯柚木",
+    "series": "NOTA",
+    "product_code": "20308",
+    "color": "柚木",
     "price": 4990,
     "currency": "TWD",
+    "width_cm": 52.0,
+    "depth_cm": 45.0,
+    "height_cm": 70.0,
+    "dims": {
+      "寬度": 52.0,
+      "深度": 45.0,
+      "高度": 70.0
+    },
     "url": "https://www.scanteak.com.tw/product/20308-nota/",
     "image_url": "https://images.scanteak.com.tw/wp-content/uploads/2025/05/2-15.jpg",
-    "style_tags": []
+    "style_tags": [
+      "classic",
+      "nordic"
+    ]
   },
   {
     "name": "NOTA 實心柚木書桌",
     "category": "table",
     "subcategory": "desk",
     "brand": "詩肯柚木",
+    "series": "NOTA",
+    "product_code": "50207",
+    "color": "柚木",
     "price": 7990,
     "currency": "TWD",
+    "width_cm": 60.0,
+    "depth_cm": 45.0,
+    "height_cm": 75.0,
+    "dims": {
+      "寬度": 60.0,
+      "深度": 45.0,
+      "高度": 75.0
+    },
     "url": "https://www.scanteak.com.tw/product/50207-nota/",
     "image_url": "https://images.scanteak.com.tw/wp-content/uploads/2025/05/2-14.jpg",
-    "style_tags": []
+    "style_tags": [
+      "nordic",
+      "luxury"
+    ]
   },
   {
     "name": "VINKEL 實心柚木邊櫃",
     "category": "storage",
     "subcategory": "sideboard",
     "brand": "詩肯柚木",
+    "series": "VINKEL",
+    "product_code": "50522",
+    "color": "柚木",
     "price": 28990,
     "currency": "TWD",
+    "width_cm": 160.0,
+    "depth_cm": 45.0,
+    "height_cm": 75.0,
+    "dims": {
+      "寬度": 160.0,
+      "深度": 45.0,
+      "高度": 75.0
+    },
     "url": "https://www.scanteak.com.tw/product/50522-vinkel/",
     "image_url": "https://images.scanteak.com.tw/wp-content/uploads/2025/05/2-12.jpg",
-    "style_tags": []
+    "style_tags": [
+      "nordic"
+    ]
   },
   {
     "name": "RIVI 實心柚木書架",
     "category": "storage",
     "subcategory": "bookcase",
     "brand": "詩肯柚木",
+    "series": "RIVI",
+    "product_code": "50304",
+    "color": "柚木",
     "price": 16990,
     "currency": "TWD",
+    "width_cm": 112.0,
+    "depth_cm": 32.0,
+    "height_cm": 87.0,
+    "dims": {
+      "寬度": 112.0,
+      "深度": 32.0,
+      "高度": 87.0
+    },
     "url": "https://www.scanteak.com.tw/product/50304-rivi/",
     "image_url": "https://images.scanteak.com.tw/wp-content/uploads/2025/05/2-9.jpg",
-    "style_tags": []
+    "style_tags": [
+      "classic",
+      "nordic"
+    ]
   },
   {
     "name": "STEIN 白色陶瓷實心柚木大茶几",
     "category": "table",
     "subcategory": "coffee-side-table",
     "brand": "詩肯柚木",
+    "series": "STEIN",
+    "product_code": "T10236",
+    "color": "白色/柚木",
     "price": 19990,
     "currency": "TWD",
+    "width_cm": 110.0,
+    "depth_cm": 60.0,
+    "height_cm": 45.0,
+    "dims": {
+      "寬度": 110.0,
+      "深度": 60.0,
+      "高度": 45.0
+    },
     "url": "https://www.scanteak.com.tw/product/10236-stein/",
     "image_url": "https://images.scanteak.com.tw/wp-content/uploads/2025/05/2-13.jpg",
-    "style_tags": []
+    "style_tags": [
+      "nordic",
+      "classic"
+    ]
   },
   {
     "name": "JEMMA 實心柚木床頭櫃",
     "category": "storage",
     "subcategory": "bedside-table",
     "brand": "詩肯柚木",
+    "series": "JEMMA",
+    "product_code": "T30518",
+    "color": "柚木",
     "price": 5990,
     "currency": "TWD",
+    "width_cm": 40.0,
+    "depth_cm": 32.0,
+    "height_cm": 58.0,
+    "dims": {
+      "寬度": 40.0,
+      "深度": 32.0,
+      "高度": 58.0
+    },
     "url": "https://www.scanteak.com.tw/product/30518-jemma/",
     "image_url": "https://images.scanteak.com.tw/wp-content/uploads/2025/05/2-7.jpg",
-    "style_tags": []
+    "style_tags": [
+      "classic",
+      "nordic"
+    ]
   },
   {
     "name": "BOJA 實心柚木電視櫃",
     "category": "storage",
     "subcategory": "tv-bench",
     "brand": "詩肯柚木",
+    "series": "BOJA",
+    "product_code": "50521",
+    "color": "柚木",
     "price": 25900,
     "currency": "TWD",
+    "width_cm": 150.0,
+    "depth_cm": 45.0,
+    "height_cm": 57.0,
+    "dims": {
+      "寬度": 150.0,
+      "深度": 45.0,
+      "高度": 57.0
+    },
     "url": "https://www.scanteak.com.tw/product/50521-boja/",
     "image_url": "https://images.scanteak.com.tw/wp-content/uploads/2025/05/%E6%9F%9A%E6%9C%A8%E5%AE%98%E7%B6%B2-2.jpg",
-    "style_tags": []
+    "style_tags": [
+      "nordic"
+    ]
   },
   {
     "name": "FERILL 實心柚木餐椅",
     "category": "chair",
     "subcategory": "dining-chair",
     "brand": "詩肯柚木",
+    "series": "FERILL",
+    "product_code": "20169",
+    "color": "柚木",
     "price": 5990,
     "currency": "TWD",
+    "width_cm": 53.4,
+    "depth_cm": 57.0,
+    "height_cm": 77.8,
+    "dims": {
+      "寬度": 53.4,
+      "深度": 57.0,
+      "高度": 77.8
+    },
     "url": "https://www.scanteak.com.tw/product/20169-ferill/",
     "image_url": "https://images.scanteak.com.tw/wp-content/uploads/2025/05/2-3.jpg",
-    "style_tags": []
+    "style_tags": [
+      "nordic",
+      "classic"
+    ]
   },
   {
     "name": "TAUKO 實心柚木餐椅",
     "category": "chair",
     "subcategory": "dining-chair",
     "brand": "詩肯柚木",
+    "series": "TAUKO",
+    "product_code": "20162-1",
+    "color": "柚木",
     "price": 4590,
     "currency": "TWD",
+    "width_cm": 45.5,
+    "depth_cm": 48.0,
+    "height_cm": 78.5,
+    "dims": {
+      "寬度": 45.5,
+      "深度": 48.0,
+      "高度": 78.5
+    },
     "url": "https://www.scanteak.com.tw/product/20163-tauko/",
     "image_url": "https://images.scanteak.com.tw/wp-content/uploads/2025/04/2-1.jpg",
-    "style_tags": []
+    "style_tags": [
+      "classic"
+    ]
   },
   {
     "name": "KEHYS 實心柚木餐椅",
     "category": "chair",
     "subcategory": "dining-chair",
     "brand": "詩肯柚木",
+    "series": "KEHYS",
+    "product_code": "20612",
+    "color": "柚木",
     "price": 4990,
     "currency": "TWD",
+    "width_cm": 46.5,
+    "depth_cm": 47.0,
+    "height_cm": 79.0,
+    "dims": {
+      "寬度": 46.5,
+      "深度": 47.0,
+      "高度": 79.0
+    },
     "url": "https://www.scanteak.com.tw/product/20612-chair/",
     "image_url": "https://images.scanteak.com.tw/wp-content/uploads/2025/04/2.jpg",
-    "style_tags": []
+    "style_tags": [
+      "classic"
+    ]
   },
   {
     "name": "VINKA 實心柚木餐椅",
     "category": "chair",
     "subcategory": "dining-chair",
     "brand": "詩肯柚木",
+    "series": "VINKA",
+    "product_code": "20162",
+    "color": "柚木",
     "price": 5990,
     "currency": "TWD",
+    "width_cm": 52.5,
+    "depth_cm": 50.0,
+    "height_cm": 74.0,
+    "dims": {
+      "寬度": 52.5,
+      "深度": 50.0,
+      "高度": 74.0
+    },
     "url": "https://www.scanteak.com.tw/product/21162-vinka/",
     "image_url": "https://images.scanteak.com.tw/wp-content/uploads/2024/12/20162.jpg",
-    "style_tags": []
+    "style_tags": [
+      "nordic"
+    ]
   },
   {
     "name": "MEKKO 實心柚木化妝桌",
     "category": "table",
     "subcategory": "dressing-table",
     "brand": "詩肯柚木",
+    "series": "MEKKO",
+    "product_code": "50305-1",
+    "color": "柚木",
     "price": 18400,
     "currency": "TWD",
+    "width_cm": 100.0,
+    "depth_cm": 45.0,
+    "height_cm": 81.0,
+    "dims": {
+      "寬度": 100.0,
+      "深度": 45.0,
+      "高度": 81.0
+    },
     "url": "https://www.scanteak.com.tw/product/31086/",
     "image_url": "https://images.scanteak.com.tw/wp-content/uploads/2024/09/%E6%9F%9A%E6%9C%A8%E5%AE%98%E7%B6%B2.jpg",
-    "style_tags": []
+    "style_tags": [
+      "classic",
+      "nordic"
+    ]
   },
   {
     "name": "STI 實心柚木書架",
     "category": "storage",
     "subcategory": "bookcase",
     "brand": "詩肯柚木",
+    "series": "STI",
+    "product_code": "50305",
+    "color": "柚木",
     "price": 19990,
     "currency": "TWD",
+    "width_cm": 45.0,
+    "depth_cm": 33.0,
+    "height_cm": 130.0,
+    "dims": {
+      "寬度": 45.0,
+      "深度": 33.0,
+      "高度": 130.0
+    },
     "url": "https://www.scanteak.com.tw/product/50305-sti/",
     "image_url": "https://images.scanteak.com.tw/wp-content/uploads/2024/08/50305.jpg",
-    "style_tags": []
+    "style_tags": [
+      "nordic"
+    ]
   },
   {
     "name": "APNING 實心柚木展示架",
     "category": "storage",
     "subcategory": "open-storage",
     "brand": "詩肯柚木",
+    "series": "APNING",
+    "product_code": "50227",
+    "color": "柚木",
     "price": 13990,
     "currency": "TWD",
+    "width_cm": 80.0,
+    "depth_cm": 40.0,
+    "height_cm": 80.0,
+    "dims": {
+      "寬度": 80.0,
+      "深度": 40.0,
+      "高度": 80.0
+    },
     "url": "https://www.scanteak.com.tw/product/50227-apning/",
     "image_url": "https://images.scanteak.com.tw/wp-content/uploads/2024/08/50227.jpg",
-    "style_tags": []
+    "style_tags": [
+      "classic",
+      "nordic"
+    ]
   },
   {
     "name": "TID 實心柚木丹麥桌",
     "category": "table",
     "subcategory": "dining-table",
     "brand": "詩肯柚木",
+    "series": "TID",
+    "product_code": "50226",
+    "color": "柚木",
     "price": 7990,
     "currency": "TWD",
+    "width_cm": 55.0,
+    "depth_cm": 35.0,
+    "height_cm": 60.0,
+    "dims": {
+      "寬度": 55.0,
+      "深度": 35.0,
+      "高度": 60.0
+    },
     "url": "https://www.scanteak.com.tw/product/50226-tid/",
     "image_url": "https://images.scanteak.com.tw/wp-content/uploads/2024/08/50226.jpg",
-    "style_tags": []
+    "style_tags": [
+      "nordic",
+      "classic"
+    ]
   },
   {
     "name": "NISJE 實心柚木丹麥長桌",
     "category": "table",
     "subcategory": "dining-table",
     "brand": "詩肯柚木",
+    "series": "NISJE",
+    "product_code": "50225",
+    "color": "柚木",
     "price": 12990,
     "currency": "TWD",
+    "width_cm": 96.0,
+    "depth_cm": 35.0,
+    "height_cm": 76.0,
+    "dims": {
+      "寬度": 96.0,
+      "深度": 35.0,
+      "高度": 76.0
+    },
     "url": "https://www.scanteak.com.tw/product/50225-nisje/",
     "image_url": "https://images.scanteak.com.tw/wp-content/uploads/2024/08/50225.jpg",
-    "style_tags": []
+    "style_tags": [
+      "classic",
+      "nordic"
+    ]
   },
   {
     "name": "HIMMEL 實心柚木丹麥寫字桌",
     "category": "table",
     "subcategory": "desk",
     "brand": "詩肯柚木",
+    "series": "HIMMEL",
+    "product_code": "50223",
+    "color": "柚木",
     "price": 18990,
     "currency": "TWD",
+    "width_cm": 120.0,
+    "depth_cm": 50.0,
+    "height_cm": 92.5,
+    "dims": {
+      "寬度": 120.0,
+      "深度": 50.0,
+      "高度": 92.5
+    },
     "url": "https://www.scanteak.com.tw/product/50223-himmel/",
     "image_url": "https://images.scanteak.com.tw/wp-content/uploads/2024/08/5022.jpg",
-    "style_tags": []
+    "style_tags": [
+      "classic",
+      "industrial"
+    ]
   },
   {
     "name": "RAITA 實心柚木餐椅",
     "category": "chair",
     "subcategory": "dining-chair",
     "brand": "詩肯柚木",
+    "series": "RAITA",
+    "product_code": "20125",
+    "color": "柚木",
     "price": 3990,
     "currency": "TWD",
+    "width_cm": 45.0,
+    "depth_cm": 48.0,
+    "height_cm": 80.0,
+    "dims": {
+      "寬度": 45.0,
+      "深度": 48.0,
+      "高度": 80.0
+    },
     "url": "https://www.scanteak.com.tw/product/20125-raita/",
     "image_url": "https://images.scanteak.com.tw/wp-content/uploads/2024/07/10125.jpg",
-    "style_tags": []
+    "style_tags": [
+      "classic"
+    ]
   },
   {
     "name": "KULLAN 3人座實心柚木沙發",
     "category": "sofa",
     "subcategory": "sofa",
     "brand": "詩肯柚木",
+    "series": "KULLAN",
+    "product_code": "10128-3",
+    "color": "柚木",
     "price": 64900,
     "currency": "TWD",
+    "width_cm": 215.0,
+    "depth_cm": 87.0,
+    "height_cm": 76.0,
+    "dims": {
+      "寬度": 215.0,
+      "深度": 87.0,
+      "高度": 76.0
+    },
     "url": "https://www.scanteak.com.tw/product/10128-kullan-3s/",
     "image_url": "https://images.scanteak.com.tw/wp-content/uploads/2024/06/%E6%9F%9A%E6%9C%A8%E5%AE%98%E7%B6%B2-3S.jpg",
-    "style_tags": []
+    "style_tags": [
+      "classic",
+      "american"
+    ]
   },
   {
     "name": "KULLAN 2人座實心柚木沙發",
     "category": "sofa",
     "subcategory": "sofa",
     "brand": "詩肯柚木",
+    "series": "KULLAN",
+    "product_code": "10128-2",
+    "color": "柚木",
     "price": 48900,
     "currency": "TWD",
+    "width_cm": 158.0,
+    "depth_cm": 87.0,
+    "height_cm": 76.0,
+    "dims": {
+      "寬度": 158.0,
+      "深度": 87.0,
+      "高度": 76.0
+    },
     "url": "https://www.scanteak.com.tw/product/10128-kullan-2s/",
     "image_url": "https://images.scanteak.com.tw/wp-content/uploads/2024/06/%E6%9F%9A%E6%9C%A8%E5%AE%98%E7%B6%B2-2S.jpg",
-    "style_tags": []
+    "style_tags": [
+      "classic",
+      "american"
+    ]
   },
   {
     "name": "KULLAN 1人座實心柚木沙發",
     "category": "chair",
     "subcategory": "armchair",
     "brand": "詩肯柚木",
+    "series": "KULLAN",
+    "product_code": "10128",
+    "color": "柚木",
     "price": 35900,
     "currency": "TWD",
+    "width_cm": 104.0,
+    "depth_cm": 87.0,
+    "height_cm": 76.0,
+    "dims": {
+      "寬度": 104.0,
+      "深度": 87.0,
+      "高度": 76.0
+    },
     "url": "https://www.scanteak.com.tw/product/10128-kullan/",
     "image_url": "https://images.scanteak.com.tw/wp-content/uploads/2024/06/%E6%9F%9A%E6%9C%A8%E5%AE%98%E7%B6%B2-1S.jpg",
-    "style_tags": []
+    "style_tags": [
+      "classic",
+      "american"
+    ]
   },
   {
     "name": "MONI 45cm實心柚木置物架",
     "category": "storage",
     "subcategory": "open-storage",
     "brand": "詩肯柚木",
+    "series": "MONI",
+    "product_code": "50811",
+    "color": "柚木",
     "price": 3300,
     "currency": "TWD",
+    "width_cm": 35.0,
+    "depth_cm": 35.0,
+    "height_cm": 45.0,
+    "dims": {
+      "寬度": 35.0,
+      "深度": 35.0,
+      "高度": 45.0
+    },
     "url": "https://www.scanteak.com.tw/product/50811-moni45cm/",
     "image_url": "https://images.scanteak.com.tw/wp-content/uploads/2024/03/50811-MONI-%E5%B1%95%E7%A4%BA%E6%9E%B645cm.png",
-    "style_tags": []
+    "style_tags": [
+      "classic"
+    ]
   },
   {
     "name": "KURVA 實心柚木床架",
     "category": "bed",
     "subcategory": "bed-frame",
     "brand": "詩肯柚木",
+    "series": "KURVA",
+    "product_code": "30732",
+    "color": "柚木",
     "price": 26990,
     "currency": "TWD",
+    "width_cm": null,
+    "depth_cm": null,
+    "height_cm": null,
+    "dims": {},
     "url": "https://www.scanteak.com.tw/product/30732-kurva/",
     "image_url": "https://images.scanteak.com.tw/wp-content/uploads/2024/03/%E6%9F%9A%E6%9C%A8%E5%AE%98%E7%B6%B2.jpg",
-    "style_tags": []
+    "style_tags": [
+      "classic"
+    ]
   },
   {
     "name": "STADA 實心柚木財位櫃",
     "category": "storage",
     "subcategory": "sideboard",
     "brand": "詩肯柚木",
+    "series": "STADA",
+    "product_code": "50167",
+    "color": "柚木",
     "price": 8500,
     "currency": "TWD",
+    "width_cm": 35.0,
+    "depth_cm": 40.0,
+    "height_cm": 80.0,
+    "dims": {
+      "寬度": 35.0,
+      "深度": 40.0,
+      "高度": 80.0
+    },
     "url": "https://www.scanteak.com.tw/product/50167-stada/",
     "image_url": "https://images.scanteak.com.tw/wp-content/uploads/2024/02/%E5%B1%85%E5%AE%B6%E5%BA%95%E5%9C%96-1.jpg",
-    "style_tags": []
+    "style_tags": [
+      "classic",
+      "nordic"
+    ]
   },
   {
     "name": "LENJA 實心柚木腳椅",
     "category": "chair",
     "subcategory": "footstool",
     "brand": "詩肯柚木",
+    "series": "LENJA",
+    "product_code": "12886",
+    "color": "柚木",
     "price": 10900,
     "currency": "TWD",
+    "width_cm": 61.0,
+    "depth_cm": 61.0,
+    "height_cm": 42.0,
+    "dims": {
+      "寬度": 61.0,
+      "深度": 61.0,
+      "高度": 42.0
+    },
     "url": "https://www.scanteak.com.tw/product/12886-lenja/",
     "image_url": "https://images.scanteak.com.tw/wp-content/uploads/2024/02/%E5%B1%85%E5%AE%B6%E5%BA%95%E5%9C%96.jpg",
-    "style_tags": []
+    "style_tags": [
+      "american"
+    ]
   },
   {
     "name": "MONI 60cm實心柚木置物架",
     "category": "storage",
     "subcategory": "open-storage",
     "brand": "詩肯柚木",
+    "series": "MONI",
+    "product_code": "50812",
+    "color": "柚木",
     "price": 3700,
     "currency": "TWD",
+    "width_cm": 35.0,
+    "depth_cm": 35.0,
+    "height_cm": 60.0,
+    "dims": {
+      "寬度": 35.0,
+      "深度": 35.0,
+      "高度": 60.0
+    },
     "url": "https://www.scanteak.com.tw/product/50813-moni-60/",
     "image_url": "https://images.scanteak.com.tw/wp-content/uploads/2023/11/50812-MONI-%E5%B1%95%E7%A4%BA%E6%9E%B660cm.png",
-    "style_tags": []
+    "style_tags": [
+      "classic",
+      "japanese"
+    ]
   },
   {
     "name": "KRYSS 實心柚木床架",
     "category": "bed",
     "subcategory": "bed-frame",
     "brand": "詩肯柚木",
+    "series": "KRYSS",
+    "product_code": "31780",
+    "color": "柚木",
     "price": 32990,
     "currency": "TWD",
+    "width_cm": null,
+    "depth_cm": null,
+    "height_cm": null,
+    "dims": {},
     "url": "https://www.scanteak.com.tw/product/31780-kryss/",
     "image_url": "https://images.scanteak.com.tw/wp-content/uploads/2023/11/%E6%9F%9A%E6%9C%A8%E5%AE%98%E7%B6%B2.jpg",
-    "style_tags": []
+    "style_tags": [
+      "classic"
+    ]
   },
   {
     "name": "APEN 實心柚木書櫃(直立+1抽)",
     "category": "storage",
     "subcategory": "bookcase",
     "brand": "詩肯柚木",
+    "series": "APEN",
+    "product_code": "51092",
+    "color": "柚木",
     "price": 16990,
     "currency": "TWD",
+    "width_cm": 60.0,
+    "depth_cm": 40.0,
+    "height_cm": 180.0,
+    "dims": {
+      "寬度": 60.0,
+      "深度": 40.0,
+      "高度": 180.0
+    },
     "url": "https://www.scanteak.com.tw/product/51092-apen/",
     "image_url": "https://images.scanteak.com.tw/wp-content/uploads/2023/11/51092.png",
-    "style_tags": []
+    "style_tags": [
+      "classic",
+      "nordic"
+    ]
   },
   {
     "name": "KUL 4L實心柚木沙發",
     "category": "sofa",
     "subcategory": "sofa",
     "brand": "詩肯柚木",
+    "series": "KUL",
+    "product_code": "13320-4L",
+    "color": "柚木",
     "price": 72900,
     "currency": "TWD",
+    "width_cm": 296.0,
+    "depth_cm": 148.0,
+    "height_cm": 80.5,
+    "dims": {
+      "寬度": 296.0,
+      "深度": 148.0,
+      "高度": 80.5
+    },
     "url": "https://www.scanteak.com.tw/product/13320-kul4l/",
     "image_url": "https://images.scanteak.com.tw/wp-content/uploads/2020/09/13320-4L.jpg",
-    "style_tags": []
+    "style_tags": [
+      "modern"
+    ]
   },
   {
     "name": "KUL 4人座實心柚木沙發",
     "category": "sofa",
     "subcategory": "sofa",
     "brand": "詩肯柚木",
+    "series": "KUL",
+    "product_code": "13320-4s",
+    "color": "柚木",
     "price": 59900,
     "currency": "TWD",
+    "width_cm": 296.0,
+    "depth_cm": 78.0,
+    "height_cm": 80.5,
+    "dims": {
+      "寬度": 296.0,
+      "深度": 78.0,
+      "高度": 80.5
+    },
     "url": "https://www.scanteak.com.tw/product/13320-kul4/",
     "image_url": "https://images.scanteak.com.tw/wp-content/uploads/2020/09/13320-4S.jpg",
-    "style_tags": []
+    "style_tags": [
+      "modern"
+    ]
   },
   {
     "name": "KUL 3人座實心柚木沙發",
     "category": "sofa",
     "subcategory": "sofa",
     "brand": "詩肯柚木",
+    "series": "KUL",
+    "product_code": "13320-3s",
+    "color": "柚木",
     "price": 48900,
     "currency": "TWD",
+    "width_cm": 226.0,
+    "depth_cm": 78.0,
+    "height_cm": 80.5,
+    "dims": {
+      "寬度": 226.0,
+      "深度": 78.0,
+      "高度": 80.5
+    },
     "url": "https://www.scanteak.com.tw/product/13320-kul3/",
     "image_url": "https://images.scanteak.com.tw/wp-content/uploads/2020/09/13320-3S.jpg",
-    "style_tags": []
+    "style_tags": [
+      "modern"
+    ]
   },
   {
     "name": "KUL 2人座實心柚木沙發",
     "category": "sofa",
     "subcategory": "sofa",
     "brand": "詩肯柚木",
+    "series": "KUL",
+    "product_code": "13320-1",
+    "color": "柚木",
     "price": 37900,
     "currency": "TWD",
+    "width_cm": 156.0,
+    "depth_cm": 78.0,
+    "height_cm": 80.5,
+    "dims": {
+      "寬度": 156.0,
+      "深度": 78.0,
+      "高度": 80.5
+    },
     "url": "https://www.scanteak.com.tw/product/kul2/",
     "image_url": "https://images.scanteak.com.tw/wp-content/uploads/2020/09/13320-2S.jpg",
-    "style_tags": []
+    "style_tags": [
+      "classic",
+      "modern"
+    ]
   },
   {
     "name": "MONI 80cm實心柚木三層置物架",
     "category": "storage",
     "subcategory": "open-storage",
     "brand": "詩肯柚木",
+    "series": "MONI",
+    "product_code": "50813",
+    "color": "柚木",
     "price": 4500,
     "currency": "TWD",
+    "width_cm": 35.0,
+    "depth_cm": 35.0,
+    "height_cm": 80.0,
+    "dims": {
+      "寬度": 35.0,
+      "深度": 35.0,
+      "高度": 80.0
+    },
     "url": "https://www.scanteak.com.tw/product/50813-moni-80cm/",
     "image_url": "https://images.scanteak.com.tw/wp-content/uploads/2023/10/50813-MONI-%E4%B8%89%E5%B1%A4%E5%B1%95%E7%A4%BA%E6%9E%B680cm-1.png",
-    "style_tags": []
+    "style_tags": [
+      "nordic",
+      "classic"
+    ]
   },
   {
     "name": "ENKEL 實心柚木三層櫃(直立)",
     "category": "storage",
     "subcategory": "sideboard",
     "brand": "詩肯柚木",
+    "series": "ENKEL",
+    "product_code": "50113",
+    "color": "柚木",
     "price": 5900,
     "currency": "TWD",
+    "width_cm": 50.0,
+    "depth_cm": 38.0,
+    "height_cm": 80.0,
+    "dims": {
+      "寬度": 50.0,
+      "深度": 38.0,
+      "高度": 80.0
+    },
     "url": "https://www.scanteak.com.tw/product/50133-enkel-cabinet/",
     "image_url": "https://images.scanteak.com.tw/wp-content/uploads/2023/10/50133-Enkel-%E4%B8%89%E5%B1%A4%E6%AB%83%E7%9B%B4%E7%AB%8B.png",
-    "style_tags": []
+    "style_tags": [
+      "classic"
+    ]
   },
   {
     "name": "ENKEL 實心柚木電視櫃",
     "category": "storage",
     "subcategory": "tv-bench",
     "brand": "詩肯柚木",
+    "series": "ENKEL",
+    "product_code": "50270",
+    "color": "柚木",
     "price": 22900,
     "currency": "TWD",
+    "width_cm": 150.0,
+    "depth_cm": 42.0,
+    "height_cm": 55.0,
+    "dims": {
+      "寬度": 150.0,
+      "深度": 42.0,
+      "高度": 55.0
+    },
     "url": "https://www.scanteak.com.tw/product/50270-enkel-150-tv-cabinet/",
     "image_url": "https://images.scanteak.com.tw/wp-content/uploads/2023/08/50270.png",
-    "style_tags": []
+    "style_tags": [
+      "nordic"
+    ]
   },
   {
     "name": "KORS 實心柚木小茶几",
     "category": "table",
     "subcategory": "coffee-side-table",
     "brand": "詩肯柚木",
+    "series": "KORS",
+    "product_code": "10513-1",
+    "color": "柚木",
     "price": 9900,
     "currency": "TWD",
+    "width_cm": 60.0,
+    "depth_cm": 60.0,
+    "height_cm": 45.0,
+    "dims": {
+      "寬度": 60.0,
+      "深度": 60.0,
+      "高度": 45.0
+    },
     "url": "https://www.scanteak.com.tw/product/10513-kors-coffee-stable/",
     "image_url": "https://images.scanteak.com.tw/wp-content/uploads/2023/08/10513-%E5%B0%8F.png",
-    "style_tags": []
+    "style_tags": [
+      "classic"
+    ]
   },
   {
     "name": "IKON 3人座實心柚木沙發",
     "category": "sofa",
     "subcategory": "sofa",
     "brand": "詩肯柚木",
+    "series": "IKON",
+    "product_code": "18808-3",
+    "color": "柚木",
     "price": 39900,
     "currency": "TWD",
+    "width_cm": 201.0,
+    "depth_cm": 73.0,
+    "height_cm": 78.5,
+    "dims": {
+      "寬度": 201.0,
+      "深度": 73.0,
+      "高度": 78.5
+    },
     "url": "https://www.scanteak.com.tw/product/18808-ikon-sofa-3-seater/",
     "image_url": "https://images.scanteak.com.tw/wp-content/uploads/2023/05/%E6%9F%9A%E6%9C%A8%E5%AE%98%E7%B6%B2.jpg",
-    "style_tags": []
+    "style_tags": [
+      "classic"
+    ]
   },
   {
     "name": "IKON 2人座實心柚木沙發",
     "category": "sofa",
     "subcategory": "sofa",
     "brand": "詩肯柚木",
+    "series": "IKON",
+    "product_code": "18808-2",
+    "color": "柚木",
     "price": 29900,
     "currency": "TWD",
+    "width_cm": 141.0,
+    "depth_cm": 73.0,
+    "height_cm": 78.5,
+    "dims": {
+      "寬度": 141.0,
+      "深度": 73.0,
+      "高度": 78.5
+    },
     "url": "https://www.scanteak.com.tw/product/18808-ikon-sofa-2-seater/",
     "image_url": "https://images.scanteak.com.tw/wp-content/uploads/2023/05/18808-2S.jpg",
-    "style_tags": []
+    "style_tags": [
+      "classic",
+      "american"
+    ]
   },
   {
     "name": "KLASS 實心柚木五斗櫃",
     "category": "storage",
     "subcategory": "chest-of-drawers",
     "brand": "詩肯柚木",
+    "series": "KLASS",
+    "product_code": "31080",
+    "color": "柚木",
     "price": 32900,
     "currency": "TWD",
+    "width_cm": 90.0,
+    "depth_cm": 45.0,
+    "height_cm": 90.0,
+    "dims": {
+      "寬度": 90.0,
+      "深度": 45.0,
+      "高度": 90.0
+    },
     "url": "https://www.scanteak.com.tw/product/31080-klass-cabinet-5d/",
     "image_url": "https://images.scanteak.com.tw/wp-content/uploads/2023/04/5.jpg",
-    "style_tags": []
+    "style_tags": [
+      "classic"
+    ]
   },
   {
     "name": "KURA  150cm實心柚木餐桌",
     "category": "table",
     "subcategory": "dining-table",
     "brand": "詩肯柚木",
+    "series": "KURA",
+    "product_code": "6531",
+    "color": "柚木",
     "price": 24900,
     "currency": "TWD",
+    "width_cm": 150.0,
+    "depth_cm": 90.0,
+    "height_cm": 74.0,
+    "dims": {
+      "寬度": 150.0,
+      "深度": 90.0,
+      "高度": 74.0
+    },
     "url": "https://www.scanteak.com.tw/product/20520-kura-table-150cm/",
     "image_url": "https://images.scanteak.com.tw/wp-content/uploads/2023/03/20520-KURA%E9%A4%90%E6%A1%8C.png",
-    "style_tags": []
+    "style_tags": [
+      "classic"
+    ]
   },
   {
     "name": "FLYTE 150cm實心柚木餐桌",
     "category": "table",
     "subcategory": "dining-table",
     "brand": "詩肯柚木",
+    "series": "FLYTE",
+    "product_code": "6513",
+    "color": "柚木",
     "price": 22900,
     "currency": "TWD",
+    "width_cm": 150.0,
+    "depth_cm": 90.0,
+    "height_cm": 74.0,
+    "dims": {
+      "寬度": 150.0,
+      "深度": 90.0,
+      "高度": 74.0
+    },
     "url": "https://www.scanteak.com.tw/product/20095-flyte-table-150cm/",
     "image_url": "https://images.scanteak.com.tw/wp-content/uploads/2023/03/0321.jpg",
-    "style_tags": []
+    "style_tags": [
+      "classic"
+    ]
   },
   {
     "name": "FLYTE 135cm實心柚木餐桌",
     "category": "table",
     "subcategory": "dining-table",
     "brand": "詩肯柚木",
+    "series": "FLYTE",
+    "product_code": "T21095",
+    "color": "柚木",
     "price": 19900,
     "currency": "TWD",
+    "width_cm": 135.0,
+    "depth_cm": 80.0,
+    "height_cm": 74.0,
+    "dims": {
+      "寬度": 135.0,
+      "深度": 80.0,
+      "高度": 74.0
+    },
     "url": "https://www.scanteak.com.tw/product/20095-flyt-table-135cm/",
     "image_url": "https://images.scanteak.com.tw/wp-content/uploads/2023/03/0321.jpg",
-    "style_tags": []
+    "style_tags": [
+      "classic"
+    ]
   },
   {
     "name": "LYS 實心柚木茶几",
     "category": "table",
     "subcategory": "coffee-side-table",
     "brand": "詩肯柚木",
+    "series": "LYS",
+    "product_code": "10235",
+    "color": "柚木",
     "price": 11900,
     "currency": "TWD",
+    "width_cm": 102.0,
+    "depth_cm": 55.0,
+    "height_cm": 40.0,
+    "dims": {
+      "寬度": 102.0,
+      "深度": 55.0,
+      "高度": 40.0
+    },
     "url": "https://www.scanteak.com.tw/product/10513-lys-table/",
     "image_url": "https://images.scanteak.com.tw/wp-content/uploads/2023/02/LYS.jpg",
-    "style_tags": []
+    "style_tags": [
+      "classic",
+      "nordic"
+    ]
   },
   {
     "name": "ATELIER 實心柚木椅凳",
     "category": "chair",
     "subcategory": "stool",
     "brand": "詩肯柚木",
+    "series": "ATELIER",
+    "product_code": "6424",
+    "color": "柚木",
     "price": 2900,
     "currency": "TWD",
+    "width_cm": 60.0,
+    "depth_cm": 25.0,
+    "height_cm": 45.0,
+    "dims": {
+      "寬度": 60.0,
+      "深度": 25.0,
+      "高度": 45.0
+    },
     "url": "https://www.scanteak.com.tw/product/23012-atrlier-chair/",
     "image_url": "https://images.scanteak.com.tw/wp-content/uploads/2023/02/%E6%9F%9A%E6%9C%A8%E5%AE%98%E7%B6%B2.jpg",
-    "style_tags": []
+    "style_tags": [
+      "nordic",
+      "classic"
+    ]
   },
   {
     "name": "KORS 實心柚木大茶几",
     "category": "table",
     "subcategory": "coffee-side-table",
     "brand": "詩肯柚木",
+    "series": "KORS",
+    "product_code": "10513",
+    "color": "柚木",
     "price": 14900,
     "currency": "TWD",
+    "width_cm": 120.0,
+    "depth_cm": 60.0,
+    "height_cm": 45.0,
+    "dims": {
+      "寬度": 120.0,
+      "深度": 60.0,
+      "高度": 45.0
+    },
     "url": "https://www.scanteak.com.tw/product/10513-kors-coffee-table/",
     "image_url": "https://images.scanteak.com.tw/wp-content/uploads/2023/02/KORS.jpg",
-    "style_tags": []
+    "style_tags": [
+      "classic"
+    ]
   },
   {
     "name": "LUTA 開心果綠2人座實心柚木沙發",
     "category": "sofa",
     "subcategory": "sofa",
     "brand": "詩肯柚木",
+    "series": "LUTA",
+    "product_code": "10118-2S",
+    "color": "柚木",
     "price": 36900,
     "currency": "TWD",
+    "width_cm": 149.0,
+    "depth_cm": 83.0,
+    "height_cm": 77.7,
+    "dims": {
+      "寬度": 149.0,
+      "深度": 83.0,
+      "高度": 77.7
+    },
     "url": "https://www.scanteak.com.tw/product/10118-luta-2-recharge/",
     "image_url": "https://images.scanteak.com.tw/wp-content/uploads/2022/10/10118-luta-2%E4%BA%BA.png",
-    "style_tags": []
+    "style_tags": [
+      "american"
+    ]
   },
   {
     "name": "LUTA 開心果綠 實心柚木腳椅",
     "category": "chair",
     "subcategory": "footstool",
     "brand": "詩肯柚木",
+    "series": "LUTA",
+    "product_code": "10118-1",
+    "color": "柚木",
     "price": 8900,
     "currency": "TWD",
+    "width_cm": 62.0,
+    "depth_cm": 52.0,
+    "height_cm": 40.6,
+    "dims": {
+      "寬度": 62.0,
+      "深度": 52.0,
+      "高度": 40.6
+    },
     "url": "https://www.scanteak.com.tw/product/10118-luta-foot-chair/",
     "image_url": "https://images.scanteak.com.tw/wp-content/uploads/2022/10/10118-luta%E8%85%B3%E6%A4%85.png",
-    "style_tags": []
+    "style_tags": [
+      "classic"
+    ]
   },
   {
     "name": "LUTA 開心果綠3人座實心柚木沙發",
     "category": "sofa",
     "subcategory": "sofa",
     "brand": "詩肯柚木",
+    "series": "LUTA",
+    "product_code": "10118-3s",
+    "color": "柚木",
     "price": 45900,
     "currency": "TWD",
+    "width_cm": 179.0,
+    "depth_cm": 83.0,
+    "height_cm": 77.7,
+    "dims": {
+      "寬度": 179.0,
+      "深度": 83.0,
+      "高度": 77.7
+    },
     "url": "https://www.scanteak.com.tw/product/10118-luta-3-recharge/",
     "image_url": "https://images.scanteak.com.tw/wp-content/uploads/2022/10/10118-luta-3%E4%BA%BA.jpg",
-    "style_tags": []
+    "style_tags": [
+      "classic"
+    ]
   },
   {
     "name": "STEIN 150cm白色陶瓷實心柚木餐桌",
     "category": "table",
     "subcategory": "dining-table",
     "brand": "詩肯柚木",
+    "series": "STEIN",
+    "product_code": "T20233",
+    "color": "白色/柚木",
     "price": 28900,
     "currency": "TWD",
+    "width_cm": 150.0,
+    "depth_cm": 90.0,
+    "height_cm": 76.0,
+    "dims": {
+      "寬度": 150.0,
+      "深度": 90.0,
+      "高度": 76.0
+    },
     "url": "https://www.scanteak.com.tw/product/20053-stein-table-150-dining-table/",
     "image_url": "https://images.scanteak.com.tw/wp-content/uploads/2022/01/20233%E7%99%BD%E8%89%B2%E9%99%B6%E7%93%B7%E9%A4%90%E6%A1%8C.jpg",
-    "style_tags": []
+    "style_tags": [
+      "classic",
+      "country"
+    ]
   },
   {
     "name": "KOHTA 實心柚木餐椅",
     "category": "chair",
     "subcategory": "dining-chair",
     "brand": "詩肯柚木",
+    "series": "KOHTA",
+    "product_code": "20061",
+    "color": "柚木",
     "price": 7900,
     "currency": "TWD",
+    "width_cm": 57.0,
+    "depth_cm": 55.0,
+    "height_cm": 77.2,
+    "dims": {
+      "寬度": 57.0,
+      "深度": 55.0,
+      "高度": 77.2
+    },
     "url": "https://www.scanteak.com.tw/product/20061-kohta-chair/",
     "image_url": "https://images.scanteak.com.tw/wp-content/uploads/2022/08/20061.jpg",
-    "style_tags": []
+    "style_tags": [
+      "classic"
+    ]
   },
   {
     "name": "AVALAR 實心柚木餐椅",
     "category": "chair",
     "subcategory": "dining-chair",
     "brand": "詩肯柚木",
+    "series": "AVALAR",
+    "product_code": "20060",
+    "color": "柚木",
     "price": 6900,
     "currency": "TWD",
+    "width_cm": 55.0,
+    "depth_cm": 55.0,
+    "height_cm": 76.5,
+    "dims": {
+      "寬度": 55.0,
+      "深度": 55.0,
+      "高度": 76.5
+    },
     "url": "https://www.scanteak.com.tw/product/20060-avalar-chair/",
     "image_url": "https://images.scanteak.com.tw/wp-content/uploads/2022/08/20060.jpg",
-    "style_tags": []
+    "style_tags": [
+      "classic",
+      "nordic"
+    ]
   },
   {
     "name": "STEG 實心柚木柚木床架",
     "category": "bed",
     "subcategory": "bed-frame",
     "brand": "詩肯柚木",
+    "series": "STEG",
+    "product_code": "30088",
+    "color": "柚木",
     "price": 16900,
     "currency": "TWD",
+    "width_cm": null,
+    "depth_cm": null,
+    "height_cm": null,
+    "dims": {},
     "url": "https://www.scanteak.com.tw/product/30088-stellan-bed-double/",
     "image_url": "https://images.scanteak.com.tw/wp-content/uploads/2022/05/%E6%9F%9A%E6%9C%A8%E5%AE%98%E7%B6%B2.jpg",
-    "style_tags": []
+    "style_tags": [
+      "classic"
+    ]
   },
   {
     "name": "FRED 180cm實心柚木電視櫃",
     "category": "storage",
     "subcategory": "tv-bench",
     "brand": "詩肯柚木",
+    "series": "FRED",
+    "product_code": "51123-1",
+    "color": "柚木",
     "price": 29900,
     "currency": "TWD",
+    "width_cm": 180.0,
+    "depth_cm": 37.0,
+    "height_cm": 45.0,
+    "dims": {
+      "寬度": 180.0,
+      "深度": 37.0,
+      "高度": 45.0
+    },
     "url": "https://www.scanteak.com.tw/product/51123-fred-180-tv-cabinet/",
     "image_url": "https://images.scanteak.com.tw/wp-content/uploads/2022/03/TV-180CM.jpg",
-    "style_tags": []
+    "style_tags": [
+      "japanese",
+      "classic"
+    ]
   },
   {
     "name": "FISKE 實心柚木五斗櫃",
     "category": "storage",
     "subcategory": "chest-of-drawers",
     "brand": "詩肯柚木",
+    "series": "FISKE",
+    "product_code": "5226",
+    "color": "柚木",
     "price": 32990,
     "currency": "TWD",
+    "width_cm": 90.0,
+    "depth_cm": 46.0,
+    "height_cm": 90.0,
+    "dims": {
+      "寬度": 90.0,
+      "深度": 46.0,
+      "高度": 90.0
+    },
     "url": "https://www.scanteak.com.tw/product/39060-fiske-cabinet-5d/",
     "image_url": "https://images.scanteak.com.tw/wp-content/uploads/2022/09/T30960-5%E6%96%97%E5%AE%98%E7%B6%B2.jpg",
-    "style_tags": []
+    "style_tags": [
+      "nordic",
+      "classic"
+    ]
   },
   {
     "name": "STEIN 165cm白色陶瓷實心柚木餐桌",
     "category": "table",
     "subcategory": "dining-table",
     "brand": "詩肯柚木",
+    "series": "STEIN",
+    "product_code": "20233-1",
+    "color": "白色/柚木",
     "price": 33900,
     "currency": "TWD",
+    "width_cm": 165.0,
+    "depth_cm": 90.0,
+    "height_cm": 76.0,
+    "dims": {
+      "寬度": 165.0,
+      "深度": 90.0,
+      "高度": 76.0
+    },
     "url": "https://www.scanteak.com.tw/product/20053-stein-table-165-dining-table/",
     "image_url": "https://images.scanteak.com.tw/wp-content/uploads/2022/01/20233%E7%99%BD%E8%89%B2%E9%99%B6%E7%93%B7%E9%A4%90%E6%A1%8C.jpg",
-    "style_tags": []
+    "style_tags": [
+      "classic",
+      "country"
+    ]
   },
   {
     "name": "KOVA 165cm實心柚木餐桌",
     "category": "table",
     "subcategory": "dining-table",
     "brand": "詩肯柚木",
+    "series": "KOVA",
+    "product_code": "20053-1",
+    "color": "柚木",
     "price": 32900,
     "currency": "TWD",
+    "width_cm": 165.0,
+    "depth_cm": 90.0,
+    "height_cm": 75.0,
+    "dims": {
+      "寬度": 165.0,
+      "深度": 90.0,
+      "高度": 75.0
+    },
     "url": "https://www.scanteak.com.tw/product/20053-kova-table-165-dining-table/",
     "image_url": "https://images.scanteak.com.tw/wp-content/uploads/2021/02/2.jpg",
-    "style_tags": []
+    "style_tags": [
+      "classic"
+    ]
   },
   {
     "name": "KOVA 180cm實心柚木餐桌",
     "category": "table",
     "subcategory": "dining-table",
     "brand": "詩肯柚木",
+    "series": "KOVA",
+    "product_code": "20053",
+    "color": "柚木",
     "price": 34900,
     "currency": "TWD",
+    "width_cm": 180.0,
+    "depth_cm": 90.0,
+    "height_cm": 75.0,
+    "dims": {
+      "寬度": 180.0,
+      "深度": 90.0,
+      "高度": 75.0
+    },
     "url": "https://www.scanteak.com.tw/product/20053-kova-table-180-dining-table/",
     "image_url": "https://images.scanteak.com.tw/wp-content/uploads/2021/02/2.jpg",
-    "style_tags": []
+    "style_tags": [
+      "classic"
+    ]
   },
   {
     "name": "Kors 3人座實心柚木沙發 (充電款)",
     "category": "sofa",
     "subcategory": "sofa",
     "brand": "詩肯柚木",
+    "series": "Kors",
+    "product_code": "19312-3-1",
+    "color": "柚木",
     "price": 50900,
     "currency": "TWD",
+    "width_cm": 194.0,
+    "depth_cm": 72.5,
+    "height_cm": 78.0,
+    "dims": {
+      "寬度": 194.0,
+      "深度": 72.5,
+      "高度": 78.0
+    },
     "url": "https://www.scanteak.com.tw/product/19312-kors-3-recharge/",
     "image_url": "https://images.scanteak.com.tw/wp-content/uploads/2020/01/%E5%85%85%E9%9B%BB-scaled.jpg",
-    "style_tags": []
+    "style_tags": [
+      "classic",
+      "modern"
+    ]
   },
   {
     "name": "KUL 3L實心柚木沙發",
     "category": "sofa",
     "subcategory": "sofa",
     "brand": "詩肯柚木",
+    "series": "KUL",
+    "product_code": "13320-3L",
+    "color": "柚木",
     "price": 62900,
     "currency": "TWD",
+    "width_cm": 226.0,
+    "depth_cm": 149.0,
+    "height_cm": 80.5,
+    "dims": {
+      "寬度": 226.0,
+      "深度": 149.0,
+      "高度": 80.5
+    },
     "url": "https://www.scanteak.com.tw/product/13320-series-sofa/",
     "image_url": "https://images.scanteak.com.tw/wp-content/uploads/2020/09/13320-3L.jpg",
-    "style_tags": []
+    "style_tags": [
+      "modern"
+    ]
   },
   {
     "name": "實心柚木長方茶几(附抽屜)",
     "category": "table",
     "subcategory": "coffee-side-table",
     "brand": "詩肯柚木",
+    "series": null,
+    "product_code": "17529",
+    "color": "柚木",
     "price": 14900,
     "currency": "TWD",
+    "width_cm": 120.0,
+    "depth_cm": 80.0,
+    "height_cm": 45.0,
+    "dims": {
+      "寬度": 120.0,
+      "深度": 80.0,
+      "高度": 45.0
+    },
     "url": "https://www.scanteak.com.tw/product/17529-rectangular-coffee-table-with-drawer/",
     "image_url": "https://images.scanteak.com.tw/wp-content/uploads/2020/09/17529-2.png",
-    "style_tags": []
+    "style_tags": [
+      "classic",
+      "nordic"
+    ]
   },
   {
     "name": "實心柚木床頭櫃",
     "category": "storage",
     "subcategory": "bedside-table",
     "brand": "詩肯柚木",
+    "series": null,
+    "product_code": "30516",
+    "color": "柚木",
     "price": 5500,
     "currency": "TWD",
+    "width_cm": 50.0,
+    "depth_cm": 38.0,
+    "height_cm": 50.0,
+    "dims": {
+      "寬度": 50.0,
+      "深度": 38.0,
+      "高度": 50.0
+    },
     "url": "https://www.scanteak.com.tw/product/30516-bedside-table/",
     "image_url": "https://images.scanteak.com.tw/wp-content/uploads/2020/09/30516.jpg",
-    "style_tags": []
+    "style_tags": [
+      "classic",
+      "nordic"
+    ]
   },
   {
     "name": "FRED 150cm實心柚木電視櫃",
     "category": "storage",
     "subcategory": "tv-bench",
     "brand": "詩肯柚木",
+    "series": "FRED",
+    "product_code": "51123",
+    "color": "柚木",
     "price": 18900,
     "currency": "TWD",
+    "width_cm": 150.0,
+    "depth_cm": 37.0,
+    "height_cm": 45.0,
+    "dims": {
+      "寬度": 150.0,
+      "深度": 37.0,
+      "高度": 45.0
+    },
     "url": "https://www.scanteak.com.tw/product/51123-fred-150-tv-cabinet/",
     "image_url": "https://images.scanteak.com.tw/wp-content/uploads/2020/09/51123.jpg",
-    "style_tags": []
+    "style_tags": [
+      "classic",
+      "nordic"
+    ]
   },
   {
     "name": "LUTA  實心柚木書架",
     "category": "storage",
     "subcategory": "bookcase",
     "brand": "詩肯柚木",
+    "series": "LUTA",
+    "product_code": "51126",
+    "color": "柚木",
     "price": 8900,
     "currency": "TWD",
+    "width_cm": 50.0,
+    "depth_cm": 40.0,
+    "height_cm": 180.0,
+    "dims": {
+      "寬度": 50.0,
+      "深度": 40.0,
+      "高度": 180.0
+    },
     "url": "https://www.scanteak.com.tw/product/51126-bookshelf/",
     "image_url": "https://images.scanteak.com.tw/wp-content/uploads/2020/09/%E5%AE%98%E7%B6%B2.jpg",
-    "style_tags": []
+    "style_tags": [
+      "nordic",
+      "classic"
+    ]
   },
   {
     "name": "實心柚木化妝桌",
     "category": "table",
     "subcategory": "dressing-table",
     "brand": "詩肯柚木",
+    "series": null,
+    "product_code": "35055",
+    "color": "柚木",
     "price": 14900,
     "currency": "TWD",
+    "width_cm": 100.0,
+    "depth_cm": 40.0,
+    "height_cm": 74.0,
+    "dims": {
+      "寬度": 100.0,
+      "深度": 40.0,
+      "高度": 74.0
+    },
     "url": "https://www.scanteak.com.tw/product/055-dressingtables/",
     "image_url": "https://images.scanteak.com.tw/wp-content/uploads/2020/05/35055-1.png",
-    "style_tags": []
+    "style_tags": [
+      "classic",
+      "nordic"
+    ]
   },
   {
     "name": "3D餐櫃",
     "category": "storage",
     "subcategory": "sideboard",
     "brand": "詩肯柚木",
+    "series": null,
+    "product_code": "53031-3",
+    "color": null,
     "price": 61800,
     "currency": "TWD",
+    "width_cm": 147.0,
+    "depth_cm": 51.0,
+    "height_cm": 200.0,
+    "dims": {
+      "寬度": 147.0,
+      "深度": 51.0,
+      "高度": 200.0
+    },
     "url": "https://www.scanteak.com.tw/product/53031-3d%e9%a4%90%e6%ab%83/",
     "image_url": "https://images.scanteak.com.tw/wp-content/uploads/2020/02/031-dining-cabinet-3d-01.png",
-    "style_tags": []
+    "style_tags": [
+      "american",
+      "classic"
+    ]
   },
   {
     "name": "2D餐櫃",
     "category": "storage",
     "subcategory": "sideboard",
     "brand": "詩肯柚木",
+    "series": null,
+    "product_code": "53031-2",
+    "color": null,
     "price": 47800,
     "currency": "TWD",
+    "width_cm": 100.0,
+    "depth_cm": 51.0,
+    "height_cm": 200.0,
+    "dims": {
+      "寬度": 100.0,
+      "深度": 51.0,
+      "高度": 200.0
+    },
     "url": "https://www.scanteak.com.tw/product/53031-2d%e9%a4%90%e6%ab%83/",
     "image_url": "https://images.scanteak.com.tw/wp-content/uploads/2020/02/031-dining-cabinet-2d-01-1.png",
-    "style_tags": []
+    "style_tags": [
+      "classic"
+    ]
   },
   {
     "name": "STADING 實心柚木化妝椅",
     "category": "chair",
     "subcategory": "stool",
     "brand": "詩肯柚木",
+    "series": "STADING",
+    "product_code": "33016",
+    "color": "柚木",
     "price": 3500,
     "currency": "TWD",
+    "width_cm": 45.0,
+    "depth_cm": 40.0,
+    "height_cm": 45.0,
+    "dims": {
+      "寬度": 45.0,
+      "深度": 40.0,
+      "高度": 45.0
+    },
     "url": "https://www.scanteak.com.tw/product/33016-stading/",
     "image_url": "https://images.scanteak.com.tw/wp-content/uploads/2020/02/31016-P.png",
-    "style_tags": []
+    "style_tags": [
+      "classic"
+    ]
   },
   {
     "name": "TRINA 實心柚木化妝椅",
     "category": "chair",
     "subcategory": "stool",
     "brand": "詩肯柚木",
+    "series": "TRINA",
+    "product_code": "30002",
+    "color": "柚木",
     "price": 3200,
     "currency": "TWD",
+    "width_cm": 45.0,
+    "depth_cm": 36.0,
+    "height_cm": 43.0,
+    "dims": {
+      "寬度": 45.0,
+      "深度": 36.0,
+      "高度": 43.0
+    },
     "url": "https://www.scanteak.com.tw/product/30002-trina-%e5%8c%96%e5%a6%9d%e6%a4%85/",
     "image_url": "https://images.scanteak.com.tw/wp-content/uploads/2020/02/002-TRINA-dressing-stool-01.png",
-    "style_tags": []
+    "style_tags": [
+      "classic",
+      "country"
+    ]
   },
   {
     "name": "KLASS 實心柚木床架",
     "category": "bed",
     "subcategory": "bed-frame",
     "brand": "詩肯柚木",
+    "series": "KLASS",
+    "product_code": "T30800",
+    "color": "柚木",
     "price": 32990,
     "currency": "TWD",
+    "width_cm": null,
+    "depth_cm": null,
+    "height_cm": null,
+    "dims": {},
     "url": "https://www.scanteak.com.tw/product/30800-klass/",
     "image_url": "https://images.scanteak.com.tw/wp-content/uploads/2020/02/T30800-5FT.png",
-    "style_tags": []
+    "style_tags": [
+      "classic"
+    ]
   },
   {
     "name": "三用櫃",
     "category": "storage",
     "subcategory": "sideboard",
     "brand": "詩肯柚木",
+    "series": null,
+    "product_code": "50102",
+    "color": null,
     "price": 35900,
     "currency": "TWD",
+    "width_cm": 82.0,
+    "depth_cm": 54.0,
+    "height_cm": 122.0,
+    "dims": {
+      "寬度": 82.0,
+      "深度": 54.0,
+      "高度": 122.0
+    },
     "url": "https://www.scanteak.com.tw/product/102-studydesk-cabinet/",
     "image_url": "https://images.scanteak.com.tw/wp-content/uploads/2020/01/%E4%B8%89%E7%94%A8%E6%AB%83-08.jpg",
-    "style_tags": []
+    "style_tags": [
+      "classic",
+      "nordic"
+    ]
   },
   {
     "name": "珠寶櫃",
     "category": "storage",
     "subcategory": "sideboard",
     "brand": "詩肯柚木",
+    "series": null,
+    "product_code": "50012",
+    "color": null,
     "price": 36900,
     "currency": "TWD",
+    "width_cm": 52.0,
+    "depth_cm": 45.0,
+    "height_cm": 172.0,
+    "dims": {
+      "寬度": 52.0,
+      "深度": 45.0,
+      "高度": 172.0
+    },
     "url": "https://www.scanteak.com.tw/product/012-jewellery-cabinet/",
     "image_url": "https://images.scanteak.com.tw/wp-content/uploads/2020/01/%E7%8F%A0%E5%AF%B6%E6%AB%83-08.jpg",
-    "style_tags": []
+    "style_tags": [
+      "american"
+    ]
   },
   {
     "name": "玻璃門書櫃",
     "category": "storage",
     "subcategory": "bookcase",
     "brand": "詩肯柚木",
+    "series": null,
+    "product_code": "T50798-GD",
+    "color": null,
     "price": 23490,
     "currency": "TWD",
+    "width_cm": 79.8,
+    "depth_cm": 33.0,
+    "height_cm": 190.0,
+    "dims": {
+      "寬度": 79.8,
+      "深度": 33.0,
+      "高度": 190.0
+    },
     "url": "https://www.scanteak.com.tw/product/122-cabinet-gd/",
     "image_url": "https://images.scanteak.com.tw/wp-content/uploads/2020/01/T50798%E7%8E%BB%E7%92%83%E9%96%80%E5%AE%98%E7%B6%B2.jpg",
-    "style_tags": []
+    "style_tags": [
+      "nordic",
+      "classic"
+    ]
   },
   {
     "name": "有門書櫃",
     "category": "storage",
     "subcategory": "bookcase",
     "brand": "詩肯柚木",
+    "series": null,
+    "product_code": "T50798-D",
+    "color": null,
     "price": 18990,
     "currency": "TWD",
+    "width_cm": 79.8,
+    "depth_cm": 33.0,
+    "height_cm": 190.0,
+    "dims": {
+      "寬度": 79.8,
+      "深度": 33.0,
+      "高度": 190.0
+    },
     "url": "https://www.scanteak.com.tw/product/122-cabinet-d/",
     "image_url": "https://images.scanteak.com.tw/wp-content/uploads/2020/01/T50798%E6%9C%89%E9%96%80%E5%AE%98%E7%B6%B2.jpg",
-    "style_tags": []
+    "style_tags": [
+      "nordic"
+    ]
   },
   {
     "name": "無門書櫃",
     "category": "storage",
     "subcategory": "bookcase",
     "brand": "詩肯柚木",
+    "series": null,
+    "product_code": "T50798-ND",
+    "color": null,
     "price": 15990,
     "currency": "TWD",
+    "width_cm": 79.8,
+    "depth_cm": 33.0,
+    "height_cm": 190.0,
+    "dims": {
+      "寬度": 79.8,
+      "深度": 33.0,
+      "高度": 190.0
+    },
     "url": "https://www.scanteak.com.tw/product/122-cabinet-nd/",
     "image_url": "https://images.scanteak.com.tw/wp-content/uploads/2020/01/T50798%E7%84%A1%E9%96%80%E5%AE%98%E7%B6%B2.jpg",
-    "style_tags": []
+    "style_tags": [
+      "japanese"
+    ]
   },
   {
     "name": "KLASS 實心柚木十二斗櫃",
     "category": "storage",
     "subcategory": "chest-of-drawers",
     "brand": "詩肯柚木",
+    "series": "KLASS",
+    "product_code": "31080-12",
+    "color": "柚木",
     "price": 49900,
     "currency": "TWD",
+    "width_cm": 180.0,
+    "depth_cm": 45.0,
+    "height_cm": 82.0,
+    "dims": {
+      "寬度": 180.0,
+      "深度": 45.0,
+      "高度": 82.0
+    },
     "url": "https://www.scanteak.com.tw/product/080-klass-cabinet-12d/",
     "image_url": "https://images.scanteak.com.tw/wp-content/uploads/2020/01/080-KLASS-cabinet-12d-01.jpg",
-    "style_tags": []
+    "style_tags": [
+      "nordic"
+    ]
   },
   {
     "name": "KLASS 實心柚木九斗櫃",
     "category": "storage",
     "subcategory": "chest-of-drawers",
     "brand": "詩肯柚木",
+    "series": "KLASS",
+    "product_code": "31080-9",
+    "color": "柚木",
     "price": 43900,
     "currency": "TWD",
+    "width_cm": 152.5,
+    "depth_cm": 45.0,
+    "height_cm": 81.5,
+    "dims": {
+      "寬度": 152.5,
+      "深度": 45.0,
+      "高度": 81.5
+    },
     "url": "https://www.scanteak.com.tw/product/080-klass-cabinet-9d/",
     "image_url": "https://images.scanteak.com.tw/wp-content/uploads/2020/01/%E6%9F%9A%E6%9C%A8%E5%AE%98%E7%B6%B2-2.jpg",
-    "style_tags": []
+    "style_tags": [
+      "classic",
+      "nordic"
+    ]
   },
   {
     "name": "ENKEL 實心柚木床頭櫃",
     "category": "storage",
     "subcategory": "bedside-table",
     "brand": "詩肯柚木",
+    "series": "ENKEL",
+    "product_code": "31022",
+    "color": "柚木",
     "price": 8700,
     "currency": "TWD",
+    "width_cm": 52.0,
+    "depth_cm": 37.0,
+    "height_cm": 60.0,
+    "dims": {
+      "寬度": 52.0,
+      "深度": 37.0,
+      "高度": 60.0
+    },
     "url": "https://www.scanteak.com.tw/product/022-enkel-bedside-table/",
     "image_url": "https://images.scanteak.com.tw/wp-content/uploads/2020/01/022-Enkel-cabinet-bed-01.jpg",
-    "style_tags": []
+    "style_tags": [
+      "classic"
+    ]
   },
   {
     "name": "FIN 實心柚木床頭櫃",
     "category": "storage",
     "subcategory": "bedside-table",
     "brand": "詩肯柚木",
+    "series": "FIN",
+    "product_code": "31011",
+    "color": "柚木",
     "price": 7600,
     "currency": "TWD",
+    "width_cm": 45.0,
+    "depth_cm": 40.0,
+    "height_cm": 47.0,
+    "dims": {
+      "寬度": 45.0,
+      "深度": 40.0,
+      "高度": 47.0
+    },
     "url": "https://www.scanteak.com.tw/product/011-fin-cabinet-bed/",
     "image_url": "https://images.scanteak.com.tw/wp-content/uploads/2020/01/011-FIN-cabinet-bed-01.jpg",
-    "style_tags": []
+    "style_tags": [
+      "classic"
+    ]
   },
   {
     "name": "MOD 實心柚木床頭櫃",
     "category": "storage",
     "subcategory": "bedside-table",
     "brand": "詩肯柚木",
+    "series": "MOD",
+    "product_code": "30012",
+    "color": "柚木",
     "price": 6500,
     "currency": "TWD",
+    "width_cm": 45.0,
+    "depth_cm": 40.0,
+    "height_cm": 50.0,
+    "dims": {
+      "寬度": 45.0,
+      "深度": 40.0,
+      "高度": 50.0
+    },
     "url": "https://www.scanteak.com.tw/product/102-mod-bedside-table/",
     "image_url": "https://images.scanteak.com.tw/wp-content/uploads/2020/01/102-MOD-cabinet-bed-01.jpg",
-    "style_tags": []
+    "style_tags": [
+      "classic"
+    ]
   },
   {
     "name": "KAMPA 實心柚木床架",
     "category": "bed",
     "subcategory": "bed-frame",
     "brand": "詩肯柚木",
+    "series": "KAMPA",
+    "product_code": "30728",
+    "color": "柚木",
     "price": 37990,
     "currency": "TWD",
+    "width_cm": null,
+    "depth_cm": null,
+    "height_cm": null,
+    "dims": {},
     "url": "https://www.scanteak.com.tw/product/728-kampa-bed-double/",
     "image_url": "https://images.scanteak.com.tw/wp-content/uploads/2020/01/728-KAMPA-bed-double-01.jpg",
-    "style_tags": []
+    "style_tags": [
+      "classic"
+    ]
   },
   {
     "name": "ENKEL 實心柚木床架",
     "category": "bed",
     "subcategory": "bed-frame",
     "brand": "詩肯柚木",
+    "series": "ENKEL",
+    "product_code": "T31768",
+    "color": "柚木",
     "price": 13900,
     "currency": "TWD",
+    "width_cm": null,
+    "depth_cm": null,
+    "height_cm": null,
+    "dims": {},
     "url": "https://www.scanteak.com.tw/product/768-enkel-bed-double/",
     "image_url": "https://images.scanteak.com.tw/wp-content/uploads/2020/01/%E6%98%8E%E6%98%9F%E5%95%86%E5%93%81%E5%AE%98%E7%B6%B2-T31768-e1773714945877.jpg",
-    "style_tags": []
+    "style_tags": [
+      "japanese"
+    ]
   },
   {
     "name": "LEN 實心柚木床架",
     "category": "bed",
     "subcategory": "bed-frame",
     "brand": "詩肯柚木",
+    "series": "LEN",
+    "product_code": "30017-5",
+    "color": "柚木",
     "price": 35990,
     "currency": "TWD",
+    "width_cm": null,
+    "depth_cm": null,
+    "height_cm": null,
+    "dims": {},
     "url": "https://www.scanteak.com.tw/product/17-len-bed-double/",
     "image_url": "https://images.scanteak.com.tw/wp-content/uploads/2020/01/17-Len-bed-double-01.jpg",
-    "style_tags": []
+    "style_tags": [
+      "classic"
+    ]
   },
   {
     "name": "Stellan 十五格櫃",
     "category": "storage",
     "subcategory": "open-storage",
     "brand": "詩肯柚木",
+    "series": "Stellan",
+    "product_code": "51018",
+    "color": null,
     "price": 32900,
     "currency": "TWD",
+    "width_cm": 117.0,
+    "depth_cm": 35.0,
+    "height_cm": 200.5,
+    "dims": {
+      "寬度": 117.0,
+      "深度": 35.0,
+      "高度": 200.5
+    },
     "url": "https://www.scanteak.com.tw/product/018-stellan-shelf/",
     "image_url": "https://images.scanteak.com.tw/wp-content/uploads/2020/01/%E6%9F%9A%E6%9C%A8%E5%AE%98%E7%B6%B2-6.jpg",
-    "style_tags": []
+    "style_tags": [
+      "japanese"
+    ]
   },
   {
     "name": "STELLAN 九格櫃",
     "category": "storage",
     "subcategory": "open-storage",
     "brand": "詩肯柚木",
+    "series": "STELLAN",
+    "product_code": "51020",
+    "color": null,
     "price": 26900,
     "currency": "TWD",
+    "width_cm": 117.0,
+    "depth_cm": 35.0,
+    "height_cm": 123.0,
+    "dims": {
+      "寬度": 117.0,
+      "深度": 35.0,
+      "高度": 123.0
+    },
     "url": "https://www.scanteak.com.tw/product/020-stellan-3-3-shelf/",
     "image_url": "https://images.scanteak.com.tw/wp-content/uploads/2020/01/020-STELLAN-3-3-shelf-01.jpg",
-    "style_tags": []
+    "style_tags": [
+      "classic",
+      "japanese"
+    ]
   },
   {
     "name": "Stellan 六格櫃(高)",
     "category": "storage",
     "subcategory": "open-storage",
     "brand": "詩肯柚木",
+    "series": "Stellan",
+    "product_code": "50116",
+    "color": null,
     "price": 18900,
     "currency": "TWD",
+    "width_cm": 79.0,
+    "depth_cm": 35.0,
+    "height_cm": 125.0,
+    "dims": {
+      "寬度": 79.0,
+      "深度": 35.0,
+      "高度": 125.0
+    },
     "url": "https://www.scanteak.com.tw/product/116-stellan-2-3-shelf/",
     "image_url": "https://images.scanteak.com.tw/wp-content/uploads/2020/01/116-STELLAN-2-3-shelf-01.jpg",
-    "style_tags": []
+    "style_tags": [
+      "classic",
+      "japanese"
+    ]
   },
   {
     "name": "REKKI 實心柚木五層架",
     "category": "storage",
     "subcategory": "open-storage",
     "brand": "詩肯柚木",
+    "series": "REKKI",
+    "product_code": "50035",
+    "color": "柚木",
     "price": 4500,
     "currency": "TWD",
+    "width_cm": 37.0,
+    "depth_cm": 39.0,
+    "height_cm": 150.0,
+    "dims": {
+      "寬度": 37.0,
+      "深度": 39.0,
+      "高度": 150.0
+    },
     "url": "https://www.scanteak.com.tw/product/035-rekki-l-shelf/",
     "image_url": "https://images.scanteak.com.tw/wp-content/uploads/2020/01/035-REKKI-L-shelf-01.jpg",
-    "style_tags": []
+    "style_tags": [
+      "classic"
+    ]
   },
   {
     "name": "REKKI 實心柚木三層架",
     "category": "storage",
     "subcategory": "open-storage",
     "brand": "詩肯柚木",
+    "series": "REKKI",
+    "product_code": "50029",
+    "color": "柚木",
     "price": 2900,
     "currency": "TWD",
+    "width_cm": 37.0,
+    "depth_cm": 39.0,
+    "height_cm": 84.0,
+    "dims": {
+      "寬度": 37.0,
+      "深度": 39.0,
+      "高度": 84.0
+    },
     "url": "https://www.scanteak.com.tw/product/029-rekki-s-shelf/",
     "image_url": "https://images.scanteak.com.tw/wp-content/uploads/2020/01/029-REKKI-S-shelf-02.jpg",
-    "style_tags": []
+    "style_tags": [
+      "classic",
+      "country"
+    ]
   },
   {
     "name": "BOKA 實心柚木書櫃",
     "category": "storage",
     "subcategory": "bookcase",
     "brand": "詩肯柚木",
+    "series": "BOKA",
+    "product_code": "T51119",
+    "color": "柚木",
     "price": 18990,
     "currency": "TWD",
+    "width_cm": 80.0,
+    "depth_cm": 30.0,
+    "height_cm": 182.5,
+    "dims": {
+      "寬度": 80.0,
+      "深度": 30.0,
+      "高度": 182.5
+    },
     "url": "https://www.scanteak.com.tw/product/119-boka-shelf/",
     "image_url": "https://images.scanteak.com.tw/wp-content/uploads/2020/01/119-BOKA-shelf-01.jpg",
-    "style_tags": []
+    "style_tags": [
+      "classic",
+      "nordic"
+    ]
   },
   {
     "name": "ENKEL 實心柚木書桌",
     "category": "table",
     "subcategory": "desk",
     "brand": "詩肯柚木",
+    "series": "ENKEL",
+    "product_code": "52022",
+    "color": "柚木",
     "price": 13900,
     "currency": "TWD",
+    "width_cm": 110.0,
+    "depth_cm": 60.0,
+    "height_cm": 77.0,
+    "dims": {
+      "寬度": 110.0,
+      "深度": 60.0,
+      "高度": 77.0
+    },
     "url": "https://www.scanteak.com.tw/product/022-enkel-table-110-desk/",
     "image_url": "https://images.scanteak.com.tw/wp-content/uploads/2020/01/022-Enkel-table-110-desk-01.jpg",
-    "style_tags": []
+    "style_tags": [
+      "classic",
+      "nordic"
+    ]
   },
   {
     "name": "RITA 實心柚木書桌",
     "category": "table",
     "subcategory": "desk",
     "brand": "詩肯柚木",
+    "series": "RITA",
+    "product_code": "52079",
+    "color": "柚木",
     "price": 11990,
     "currency": "TWD",
+    "width_cm": 92.0,
+    "depth_cm": 51.0,
+    "height_cm": 76.0,
+    "dims": {
+      "寬度": 92.0,
+      "深度": 51.0,
+      "高度": 76.0
+    },
     "url": "https://www.scanteak.com.tw/product/079-rita-table-92-desk/",
     "image_url": "https://images.scanteak.com.tw/wp-content/uploads/2020/01/530792.jpg",
-    "style_tags": []
+    "style_tags": [
+      "classic"
+    ]
   },
   {
     "name": "HARIIG 實心柚木穿鞋收納椅",
     "category": "chair",
     "subcategory": "footstool",
     "brand": "詩肯柚木",
+    "series": "HARIIG",
+    "product_code": "50127",
+    "color": "柚木",
     "price": 6500,
     "currency": "TWD",
+    "width_cm": 88.0,
+    "depth_cm": 35.0,
+    "height_cm": 46.0,
+    "dims": {
+      "寬度": 88.0,
+      "深度": 35.0,
+      "高度": 46.0
+    },
     "url": "https://www.scanteak.com.tw/product/127-harlig-120-chair/",
     "image_url": "https://images.scanteak.com.tw/wp-content/uploads/2020/01/127-Harlig-120-chair-01.jpg",
-    "style_tags": []
+    "style_tags": [
+      "classic"
+    ]
   },
   {
     "name": "LADA 實心柚木置物櫃",
     "category": "storage",
     "subcategory": "sideboard",
     "brand": "詩肯柚木",
+    "series": "LADA",
+    "product_code": "50032",
+    "color": "柚木",
     "price": 3500,
     "currency": "TWD",
+    "width_cm": 40.0,
+    "depth_cm": 40.0,
+    "height_cm": 50.0,
+    "dims": {
+      "寬度": 40.0,
+      "深度": 40.0,
+      "高度": 50.0
+    },
     "url": "https://www.scanteak.com.tw/product/032-lada-other/",
     "image_url": "https://images.scanteak.com.tw/wp-content/uploads/2020/01/%E6%9F%9A%E6%9C%A8%E5%AE%98%E7%B6%B2-3.jpg",
-    "style_tags": []
+    "style_tags": [
+      "classic"
+    ]
   },
   {
     "name": "CASUAL 實心柚木休閒茶几",
     "category": "table",
     "subcategory": "coffee-side-table",
     "brand": "詩肯柚木",
+    "series": "CASUAL",
+    "product_code": "12206",
+    "color": "柚木",
     "price": 3990,
     "currency": "TWD",
+    "width_cm": 40.0,
+    "depth_cm": 40.0,
+    "height_cm": 60.0,
+    "dims": {
+      "寬度": 40.0,
+      "深度": 40.0,
+      "高度": 60.0
+    },
     "url": "https://www.scanteak.com.tw/product/206-casual-other/",
     "image_url": "https://images.scanteak.com.tw/wp-content/uploads/2020/01/206-CASUAL-other-01.jpg",
-    "style_tags": []
+    "style_tags": [
+      "classic"
+    ]
   },
   {
     "name": "STAK STOOL 實心柚木收納小方凳",
     "category": "chair",
     "subcategory": "stool",
     "brand": "詩肯柚木",
+    "series": "STAK",
+    "product_code": "52111",
+    "color": "柚木",
     "price": 1990,
     "currency": "TWD",
+    "width_cm": 40.0,
+    "depth_cm": 28.5,
+    "height_cm": 28.0,
+    "dims": {
+      "寬度": 40.0,
+      "深度": 28.5,
+      "高度": 28.0
+    },
     "url": "https://www.scanteak.com.tw/product/111-chair-stool/",
     "image_url": "https://images.scanteak.com.tw/wp-content/uploads/2020/01/2-9.jpg",
-    "style_tags": []
+    "style_tags": [
+      "classic"
+    ]
   },
   {
     "name": "DUO SWIVEL 實心柚木長椅",
     "category": "chair",
     "subcategory": "bench",
     "brand": "詩肯柚木",
+    "series": "DUO",
+    "product_code": "21076",
+    "color": "柚木",
     "price": 18900,
     "currency": "TWD",
+    "width_cm": 120.0,
+    "depth_cm": 43.0,
+    "height_cm": 78.0,
+    "dims": {
+      "寬度": 120.0,
+      "深度": 43.0,
+      "高度": 78.0
+    },
     "url": "https://www.scanteak.com.tw/product/076-duo-swivel-chair-bench/",
     "image_url": "https://images.scanteak.com.tw/wp-content/uploads/2020/01/DUO_Swivel_Bench_9d25cf8b-7f76-4.jpg",
-    "style_tags": []
+    "style_tags": [
+      "nordic",
+      "classic"
+    ]
   },
   {
     "name": "PLANK 實心柚木ㄇ型椅",
     "category": "chair",
     "subcategory": "stool",
     "brand": "詩肯柚木",
+    "series": "PLANK",
+    "product_code": "20130",
+    "color": "柚木",
     "price": 10900,
     "currency": "TWD",
+    "width_cm": 130.0,
+    "depth_cm": 40.0,
+    "height_cm": 45.0,
+    "dims": {
+      "寬度": 130.0,
+      "深度": 40.0,
+      "高度": 45.0
+    },
     "url": "https://www.scanteak.com.tw/product/130-plank-chair-130-bench/",
     "image_url": "https://images.scanteak.com.tw/wp-content/uploads/2020/01/010-PLANK-chair-130-bench-01.jpg",
-    "style_tags": []
+    "style_tags": [
+      "classic",
+      "nordic"
+    ]
   },
   {
     "name": "PACIFIC 實心柚木餐椅",
     "category": "chair",
     "subcategory": "dining-chair",
     "brand": "詩肯柚木",
+    "series": "PACIFIC",
+    "product_code": "23808",
+    "color": "柚木",
     "price": 7600,
     "currency": "TWD",
+    "width_cm": 47.0,
+    "depth_cm": 45.0,
+    "height_cm": 89.0,
+    "dims": {
+      "寬度": 47.0,
+      "深度": 45.0,
+      "高度": 89.0
+    },
     "url": "https://www.scanteak.com.tw/product/808-pacific-chair/",
     "image_url": "https://images.scanteak.com.tw/wp-content/uploads/2020/01/T23808%E6%9F%9A%E6%9C%A8%E5%AE%98%E7%B6%B2.jpg",
-    "style_tags": []
+    "style_tags": [
+      "classic",
+      "nordic"
+    ]
   },
   {
     "name": "MONO 實心柚木餐椅",
     "category": "chair",
     "subcategory": "dining-chair",
     "brand": "詩肯柚木",
+    "series": "MONO",
+    "product_code": "T25036",
+    "color": "柚木",
     "price": 7200,
     "currency": "TWD",
+    "width_cm": 44.0,
+    "depth_cm": 50.0,
+    "height_cm": 79.5,
+    "dims": {
+      "寬度": 44.0,
+      "深度": 50.0,
+      "高度": 79.5
+    },
     "url": "https://www.scanteak.com.tw/product/036-mono-chair/",
     "image_url": "https://images.scanteak.com.tw/wp-content/uploads/2020/01/%E6%9F%9A%E6%9C%A8%E5%AE%98%E7%B6%B2-5.jpg",
-    "style_tags": []
+    "style_tags": [
+      "classic",
+      "nordic"
+    ]
   },
   {
     "name": "GRANS 實心柚木餐椅",
     "category": "chair",
     "subcategory": "dining-chair",
     "brand": "詩肯柚木",
+    "series": "GRANS",
+    "product_code": "25818",
+    "color": "柚木",
     "price": 6500,
     "currency": "TWD",
+    "width_cm": 42.5,
+    "depth_cm": 52.0,
+    "height_cm": 95.0,
+    "dims": {
+      "寬度": 42.5,
+      "深度": 52.0,
+      "高度": 95.0
+    },
     "url": "https://www.scanteak.com.tw/product/818-grans-chair/",
     "image_url": "https://images.scanteak.com.tw/wp-content/uploads/2020/01/818-GRANS-chair-01.jpg",
-    "style_tags": []
+    "style_tags": [
+      "american"
+    ]
   },
   {
     "name": "KONTUR 實心柚木餐椅",
     "category": "chair",
     "subcategory": "dining-chair",
     "brand": "詩肯柚木",
+    "series": "KONTUR",
+    "product_code": "22823",
+    "color": "柚木",
     "price": 5400,
     "currency": "TWD",
+    "width_cm": 42.0,
+    "depth_cm": 49.5,
+    "height_cm": 82.0,
+    "dims": {
+      "寬度": 42.0,
+      "深度": 49.5,
+      "高度": 82.0
+    },
     "url": "https://www.scanteak.com.tw/product/823-kontur-chair/",
     "image_url": "https://images.scanteak.com.tw/wp-content/uploads/2020/01/823-KONTUR-chair-01.jpg",
-    "style_tags": []
+    "style_tags": [
+      "classic"
+    ]
   },
   {
     "name": "FIAR實心柚木餐桌",
     "category": "table",
     "subcategory": "dining-table",
     "brand": "詩肯柚木",
+    "series": "FIAR實心柚木餐桌",
+    "product_code": "T22019",
+    "color": "柚木",
     "price": 42990,
     "currency": "TWD",
+    "width_cm": 210.0,
+    "depth_cm": 100.0,
+    "height_cm": 75.0,
+    "dims": {
+      "寬度": 210.0,
+      "深度": 100.0,
+      "高度": 75.0
+    },
     "url": "https://www.scanteak.com.tw/product/019-fira-table-210-dining-table/",
     "image_url": "https://images.scanteak.com.tw/wp-content/uploads/2020/01/%E6%9F%9A%E6%9C%A8%E5%AE%98%E7%B6%B2-1.jpg",
-    "style_tags": []
+    "style_tags": [
+      "nordic"
+    ]
   },
   {
     "name": "LOIS 實心柚木餐桌",
     "category": "table",
     "subcategory": "dining-table",
     "brand": "詩肯柚木",
+    "series": "LOIS",
+    "product_code": "20230",
+    "color": "柚木",
     "price": 23900,
     "currency": "TWD",
+    "width_cm": 150.0,
+    "depth_cm": 90.0,
+    "height_cm": 74.0,
+    "dims": {
+      "寬度": 150.0,
+      "深度": 90.0,
+      "高度": 74.0
+    },
     "url": "https://www.scanteak.com.tw/product/230-lois-table-150-dining-table/",
     "image_url": "https://images.scanteak.com.tw/wp-content/uploads/2020/01/312-Lois-table-150-dining-table-01.jpg",
-    "style_tags": []
+    "style_tags": [
+      "classic",
+      "nordic"
+    ]
   },
   {
     "name": "LOIS 實心柚木餐桌",
     "category": "table",
     "subcategory": "dining-table",
     "brand": "詩肯柚木",
+    "series": "LOIS",
+    "product_code": "20312",
+    "color": "柚木",
     "price": 16900,
     "currency": "TWD",
+    "width_cm": 135.0,
+    "depth_cm": 80.0,
+    "height_cm": 74.0,
+    "dims": {
+      "寬度": 135.0,
+      "深度": 80.0,
+      "高度": 74.0
+    },
     "url": "https://www.scanteak.com.tw/product/312-lois-table/",
     "image_url": "https://images.scanteak.com.tw/wp-content/uploads/2020/01/312-Lois-table-135-dining-table-01.jpg",
-    "style_tags": []
+    "style_tags": [
+      "classic",
+      "nordic"
+    ]
   },
   {
     "name": "LIGE 實心柚木餐桌",
     "category": "table",
     "subcategory": "dining-table",
     "brand": "詩肯柚木",
+    "series": "LIGE",
+    "product_code": "T21003",
+    "color": "柚木",
     "price": 11900,
     "currency": "TWD",
+    "width_cm": 120.0,
+    "depth_cm": 70.0,
+    "height_cm": 75.0,
+    "dims": {
+      "寬度": 120.0,
+      "深度": 70.0,
+      "高度": 75.0
+    },
     "url": "https://www.scanteak.com.tw/product/003-lige-table-120-dining-table/",
     "image_url": "https://images.scanteak.com.tw/wp-content/uploads/2020/01/003-LIGE-table-120-dining-table-01.jpg",
-    "style_tags": []
+    "style_tags": [
+      "classic",
+      "nordic"
+    ]
   },
   {
     "name": "LUJA 實心柚木大茶几",
     "category": "table",
     "subcategory": "coffee-side-table",
     "brand": "詩肯柚木",
+    "series": "LUJA",
+    "product_code": "10016",
+    "color": "柚木",
     "price": 14900,
     "currency": "TWD",
+    "width_cm": 120.0,
+    "depth_cm": 70.0,
+    "height_cm": 45.0,
+    "dims": {
+      "寬度": 120.0,
+      "深度": 70.0,
+      "高度": 45.0
+    },
     "url": "https://www.scanteak.com.tw/product/006-plate-table-l-coffee-table/",
     "image_url": "https://images.scanteak.com.tw/wp-content/uploads/2020/01/%E6%9F%9A%E6%9C%A8%E5%AE%98%E7%B6%B2.jpg",
-    "style_tags": []
+    "style_tags": [
+      "classic"
+    ]
   },
   {
     "name": "TRO 實心柚木大茶几",
     "category": "table",
     "subcategory": "coffee-side-table",
     "brand": "詩肯柚木",
+    "series": "TRO",
+    "product_code": "T12202",
+    "color": "柚木",
     "price": 15900,
     "currency": "TWD",
+    "width_cm": 110.0,
+    "depth_cm": 60.0,
+    "height_cm": 45.0,
+    "dims": {
+      "寬度": 110.0,
+      "深度": 60.0,
+      "高度": 45.0
+    },
     "url": "https://www.scanteak.com.tw/product/202-tro-table-l-coffee-table/",
     "image_url": "https://images.scanteak.com.tw/wp-content/uploads/2020/01/T12202%E6%9F%9A%E6%9C%A8%E5%AE%98%E7%B6%B2.jpg",
-    "style_tags": []
+    "style_tags": [
+      "nordic",
+      "classic"
+    ]
   },
   {
     "name": "ISLAND 實心柚木沙發床",
     "category": "sofa",
     "subcategory": "sofa-bed",
     "brand": "詩肯柚木",
+    "series": "ISLAND",
+    "product_code": "15323-",
+    "color": "柚木",
     "price": 56900,
     "currency": "TWD",
+    "width_cm": 188.5,
+    "depth_cm": 80.0,
+    "height_cm": 80.0,
+    "dims": {
+      "寬度": 188.5,
+      "深度": 80.0,
+      "高度": 80.0
+    },
     "url": "https://www.scanteak.com.tw/product/323-island-sofa-3-daybed/",
     "image_url": "https://images.scanteak.com.tw/wp-content/uploads/2020/01/15323-%E6%B2%99%E7%99%BC%E5%BA%8A.jpg",
-    "style_tags": []
+    "style_tags": [
+      "classic",
+      "modern"
+    ]
   },
   {
     "name": "ISLAND 2人座實心柚木沙發",
     "category": "sofa",
     "subcategory": "sofa",
     "brand": "詩肯柚木",
+    "series": "ISLAND",
+    "product_code": "15323",
+    "color": "柚木",
     "price": 43900,
     "currency": "TWD",
+    "width_cm": 153.5,
+    "depth_cm": 75.0,
+    "height_cm": 80.0,
+    "dims": {
+      "寬度": 153.5,
+      "深度": 75.0,
+      "高度": 80.0
+    },
     "url": "https://www.scanteak.com.tw/product/323-island-sofa-2-seater/",
     "image_url": "https://images.scanteak.com.tw/wp-content/uploads/2020/01/15323-2S.jpg",
-    "style_tags": []
+    "style_tags": [
+      "classic",
+      "nordic"
+    ]
   },
   {
     "name": "Kors 3人座實心柚木沙發",
     "category": "sofa",
     "subcategory": "sofa",
     "brand": "詩肯柚木",
+    "series": "Kors",
+    "product_code": "T19312-3",
+    "color": "柚木",
     "price": 49900,
     "currency": "TWD",
+    "width_cm": 194.0,
+    "depth_cm": 72.5,
+    "height_cm": 78.0,
+    "dims": {
+      "寬度": 194.0,
+      "深度": 72.5,
+      "高度": 78.0
+    },
     "url": "https://www.scanteak.com.tw/product/19312-kors-sofa-3-seater/",
     "image_url": "https://images.scanteak.com.tw/wp-content/uploads/2020/01/19312-3S-%E5%AE%98%E7%B6%B2.jpg",
-    "style_tags": []
+    "style_tags": [
+      "modern"
+    ]
   },
   {
     "name": "Kors 2人座實心柚木沙發",
     "category": "sofa",
     "subcategory": "sofa",
     "brand": "詩肯柚木",
+    "series": "Kors",
+    "product_code": "19312-2",
+    "color": "柚木",
     "price": 33900,
     "currency": "TWD",
+    "width_cm": 135.0,
+    "depth_cm": 72.5,
+    "height_cm": 78.0,
+    "dims": {
+      "寬度": 135.0,
+      "深度": 72.5,
+      "高度": 78.0
+    },
     "url": "https://www.scanteak.com.tw/product/19312-kors-sofa-2-seater/",
     "image_url": "https://images.scanteak.com.tw/wp-content/uploads/2020/01/DSC08567-%E9%9B%99%E4%BA%BA-scaled.jpg",
-    "style_tags": []
+    "style_tags": [
+      "american"
+    ]
   },
   {
     "name": "ENKEL 現代灰3人座實心柚木沙發",
     "category": "sofa",
     "subcategory": "sofa",
     "brand": "詩肯柚木",
+    "series": "ENKEL",
+    "product_code": "T16316-3",
+    "color": "柚木",
     "price": 36900,
     "currency": "TWD",
+    "width_cm": 195.0,
+    "depth_cm": 80.0,
+    "height_cm": 76.0,
+    "dims": {
+      "寬度": 195.0,
+      "深度": 80.0,
+      "高度": 76.0
+    },
     "url": "https://www.scanteak.com.tw/product/316-enkel-sofa-3-seater/",
     "image_url": "https://images.scanteak.com.tw/wp-content/uploads/2020/01/%E6%9F%9A%E6%9C%A8%E5%AE%98%E7%B6%B2-4.jpg",
-    "style_tags": []
+    "style_tags": [
+      "modern"
+    ]
   },
   {
     "name": "ENKEL 現代灰2人座實心柚木沙發",
     "category": "sofa",
     "subcategory": "sofa",
     "brand": "詩肯柚木",
+    "series": "ENKEL",
+    "product_code": "16316-2",
+    "color": "柚木",
     "price": 28900,
     "currency": "TWD",
+    "width_cm": 140.0,
+    "depth_cm": 80.0,
+    "height_cm": 76.0,
+    "dims": {
+      "寬度": 140.0,
+      "深度": 80.0,
+      "高度": 76.0
+    },
     "url": "https://www.scanteak.com.tw/product/316-enkel-sofa-2-seater/",
     "image_url": "https://images.scanteak.com.tw/wp-content/uploads/2020/01/2S.jpg",
-    "style_tags": []
+    "style_tags": [
+      "classic",
+      "modern"
+    ]
   },
   {
     "name": "Enkel 現代灰1人座實心柚木沙發",
     "category": "chair",
     "subcategory": "armchair",
     "brand": "詩肯柚木",
+    "series": "Enkel",
+    "product_code": "16316-1",
+    "color": "柚木",
     "price": 17900,
     "currency": "TWD",
+    "width_cm": 75.0,
+    "depth_cm": 80.0,
+    "height_cm": 76.0,
+    "dims": {
+      "寬度": 75.0,
+      "深度": 80.0,
+      "高度": 76.0
+    },
     "url": "https://www.scanteak.com.tw/product/316-enkel-sofa-1-seater/",
     "image_url": "https://images.scanteak.com.tw/wp-content/uploads/2020/01/1S.jpg",
-    "style_tags": []
+    "style_tags": [
+      "nordic",
+      "classic"
+    ]
   },
   {
     "name": "Spinkel 3人座實心柚木沙發",
     "category": "sofa",
     "subcategory": "sofa",
     "brand": "詩肯柚木",
+    "series": "Spinkel",
+    "product_code": "12887-3",
+    "color": "柚木",
     "price": 39900,
     "currency": "TWD",
+    "width_cm": 195.0,
+    "depth_cm": 74.2,
+    "height_cm": 78.4,
+    "dims": {
+      "寬度": 195.0,
+      "深度": 74.2,
+      "高度": 78.4
+    },
     "url": "https://www.scanteak.com.tw/product/887-spinkel-sofa-3-seater/",
     "image_url": "https://images.scanteak.com.tw/wp-content/uploads/2020/01/12887-3S.jpg",
-    "style_tags": []
+    "style_tags": [
+      "american"
+    ]
   }
 ]
