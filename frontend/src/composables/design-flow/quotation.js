@@ -42,7 +42,11 @@ export async function fetchQuotation() {
     if (seq !== quotationSeq) return   // 有更新的一輪估價了
     const current = lastGeneratedImage.value?.path || result.value?.generated_image_path
     if (current !== imagePath) return  // 畫面上已經是別張圖，這份報價是舊圖的
-    result.value = { ...(result.value || {}), quotation_result: data }
+    // 估價耗時接在 timing_runs 後面（重新估價則取代上一筆）
+    let runs = result.value?.timing_runs || []
+    if (runs.at(-1)?.kind === 'quotation') runs = runs.slice(0, -1)
+    if (data.timing_run) runs = [...runs, data.timing_run]
+    result.value = { ...(result.value || {}), quotation_result: data, timing_runs: runs }
   } catch (e) {
     if (seq === quotationSeq) quotationError.value = e.message || '估價失敗，請稍後再試'
   } finally {

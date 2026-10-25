@@ -15,7 +15,7 @@ from routers.common import (
     _is_artifact_file, _layout_render_config, _require_artifact_file,
 )
 from designbridge.core.config import Config
-from designbridge.core.timing import collect_stages
+from designbridge.core.timing import collect_stages, log_stage
 from routers.history import _save_history, save_panorama, save_quotation
 
 router = APIRouter()
@@ -262,11 +262,22 @@ def get_quotation(req: QuotationRequest, user_id: str = Depends(get_user_id)):
     from designbridge.pricing.quotation import build_quotation
     try:
         ensure_artifact(req.image_path, user_id)   # 重新開啟的設計：本機沒有圖就從 Storage 補回
-        quotation = build_quotation(
-            req.image_path,
-            req.structured_requirement or {},
-            preselected=req.selected_furniture,
-        )
+        t0 = time.perf_counter()
+        with collect_stages() as timings, log_stage("quotation", req.task_id):
+            quotation = build_quotation(
+                req.image_path,
+                req.structured_requirement or {},
+                preselected=req.selected_furniture,
+            )
+        if quotation:
+            # 前端把它接到 timing_runs 後面，完整流程耗時才包含估價
+            quotation["timing_run"] = {
+                "kind": "quotation",
+                "task_id": req.task_id,
+                "timestamp": time.strftime("%Y-%m-%dT%H:%M:%S"),
+                "elapsed_seconds": round(time.perf_counter() - t0, 2),
+                "timings": timings,
+            }
         if req.task_id and user_id:
             save_quotation(user_id, req.task_id, quotation)
         return quotation
