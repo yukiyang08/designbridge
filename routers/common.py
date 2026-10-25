@@ -47,14 +47,6 @@ def get_user_id(request: Request, authorization: Optional[str] = Header(None)) -
         raise HTTPException(status_code=401, detail="登入已失效，請重新登入")
 
 
-def get_optional_user_id(request: Request, authorization: Optional[str] = Header(None)) -> Optional[str]:
-    """有帶有效 token 就回 user_id，沒有就 None（給原本不用登入、但有登入時能多做事的端點）。"""
-    try:
-        return get_user_id(request, authorization) or None
-    except HTTPException:
-        return None
-
-
 ARTIFACTS_DIR = (Path(__file__).parent.parent / "artifacts").resolve()
 
 

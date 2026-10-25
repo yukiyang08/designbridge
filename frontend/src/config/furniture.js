@@ -1,7 +1,7 @@
 // 家具 type → 中文標籤，2D（LayoutEditor）跟 3D（LayoutPreview3D）共用同一份，
 // 避免兩邊各自維護一份清單、字彙表不同步（後端字彙表見 layout_agent.py 的
 // FURNITURE_SIZES / scene_graph_to_depth.py 的 FURNITURE_HEIGHTS）。
-export const FURNITURE_LABEL_ZH = {
+const FURNITURE_LABEL_ZH = {
   sofa: '沙發', loveseat: '雙人沙發', armchair: '扶手椅', chair: '椅子',
   coffee_table: '茶几', side_table: '邊桌', dining_table: '餐桌', desk: '書桌', nightstand: '床頭櫃',
   tv_unit: '電視櫃', tv: '電視',
@@ -38,7 +38,7 @@ export function furnitureLabel(type) {
 
 // Iconify 圖示名稱（mdi 集合），FURNITURE_ICON_MAP 供 <Icon :icon="..."/> 使用。
 // 沒有精準對應圖示的類型（邊几、床頭櫃、層架、狗窩…），用語意最接近的湊。
-export const FURNITURE_ICON_MAP = {
+const FURNITURE_ICON_MAP = {
   sofa: 'mdi:sofa', loveseat: 'mdi:sofa-outline', armchair: 'mdi:sofa-single', chair: 'mdi:seat',
   coffee_table: 'mdi:table-furniture', dining_table: 'mdi:table-chair', desk: 'mdi:desk',
   side_table: 'mdi:table-furniture', nightstand: 'mdi:table-furniture',
@@ -184,7 +184,7 @@ export const FURNITURE_BY_ROOM = {
 
 // FURNITURE_BY_ROOM 條目沒有預設尺寸，LayoutEditor 的「新增家具」要落地一個正規化 w/h——
 // 沒列在這裡的類型（廚櫃/層架…目前碰不到，但保底一下）就退回 default。
-export const FURNITURE_DEFAULT_SIZE = {
+const FURNITURE_DEFAULT_SIZE = {
   sofa: [0.30, 0.13], armchair: [0.12, 0.12], chair: [0.08, 0.08],
   coffee_table: [0.15, 0.10], side_table: [0.08, 0.08], dining_table: [0.24, 0.18],
   desk: [0.20, 0.10], tv_unit: [0.22, 0.07], bed: [0.30, 0.40],
@@ -201,7 +201,7 @@ export const FURNITURE_DEFAULT_SIZE = {
 
 // 真實尺寸（公尺，寬 × 深）。上面 FURNITURE_DEFAULT_SIZE 是「房間比例」，同一件家具在大房間會
 // 變大、小房間變小，跟真實尺寸的門（90cm）、牆放在一起就會顯得不協調；預設擺法一律改用這張表。
-export const FURNITURE_REAL_SIZE_M = {
+const FURNITURE_REAL_SIZE_M = {
   sofa: [2.0, 0.9], armchair: [0.8, 0.8], chair: [0.45, 0.45],
   coffee_table: [1.0, 0.5], side_table: [0.45, 0.45], dining_table: [1.4, 0.8],
   desk: [1.2, 0.6], tv_unit: [1.6, 0.4], bed: [1.5, 2.0],

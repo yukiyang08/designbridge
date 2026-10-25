@@ -294,6 +294,6 @@ export function abandonCadRoom() {
   goToStepKey('roomProgram')
 }
 
-export function cadRoomLabel(id) {
+function cadRoomLabel(id) {
   return cadPlanResult.value?.rooms?.find(r => r.id === id)?.label_zh || '這間房'
 }
