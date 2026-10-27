@@ -23,6 +23,11 @@ const props = defineProps({
 })
 
 const FACING_TEXT = { up: '上', down: '下', left: '左', right: '右' }
+const CW = { up: 'right', right: 'down', down: 'left', left: 'up' }
+const SCREEN_TO_FRONT = { up: 'far', down: 'near', left: 'left', right: 'right' }
+const FRONT_TO_SCREEN = { far: 'up', near: 'down', left: 'left', right: 'right' }
+// 使用者轉過的以 front 為準（後端健檢回來前就要看得到），其餘用後端推算的朝向
+const faceOf = (item) => FRONT_TO_SCREEN[item.front] || props.facing?.[item.id] || ''
 const emit = defineEmits(['update:placements', 'room-size-changed', 'opening-change'])
 
 // 公尺，點畫布外框可直接調整（雙向綁定回父層，3D 預覽/最終渲染跟著用同一組數字）
@@ -70,6 +75,15 @@ function collidesWithOthers(rect, excludeId) {
   return items.value.some((it) => (
     it.id !== excludeId && rectsOverlap(rect, it)
   ))
+}
+// 旋轉只擋「轉完多壓到」的東西：餐椅本來就貼著餐桌，用 collidesWithOthers 會永遠轉不了
+function rotationBlocked(before, after) {
+  const hit = (r) => [
+    ...doorKeepouts.value.filter((k) => rectsOverlap(r, k)),
+    ...items.value.filter((it) => it.id !== before.id && rectsOverlap(r, it)),
+  ]
+  const was = new Set(hit(before))
+  return hit(after).some((o) => !was.has(o))
 }
 const labelOf = (t) => furnitureLabel(t)
 const iconOf = (t) => furnitureIcon(t)
@@ -251,20 +265,24 @@ const OP_SIDE = { top: '上牆', bottom: '下牆', left: '左牆', right: '右�
 function rotateNTimes90(item, times) {
   let { x, y, w, h, rotation } = item
   rotation = rotation || 0
+  // 正面朝向跟著順時針轉，寫進 front 讓後端（箭頭、生圖、3D）照使用者的方向，
+  // 不然方形家具（椅子）轉了也看不出差別、生圖仍照自動推算的方向擺
+  let face = faceOf(item)
   for (let i = 0; i < times; i++) {
     const cx = x + w / 2, cy = y + h / 2
     ;[w, h] = [h, w]
     x = clamp(cx - w / 2, bounds.value.x0, bounds.value.x1 - w)
     y = clamp(cy - h / 2, bounds.value.y0, bounds.value.y1 - h)
     rotation = (rotation + 90) % 360
+    if (face) face = CW[face]
   }
-  return { ...item, x, y, w, h, rotation }
+  return { ...item, x, y, w, h, rotation, ...(face ? { front: SCREEN_TO_FRONT[face] } : {}) }
 }
 
 function rotate90(item) {
   if (!item) return
   const rotated = rotateNTimes90(item, 1)
-  if (collidesWithOthers(rotated, item.id)) {
+  if (rotationBlocked(item, rotated)) {
     editorNotice.value = '這個位置會和門或其他家具重疊，無法旋轉。'
     return
   }
@@ -281,7 +299,7 @@ function setRotationDeg(item, deg) {
   if (target === current) return
   const steps = ((target - current) / 90 + 4) % 4
   const rotated = rotateNTimes90(item, steps)
-  if (collidesWithOthers(rotated, item.id)) {
+  if (rotationBlocked(item, rotated)) {
     editorNotice.value = '這個位置會和門或其他家具重疊，無法旋轉。'
     return
   }
@@ -528,26 +546,26 @@ onBeforeUnmount(() => viewportObserver?.disconnect())
             <span class="node-label">{{ labelOf(item.type) }}</span>
             <span v-if="showDims" class="node-size">{{ cmOf(item.w, roomW) }}×{{ cmOf(item.h, roomD) }}</span>
             <Icon v-if="item.locked" icon="mdi:lock-outline" class="node-lock" />
-            <template v-if="facing[item.id]">
-              <span class="node-front" :class="`to-${facing[item.id]}`"></span>
-              <!-- 選取時上方有旋轉／刪除鈕，朝上的徽章會撞到，只留正面那條邊 -->
+            <template v-if="faceOf(item)">
+              <span class="node-front" :class="`to-${faceOf(item)}`"></span>
               <span
-                v-if="!(selectedId === item.id && facing[item.id] === 'up')"
-                class="node-facing" :class="`to-${facing[item.id]}`"
-                :title="`正面朝${FACING_TEXT[facing[item.id]]}`"
+                class="node-facing" :class="`to-${faceOf(item)}`"
+                :title="`正面朝${FACING_TEXT[faceOf(item)]}`"
               ><Icon icon="mdi:arrow-up-bold" width="13" /></span>
             </template>
 
             <template v-if="selectedId === item.id && !item.locked">
-              <button class="node-btn rotate" title="旋轉 90°"
-                      @pointerdown.stop @click.stop="rotate90(item)">
-                <Icon icon="mdi:rotate-right" width="11" />
-              </button>
-              <button class="node-btn del" title="刪除"
-                      @pointerdown.stop @click.stop="removeItem(item)">
-                <Icon icon="mdi:close" width="11" />
-              </button>
-              <div class="handle" @pointerdown="onDown($event, item, 'resize')"></div>
+              <!-- 刪除鈕在家具外的右上角（貼上牆時改放下方，不然被畫布裁掉點不到）；旋轉改用右側面板 -->
+              <div class="node-btns" :class="{ below: item.y < 0.08 }">
+                <button class="node-btn del" title="刪除"
+                        @pointerdown.stop @click.stop="removeItem(item)">
+                  <Icon icon="mdi:close" width="12" />
+                </button>
+              </div>
+              <!-- 貼右牆／下牆時把手收進家具內，不然被畫布裁掉一半抓不到 -->
+              <div class="handle"
+                   :class="{ 'in-x': item.x + item.w > bounds.x1 - 0.02, 'in-y': item.y + item.h > bounds.y1 - 0.02 }"
+                   @pointerdown="onDown($event, item, 'resize')"></div>
             </template>
           </div>
 
@@ -575,7 +593,9 @@ onBeforeUnmount(() => viewportObserver?.disconnect())
         </label>
         <label class="props-field">
           <span>旋轉角度 (°)</span>
-          <input type="number" v-model.number="rotationDeg" step="90" />
+          <select v-model.number="rotationDeg">
+            <option v-for="d in [0, 90, 180, 270]" :key="d" :value="d">{{ d }}°</option>
+          </select>
         </label>
         <label class="props-toggle">
           <span>鎖定位置</span>
@@ -767,18 +787,26 @@ onBeforeUnmount(() => viewportObserver?.disconnect())
 .node-facing.to-left  { left: 0; top: 50%; transform: translate(-50%, -50%) rotate(-90deg); }
 .node-facing.to-right { right: 0; top: 50%; transform: translate(50%, -50%) rotate(90deg); }
 
-.node-btn {
-  position: absolute; width: 18px; height: 18px; border-radius: 50%;
-  border: none; color: #fff; font-size: 0.7rem; line-height: 1; cursor: pointer;
-  display: flex; align-items: center; justify-content: center; padding: 0;
+/* 按鈕列與縮放把手疊在朝向箭頭（z 2）之上，箭頭頂多被蓋一角，按鈕永遠點得到 */
+.node-btns {
+  position: absolute; bottom: 100%; right: 0; margin-bottom: 12px;
+  display: flex; gap: 4px; z-index: 3;
 }
-.node-btn.rotate { top: -22px; left: 50%; transform: translateX(-50%); background: #6b4f30; }
-.node-btn.del { top: -22px; right: -6px; background: #c0392b; }
+.node-btns.below { bottom: auto; top: 100%; margin: 12px 0 0; right: auto; left: 0; }
+.node-btn {
+  width: 20px; height: 20px; border-radius: 50%;
+  border: 1.5px solid #fff; color: #fff; line-height: 1; cursor: pointer;
+  display: flex; align-items: center; justify-content: center; padding: 0;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.25);
+}
+.node-btn.del { background: #c0392b; }
 .handle {
-  position: absolute; right: -6px; bottom: -6px; width: 13px; height: 13px;
+  position: absolute; right: -6px; bottom: -6px; width: 13px; height: 13px; z-index: 3;
   background: #756d66; border: 2px solid #fff; border-radius: 3px;
   cursor: nwse-resize;
 }
+.handle.in-x { right: 1px; }
+.handle.in-y { bottom: 1px; }
 
 /* ── Properties panel ── */
 .props-panel {
@@ -795,7 +823,7 @@ onBeforeUnmount(() => viewportObserver?.disconnect())
   font-weight: 700; color: #5c4630; padding-bottom: 0.4rem; border-bottom: 1px solid #f0e6d6;
 }
 .props-field { display: flex; flex-direction: column; gap: 0.25rem; font-size: 0.74rem; color: #6b5a45; }
-.props-field input {
+.props-field input, .props-field select {
   border: 1px solid #e2d4bf; border-radius: 6px; padding: 0.35rem 0.5rem;
   font-size: 0.82rem; font-family: inherit; background: #fdfaf5;
 }
