@@ -18,6 +18,7 @@ const NODE_LABEL = {
   renderer: '渲染出圖',
   adjuster_agent: '局部重繪（微調）',
   clip_evaluator: 'CLIP 評分',
+  quotation: '家具辨識與 IKEA 比對',
 }
 const STEP_LABEL = {
   depth_estimation: '深度估計',
@@ -30,6 +31,8 @@ const STEP_LABEL = {
   optimize_positions: '位置最佳化',
   gemini_style_analysis: 'Gemini 風格分析',
   post_depth_estimation: '出圖後補跑深度估計',
+  detect_furniture: 'Gemini 辨識家具',
+  match_furniture: 'CLIP 向量比對 IKEA',
   evaluate: '評分',
   translate: '翻譯提示詞',
   intent: '判斷修改意圖',
@@ -48,7 +51,7 @@ function labelOf(raw) {
   return step
 }
 
-const KIND_LABEL = { generate: '生成設計', style_swap: '換風格', refine: '微調' }
+const KIND_LABEL = { generate: '生成設計', style_swap: '換風格', refine: '微調', quotation: '家具推薦與估價' }
 const NUM = ['①', '②', '③', '④', '⑤', '⑥', '⑦', '⑧', '⑨', '⑩']
 
 // graph 節點（名稱沒有「.」）固定在第一層；子步驟依被幾段時間區間包住決定縮排

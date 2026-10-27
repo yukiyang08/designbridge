@@ -1,6 +1,6 @@
 <script setup>
-import { ref, computed, onMounted, onBeforeUnmount } from 'vue'
-import { RouterLink } from 'vue-router'
+import { ref, computed, watch, onMounted, onBeforeUnmount } from 'vue'
+import { RouterLink, useRoute } from 'vue-router'
 import { useAuth } from '@/composables/useAuth'
 import logo from '../../../asset/designbridge_logo.png'
 
@@ -12,15 +12,28 @@ defineProps({
 })
 
 const menuOpen = ref(false)
+const navOpen = ref(false)   // 手機漢堡選單
+const route = useRoute()
+watch(() => route.fullPath, () => { navOpen.value = false; menuOpen.value = false })
 const menuEl = ref(null)
 const displayName = computed(() => user.value?.user_metadata?.name || user.value?.email || '')
 const initial = computed(() => (displayName.value[0] || '?').toUpperCase())
 
 function onDocClick(e) {
+  navOpen.value = false   // 漢堡鈕與選單本身都有 @click.stop，走到這裡一定是點在外面
   if (menuEl.value && !menuEl.value.contains(e.target)) menuOpen.value = false
 }
-onMounted(() => document.addEventListener('click', onDocClick))
-onBeforeUnmount(() => document.removeEventListener('click', onDocClick))
+function onKey(e) {
+  if (e.key === 'Escape') { navOpen.value = false; menuOpen.value = false }
+}
+onMounted(() => {
+  document.addEventListener('click', onDocClick)
+  document.addEventListener('keydown', onKey)
+})
+onBeforeUnmount(() => {
+  document.removeEventListener('click', onDocClick)
+  document.removeEventListener('keydown', onKey)
+})
 </script>
 
 <template>
@@ -59,11 +72,37 @@ onBeforeUnmount(() => document.removeEventListener('click', onDocClick))
       </div>
       <button v-else type="button" class="login-btn" @click="signInWithGoogle()">登入</button>
     </nav>
+
+    <button
+      type="button" class="burger" :aria-expanded="navOpen" aria-label="開啟選單"
+      @click.stop="navOpen = !navOpen"
+    >
+      <span></span><span></span><span></span>
+    </button>
+
+    <Transition name="drawer">
+      <div v-if="navOpen" class="drawer-wrap">
+        <div class="backdrop" @click="navOpen = false"></div>
+        <aside class="mobile-menu" @click.stop>
+          <button type="button" class="m-close" aria-label="關閉選單" @click="navOpen = false">✕</button>
+          <RouterLink to="/">首頁</RouterLink>
+          <RouterLink to="/furniture">家具查詢</RouterLink>
+          <RouterLink to="/designs">我的設計</RouterLink>
+          <template v-if="user">
+            <RouterLink to="/account">個人專區</RouterLink>
+            <div class="m-who">{{ displayName }}</div>
+            <button type="button" @click="signOut">登出</button>
+          </template>
+          <button v-else type="button" @click="signInWithGoogle()">Google 登入</button>
+        </aside>
+      </div>
+    </Transition>
   </header>
 </template>
 
 <style scoped>
 .app-nav {
+  position: relative;
   display: flex;
   align-items: center;
   gap: 2rem;
@@ -153,10 +192,48 @@ onBeforeUnmount(() => document.removeEventListener('click', onDocClick))
 .dropdown a:hover,
 .dropdown button:hover { background: var(--db-chip-soft); }
 
+.burger { display: none; }
+.drawer-wrap { display: none; }
+
 @media (max-width: 720px) {
-  .app-nav { gap: 0.75rem; padding: 0.5rem 0.75rem; }
+  .app-nav { gap: 0.75rem; padding: 0.5rem 0.75rem; justify-content: space-between; }
   .brand img { height: 44px; }
-  .links { gap: 0.9rem; }
-  .links > a { font-size: 1rem; }
+  .links { display: none; }
+
+  .burger {
+    display: flex; flex-direction: column; justify-content: center; gap: 5px;
+    width: 44px; height: 44px; padding: 0 10px;
+    border: 0; border-radius: 10px; background: rgba(0, 0, 0, 0.35); cursor: pointer;
+  }
+  .burger span { display: block; height: 2px; border-radius: 2px; background: #fff; }
+
+  /* 從右側滑出的抽屜；backdrop 蓋住頁面並接住點擊 */
+  .drawer-wrap { display: block; position: fixed; inset: 0; z-index: 100; }
+  .backdrop { position: absolute; inset: 0; background: rgba(0, 0, 0, 0.5); }
+  .mobile-menu {
+    position: absolute; top: 0; right: 0; bottom: 0;
+    display: flex; flex-direction: column;
+    width: min(300px, 80vw); padding: 0.75rem; overflow-y: auto;
+    background: var(--db-card); box-shadow: -8px 0 24px rgba(0, 0, 0, 0.25);
+  }
+  .m-close {
+    align-self: flex-end; width: 44px !important; height: 44px; padding: 0 !important;
+    text-align: center !important; font-size: 1.1rem !important; color: var(--db-text-soft) !important;
+  }
+  .drawer-enter-active, .drawer-leave-active { transition: opacity 0.22s; }
+  .drawer-enter-active .mobile-menu, .drawer-leave-active .mobile-menu { transition: transform 0.22s ease; }
+  .drawer-enter-from, .drawer-leave-to { opacity: 0; }
+  .drawer-enter-from .mobile-menu, .drawer-leave-to .mobile-menu { transform: translateX(100%); }
+  .mobile-menu a, .mobile-menu button {
+    display: block; width: 100%; padding: 0.85rem 1rem; border: 0; border-radius: 8px;
+    background: none; text-align: left; text-decoration: none; cursor: pointer;
+    color: var(--db-text); font-family: var(--db-font-display); font-size: 1.1rem;
+  }
+  .mobile-menu a:hover, .mobile-menu button:hover,
+  .mobile-menu a.router-link-exact-active { background: var(--db-chip-soft); }
+  .m-who {
+    margin-top: 0.3rem; padding: 0.6rem 1rem 0.2rem; border-top: 1px solid #efefef;
+    font-size: 0.85rem; color: var(--db-text-soft); word-break: break-all;
+  }
 }
 </style>

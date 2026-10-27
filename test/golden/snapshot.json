@@ -88,6 +88,16 @@
         "composer_includes_furniture": false,
         "composer_used": false,
         "furniture_layout_injected": "a fabric upholstered sofa in the center, front of the room; a low coffee table in the center, middle of the room; a TV media console with a wall-mounted flat TV above it in the center, back of the room, against the back wall",
+        "layout_camera": {
+          "eye_height": 1.6,
+          "eye_x_frac": 0.94,
+          "fov_v_deg": 58.0,
+          "setback": -0.3,
+          "target_depth_frac": 0.9,
+          "target_h": 0.9,
+          "target_x_frac": 0.1
+        },
+        "layout_camera_score": 0.9823,
         "layout_control_source": "2d_plan_footprint+depth",
         "layout_depth_conditioning_scale": 0.3,
         "layout_depth_control_end": 0.4,

@@ -73,23 +73,6 @@ def _encode_query_text(text: str):
     return model.encode(t, normalize_embeddings=True)
 
 
-def _encode_passage_texts(texts: list[str]):
-    """Encode candidate passages with model-specific prompt format."""
-    model = _get_text_embedding_model()
-    model_name = getattr(model, "model_card_data", None)
-    name = ""
-    if model_name and getattr(model_name, "model_id", None):
-        name = str(model_name.model_id).lower()
-    else:
-        name = str(os.getenv("DESIGNBRIDGE_TEXT_EMBEDDING_MODEL", "BAAI/bge-m3")).lower()
-
-    prepared = texts
-    if "e5" in name:
-        prepared = [f"passage: {t}" for t in texts]
-
-    return model.encode(prepared, normalize_embeddings=True)
-
-
 def _get_supabase():
     global _supabase_client
     if _supabase_client is None:
@@ -308,8 +291,7 @@ def _query_style_text_to_text(
     client = _get_supabase()
     query_emb = _encode_query_text(text_query)
 
-    # Fast path: query precomputed style_kb_embedding via pgvector RPC (Supabase).
-    # Falls back to in-Python ranking if RPC/column is not available yet.
+    # 只走 pgvector RPC；失敗或無結果直接回空，不在本機重新編碼全表（會卡死後端）
     try:
         res = client.rpc(
             "query_style_kb",
@@ -319,67 +301,23 @@ def _query_style_text_to_text(
                 "top_k": int(top_k),
             },
         ).execute()
-        if res.data:
-            results: list[SupabaseStyleResult] = []
-            for row in res.data:
-                style_name = (row.get("source_meta") or {}).get("style", row["style_id"])
-                results.append(
-                    SupabaseStyleResult(
-                        style_id=row["style_id"],
-                        image_url=row["image_url"],
-                        display_url=_resolve_display_url(row),
-                        style_name=style_name,
-                        similarity=round(float(row["similarity"]), 4),
-                    )
-                )
-            _batch_load_style_kb(client, results)
-            return results
-    except Exception:
-        # silent fallback (keeps current behavior for older DBs)
-        pass
-
-    q = client.table("style_images").select("style_id,image_url,source_meta,style_kb")
-    q = q.not_.is_("style_kb", "null")
-    if style_id:
-        q = q.eq("style_id", style_id)
-    rows = q.execute().data or []
-    if not rows:
-        return []
-
-    docs: list[str] = []
-    valid_rows: list[dict[str, Any]] = []
-    for row in rows:
-        text = _compose_style_kb_text(row)
-        if text:
-            docs.append(text)
-            valid_rows.append(row)
-    if not docs:
-        return []
-
-    doc_embs = _encode_passage_texts(docs)
-    # dot product == cosine similarity because embeddings are normalized
-    sims = (doc_embs @ query_emb).tolist()
-
-    ranked = sorted(
-        zip(valid_rows, sims),
-        key=lambda x: float(x[1]),
-        reverse=True,
-    )[: max(1, top_k)]
+    except Exception as e:
+        raise RuntimeError(f"query_style_kb RPC 失敗：{e}") from e
 
     results: list[SupabaseStyleResult] = []
-    for row, score in ranked:
+    for row in res.data or []:
         style_name = (row.get("source_meta") or {}).get("style", row["style_id"])
-        kb = _pick_style_kb(row)
         results.append(
             SupabaseStyleResult(
                 style_id=row["style_id"],
                 image_url=row["image_url"],
                 display_url=_resolve_display_url(row),
                 style_name=style_name,
-                similarity=round(float(score), 4),
-                style_kb=kb if isinstance(kb, dict) else None,
+                similarity=round(float(row["similarity"]), 4),
             )
         )
+    if results:
+        _batch_load_style_kb(client, results)
     return results
 
 

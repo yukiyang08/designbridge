@@ -6,13 +6,17 @@
     python scripts/enrich_kb_descriptions.py
 """
 import json
-import os
+import sys
 import time
 from pathlib import Path
 
-import google.generativeai as genai
 import httpx
+from google.genai import types
 
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))   # 直接 python scripts/... 也找得到 designbridge
+from designbridge.render.llm import get_gemini_client  # noqa: E402
+
+MODEL = "gemini-2.5-flash"   # 原本的 gemini-1.5-flash 已下架
 KB_PATH = Path(__file__).parent.parent / "designbridge" / "furniture_kb" / "ikea_tw.json"
 PROMPT = (
     "請用15字以內的中文描述這件家具的外觀，"
@@ -21,18 +25,17 @@ PROMPT = (
 )
 
 
-def describe_item(model, image_url: str) -> str:
+def describe_item(client, image_url: str) -> str:
     img_bytes = httpx.get(image_url, timeout=10).content
-    response = model.generate_content([
-        PROMPT,
-        {"mime_type": "image/jpeg", "data": img_bytes},
-    ])
+    response = client.models.generate_content(
+        model=MODEL,
+        contents=[PROMPT, types.Part.from_bytes(data=img_bytes, mime_type="image/jpeg")],
+    )
     return response.text.strip()
 
 
 def main():
-    genai.configure(api_key=os.environ["GEMINI_API_KEY"])
-    model = genai.GenerativeModel("gemini-1.5-flash")
+    client = get_gemini_client()
 
     items = json.loads(KB_PATH.read_text(encoding="utf-8"))
     updated = 0
@@ -44,7 +47,7 @@ def main():
             item["visual_description"] = ""
             continue
         try:
-            desc = describe_item(model, item["image_url"])
+            desc = describe_item(client, item["image_url"])
             item["visual_description"] = desc
             updated += 1
             print(f"[{i+1}/{len(items)}] {item['name'][:20]} → {desc}")

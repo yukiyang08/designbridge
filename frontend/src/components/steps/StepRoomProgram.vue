@@ -26,11 +26,23 @@ import RoomPickerCad from '@/components/RoomPickerCad.vue'
 const {
   cadCounts, cadTotalPing, cadRoomW, cadRoomD, cadExtraRooms, loading, submitRoomProgram, fetchRoomPlan, startFlow,
   cadPlanResult, cadActiveRoomId, cadRoomStatus, cadRendering, cadBatchRunning, handleCadRoomSelected, abandonCadRoom,
+  rescaleUploadedPlan,
 } = useDesignFlow()
 
 // 有一間做到一半（還沒渲染完）：這時選別間會被擋，把原因和出口直接擺在畫面上
 // 整層資料來自上傳的平面圖（不是房型設定產生的）
 const isUploaded = computed(() => cadPlanResult.value?.source === 'upload')
+
+// 上傳平面圖的總坪數校正：尺寸是從圖上標註或假設換算的，使用者知道實際坪數就能改。
+// 已經開始設計房間後不開放，房間尺寸變了會對不上進度。
+const uploadPing = ref(cadPlanResult.value?.total_ping || '')
+watch(() => cadPlanResult.value?.total_ping, v => { uploadPing.value = v || '' })
+const canRescale = computed(() => !cadActiveRoomId.value && !Object.keys(cadRoomStatus.value).length)
+const SCALE_SOURCE_TEXT = { dimension: '依圖上尺寸標註換算', user: '依你輸入的坪數換算', assumed: '圖上沒有尺寸標註，暫以一般住宅面積估算' }
+function onRescale() {
+  const v = Number(uploadPing.value)
+  if (v >= 1 && v <= 500) rescaleUploadedPlan(v)
+}
 
 const pendingRoom = computed(() => {
   const id = cadActiveRoomId.value
@@ -333,9 +345,54 @@ const suggestedId = computed(() =>
           <h3 class="plan-title">點一間房，開始設計</h3>
           <p class="plan-sub">
             <template v-if="doneCount">已完成 {{ doneCount }} / {{ rooms.length }} 間。</template>
-            <template v-else>建議從客廳開始。做完一間後，可以一鍵把這間的風格套用到其他房間。</template>
           </p>
           <p v-for="w in (isUploaded && cadPlanResult.warnings) || []" :key="w" class="plan-sub plan-warn">{{ w }}</p>
+          <form v-if="isUploaded" class="ping-fix" @submit.prevent="onRescale">
+            <label for="upload-ping">總坪數</label>
+            <input id="upload-ping" v-model.number="uploadPing" type="number" min="1" max="500" step="0.1" class="db-input" :disabled="!canRescale || loading" />
+            <button type="submit" class="db-btn db-btn--ghost db-btn--sm" :disabled="!canRescale || loading || !uploadPing">套用並重畫尺寸</button>
+            <small class="plan-sub">{{ SCALE_SOURCE_TEXT[cadPlanResult.scale_source] }}{{ canRescale ? '' : '；已開始設計房間，無法再改坪數' }}</small>
+          </form>
+          <p v-if="isUploaded" class="plan-sub">辨識結果：{{ cadPlanResult.plan_kind === 'single_room' ? '單一房間' : `整層平面圖，共 ${rooms.length} 間` }}</p>
+          <details v-if="isUploaded && cadPlanResult.specs" class="specs">
+            <summary>尺寸明細（房間 {{ cadPlanResult.specs.rooms.length }}・牆 {{ cadPlanResult.specs.walls.length }}・窗 {{ cadPlanResult.specs.windows.length }}・門 {{ cadPlanResult.specs.doors.length }}）</summary>
+            <h4>房間</h4>
+            <table>
+              <thead>
+              <tr><th>名稱</th><th>寬 × 深 (m)</th><th>面積</th></tr>
+              </thead>
+              <tbody>
+              <tr v-for="r in cadPlanResult.specs.rooms" :key="r.id"><td>{{ r.label }}</td><td>{{ r.w_m }} × {{ r.d_m }}</td><td>{{ r.area_m2 }} m²（{{ r.area_ping }} 坪）</td></tr>
+              </tbody>
+            </table>
+            <h4>牆壁</h4>
+            <table>
+              <thead>
+              <tr><th>種類</th><th>長度 (m)</th><th>厚度 (m)</th><th>相鄰房間</th></tr>
+              </thead>
+              <tbody>
+              <tr v-for="w in cadPlanResult.specs.walls" :key="w.id"><td>{{ w.kind === 'exterior' ? '外牆' : '隔間牆' }}</td><td>{{ w.length_m }}</td><td>{{ w.thickness_m }}</td><td>{{ w.rooms.join('、') }}</td></tr>
+              </tbody>
+            </table>
+            <h4>窗戶</h4>
+            <table>
+              <thead>
+              <tr><th>所在房間</th><th>寬度 (m)</th></tr>
+              </thead>
+              <tbody>
+              <tr v-for="w in cadPlanResult.specs.windows" :key="w.id"><td>{{ w.room }}</td><td>{{ w.width_m }}</td></tr>
+              </tbody>
+            </table>
+            <h4>門</h4>
+            <table>
+              <thead>
+              <tr><th>種類</th><th>連接</th><th>寬度 (m)</th></tr>
+              </thead>
+              <tbody>
+              <tr v-for="d in cadPlanResult.specs.doors" :key="d.id"><td>{{ d.kind === 'entry' ? '大門' : '房門' }}</td><td>{{ d.rooms.join(' ↔ ') }}</td><td>{{ d.width_m }}</td></tr>
+              </tbody>
+            </table>
+          </details>
           </div>
           <button type="button" class="upload-btn" :disabled="loading" title="已有設計師的平面圖？AI 幫你辨識房間與家具" @click="startFlow('upload')">
             <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 16V4M7 9l5-5 5 5M4 16v3a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-3"/></svg>
@@ -394,6 +451,13 @@ const suggestedId = computed(() =>
 }
 .room-program-step.is-uploaded { grid-template-columns: minmax(0, 1fr); }
 .plan-warn { color: var(--db-danger, #b3261e); }
+.ping-fix { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; margin-top: 0.5rem; }
+.ping-fix .db-input { width: 6rem; }
+.specs { margin-top: 0.5rem; font-size: 0.85rem; }
+.specs summary { cursor: pointer; color: var(--db-text-soft); }
+.specs h4 { margin: 0.75rem 0 0.25rem; font-size: 0.85rem; }
+.specs table { border-collapse: collapse; width: 100%; max-width: 32rem; }
+.specs th, .specs td { text-align: left; padding: 0.2rem 0.6rem 0.2rem 0; border-bottom: 1px solid var(--db-chip); }
 
 /* ── 左：設定。桌機固定在畫面上，往下捲平面圖時還看得到 ── */
 .setup {

@@ -4,15 +4,20 @@
  * 底下分空間（客廳、主臥…），每個空間有多張渲染圖（每次生成／換風格／微調各一張）。
  * 資料來自 /api/history（Supabase designs 表，依 user_id 隔離），前端依 project_id 分組。
  */
-import { reactive, ref, computed, onMounted } from 'vue'
+import { reactive, ref, computed, onMounted, onBeforeUnmount } from 'vue'
 import { useRouter } from 'vue-router'
 import { authFetch, jsonFetch } from '@/config/api'
 import { cleanDescription } from '@/utils/text'
 import { useDesignFlow } from '@/composables/useDesignFlow'
+import { useAuth } from '@/composables/useAuth'
 import AppNav from '@/components/shell/AppNav.vue'
 import sceneBg from '@/assets/figma/room-bg.png'
 
 const router = useRouter()
+const { user } = useAuth()
+const badImg = reactive({})   // 載入失敗的圖片網址（雲端上傳失敗或網址過期），改顯示「無圖」
+const imgOk = (u) => !!u && !badImg[u]
+const markBad = (u) => { if (u) badImg[u] = true }
 const { startFlow, extraPrompt, selectedStyle, noStyleReference, restoreProject } = useDesignFlow()
 
 const records = ref([])
@@ -54,6 +59,7 @@ const projects = computed(() => {
     const quoted = spaceList.map(s => quoteOf(s.renders[0])).filter(Boolean)
     return {
       id, renders, cover,
+      isOwner: cover.role !== 'editor',   // editor = 被邀請共編
       title: renders[renders.length - 1].title || '未命名設計',
       spaces: spaceList,
       totalRooms,
@@ -210,6 +216,76 @@ function quotationTotal(data) {
   return (data?.furniture_list || []).reduce((sum, item) => sum + (item.candidates?.[0]?.price ?? 0), 0)
 }
 
+// ── 分享與共編：唯讀連結（不用登入）、邀請連結（登入後成為共編者，可輪流編輯、不能刪除）──
+const shareKinds = [
+  { key: 'invite', token: 'invite_token', path: 'invite', icon: '👥', title: '邀請別人一起編輯',
+    hint: '對方登入後點連結就能加入，可以一起修改與生成，但不能刪除設計。' },
+  { key: 'share', token: 'share_token', path: 's', icon: '👁', title: '公開連結（只能看）',
+    hint: '任何人有連結都能查看，不用登入，也不能修改。' },
+]
+const shareOpen = ref(false)
+const onEsc = e => { if (e.key === 'Escape') shareOpen.value = false }
+onMounted(() => window.addEventListener('keydown', onEsc))
+onBeforeUnmount(() => window.removeEventListener('keydown', onEsc))
+const shareProject = ref(null)   // 卡片與詳情頁都能開分享，所以不綁 openProject
+const sharing = ref(null)
+const shareBusy = ref(false)
+const shareError = ref('')
+const copied = ref('')
+
+let shareSeq = 0   // 只採用最後一次請求的回應，避免切換設計時舊回應蓋掉新的
+async function shareRequest(call) {
+  const seq = ++shareSeq
+  shareBusy.value = true
+  shareError.value = ''
+  try {
+    const res = await call()
+    if (!res.ok) throw new Error(res.status)
+    const data = await res.json()
+    if (seq === shareSeq) sharing.value = data
+  } catch {
+    if (seq === shareSeq) shareError.value = '操作失敗，請稍後再試'
+  } finally {
+    if (seq === shareSeq) shareBusy.value = false
+  }
+}
+const sharingUrl = () => `/api/projects/${shareProject.value.id}/sharing`
+function openShare(p) {
+  shareProject.value = p
+  shareOpen.value = true
+  sharing.value = null
+  shareRequest(() => authFetch(sharingUrl()))
+}
+function stopShare(k) {
+  if (confirm(`停用後，已經傳出去的連結會立刻失效。確定停用「${k.title}」？`)) toggleShare(k, false)
+}
+const toggleShare = (k, on) => shareRequest(() => jsonFetch(sharingUrl(), { [k.key]: on }, 'PUT'))
+const linkOf = k => new URL(router.resolve(`/${k.path}/${sharing.value[k.token]}`).href, location.origin).href
+let copiedTimer
+async function copyLink(k) {
+  try {
+    await navigator.clipboard.writeText(linkOf(k))
+    copied.value = k.key
+    clearTimeout(copiedTimer)
+    copiedTimer = setTimeout(() => { copied.value = '' }, 1500)
+  } catch {
+    shareError.value = '無法自動複製，請手動選取連結'
+  }
+}
+async function removeMember(m) {
+  if (!confirm(`確定移除 ${m.email || '這位成員'}？`)) return
+  const res = await authFetch(`/api/projects/${shareProject.value.id}/members/${m.user_id}`, { method: 'DELETE' }).catch(() => null)
+  if (!res?.ok) { shareError.value = '移除失敗，請稍後再試'; return }
+  shareRequest(() => authFetch(sharingUrl()))
+}
+async function leaveProject(p) {
+  if (!confirm(`確定退出「${p.title}」？退出後需要重新取得邀請才能再編輯。`)) return
+  const res = await authFetch(`/api/projects/${p.id}/members/${user.value.id}`, { method: 'DELETE' }).catch(() => null)
+  if (!res?.ok) { alert('退出失敗，請稍後再試'); return }   // 詳情視窗蓋住頁面錯誤列，所以用 alert
+  records.value = records.value.filter(r => (r.project_id || r.task_id) !== p.id)
+  closeDetail()
+}
+
 // ── 繼續編輯：整層設計從雲端還原平面圖與每間房的結果，落在整層總覽 ──
 const restoring = ref(false)
 const isCadProject = (p) => !!p?.cover?.cad_summary
@@ -253,7 +329,7 @@ function reuseDesign(r) {
       <div v-if="loading" class="grid" aria-busy="true">
         <div v-for="n in 6" :key="n" class="card skeleton"></div>
       </div>
-      <div v-else-if="projects.length === 0" class="empty-state">
+      <div v-else-if="projects.length === 0 && !error" class="empty-state">
         <p>還沒有任何設計</p>
         <p class="empty-hint">每次生成的設計都會自動存在這裡。</p>
         <button class="db-btn" @click="router.push('/start')">開始新的設計</button>
@@ -263,18 +339,19 @@ function reuseDesign(r) {
         <article v-for="p in projects" :key="p.id" class="card" @click="openDetail(p)">
           <div :class="['card-img-wrap', { mosaic: p.spaces.length > 1 }]">
             <div class="main-cell">
-              <img v-if="p.cover.generated_image_url" :src="p.cover.generated_image_url" alt="" class="card-img" loading="lazy" />
+              <img v-if="imgOk(p.cover.generated_image_url)" :src="p.cover.generated_image_url" alt="" class="card-img" loading="lazy" @error="markBad(p.cover.generated_image_url)" />
               <div v-else class="card-no-img">無圖</div>
             </div>
             <div v-if="p.spaces.length > 1" class="side-col">
               <div v-for="(s, i) in p.spaces.slice(1, 3)" :key="s.id" class="side-cell" :title="s.name">
-                <img v-if="s.renders[0].generated_image_url" :src="s.renders[0].generated_image_url" alt="" class="card-img" loading="lazy" />
+                <img v-if="imgOk(s.renders[0].generated_image_url)" :src="s.renders[0].generated_image_url" alt="" class="card-img" loading="lazy" @error="markBad(s.renders[0].generated_image_url)" />
                 <span v-if="i === 1 && p.spaces.length > 3" class="more">+{{ p.spaces.length - 3 }}</span>
               </div>
             </div>
             <span v-if="projectStatus(p)" :class="['status', projectStatus(p).cls]">{{ projectStatus(p).text }}</span>
+            <span v-if="!p.isOwner" class="shared-tag">共編</span>
             <button
-              type="button" class="del-btn" title="刪除整個設計" :disabled="deleting"
+              v-if="p.isOwner" type="button" class="del-btn" title="刪除整個設計" :disabled="deleting"
               @click.stop="deleteProject(p)"
             >✕</button>
           </div>
@@ -290,6 +367,15 @@ function reuseDesign(r) {
                 <button type="button" class="icon-btn" title="查看詳情" aria-label="查看詳情" @click.stop="openDetail(p)">
                   <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
                     <path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12Z" /><circle cx="12" cy="12" r="3" />
+                  </svg>
+                </button>
+                <button
+                  v-if="p.isOwner" type="button" class="icon-btn" title="分享與共編" aria-label="分享與共編"
+                  @click.stop="openShare(p)"
+                >
+                  <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                    <circle cx="18" cy="5" r="3" /><circle cx="6" cy="12" r="3" /><circle cx="18" cy="19" r="3" />
+                    <path d="m8.6 13.5 6.8 4M15.4 6.5l-6.8 4" />
                   </svg>
                 </button>
                 <button
@@ -325,7 +411,7 @@ function reuseDesign(r) {
         <div v-if="activeRender" class="panel-body">
           <div class="viewer">
             <div class="stage">
-              <img v-if="mainImage" :src="mainImage" alt="" :class="['main-img', { cover: mainImage === activeRender.generated_image_url }]" title="點擊放大" @click="zoomed = true" />
+              <img v-if="imgOk(mainImage)" :src="mainImage" @error="markBad(mainImage)" alt="" :class="['main-img', { cover: mainImage === activeRender.generated_image_url }]" title="點擊放大" @click="zoomed = true" />
               <div v-else class="card-no-img">無圖</div>
               <div v-if="imageKinds.length > 1" class="kinds">
                 <button
@@ -340,7 +426,7 @@ function reuseDesign(r) {
                 :class="['ver', { on: r.task_id === activeRender.task_id }]"
                 :title="formatTime(r.timestamp)" @click="activeTaskId = r.task_id; imgKind = 'render'"
               >
-                <img v-if="r.generated_image_url" :src="r.generated_image_url" alt="" />
+                <img v-if="imgOk(r.generated_image_url)" :src="r.generated_image_url" alt="" @error="markBad(r.generated_image_url)" />
                 <span>{{ i === 0 ? '最新' : formatTime(r.timestamp).slice(5) }}</span>
               </button>
             </div>
@@ -359,7 +445,9 @@ function reuseDesign(r) {
                 :disabled="restoring" @click="continueEditing(openProject)"
               >{{ restoring ? '載入中…' : '繼續編輯' }}</button>
               <button type="button" class="db-btn db-btn--ghost db-btn--sm" @click="reuseDesign(activeRender)">再設計一次</button>
-              <button type="button" class="link-btn" :disabled="deleting" @click="deleteRender(activeRender)">刪除這張</button>
+              <button v-if="openProject.isOwner" type="button" class="db-btn db-btn--ghost db-btn--sm" @click="openShare(openProject)">分享</button>
+              <button v-if="openProject.isOwner" type="button" class="link-btn" :disabled="deleting" @click="deleteRender(activeRender)">刪除這張</button>
+              <button v-else type="button" class="link-btn" @click="leaveProject(openProject)">退出共編</button>
             </div>
 
             <div class="quotation">
@@ -391,6 +479,52 @@ function reuseDesign(r) {
       </div>
     </div>
 
+    <!-- 分享與共編（只有擁有者） -->
+    <div v-if="shareOpen" class="overlay" @click.self="shareOpen = false">
+      <div class="panel share-panel" role="dialog" aria-modal="true" :aria-label="`分享 ${shareProject?.title}`">
+        <header class="panel-head">
+          <h2>分享「{{ shareProject?.title }}」</h2>
+          <button type="button" class="x" aria-label="關閉" @click="shareOpen = false">✕</button>
+        </header>
+        <p v-if="shareError" class="db-error">{{ shareError }}</p>
+        <div v-if="sharing" class="share-body">
+          <section v-for="k in shareKinds" :key="k.key" class="share-card">
+            <div class="share-head">
+              <span class="share-ico" aria-hidden="true">{{ k.icon }}</span>
+              <div>
+                <strong>{{ k.title }}</strong>
+                <p>{{ k.hint }}</p>
+              </div>
+            </div>
+            <button
+              v-if="!sharing[k.token]" type="button" class="db-btn db-btn--sm share-create"
+              :disabled="shareBusy" @click="toggleShare(k, true)"
+            >建立連結</button>
+            <template v-else>
+              <div class="share-link">
+                <input readonly :value="linkOf(k)" aria-label="連結" @focus="$event.target.select()" />
+                <button type="button" class="db-btn db-btn--sm" @click="copyLink(k)">{{ copied === k.key ? '✓ 已複製' : '複製連結' }}</button>
+              </div>
+              <button type="button" class="link-btn share-stop" :disabled="shareBusy" @click="stopShare(k)">停用這個連結</button>
+            </template>
+          </section>
+
+          <section v-if="sharing.invite_token || sharing.members.length" class="share-card">
+            <strong>已加入的共編者（{{ sharing.members.length }}）</strong>
+            <p v-if="!sharing.members.length" class="share-empty">還沒有人加入，把上面的邀請連結傳給對方吧。</p>
+            <ul v-else class="members">
+              <li v-for="m in sharing.members" :key="m.user_id">
+                <span class="avatar" aria-hidden="true">{{ (m.email || '?')[0].toUpperCase() }}</span>
+                <span class="member-name">{{ m.email || m.user_id.slice(0, 8) }}</span>
+                <button type="button" class="link-btn" :disabled="shareBusy" @click="removeMember(m)">移除</button>
+              </li>
+            </ul>
+          </section>
+        </div>
+        <p v-else-if="!shareError" class="q-hint" aria-busy="true">載入中…</p>
+      </div>
+    </div>
+
     <div v-if="zoomed && mainImage" class="lightbox" @click="zoomed = false">
       <img :src="mainImage" alt="" />
     </div>
@@ -407,6 +541,25 @@ function reuseDesign(r) {
 }
 .count { font-size: 0.85rem; color: var(--db-text-soft); font-style: normal; }
 .err { margin: 0 0 1rem; }
+.shared-tag {
+  position: absolute; top: 10px; left: 10px; padding: 0.15rem 0.6rem; border-radius: var(--db-radius-pill);
+  background: rgba(255, 255, 255, 0.92); font-size: 0.75rem; color: var(--db-text);
+}
+.share-panel { width: min(520px, 100%); }
+.share-body { display: flex; flex-direction: column; gap: 0.9rem; }
+.share-card { display: flex; flex-direction: column; gap: 0.7rem; padding: 1rem 1.1rem; border: 1px solid #ececec; border-radius: var(--db-radius-chip); background: #fff; }
+.share-head { display: flex; gap: 0.8rem; align-items: flex-start; }
+.share-head p { margin: 0.2rem 0 0; font-size: 0.85rem; line-height: 1.5; color: var(--db-text-soft); }
+.share-ico { display: grid; place-items: center; flex: 0 0 40px; height: 40px; border-radius: 50%; background: var(--db-chip-soft); font-size: 1.15rem; }
+.share-create { align-self: flex-start; }
+.share-link { display: flex; gap: 0.5rem; }
+.share-link input { flex: 1; min-width: 0; padding: 0.5rem 0.7rem; border: 1px solid #d8d4cb; border-radius: 8px; background: var(--db-chip-soft); font-size: 0.85rem; }
+.share-stop { align-self: flex-start; padding: 0; }
+.share-empty { margin: 0; font-size: 0.85rem; color: var(--db-text-soft); }
+.members { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 0.5rem; }
+.members li { display: flex; align-items: center; gap: 0.6rem; font-size: 0.9rem; }
+.member-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.avatar { display: grid; place-items: center; width: 30px; height: 30px; border-radius: 50%; background: var(--db-accent); color: var(--db-on-accent); font-size: 0.85rem; flex-shrink: 0; }
 
 .empty-state { text-align: center; color: var(--db-text-soft); padding: 4rem 0; }
 .empty-hint { font-size: 0.88rem; color: var(--db-placeholder); margin: 0 0 1rem; }

@@ -3,11 +3,12 @@ import uuid
 from pathlib import Path
 from typing import Optional, List
 
-from fastapi import APIRouter, HTTPException
-from pydantic import BaseModel
+from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel, Field
 
 from routers.common import (
     DesignRequest, _artifact_url, _build_user_input, _layout_render_config, _require_artifact_file,
+    check_request_paths, get_user_id,
 )
 
 router = APIRouter()
@@ -38,7 +39,7 @@ class RoomProgramRequest(BaseModel):
 
 
 @router.post("/api/generate-layout")
-def generate_layout(request: LayoutRequest):
+def generate_layout(request: LayoutRequest, user_id: str = Depends(get_user_id)):
     """Step 1: 根據坪數、家具清單生成 2D 平面配置圖。"""
     import math
     import uuid as _uuid
@@ -176,7 +177,7 @@ class ParseFloorPlanRequest(BaseModel):
 
 
 @router.post("/api/parse-floor-plan")
-def parse_floor_plan(request: ParseFloorPlanRequest):
+def parse_floor_plan(request: ParseFloorPlanRequest, user_id: str = Depends(get_user_id)):
     """Step 1（上傳）：用 Gemini 視覺解析使用者上傳的 2D 平面圖，抽出家具座標，
     回傳與 /api/generate-layout 相同形狀的結果，讓上傳圖也能走精準的佈局管線。"""
     import math
@@ -190,9 +191,13 @@ def parse_floor_plan(request: ParseFloorPlanRequest):
         if request.room_w and request.room_d:
             width, depth = round(request.room_w, 1), round(request.room_d, 1)
         else:
+            # 長寬比跟著上傳圖（單房裁切圖）走，不套固定 5:4，免得細長的房間被畫成方的
+            from PIL import Image
+            with Image.open(request.image_path) as im:
+                aspect = min(2.0, max(0.5, im.width / im.height))
             total_m2 = request.space_size_ping * 3.306
-            width = round(math.sqrt(total_m2 * 5 / 4), 1)
-            depth = round(math.sqrt(total_m2 * 4 / 5), 1)
+            width = round(math.sqrt(total_m2 * aspect), 1)
+            depth = round(math.sqrt(total_m2 / aspect), 1)
 
         task_id = str(_uuid.uuid4())
         scene_graph = parse_floor_plan_image(
@@ -235,10 +240,11 @@ def parse_floor_plan(request: ParseFloorPlanRequest):
 
 class DetectRoomsRequest(BaseModel):
     image_path: str
+    total_ping: Optional[float] = Field(None, gt=0, le=500)   # 使用者輸入的整戶坪數；有給就以它換算比例尺
 
 
 @router.post("/api/detect-rooms")
-def detect_rooms(request: DetectRoomsRequest):
+def detect_rooms(request: DetectRoomsRequest, user_id: str = Depends(get_user_id)):
     """整戶平面圖上傳後，先抓出每個房間的邊界框，讓使用者選要看哪一間。"""
     _require_artifact_file(request.image_path)
 
@@ -247,17 +253,40 @@ def detect_rooms(request: DetectRoomsRequest):
 
         rooms = detect_rooms_in_floor_plan(request.image_path) or []
         plan = None
-        # 整戶圖（多間房、有切割輪廓）：另外給一份整層流程格式的資料，前端接進整層進度
-        if len(rooms) > 1 and all(r.get("polygon") for r in rooms):
+        # 整戶圖（多間房）：另外給一份整層流程格式的資料，前端接進整層進度（沒有輪廓就用方框）
+        if len(rooms) > 1:
             from designbridge.layout.floorplan_upload_plan import build_upload_plan
 
-            plan = build_upload_plan(request.image_path, rooms)
+            plan = build_upload_plan(request.image_path, rooms, request.total_ping)
             plan["svg_url"] = _artifact_url(plan["svg_path"])
-        return {"rooms": rooms, "plan": plan}
+        # 整層或單間：切出多間房就是整層圖；只有一間就是單間；一間都沒有則未知（前端另有出口）
+        plan_kind = "whole_floor" if len(rooms) > 1 else ("single_room" if rooms else "unknown")
+        return {"rooms": rooms, "plan": plan, "plan_kind": plan_kind}
     except Exception as e:
         import traceback
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))
+
+
+class RescalePlanRequest(BaseModel):
+    plan: dict                 # detect-rooms 回傳的 plan（svg_markup 可省略）
+    total_ping: float
+
+
+@router.post("/api/rescale-upload-plan")
+def rescale_upload_plan_endpoint(request: RescalePlanRequest):
+    """使用者校正總坪數：整張上傳平面圖等比例重算尺寸並重畫，不重跑房間辨識。"""
+    from designbridge.layout.floorplan_upload_plan import rescale_upload_plan
+
+    if not 1 <= request.total_ping <= 500:
+        raise HTTPException(status_code=422, detail="坪數需介於 1 到 500")
+    _require_artifact_file(request.plan.get("image_path", ""))
+    try:
+        plan = rescale_upload_plan(request.plan, request.total_ping)
+    except (KeyError, ValueError, TypeError, AttributeError) as e:
+        raise HTTPException(status_code=422, detail=f"平面圖資料不完整：{e}")
+    plan["svg_url"] = _artifact_url(plan["svg_path"])
+    return plan
 
 
 class CropFloorPlanRequest(BaseModel):
@@ -355,10 +384,11 @@ def render_floor_plan(request: FloorPlanRenderRequest):
 
 
 @router.post("/api/plan-layout")
-def plan_layout(request: DesignRequest):
+def plan_layout(request: DesignRequest, user_id: str = Depends(get_user_id)):
     """只跑 RA + 視覺前處理 + layout_agent，不生圖——給前端 3D 佈局預覽用，讓使用者能在
     真正花時間/花錢生圖之前先確認佈局。回傳的 dict 可以原樣塞進 /api/generate 的 `plan`
     欄位，跳過這裡已經做過的事，直接進 renderer。"""
+    check_request_paths(request)
     try:
         from designbridge.core.nodes import (
             requirement_analyzer, visual_preprocessing_local,

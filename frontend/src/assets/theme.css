@@ -208,3 +208,9 @@
   color: var(--db-danger);
   font-size: 0.9rem;
 }
+
+/* CAD 平面圖 SVG 的尺寸細節（plan-detail）：手機寬度縮小後看不清，只會雜亂。
+   縮圖（CadRoomMiniMap）自己有規則；這裡處理房型設定頁等直接內嵌的平面圖 */
+@media (max-width: 640px) {
+  .plan-detail { display: none; }
+}

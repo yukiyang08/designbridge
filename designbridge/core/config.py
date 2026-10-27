@@ -1,5 +1,5 @@
 # designbridge/config.py
-"""DesignBridge 設定：憑證與模型名走環境變數；ControlNet 調參的來由見 docs/CONTROLNET_PARAM_TEST.md。"""
+"""DesignBridge 設定：憑證與模型名走環境變數；ControlNet 調參的來由見 docs/experiments/CONTROLNET_PARAM_TEST.md。"""
 
 import os
 from pathlib import Path

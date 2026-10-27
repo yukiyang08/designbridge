@@ -164,4 +164,25 @@ function pick(source) {
 @media (prefers-reduced-motion: reduce) {
   .entry:hover { transform: none; }
 }
+/* 手機：三張大卡改成橫向小列（縮圖在左、標題與說明在右），一屏看得到全部入口 */
+@media (max-width: 640px) {
+  .prompt { padding: 0 1rem; font-size: 1.5rem; }
+  .cards { gap: 0.75rem; }
+  .entry {
+    display: grid;
+    grid-template-columns: 96px 1fr;
+    grid-template-areas: "t h" "t d";
+    align-items: center;
+    gap: 0.2rem 1rem;
+    padding: 0.9rem 1rem;
+    text-align: left;
+  }
+  .thumb-wrap { grid-area: t; min-height: 0; }
+  .thumb { max-height: 80px; }
+  .title { grid-area: h; flex-direction: row; flex-wrap: wrap; column-gap: 0.3rem; font-size: 1.1rem; }
+  .desc {
+    grid-area: d; max-width: none; font-size: 0.8rem; line-height: 1.5;
+    display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+  }
+}
 </style>

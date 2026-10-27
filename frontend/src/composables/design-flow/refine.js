@@ -29,7 +29,8 @@ export function undoRefine() {
   const { from } = refineHistory.value.pop()
   lastGeneratedImage.value = from
   // 耗時紀錄也退回上一版：拿掉最後一輪微調
-  const runs = result.value?.timing_runs || []
+  let runs = result.value?.timing_runs || []
+  if (runs.at(-1)?.kind === 'quotation') runs = runs.slice(0, -1)   // 微調後那張圖的估價
   const timing_runs = runs.at(-1)?.kind === 'refine' ? runs.slice(0, -1) : runs
   result.value = { ...(result.value || {}), generated_image_path: from.path, generated_image_url: from.url, quotation_result: null, timing_runs }
   if (planSource.value === 'cad' && cadActiveRoomId.value) snapshotCurrentCadRoom()

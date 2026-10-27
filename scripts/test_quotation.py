@@ -61,28 +61,22 @@ def test_clip_embedding():
     """測試 CLIP embedding（不需要圖片，用隨機向量模擬）。"""
     print()
     print("=" * 60)
-    print("【測試 2】本地 numpy 向量搜尋（ikea_embeddings.npz）")
+    print("【測試 2】Supabase 向量搜尋（match_ikea_products）")
     print("=" * 60)
 
     import numpy as np
-    from designbridge.pricing.furniture_kb import find_top_k_by_embedding, _load_embeddings, _load_local_kb
-
-    matrix = _load_embeddings()
-    kb = _load_local_kb()
-
-    if matrix is None:
-        print("⚠️  ikea_embeddings.npz 不存在，跳過向量搜尋測試")
-        print("   執行以下指令建立：python scripts/build_ikea_embeddings.py")
-        return False
-
-    print(f"✅ embedding 矩陣：{matrix.shape}，與 KB({len(kb)}) 對應")
+    from designbridge.pricing.furniture_kb import find_top_k_by_embedding
 
     # 用隨機向量模擬 CLIP query
     rng = np.random.default_rng(42)
     fake_emb = rng.random(512).astype("float32")
     fake_emb /= np.linalg.norm(fake_emb)
 
-    hits = find_top_k_by_embedding(fake_emb.tolist(), category="sofa", top_k=3)
+    try:
+        hits = find_top_k_by_embedding(fake_emb.tolist(), category="sofa", top_k=3)
+    except RuntimeError as e:
+        print(f"  向量搜尋服務不可用：{e}")
+        return False
     if hits:
         print(f"  隨機查詢（category=sofa）→ top-3:")
         for h in hits:

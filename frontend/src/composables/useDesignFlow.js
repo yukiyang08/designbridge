@@ -55,7 +55,7 @@ import {
   retryPlanParse, parseAsSingleRoom, continueWithoutFurniture,
 } from './design-flow/layout'
 import { applyToRooms, cancelCadBatch } from './design-flow/cadBatch'
-import { submitRoomProgram, fetchRoomPlan, handleCadRoomSelected, jumpToCadRoom, abandonCadRoom, setOpeningEdit } from './design-flow/cad'
+import { submitRoomProgram, rescaleUploadedPlan, fetchRoomPlan, handleCadRoomSelected, jumpToCadRoom, abandonCadRoom, setOpeningEdit } from './design-flow/cad'
 import { submitPhoto, submit3D, swapStyle, restoreOriginal, generatePanorama } from './design-flow/render'
 import { handleMaskReady, submitRefine, undoRefine, canUndoRefine, refining } from './design-flow/refine'
 import { fetchQuotation, quoteRooms } from './design-flow/quotation'
@@ -75,7 +75,7 @@ export function useDesignFlow() {
     detectedRooms, handleRoomSelected,
     planParseIssue, retryPlanParse, parseAsSingleRoom, continueWithoutFurniture,
     // CAD 房型生成
-    cadCounts, cadTotalPing, cadRoomW, cadRoomD, cadExtraRooms, cadPlanResult, submitRoomProgram, fetchRoomPlan, handleCadRoomSelected,
+    cadCounts, cadTotalPing, cadRoomW, cadRoomD, cadExtraRooms, cadPlanResult, submitRoomProgram, rescaleUploadedPlan, fetchRoomPlan, handleCadRoomSelected,
     cadActiveRoomId, cadRoomStatus, jumpToCadRoom, abandonCadRoom,
     cadBatch, cadBatchRunning, cadRoomSnapshots, cadRendering, applyToRooms, cancelCadBatch,
     cadOverview, cadQuoting, quoteRooms, restoreProject,
