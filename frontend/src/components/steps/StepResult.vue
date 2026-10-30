@@ -353,6 +353,11 @@ function toFavoriteItem(item, c) {
             <img v-if="imageUrl" :src="imageUrl" alt="生成的 3D 渲染圖" class="result-img" />
             <p v-else class="no-img">生成完成，但沒有取得圖片 URL。</p>
 
+            <div v-if="swappingStyle" class="swap-overlay" role="status">
+              <div class="pano-spinner"></div>
+              <p>風格變換中…</p>
+            </div>
+
             <!-- 右上角：直接在圖上編輯／全螢幕編輯 -->
             <div v-if="imageUrl && result.task_id" class="img-tools">
               <button type="button" :disabled="swappingStyle" @click="startEdit(false)">✎ 編輯</button>
@@ -426,6 +431,7 @@ function toFavoriteItem(item, c) {
                   :alt="opt.name"
                 />
                 <span v-else class="swap-thumb-empty">＋</span>
+                <span v-if="styleSwapCache[opt.value]" class="swap-done" aria-label="已生成">✓</span>
               </span>
               <span class="swap-label">{{ opt.name }}</span>
             </button>
@@ -871,7 +877,13 @@ function toFavoriteItem(item, c) {
   cursor: pointer;
 }
 @media (prefers-reduced-motion: reduce) { .pano-spinner { animation: none; } }
-.result-stage.is-swapping .result-img { opacity: 0.5; transition: opacity 0.16s; }
+.result-stage.is-swapping .result-img { opacity: 0.5; filter: blur(4px); transition: opacity 0.16s, filter 0.16s; }
+.swap-overlay {
+  position: absolute; inset: 0; z-index: 2;
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 0.6rem;
+  line-height: 1.4; color: var(--db-text); font-weight: 600; pointer-events: none;
+}
+.swap-overlay p { margin: 0; padding: 0.3rem 0.9rem; border-radius: var(--db-radius-pill); background: rgba(255, 255, 255, 0.85); }
 
 .style-swap { margin-top: 0.5rem; }
 .style-swap .sub-title { margin-bottom: 0.6rem; }
@@ -901,7 +913,15 @@ function toFavoriteItem(item, c) {
   transition: border-color 0.16s, box-shadow 0.16s, transform 0.16s;
 }
 .swap-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.swap-thumb { position: relative; }
 .swap-thumb-empty { font-size: 1.4rem; color: var(--db-placeholder); }
+/* 示範圖保持原色讓人看得出風格感，只靠已生成卡片右上角的勾區分 */
+.swap-done {
+  position: absolute; top: 4px; right: 4px;
+  width: 18px; height: 18px; border-radius: 50%;
+  display: grid; place-items: center;
+  background: var(--db-accent); color: #fff; font-size: 0.7rem; line-height: 1;
+}
 .swap-card:hover:not(:disabled) .swap-thumb { border-color: var(--db-accent); }
 .swap-card.generated .swap-thumb { border-style: solid; }
 .swap-card.active .swap-thumb {
