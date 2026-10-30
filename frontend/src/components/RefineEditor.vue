@@ -20,7 +20,7 @@ const {
 
 const hasMask = computed(() => !!refineCanvasRef.value?.hasMask)
 
-// 畫筆、橡皮擦各記自己的大小；平移時不顯示滑桿
+// 畫筆、橡皮擦各記自己的大小
 const size = computed({
   get: () => (drawMode.value === 'erase' ? eraserSize.value : brushSize.value),
   set: (v) => { (drawMode.value === 'erase' ? eraserSize : brushSize).value = v },
@@ -39,7 +39,7 @@ async function onSubmit() {
   await submitRefine()
 }
 const submitLabel = computed(() =>
-  hasMask.value ? '重繪塗抹範圍' : confirmWhole.value ? '確定整張重繪？' : '整張重繪',
+  hasMask.value ? '執行細節調整' : confirmWhole.value ? '確定整張重繪？' : '整張重繪',
 )
 
 function onKey(e) {
@@ -84,12 +84,9 @@ onBeforeUnmount(() => {
         <div class="seg" role="group" aria-label="工具">
           <button type="button" :class="{ active: drawMode === 'draw' }" @click="drawMode = 'draw'">畫筆</button>
           <button type="button" :class="{ active: drawMode === 'erase' }" @click="drawMode = 'erase'">橡皮擦</button>
-          <button type="button" :class="{ active: drawMode === 'pan' }" @click="drawMode = 'pan'">平移</button>
         </div>
-        <template v-if="drawMode !== 'pan'">
-          <input v-model.number="size" type="range" min="5" max="120" step="5" class="re-slider" aria-label="筆刷大小" />
-          <span class="re-size">{{ size }}px</span>
-        </template>
+        <input v-model.number="size" type="range" min="5" max="120" step="5" class="re-slider" aria-label="筆刷大小" />
+        <span class="re-size">{{ size }}px</span>
         <button type="button" class="re-link" :disabled="!hasMask" @click="refineCanvasRef?.clearMask()">清除塗抹</button>
         <button v-if="canUndoRefine" type="button" class="re-link" title="回到微調前的圖片" @click="undoRefine">↶ 還原上一版</button>
       </div>

@@ -760,8 +760,6 @@ function toFavoriteItem(item, c) {
   right: 0.75rem;
   display: flex;
   gap: 0.4rem;
-  opacity: 0;
-  transition: opacity 0.18s;
 }
 .img-tools button {
   height: 2.1rem;
@@ -776,9 +774,6 @@ function toFavoriteItem(item, c) {
 }
 .img-tools button:hover:not(:disabled) { background: rgba(20, 18, 14, 0.92); }
 .img-tools button:disabled { cursor: not-allowed; opacity: 0.6; }
-.stage-img-wrap:hover .img-tools,
-.img-tools:focus-within { opacity: 1; }
-@media (hover: none) { .img-tools { opacity: 1; } }
 
 /* 圖上的「360° 環景模式」：平常隱藏，hover／鍵盤聚焦才出現；觸控裝置常駐 */
 .pano-cta {
