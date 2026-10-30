@@ -165,13 +165,10 @@ class Config:
 
     # ── 佈局 agent 與投影 ───────────────────────────────────────────────
     ARTIFACTS_DIR: str = os.getenv("DESIGNBRIDGE_ARTIFACTS_DIR", "artifacts")
-    LAYOUT_MAX_ITER: int = int(os.getenv("DESIGNBRIDGE_LAYOUT_MAX_ITER", "3"))
     # 幾何優化器在 LLM 初稿後嘗試的微調次數：幾毫秒的浮點運算，比再問一次 LLM 便宜有效
     LAYOUT_OPTIMIZER_STEPS: int = int(os.getenv("DESIGNBRIDGE_LAYOUT_OPTIMIZER_STEPS", "2000"))
-    LAYOUT_LLM_REFINE: bool = _flag("DESIGNBRIDGE_LAYOUT_LLM_REFINE", "false")
-    STYLE_AGENT: bool = _flag("DESIGNBRIDGE_STYLE_AGENT", "false")
     # 佈局檢查 agent：有風水／動線問題才把報告交回 LLM 決定是否重排，最多一次
-    LAYOUT_REVIEW_AGENT: bool = _flag("DESIGNBRIDGE_LAYOUT_REVIEW_AGENT", "false")
+    LAYOUT_REVIEW_AGENT: bool = _flag("DESIGNBRIDGE_LAYOUT_REVIEW_AGENT", "true")
     ENABLE_LAYOUT_DEPTH_PROJECTION: bool = _flag("DESIGNBRIDGE_ENABLE_LAYOUT_DEPTH_PROJECTION", "true")
     LAYOUT_PHOTO_ANCHORED_DEPTH: bool = _flag("DESIGNBRIDGE_LAYOUT_PHOTO_ANCHORED_DEPTH", "true")
     LAYOUT_CAMERA_EYE_HEIGHT: float = float(os.getenv("DESIGNBRIDGE_LAYOUT_CAMERA_EYE_HEIGHT", "1.5"))  # 只影響家具高度

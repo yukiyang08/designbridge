@@ -281,9 +281,10 @@ def run_layout_agent(
     vision_features: dict[str, Any] | None = None,
     output_size: tuple[int, int] | None = None,
     image_path: str | None = None,
+    extra_hint: str = "",
 ) -> dict[str, Any]:
     """
-    Run layout planning. Returns a partial state dict (scene_graph, intermediate_outputs).
+    Run layout planning. extra_hint：composer 發現佈局與使用者原話不符時帶回來的修正提示。 Returns a partial state dict (scene_graph, intermediate_outputs).
     NOTE: intermediate_outputs is NOT pre-merged — callers must merge with existing state.
     NOTE: layout_prompt only carries what the depth projection cannot express — hanging /
           wall-mounted pieces and the user's explicitly requested additions. Enumerating
@@ -299,7 +300,7 @@ def run_layout_agent(
           mismatched against the render canvas and the uncovered margins render as unconstrained
           (unrelated) content instead of room geometry. Defaults to a square canvas.
     """
-    from designbridge.core.prompts import LAYOUT_AGENT_PROMPT, LAYOUT_REFINEMENT_PROMPT, LAYOUT_REVIEW_PROMPT
+    from designbridge.core.prompts import LAYOUT_AGENT_PROMPT, LAYOUT_REVIEW_PROMPT
     from designbridge.core.timing import log_stage
 
     layout_registry = get_layout_constraint_registry()
@@ -312,7 +313,6 @@ def run_layout_agent(
         or ""
     )
     room_type = meta.get("room_type", "living_room")
-    max_iter = Config.LAYOUT_MAX_ITER
     existing_layout_text = _format_existing_layout(existing_layout)
 
     def _build_prompt(extra: str = "") -> str:
@@ -337,7 +337,7 @@ def run_layout_agent(
     # below is local numpy/pycairo, so if /api/generate-layout feels slow this is where to look.
     try:
         with log_stage("layout_agent.llm_layout", task_id=task_id):
-            items = _call_llm_layout(_build_prompt())
+            items = _call_llm_layout(_build_prompt(extra_hint))
         if not items:
             raise ValueError("empty response")
     except Exception as e:
@@ -454,7 +454,7 @@ def run_layout_agent(
             current = json.dumps({"furniture": [it.to_dict() for it in best_items]}, ensure_ascii=False)
             try:
                 with log_stage("layout_agent.llm_review", task_id=task_id):
-                    verdict = _call_llm_review(_build_prompt() + "\n\n" + LAYOUT_REVIEW_PROMPT.format(
+                    verdict = _call_llm_review(_build_prompt(extra_hint) +"\n\n" + LAYOUT_REVIEW_PROMPT.format(
                         current_layout=current, issues=format_issues(issues),
                     ))
             except Exception as e:
@@ -483,36 +483,6 @@ def run_layout_agent(
                     f"[layout_agent] 重生後問題 {len(issues)} → {len(new_issues)}，"
                     f"score {new_total:.3f}，{'採用' if review_log['accepted'] else '保留原佈局'}"
                 )
-
-    # Optional: fall back to the old LLM refinement when the optimizer cannot reach the
-    # threshold. Off by default — a low score usually means the *initial plan* was wrong
-    # (missing or mis-sized pieces), which another geometric nudge cannot fix either.
-    if Config.LAYOUT_LLM_REFINE and total < SCORE_THRESHOLD:
-        for _ in range(max(0, max_iter - 1)):
-            try:
-                refined = _call_llm_layout(
-                    _build_prompt(LAYOUT_REFINEMENT_PROMPT.format(**scores))
-                )
-            except Exception:
-                break
-            if not refined:
-                break
-            refined = _settle(_bind_companions(refined))
-            refined, _o, _a = _optimize_positions(
-                refined, space_info,
-                _movable_indices(refined, constraints, photo_anchored),
-                steps=Config.LAYOUT_OPTIMIZER_STEPS,
-            )
-            refined = _settle(refined)
-            scores = _score_soft_constraints(refined, space_info)
-            total = _weighted_score(scores)
-            scores_history.append(total)
-            print(f"[layout_agent] llm refine → score={total:.3f}")
-            if total > best_score:
-                best_score = total
-                best_items = _clone(refined)
-            if total >= SCORE_THRESHOLD:
-                break
 
     acceptance_rate = (
         sum(1 for s in scores_history if s >= SCORE_THRESHOLD) / len(scores_history)
