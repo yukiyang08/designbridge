@@ -25,7 +25,8 @@ _cache_stamp: tuple | None = None   # 各品牌資料檔的修改時間，變了
 _supabase_client: Any = None
 
 # CLIP cosine similarity 門檻：低於此值視為「無合適候選」，不硬塞結果
-MIN_SIMILARITY = 0.75
+# 人工標註 75 件：0.70 覆蓋率與 Top-3 都高於 0.75，Top-1 只略低（scripts/eval_quotation_threshold.py）
+MIN_SIMILARITY = 0.70
 
 TABLE = "ikea_products"
 RPC_NAME = "match_ikea_products"

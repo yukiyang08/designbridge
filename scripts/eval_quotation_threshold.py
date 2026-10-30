@@ -314,7 +314,7 @@ def autolabel(args) -> None:
 
 
 LABEL_MIN_SIM = 0.65   # 評估的最低門檻；更低的候選任何門檻都不會推薦，不用標
-REPEAT_COUNT = 25      # 隨機重複出現的候選數，用來算標註者前後一致率
+REPEAT_COUNT = 15      # 隨機重複出現的候選數，用來算標註者前後一致率
 
 
 def labelpage(args) -> None:
@@ -352,7 +352,7 @@ def labelpage(args) -> None:
 
     data = json.dumps(order, ensure_ascii=False)
     total = sum(len(t["cands"]) for t in order)
-    html_text = _LABEL_HTML.replace("__DATA__", data).replace("__TOTAL__", str(total)).replace("__KEY__", path.stem)
+    html_text = _LABEL_HTML.replace("__DATA__", data).replace("__TOTAL__", str(total)).replace("__KEY__", path.stem + "_v2")
     out = path.parent / f"label_{path.stem}.html"
     out.write_text(html_text, encoding="utf-8")
     print(f"✅ {len(tasks)} 件家具、{total} 個判斷（含重複 {len(repeats)} 個）→ {out}")
@@ -377,14 +377,18 @@ main { max-width:1100px; margin:0 auto; padding:16px; }
 .cand .nm { font-size:12px; color:var(--soft); min-height:2.4em; }
 .row { display:flex; gap:6px; } .row button { flex:1; padding:6px 0; border:1px solid var(--line); border-radius:6px; background:#fff; font-size:13px; }
 .row button.on.y { background:var(--ok); border-color:var(--ok); color:#fff; } .row button.on.n { background:var(--no); border-color:var(--no); color:#fff; }
+.bad-btn { margin-top:8px; font-size:12px; padding:4px 10px; border:1px solid var(--line); border-radius:999px; background:#fff; color:var(--soft); }
+.bad-btn.on { background:var(--no); color:#fff; border-color:var(--no); } .task.bad .cands { opacity:.35; pointer-events:none; }
+.cand.todo { border-color:#d9a400; } .todo-tip { font-size:12px; color:#9a7400; }
 nav { display:flex; justify-content:space-between; align-items:center; margin-top:14px; font-size:13px; color:var(--soft); }
 .keys { font-size:12px; color:var(--soft); } kbd { border:1px solid var(--line); border-radius:4px; padding:0 4px; background:#fff; }
 @media (max-width:700px) { .task { grid-template-columns:1fr; } }
 </style></head><body>
 <header><h1>家具推薦標註</h1><div class="bar"><i id="bar"></i></div><span id="count"></span>
-<button class="btn" id="exportBtn">匯出 CSV</button></header>
+<button class="btn" id="jumpBtn">跳到未完成</button><button class="btn" id="exportBtn">匯出 CSV</button><button class="btn" id="clearBtn">清除進度</button></header>
 <div class="rules"><b>命中</b>：商品跟左邊的家具類別相同、造型可以替代（不看顏色）。<b>顏色</b>：商品顏色跟左邊家具接近。
-每件家具的候選都標完會自動跳到下一件。進度自動存在這個瀏覽器。</div>
+左邊裁切圖看不出是什麼家具（或框錯東西）時，按圖下方的「看不出是什麼家具」，這件不計入命中率。
+每件家具的候選都標完會自動跳到下一件。進度自動存在這個瀏覽器；標到一半也可以先匯出 CSV。</div>
 <main><div id="task"></div>
 <nav><button class="btn" id="prev">← 上一件</button><span class="keys">鍵盤：<kbd>1</kbd>/<kbd>2</kbd> 命中/不中、<kbd>3</kbd>/<kbd>4</kbd> 顏色接近/不接近、<kbd>Tab</kbd> 換候選、<kbd>←</kbd><kbd>→</kbd> 換家具</span><button class="btn" id="next">下一件 →</button></nav></main>
 <script>
@@ -393,18 +397,26 @@ let labels = {}; try { labels = JSON.parse(localStorage.getItem(KEY) || "{}"); }
 let idx = 0, focus = 0;
 const keyOf = (t, c) => `${t.id}|${c.k}|${t.repeat ? "r" : "o"}`;
 function save() { try { localStorage.setItem(KEY, JSON.stringify(labels)); } catch (e) {} }
-function doneCount() { return Object.values(labels).filter(v => v.hit !== undefined && v.color !== undefined).length; }
-function firstUnfinished() { const i = TASKS.findIndex(t => t.cands.some(c => !labels[keyOf(t, c)] || labels[keyOf(t, c)].hit === undefined || labels[keyOf(t, c)].color === undefined)); return i < 0 ? 0 : i; }
+const badKey = t => `${t.id}|bad`;
+const isBad = t => !!(labels[badKey(t)] || {}).bad;
+const unfinished = (t, c) => { if (isBad(t)) return false; const v = labels[keyOf(t, c)]; return !v || v.hit === undefined || v.color === undefined; };
+function doneCount() { return TASKS.reduce((n, t) => n + t.cands.filter(c => !unfinished(t, c)).length, 0); }
+function firstUnfinished(from = 0) {
+  // 從目前這件之後往後找，找不到再從頭找（標到一半跳過的候選才找得回來）
+  for (let n = 0; n < TASKS.length; n++) { const i = (from + n) % TASKS.length; if (TASKS[i].cands.some(c => unfinished(TASKS[i], c))) return i; }
+  return -1;
+}
 function render() {
   const t = TASKS[idx]; const n = doneCount();
   document.getElementById("bar").style.width = (100 * n / TOTAL) + "%";
   document.getElementById("count").textContent = `${n} / ${TOTAL}　（第 ${idx + 1} / ${TASKS.length} 件）`;
-  const cands = t.cands.map((c, i) => { const v = labels[keyOf(t, c)] || {};
+  const cands = t.cands.map((c, i) => { const v = labels[keyOf(t, c)] || {}; const todo = unfinished(t, c);
     const b = (f, val, txt, cls) => `<button class="${cls} ${v[f] === val ? "on" : ""}" data-i="${i}" data-f="${f}" data-v="${val}">${txt}</button>`;
-    return `<div class="cand ${i === focus ? "focus" : ""}"><img src="${c.img}" alt=""><div class="nm">${c.name}</div>
+    return `<div class="cand ${i === focus ? "focus" : ""} ${todo && (v.hit !== undefined || v.color !== undefined) ? "todo" : ""}"><img src="${c.img}" alt=""><div class="nm">${c.name}</div>
+      ${todo && (v.hit !== undefined || v.color !== undefined) ? '<div class="todo-tip">還差一項沒標</div>' : ""}
       <div class="row">${b("hit", 1, "命中", "y")}${b("hit", 0, "不中", "n")}</div>
       <div class="row">${b("color", 1, "顏色接近", "y")}${b("color", 0, "不接近", "n")}</div></div>`; }).join("");
-  document.getElementById("task").innerHTML = `<div class="task"><div class="target"><img src="${t.crop}" alt=""><p>${t.name}</p></div><div class="cands">${cands}</div></div>`;
+  document.getElementById("task").innerHTML = `<div class="task ${isBad(t) ? "bad" : ""}"><div class="target"><img src="${t.crop}" alt=""><p>${t.name}</p><button class="bad-btn ${isBad(t) ? "on" : ""}" id="badBtn">看不出是什麼家具</button></div><div class="cands">${cands}</div></div>`;
 }
 function set(i, f, v) {
   const t = TASKS[idx], c = t.cands[i], k = keyOf(t, c);
@@ -414,7 +426,19 @@ function set(i, f, v) {
   if (all && idx < TASKS.length - 1) { idx++; focus = 0; }
   render();
 }
-document.getElementById("task").addEventListener("click", e => { const b = e.target.closest("button[data-f]"); if (b) { focus = +b.dataset.i; set(+b.dataset.i, b.dataset.f, +b.dataset.v); } });
+document.getElementById("task").addEventListener("click", e => {
+  if (e.target.id === "badBtn") { const t = TASKS[idx]; const on = !isBad(t); labels[badKey(t)] = { bad: on }; save();
+    if (on && idx < TASKS.length - 1) { idx++; focus = 0; } render(); return; }
+  const b = e.target.closest("button[data-f]"); if (b) { focus = +b.dataset.i; set(+b.dataset.i, b.dataset.f, +b.dataset.v); } });
+document.getElementById("jumpBtn").onclick = () => {
+  const i = firstUnfinished(idx + 1);
+  if (i < 0) { alert("全部都標完了，可以按「匯出 CSV」"); return; }
+  idx = i; focus = Math.max(0, TASKS[i].cands.findIndex(c => unfinished(TASKS[i], c))); render();
+};
+document.getElementById("clearBtn").onclick = () => {
+  if (!confirm("確定清除全部標註進度？清除前建議先匯出 CSV。")) return;
+  labels = {}; save(); idx = 0; focus = 0; render();
+};
 document.getElementById("prev").onclick = () => { if (idx > 0) { idx--; focus = 0; render(); } };
 document.getElementById("next").onclick = () => { if (idx < TASKS.length - 1) { idx++; focus = 0; render(); } };
 document.addEventListener("keydown", e => {
@@ -426,11 +450,13 @@ document.addEventListener("keydown", e => {
 });
 document.getElementById("exportBtn").onclick = () => {
   const lines = ["item_id,k,hit,color,repeat"];
-  for (const [k, v] of Object.entries(labels)) { const [id, kk, r] = k.split("|"); if (v.hit !== undefined) lines.push([id, kk, v.hit, v.color ?? "", r === "r" ? 1 : 0].join(",")); }
+  for (const [k, v] of Object.entries(labels)) { const [id, kk, r] = k.split("|");
+    if (kk === "bad") { if (v.bad) lines.push([id, 0, "x", "", 0].join(",")); continue; }
+    if (v.hit !== undefined) lines.push([id, kk, v.hit, v.color ?? "", r === "r" ? 1 : 0].join(",")); }
   const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob(["﻿" + lines.join("\n")], { type: "text/csv" }));
   a.download = "labels.csv"; a.click();
 };
-idx = firstUnfinished(); render();
+idx = Math.max(0, firstUnfinished()); render();
 </script></body></html>
 """
 
@@ -447,6 +473,10 @@ def score(args) -> None:
         except (TypeError, ValueError):
             return None
 
+    bad = [r for r in rows if r.get("_bad")]
+    rows = [r for r in rows if not r.get("_bad")]
+    if bad:
+        print(f"裁切圖看不出是什麼家具 {len(bad)} 件，未計入")
     items = []
     for r in rows:
         sims = [num(r.get(f"sim_{k}")) for k in range(1, TOP_K + 1)]
@@ -484,6 +514,8 @@ def _apply_labels(rows: list[dict], path: Path, strict: bool) -> list[dict]:
     """把標註網頁匯出的 labels.csv 填回 hit 欄位；strict 時命中要同時顏色接近。順便印出重複一致率。"""
     with open(path, newline="", encoding="utf-8-sig") as f:
         labels = list(csv.DictReader(f))
+    bad = {l["item_id"] for l in labels if l["hit"] == "x"}
+    labels = [l for l in labels if l["item_id"] not in bad]
     orig = {(l["item_id"], l["k"]): l for l in labels if l["repeat"] == "0"}
     reps = [(orig.get((l["item_id"], l["k"])), l) for l in labels if l["repeat"] == "1"]
     reps = [(o, r) for o, r in reps if o]
@@ -494,6 +526,9 @@ def _apply_labels(rows: list[dict], path: Path, strict: bool) -> list[dict]:
               f"顏色 {same_color / len(reps):.1%}（{same_color}/{len(reps)}）")
     print("命中標準：" + ("嚴格（造型可替代且顏色接近）" if strict else "寬鬆（造型可替代，不看顏色）"))
     for r in rows:
+        if r["item_id"] in bad:
+            r["_bad"] = "1"
+            continue
         for k in range(1, TOP_K + 1):
             l = orig.get((r["item_id"], str(k)))
             if l:
