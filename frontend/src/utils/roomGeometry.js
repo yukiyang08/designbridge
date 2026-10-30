@@ -7,8 +7,8 @@
  *
  * 牆厚跟後端 designbridge/roomplan/constants.py 同步（外牆 20cm / 內牆 10cm）。
  */
-export const WALL_EXTERIOR_M = 0.2
-export const WALL_INTERIOR_M = 0.1
+const WALL_EXTERIOR_M = 0.2
+const WALL_INTERIOR_M = 0.1
 
 const EPS = 1e-3   // 後端座標四捨五入到 4 位小數
 const near = (a, b) => Math.abs(a - b) < EPS

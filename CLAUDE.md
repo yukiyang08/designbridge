@@ -24,7 +24,7 @@ python -m pytest test/test_fengshui_constraints.py -q       # one file
 python -m pytest test/test_x.py::test_name -q               # one test
 ```
 
-No linter/formatter is configured. `.env` needs `GEMINI_API_KEY`, `FAL_KEY`, `HF_TOKEN`, `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY` (see README for what each is for).
+No linter/formatter is configured. `.env` needs `FAL_KEY`, `HF_TOKEN`, `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY` (see README for what each is for). Gemini runs on Vertex AI via `service-account.json` in the repo root; `GEMINI_API_KEY` is only a fallback when that file is absent.
 
 ## Architecture
 
@@ -64,4 +64,4 @@ requirement_analyzer → visual_preprocessing ─┬─ design   → layout_and_
 
 - Source files are CRLF; keep line endings when editing/moving code.
 - `ablation_tests/` is git-ignored (local only); `localtor2.py` and `service-account.json` are ignored because they hold credentials.
-- Tests live in `test/` (plus `requirement_tests/`, `scripts/test_*`); many hit real APIs or need local models, so expect some to be environment-dependent.
+- Tests live in `test/` (plus `scripts/test_*`); many hit real APIs or need local models, so expect some to be environment-dependent.

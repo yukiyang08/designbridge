@@ -128,3 +128,17 @@ docs/experiments/images/controlnet_test/
 camera_angle_tests/
 # IKEA 商品 3D 模型（product_mesh_build 產生，檔案大）
 designbridge/furniture_kb/meshes/
+# 競賽文件相關（本機用，不 push）
+docs/_backup/
+docs/*.docx
+docs/*.pdf
+docs/決賽文件_待改清單.md
+docs/design/fig*.py
+docs/design/fig*.png
+docs/images/mobile/
+# style_kb 工具產生的審圖檔與 YOLO 權重（ultralytics 會自動下載）
+/review.html
+/caption_review.json
+/yolov8n.pt
+# test_models.py 每次跑都會產生的比較圖
+/test/test_picture/run_*/

@@ -757,6 +757,15 @@ def _enforce_semantic_gaps(
     return items
 
 
+def _area_clear(others: list[FurnitureItem], zx: float, zy: float, zw: float, zh: float) -> bool:
+    """矩形區域 (zx, zy, zw, zh) 內沒有任何 others 的家具。"""
+    return all(
+        o.x + o.w <= zx or o.x >= zx + zw or
+        o.y + o.h <= zy or o.y >= zy + zh
+        for o in others
+    )
+
+
 def _enforce_bed_clearance(
     items: list[FurnitureItem], space_info: dict, params: dict
 ) -> list[FurnitureItem]:
@@ -766,18 +775,11 @@ def _enforce_bed_clearance(
     others = [i for i in items if i.type != "bed"]
 
     for bed in beds:
-        def _zone_clear(zx: float, zy: float, zw: float, zh: float) -> bool:
-            return all(
-                o.x + o.w <= zx or o.x >= zx + zw or
-                o.y + o.h <= zy or o.y >= zy + zh
-                for o in others
-            )
-
-        left_ok = bed.x >= side_clearance and _zone_clear(
-            bed.x - side_clearance, bed.y, side_clearance, bed.h
+        left_ok = bed.x >= side_clearance and _area_clear(
+            others, bed.x - side_clearance, bed.y, side_clearance, bed.h
         )
-        right_ok = bed.x + bed.w + side_clearance <= 1.0 and _zone_clear(
-            bed.x + bed.w, bed.y, side_clearance, bed.h
+        right_ok = bed.x + bed.w + side_clearance <= 1.0 and _area_clear(
+            others, bed.x + bed.w, bed.y, side_clearance, bed.h
         )
         if left_ok or right_ok:
             continue
@@ -838,17 +840,10 @@ def _enforce_bunk_bed_ladder_clearance(
     others = [i for i in items if i.type != "bunk_bed"]
 
     for bed in bunk_beds:
-        def _zone_clear(zx: float, zy: float, zw: float, zh: float) -> bool:
-            return all(
-                o.x + o.w <= zx or o.x >= zx + zw or
-                o.y + o.h <= zy or o.y >= zy + zh
-                for o in others
-            )
-
-        top_ok    = bed.y >= LC and _zone_clear(bed.x, bed.y - LC, bed.w, LC)
-        bottom_ok = bed.y + bed.h + LC <= 1.0 and _zone_clear(bed.x, bed.y + bed.h, bed.w, LC)
-        left_ok   = bed.x >= LC and _zone_clear(bed.x - LC, bed.y, LC, bed.h)
-        right_ok  = bed.x + bed.w + LC <= 1.0 and _zone_clear(bed.x + bed.w, bed.y, LC, bed.h)
+        top_ok    = bed.y >= LC and _area_clear(others, bed.x, bed.y - LC, bed.w, LC)
+        bottom_ok = bed.y + bed.h + LC <= 1.0 and _area_clear(others, bed.x, bed.y + bed.h, bed.w, LC)
+        left_ok   = bed.x >= LC and _area_clear(others, bed.x - LC, bed.y, LC, bed.h)
+        right_ok  = bed.x + bed.w + LC <= 1.0 and _area_clear(others, bed.x + bed.w, bed.y, LC, bed.h)
 
         if top_ok or bottom_ok or left_ok or right_ok:
             continue

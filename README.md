@@ -69,8 +69,8 @@ cd frontend && npm install && cd ..
 ```env
 PYTHONUTF8=1
 
-# LLM（call_llm 直連 Gemini）
-# GEMINI_API_KEY=你的_gemini_api_key
+# LLM：走 Vertex AI（GCP）。把 service-account.json 放在專案根目錄即可，不需要 API key
+# 沒有 service-account.json 時才改用直連：GEMINI_API_KEY=你的_gemini_api_key
 
 # 圖片生成：雲端 HF Inference（有 token 就不需要本地 GPU）
 HF_TOKEN=你的_hf_token
@@ -109,8 +109,8 @@ cd frontend && npm run dev
 
 | Key | 申請位置 | 用途 |
 |---|---|---|
-| `GEMINI_API_KEY` | [Google AI Studio](https://makersuite.google.com/app/apikey) | LLM 需求分析 + 動態 routing（直連 Gemini） |
-| `GEMINI_API_KEYS`（選填） | 同上，逗號分隔多組 | `GEMINI_API_KEY` 失敗（額度用盡等）時依序換下一把 |
+| `service-account.json` | GCP 專案的服務帳戶金鑰，放專案根目錄 | LLM 需求分析 + 動態 routing（Vertex AI） |
+| `GEMINI_API_KEY`（備用） | [Google AI Studio](https://makersuite.google.com/app/apikey) | 沒有 service-account.json 時才用的直連方式 |
 | `HF_TOKEN` | [Hugging Face Settings](https://huggingface.co/settings/tokens)（Read 權限）| 雲端圖片生成（Flux/SDXL），免本地 GPU |
 | `SUPABASE_URL` / `SUPABASE_SERVICE_ROLE_KEY` | Supabase 專案設定 | 風格向量庫搜尋 |
 
