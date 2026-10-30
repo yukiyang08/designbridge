@@ -635,17 +635,8 @@ def run_fal_inpainting(
         if mask_img.size != orig_size:
             mask_img = mask_img.resize(orig_size, Image.NEAREST)
 
-        # Debug：把實際傳給 fal.ai 的圖片和遮罩存到本地
-        _debug_dir = out_path.parent / "fal_debug"
-        _debug_dir.mkdir(parents=True, exist_ok=True)
-        original.save(str(_debug_dir / "input_image.png"))
-        mask_img.save(str(_debug_dir / "input_mask.png"))
-        white_px = sum(1 for p in mask_img.getdata() if p > 128)
-        total_px = mask_img.width * mask_img.height
         print(f"[fal] prompt: {prompt[:100]}")
         print(f"[fal] image size: {orig_size}")
-        print(f"[fal] mask white px: {white_px}/{total_px} ({white_px/total_px:.1%})")
-        print(f"[fal] debug files → {_debug_dir}")
 
         def _to_data_url(img: Any) -> str:
             buf = io.BytesIO()
