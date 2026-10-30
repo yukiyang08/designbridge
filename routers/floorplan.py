@@ -67,6 +67,7 @@ def generate_layout(request: LayoutRequest, user_id: str = Depends(get_user_id))
             },
             "space_info": {
                 "estimated_size": {"width": width, "height": 2.8, "depth": depth},
+                "size_source": "user" if request.room_w and request.room_d else "ping",
                 "windows": [{"x": 0.5, "y": 0.0, "w": 0.2, "h": 0.02}],
                 "doors": [{"x": 0.5, "y": 1.0, "w": 0.1, "h": 0.02}],
             },

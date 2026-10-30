@@ -289,22 +289,31 @@ function buildProductMesh(item, roomWidth, roomDepth, fallback, front) {
   return group
 }
 
-function makeLabel(text) {
+function makeLabel(text, sub = '') {
   const canvas = document.createElement('canvas')
-  canvas.width = 256
-  canvas.height = 64
+  canvas.width = 320
+  canvas.height = sub ? 104 : 64
   const ctx = canvas.getContext('2d')
   ctx.fillStyle = 'rgba(0,0,0,0.65)'
-  ctx.fillRect(0, 0, 256, 64)
+  ctx.fillRect(0, 0, canvas.width, canvas.height)
   ctx.fillStyle = '#fff'
   ctx.font = '28px sans-serif'
   ctx.textAlign = 'center'
-  ctx.fillText(text, 128, 42)
+  ctx.fillText(text, 160, 42)
+  if (sub) {
+    ctx.fillStyle = 'rgba(255,255,255,0.75)'
+    ctx.font = '22px sans-serif'
+    ctx.fillText(sub, 160, 82)
+  }
   const texture = new THREE.CanvasTexture(canvas)
   const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: texture, depthTest: false }))
-  sprite.scale.set(0.5, 0.125, 1)
+  sprite.scale.set(0.625, 0.625 * canvas.height / canvas.width, 1)
   return sprite
 }
+
+// 綁到 IKEA 商品的是商品實際尺寸，其餘是標準尺寸估計
+const sizeLabel = (item, w, d) =>
+  `${Math.round(w * 100)} × ${Math.round(d * 100)} cm · ${item.product_id ? 'IKEA 實際尺寸' : '估計尺寸'}`
 
 function disposeScene() {
   if (animId) cancelAnimationFrame(animId)
@@ -444,7 +453,7 @@ function buildScene() {
     // 商品模型的朝向已由 productYaw 決定，跟後端深度投影一致，不吃 item.rotation
     if (!item.product_id && !front) furnitureGroup.rotation.y = THREE.MathUtils.degToRad(item.rotation || 0)
 
-    const label = makeLabel(furnitureLabel(item.type))
+    const label = makeLabel(furnitureLabel(item.type), sizeLabel(item, w, d))
     label.position.set(0, height + 0.15, 0)
     label.visible = false   // hover 才顯示，平常標籤會蓋住家具
     label.userData.dragRoot = furnitureGroup   // 加在 buildFurnitureMesh 的 traverse 之後才 add，要補標記

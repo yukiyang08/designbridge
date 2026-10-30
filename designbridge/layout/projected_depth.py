@@ -20,9 +20,11 @@ def _write_projection_meta(res: dict, task_id: str) -> None:
     """
     meta = res.get("meta") or {}
     instances = meta.get("instances")
-    if not instances:
+    if not instances and not meta.get("alignment"):
         return
-    payload: dict[str, Any] = {"instances": instances}
+    payload: dict[str, Any] = {"instances": instances or []}
+    if meta.get("alignment"):
+        payload["alignment"] = meta["alignment"]
     # 有 IKEA 商品網格時，renderer 靠這三個欄位鎖住家具像素
     if res.get("color_path"):
         payload["color_path"] = res["color_path"]
@@ -183,7 +185,7 @@ def reproject_scene_graph(
         items, space_info, task_id, output_size=output_size or (1024, 1024)
     )
 
-    return {
+    out = {
         **scene_graph,
         "furniture_placements": [item.to_dict() for item in items],
         "floor_plan_path": floor_plan_path,
@@ -191,3 +193,5 @@ def reproject_scene_graph(
         "projected_seg_path": projected_seg_path,
         "projection_mode": projection_mode,
     }
+    out.pop("photo_alignment", None)   # 這裡只走合成相機，留著會是上一次投影的舊結果
+    return out

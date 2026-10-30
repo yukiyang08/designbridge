@@ -6,7 +6,7 @@ import re
 from pathlib import Path
 from typing import Any
 
-from designbridge.layout.layout_items import FURNITURE_SIZES, FurnitureItem, _parse_llm_layout
+from designbridge.layout.layout_items import FURNITURE_SIZES, FurnitureItem, _parse_llm_layout, default_footprint
 from designbridge.layout.layout_enforce import _clip_to_room
 from designbridge.layout.floorplan_render import _generate_floor_plan
 
@@ -111,7 +111,7 @@ def parse_floor_plan_image(
         ftype = str(f.get("type", "default")).lower().replace(" ", "_")
         if ftype not in FURNITURE_SIZES:
             ftype = "default"
-        dw, dh = FURNITURE_SIZES.get(ftype, FURNITURE_SIZES["default"])
+        dw, dh = default_footprint(ftype, room_w, room_d)
         xywh = _box_to_xywh(f)
         if xywh is None:
             continue

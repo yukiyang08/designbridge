@@ -24,7 +24,7 @@ import DesignDetails from '@/components/steps/DesignDetails.vue'
 import TimingPanel from '@/components/TimingPanel.vue'
 import RefineEditor from '@/components/RefineEditor.vue'
 import { useDesignFlow, ASPECT_OPTIONS, ORIGINAL_STYLE_KEY } from '@/composables/useDesignFlow'
-import { spaceInfo, ROOM_TYPE_LABEL } from '@/composables/design-flow/state'
+import { spaceInfo, spaceSize, ROOM_TYPE_LABEL } from '@/composables/design-flow/state'
 import { useFurnitureSelection } from '@/composables/useFurnitureSelection'
 import { API_BASE } from '@/config/api'
 
@@ -72,9 +72,15 @@ const roomTitle = computed(() => {
   const info = spaceInfo()
   // 不排家具路徑沒有平面圖步驟，roomTypeForPlan 沒被設定過，房型要看空間設定選的那個
   const name = planSource.value === 'skip' ? (ROOM_TYPE_LABEL[roomType.value] || info.space_name) : info.space_name
-  const d = info.space_dims
+  const size = spaceSize(result.value)
+  const d = size.dims
   const fmt = n => Math.round(n * 10) / 10
-  return { name, dims: d?.w && d?.d ? `${fmt(d.w)} × ${fmt(d.d)} m` : '' }
+  return {
+    name,
+    dims: d?.w && d?.d ? `${fmt(d.w)} × ${fmt(d.d)} m` : '',
+    estimated: !!size.estimated,
+    sizeNote: size.note || '',
+  }
 })
 // 「自動」對換風格沒有意義（重送同一個 plan、style_profile_id=auto 只會重查一次語意搜尋，
 // 不保證換成別的風格），一鍵換風格只列有固定 LoRA 對應的實際風格。
@@ -220,6 +226,9 @@ function toFavoriteItem(item, c) {
     <header class="room-title">
       <h2 class="room-name">{{ roomTitle.name }}</h2>
       <span v-if="roomTitle.dims" class="room-dims">{{ roomTitle.dims }}</span>
+      <span v-if="roomTitle.dims && roomTitle.estimated" class="size-est">
+        <span class="size-est-tag">估計</span>{{ roomTitle.sizeNote }}，尺寸不準會讓家具比例失真
+      </span>
     </header>
 
     <!-- ══ 尚未生成：描述 + 風格推薦 ══ -->
@@ -486,6 +495,7 @@ function toFavoriteItem(item, c) {
                     <span class="furn-cat">{{ categoryLabel(g.item) }}</span>
                     <a v-if="c.purchase_url" :href="c.purchase_url" target="_blank" rel="noopener" class="name name--link" :title="c.name">{{ shortName(c.name) }}</a>
                     <span v-else class="name" :title="c.name">{{ shortName(c.name) }}</span>
+                    <span v-if="c.size_text" class="furn-size">{{ c.size_text }}</span>
                     <div class="furn-foot">
                       <span class="price">
                         NT$ {{ c.price.toLocaleString() }}
@@ -533,6 +543,7 @@ function toFavoriteItem(item, c) {
                     <img v-if="a.product_image_url" :src="a.product_image_url" :alt="a.name" />
                   </span>
                   <span class="alt-name" :title="a.name">{{ shortName(a.name) }}</span>
+                  <span v-if="a.size_text" class="alt-size">{{ a.size_text }}</span>
                   <span class="alt-price">NT$ {{ a.price.toLocaleString() }}</span>
                 </button>
               </div>
@@ -568,7 +579,7 @@ function toFavoriteItem(item, c) {
 <style scoped>
 .result-step { display: flex; flex-direction: column; }
 
-.room-title { display: flex; align-items: baseline; gap: 0.9rem; margin: 0 0 1rem; }
+.room-title { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0.9rem; margin: 0 0 1rem; }
 .room-name {
   margin: 0;
   font-family: var(--db-font-display);
@@ -578,6 +589,14 @@ function toFavoriteItem(item, c) {
   color: var(--db-text);
 }
 .room-dims { color: var(--db-text-soft); font-size: 1rem; font-variant-numeric: tabular-nums; }
+.size-est { display: inline-flex; align-items: baseline; gap: 0.4rem; color: var(--db-text-soft); font-size: 0.78rem; }
+.size-est-tag {
+  padding: 0.05rem 0.45rem;
+  border-radius: var(--db-radius-pill);
+  background: var(--db-chip-soft);
+  color: var(--db-text);
+  font-size: 0.72rem;
+}
 
 .block { display: flex; flex-direction: column; }
 .result-grid { display: block; }
@@ -976,6 +995,7 @@ function toFavoriteItem(item, c) {
 .furn-info { display: flex; flex-direction: column; gap: 0.15rem; flex: 1; min-width: 0; }
 .furn-info .name { font-size: 0.92rem; }
 .furn-cat { font-size: 0.74rem; color: var(--db-text-soft); letter-spacing: 0.04em; }
+.furn-size, .alt-size { font-size: 0.72rem; color: var(--db-text-soft); font-variant-numeric: tabular-nums; }
 /* 價格在左、收藏／換款在右同一行，操作離資訊近、也看得到 */
 .furn-foot { display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; margin-top: 0.1rem; }
 .est {

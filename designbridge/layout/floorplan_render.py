@@ -310,7 +310,9 @@ def _generate_floor_plan(
                 # If enough vertical space show name + dims on separate lines
                 if fh >= 26:
                     text(label, fcx, fcy - 1, size=fs_name, center=True)
-                    dim_str = f"{rw:.2f}×{rd:.2f}m"
+                    # 沒綁 IKEA 商品的是標準尺寸估計值，加 ~ 區分
+                    est = "" if getattr(item, "product_id", "") else "~"
+                    dim_str = f"{est}{rw:.2f}×{rd:.2f}m"
                     ctx.set_source_rgb(0.35, 0.35, 0.35)
                     text(dim_str, fcx, fcy + fs_dim + 2, size=fs_dim, center=True)
                 else:
@@ -343,7 +345,7 @@ def _generate_floor_plan(
         # ── Legend ────────────────────────────────────────────────────
         lx, ly = M + R - 200, M + R + 10
         ctx.set_source_rgb(0.3, 0.3, 0.3)
-        text("D = Door  |  W = Window  |  Grid = 1 m", lx, ly + 30, size=7.5)
+        text("D = Door  |  W = Window  |  Grid = 1 m  |  ~ = est. size", lx - 60, ly + 30, size=7.5)
 
         surface.write_to_png(str(out))
         print(f"[layout_agent] Floor plan saved (pycairo B&W): {out}")

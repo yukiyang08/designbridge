@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Any
 
 from designbridge.core.config import Config
-from designbridge.layout.layout_items import FURNITURE_SIZES, FurnitureItem, _normalize_ftype, _parse_llm_layout
+from designbridge.layout.layout_items import FurnitureItem, _normalize_ftype, _parse_llm_layout, default_footprint, fit_real_size, room_size, size_reference_text
 from designbridge.layout.layout_enforce import _LAYOUT_ENFORCERS, _apply_hard_constraints, _bind_companions, _build_semantic_gap_map, _clip_to_room, _enforce_immutable, _enforce_move_ops, _inject_bunk_bed_ladder, _is_underlay_type, _movable_indices, _optimize_positions, _overlaps, _push_apart, _reattach_companions, _same_group, _score_soft_constraints, _snap_companions, _touched_types, _weighted_score
 from designbridge.layout.floorplan_render import _generate_floor_plan
 from designbridge.layout.projected_depth import _generate_projected_depth
@@ -49,18 +49,36 @@ def _items_from_llm(furniture_list: list[dict]) -> list[FurnitureItem]:
         # LLM 常把同一件家具用不同名字列兩次（"sofa" + "sofa_against_wall"）— 同型別、位置相近就去重
         if any(d.type == ftype and abs(d.x - x) < 0.06 and abs(d.y - y) < 0.06 for d in items):
             continue
-        dw, dh = FURNITURE_SIZES.get(ftype, FURNITURE_SIZES["default"])
+        # 沒給尺寸先填 0，由 _apply_real_sizes 換成標準尺寸（這裡還不知道房間大小）
         items.append(
             FurnitureItem(
                 id=str(f.get("id", f"{ftype}_{len(items)+1}")),
                 type=ftype,
                 x=x,
                 y=y,
-                w=float(f.get("w", dw)),
-                h=float(f.get("h", dh)),
+                w=float(f.get("w", 0.0)),
+                h=float(f.get("h", 0.0)),
                 rotation=float(f.get("rotation", 0)),
             )
         )
+    return items
+
+
+def _apply_real_sizes(items: list[FurnitureItem], room_w: float, room_d: float,
+                      fit: bool) -> list[FurnitureItem]:
+    """LLM 只會用比例粗估尺寸，這裡用公尺標準尺寸校正。
+
+    照片流程不校正：現有家具的 footprint 來自照片本身，改了會跟原圖的深度對不上。
+    """
+    fixed = []
+    for item in items:
+        if fit:
+            if fit_real_size(item, room_w, room_d):
+                fixed.append(f"{item.id} {item.w * room_w:.2f}×{item.h * room_d:.2f}m")
+        elif item.w <= 0 or item.h <= 0:
+            item.w, item.h = default_footprint(item.type, room_w, room_d)
+    if fixed:
+        print(f"[layout_agent] 尺寸校正為實際尺寸：{', '.join(fixed)}")
     return items
 
 
@@ -314,12 +332,18 @@ def run_layout_agent(
     room_type = meta.get("room_type", "living_room")
     max_iter = Config.LAYOUT_MAX_ITER
     existing_layout_text = _format_existing_layout(existing_layout)
+    _fp_room_w, _fp_room_d = room_size(space_info)
+    fit_sizes = not existing_layout
+
+    def _real_sized(seq: list[FurnitureItem]) -> list[FurnitureItem]:
+        return _apply_real_sizes(seq, _fp_room_w, _fp_room_d, fit_sizes)
 
     def _build_prompt(extra: str = "") -> str:
         return LAYOUT_AGENT_PROMPT.format(
             room_type=room_type,
-            width=space_info.get("estimated_size", {}).get("width", 5.0),
-            depth=space_info.get("estimated_size", {}).get("depth", 4.0),
+            width=_fp_room_w,
+            depth=_fp_room_d,
+            size_reference=size_reference_text(),
             windows=_format_openings(space_info.get("windows"), "窗戶"),
             doors=_format_openings(space_info.get("doors"), "門"),
             must_keep=", ".join(constraints.get("must_keep") or []) or "無",
@@ -337,13 +361,13 @@ def run_layout_agent(
     # below is local numpy/pycairo, so if /api/generate-layout feels slow this is where to look.
     try:
         with log_stage("layout_agent.llm_layout", task_id=task_id):
-            items = _call_llm_layout(_build_prompt())
+            items = _real_sized(_call_llm_layout(_build_prompt()))
         if not items:
             raise ValueError("empty response")
     except Exception as e:
         print(f"⚠️ LLM layout failed ({e}), using default layout")
         items = _default_layout(room_type)
-    items = _bind_companions(items)
+    items = _bind_companions(items, space_info)
 
     best_items: list[FurnitureItem] = []
     best_score = -1.0
@@ -364,14 +388,14 @@ def run_layout_agent(
 
     def _settle(seq: list[FurnitureItem]) -> list[FurnitureItem]:
         """Hard constraints and enforcers, in the order that keeps each other's work."""
-        seq = _apply_hard_constraints(seq, constraints)
+        seq = _apply_hard_constraints(seq, constraints, space_info)
         seq = _enforce_move_ops(seq, constraints, space_info)
         immutable = constraints.get("immutable_regions") or []
         if immutable:
             seq = _enforce_immutable(seq, immutable)
         seq = _snap_companions(seq)
         seq = _clip_to_room(seq)
-        seq = _inject_bunk_bed_ladder(seq)
+        seq = _inject_bunk_bed_ladder(seq, space_info)
         seq = _push_apart(seq)
         for card in layout_registry.load():
             fn = _LAYOUT_ENFORCERS.get(card.enforce)
@@ -387,6 +411,17 @@ def run_layout_agent(
         # False on a layout nothing tried to fix.
         seq = _push_apart(seq)
         return _clip_to_room(seq)
+
+    def _violations(seq: list[FurnitureItem]) -> tuple[int, int]:
+        """(碰撞數, 風水/動線檢查罰分)，用來判斷改尺寸有沒有讓佈局變差。"""
+        from designbridge.layout.layout_review import issue_penalty, review_layout
+
+        collisions = sum(
+            1 for i in range(len(seq)) for j in range(i + 1, len(seq))
+            if not (_is_underlay_type(seq[i].type) or _is_underlay_type(seq[j].type))
+            and _overlaps(seq[i], seq[j], margin=0.0 if _same_group(seq[i], seq[j]) else 0.02)
+        )
+        return collisions, issue_penalty(review_layout(seq, structured_requirement, _fp_room_w, _fp_room_d))
 
     # One LLM call for the semantics (which pieces, roughly where), then a numeric search
     # for the geometry. Re-prompting the LLM with five scalars — the old refinement loop —
@@ -440,9 +475,6 @@ def run_layout_agent(
         f"erg={scores['ergonomics']:.2f}"
     )
 
-    size = space_info.get("estimated_size") or {}
-    _fp_room_w = float(size.get("width", 4.0))
-    _fp_room_d = float(size.get("depth", 4.0))
 
     review_log: dict[str, Any] = {}
     if Config.LAYOUT_REVIEW_AGENT:
@@ -463,7 +495,7 @@ def run_layout_agent(
             review_log.update(decision=verdict["decision"], reason=verdict["reason"], accepted=False)
             print(f"[layout_agent] 檢查發現 {len(issues)} 個問題 → LLM：{verdict['decision']}（{verdict['reason']}）")
             if verdict["items"]:
-                revised = _settle(_bind_companions(verdict["items"]))
+                revised = _settle(_bind_companions(_real_sized(verdict["items"]), space_info))
                 revised, _o, _a = _optimize_positions(
                     revised, space_info,
                     _movable_indices(revised, constraints, photo_anchored),
@@ -497,7 +529,7 @@ def run_layout_agent(
                 break
             if not refined:
                 break
-            refined = _settle(_bind_companions(refined))
+            refined = _settle(_bind_companions(_real_sized(refined), space_info))
             refined, _o, _a = _optimize_positions(
                 refined, space_info,
                 _movable_indices(refined, constraints, photo_anchored),
@@ -522,6 +554,23 @@ def run_layout_agent(
         f"[layout_agent] passes={len(scores_history)} "
         f"best={best_score:.3f} acceptance_rate={acceptance_rate:.2%}"
     )
+
+    if Config.ENABLE_PRODUCT_MESHES:
+        # 在畫平面圖前綁 SKU，平面圖、深度圖、3D 預覽都用商品真實尺寸
+        from designbridge.layout.product_meshes import assign_products
+        _pre_assign = _clone(best_items)
+        _before = {it.id: (it.x, it.y, it.w, it.h) for it in best_items}
+        if assign_products(best_items, _fp_room_w, _fp_room_d):
+            # 商品通常比估計的大：跟班貼回主家具後重跑整套硬約束，碰撞或擋門變多就不換
+            assigned = _settle(_reattach_companions(best_items, _before))
+            old_v, new_v = _violations(_pre_assign), _violations(assigned)
+            if new_v[0] > old_v[0] or new_v[1] > old_v[1]:
+                print(f"[layout_agent] 換成商品尺寸後違規變多（碰撞, 罰分 {old_v} → {new_v}），維持原尺寸")
+                best_items = _pre_assign
+            else:
+                best_items = assigned
+                scores = _score_soft_constraints(best_items, space_info)
+                best_score = _weighted_score(scores)
 
     from designbridge.layout.special_constraints import verify_special_constraints
     special_satisfaction = verify_special_constraints(best_items, structured_requirement)
@@ -569,13 +618,6 @@ def run_layout_agent(
         ),
     }
 
-    if Config.ENABLE_PRODUCT_MESHES:
-        # 在畫平面圖前綁 SKU，平面圖、深度圖、3D 預覽都用商品真實尺寸
-        from designbridge.layout.product_meshes import assign_products
-        _before = {it.id: (it.x, it.y, it.w, it.h) for it in best_items}
-        if assign_products(best_items, _fp_room_w, _fp_room_d):
-            # 換成商品尺寸後餐椅可能卡進餐桌，重新貼回主家具旁再解一次碰撞
-            best_items = _clip_to_room(_push_apart(_reattach_companions(best_items, _before)))
     floor_plan_path = _generate_floor_plan(best_items, task_id, room_type, _fp_room_w, _fp_room_d)
 
     preserve_types = _classify_preserved(best_items, constraints)
@@ -631,6 +673,9 @@ def run_layout_agent(
         "feasible": feasible,
         "infeasible_constraints": infeasible_constraints,
     }
+    if str(projection_mode).startswith("photo"):
+        from designbridge.layout.photo_alignment import load_alignment
+        scene_graph["photo_alignment"] = load_alignment(task_id)
 
     return {
         "scene_graph": scene_graph,

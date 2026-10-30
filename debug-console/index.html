@@ -650,6 +650,38 @@ const BACKEND_DESC = {
   placeholder: '⚠️ 所有生圖後端都失敗，回傳的是佔位圖',
 };
 
+function renderAlignment(sg) {
+  const a = sg.photo_alignment;
+  if (!a) {
+    if (!sg.projection_mode) return '';
+    return `<div class="card"><h2>照片對齊檢查</h2>
+      <div class="empty small">這次投影模式是 ${escapeHtml(sg.projection_mode)}，沒有用照片幾何，不需要對齊檢查。
+      （上傳照片且有新增／移動家具時才會走照片錨定投影）</div></div>`;
+  }
+  const pct = v => (v === null || v === undefined) ? '—' : `${Math.round(v * 100)}%`;
+  const url = toArtifactUrl(a.overlay_path);
+  const ok = a.verdict === 'ok';
+  const itemRows = (a.items || []).map(it => `<tr>
+    <td>${escapeHtml(it.id)}</td><td>${it.in_view ? '是' : '否'}</td><td>${pct(it.on_wall)}</td>
+  </tr>`).join('');
+  return `<div class="card">
+    <h2>照片對齊檢查</h2>
+    <div class="kv">
+      <dt>結果</dt><dd><span class="badge ${ok ? 'backend' : 'route'}">${ok ? '✅ 沒發現明顯錯位' : '⚠️ 建議看疊圖'}</span></dd>
+      ${(a.problems || []).map(p => `<dt></dt><dd>${escapeHtml(p)}</dd>`).join('')}
+      <dt>地板落在推算範圍內</dt><dd>${pct(a.floor_in_quad)}（越高越好，低於 80% 代表地板範圍猜小或猜偏）</dd>
+      <dt>推算範圍壓到牆</dt><dd>${pct(a.quad_on_wall)}（越低越好，高於 15% 代表地板範圍爬上牆）</dd>
+      <dt>推算範圍佔畫面</dt><dd>${pct(a.quad_area)}（一般室內照約 30–60%，太小代表整個房間被縮成一角）</dd>
+      <dt>地板深度誤差</dt><dd>${a.floor_depth_mae ?? '—'}（灰階 0–255，越低代表地板斜率猜得越準）</dd>
+      <dt>消失線來源</dt><dd>${escapeHtml(a.horizon_source || '—')}</dd>
+    </div>
+    ${url ? `<figure><img src="${url}" style="max-width:100%">
+      <figcaption>綠＝照片裡的地板　黃框＝推算的地板範圍　青線＝消失線　橘框＝新家具腳印（紅＝壓到牆）</figcaption></figure>` : ''}
+    ${itemRows ? `<table class="ftable"><thead><tr><th>新家具</th><th>在畫面內</th><th>腳印壓到牆</th></tr></thead>
+      <tbody>${itemRows}</tbody></table>` : ''}
+  </div>`;
+}
+
 function renderResults(data) {
   const rr = data.render_result || {};
   const gp = rr.generation_params || {};
@@ -694,6 +726,9 @@ function renderResults(data) {
       </div>
     </div>
   </div>`;
+
+  // 2b. 照片對齊檢查：推算的地板幾何與新家具腳印疊回原照片（只有照片錨定投影才有）
+  html += renderAlignment(data.scene_graph || {});
 
   // 3. Prompt 組合
   const composerUsed = !!gp.composer_used;

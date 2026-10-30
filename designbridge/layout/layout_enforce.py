@@ -5,7 +5,7 @@ from __future__ import annotations
 from functools import lru_cache
 from typing import Any, Callable
 
-from designbridge.layout.layout_items import FURNITURE_SIZES, FurnitureItem, SOFT_WEIGHTS
+from designbridge.layout.layout_items import FurnitureItem, SOFT_WEIGHTS, default_footprint, room_size
 
 
 # ─────────────────────────── Geometry ───────────────────────────
@@ -36,13 +36,31 @@ _COMPANIONS: dict[str, frozenset[str]] = {
     "sofa": frozenset({"coffee_table", "side_table"}),
     "loveseat": frozenset({"coffee_table", "side_table"}),
 }
-_COMPANION_GAP = 0.06   # 歸一化邊距，LLM 初稿裡離主家具這麼近才算同一組
+# LLM 初稿裡離主家具多近（公尺）才算同一組。茶几本來就要隔一段，初稿又常排得更開，
+# 綁不上就會被「每對家具隔 0.6 m」的動線評分推走
+_COMPANION_REACH_M: dict[str, float] = {"coffee_table": 1.2, "side_table": 0.6}
+_COMPANION_REACH_DEFAULT_M = 0.3
+# 綁上後拉到的標準間距（公尺），並對齊主家具中線
+_COMPANION_SET_GAP_M: dict[str, float] = {"coffee_table": 0.45}
 
 
-def _edge_gap(a: FurnitureItem, b: FurnitureItem) -> float:
-    dx = max(a.x - (b.x + b.w), b.x - (a.x + a.w), 0.0)
-    dy = max(a.y - (b.y + b.h), b.y - (a.y + a.h), 0.0)
+def _edge_gap(a: FurnitureItem, b: FurnitureItem, room_w: float = 1.0, room_d: float = 1.0) -> float:
+    dx = max(a.x - (b.x + b.w), b.x - (a.x + a.w), 0.0) * room_w
+    dy = max(a.y - (b.y + b.h), b.y - (a.y + a.h), 0.0) * room_d
     return max(dx, dy)
+
+
+def _set_companion_gap(c: FurnitureItem, a: FurnitureItem, gap_m: float,
+                       room_w: float, room_d: float) -> None:
+    """跟班留在主家具原本那一側，間距拉到 gap_m，沿主家具中線置中。"""
+    dx = (c.x + c.w / 2 - a.x - a.w / 2) * room_w
+    dy = (c.y + c.h / 2 - a.y - a.h / 2) * room_d
+    if abs(dy) >= abs(dx):
+        c.x = a.x + (a.w - c.w) / 2
+        c.y = a.y - gap_m / room_d - c.h if dy < 0 else a.y + a.h + gap_m / room_d
+    else:
+        c.y = a.y + (a.h - c.h) / 2
+        c.x = a.x - gap_m / room_w - c.w if dx < 0 else a.x + a.w + gap_m / room_w
 
 
 def _separate(c: FurnitureItem, a: FurnitureItem, gap: float = 0.01) -> None:
@@ -57,19 +75,25 @@ def _separate(c: FurnitureItem, a: FurnitureItem, gap: float = 0.01) -> None:
         c.y = a.y - gap - c.h if c.y + c.h / 2 < a.y + a.h / 2 else a.y + a.h + gap
 
 
-def _bind_companions(items: list[FurnitureItem]) -> list[FurnitureItem]:
+def _bind_companions(
+    items: list[FurnitureItem], space_info: dict | None = None
+) -> list[FurnitureItem]:
     """依 LLM 初稿把跟班綁到最近的主家具，記下相對位移。"""
+    room_w, room_d = room_size(space_info)
     anchors = [it for it in items if it.type in _COMPANIONS and not it.anchor]
     for it in items:
         if it.anchor or it.pinned or it.type in _COMPANIONS:
             continue
+        reach = _COMPANION_REACH_M.get(it.type, _COMPANION_REACH_DEFAULT_M)
         near = [
-            (_edge_gap(it, a), a) for a in anchors
-            if it.type in _COMPANIONS[a.type] and _edge_gap(it, a) <= _COMPANION_GAP
+            (_edge_gap(it, a, room_w, room_d), a) for a in anchors
+            if it.type in _COMPANIONS[a.type] and _edge_gap(it, a, room_w, room_d) <= reach
         ]
         if near:
             a = min(near, key=lambda t: t[0])[1]
             _separate(it, a)
+            if it.type in _COMPANION_SET_GAP_M:
+                _set_companion_gap(it, a, _COMPANION_SET_GAP_M[it.type], room_w, room_d)
             it.anchor = a.id
             it.offset = (it.x - a.x, it.y - a.y)
     return items
@@ -219,6 +243,8 @@ def _clip_to_room(items: list[FurnitureItem], pad: float = 0.02) -> list[Furnitu
 
 # ─────────────────────────── Soft Constraints ───────────────────────────
 
+_WINDOW_BLOCK_DEPTH_M = 0.3   # 比這淺的（層架、植栽）不算擋光
+
 def _score_soft_constraints(
     items: list[FurnitureItem], space_info: dict
 ) -> dict[str, float]:
@@ -226,9 +252,7 @@ def _score_soft_constraints(
     if n == 0:
         return {k: 0.5 for k in SOFT_WEIGHTS}
 
-    size = space_info.get("estimated_size") or {}
-    room_w = float(size.get("width", 5.0))   # metres
-    room_d = float(size.get("depth", 4.0))
+    room_w, room_d = room_size(space_info)
 
     # Pairwise gaps in physical metres
     gaps_m: list[float] = []
@@ -265,13 +289,26 @@ def _score_soft_constraints(
     # window"), so counting them scores obedience as a defect. Underlays: `h` is depth in
     # plan, not height — a 0.24-deep rug trips the size test while being flat on the floor
     # and physically incapable of blocking anything.
+    # 家具換成實際尺寸後，靠遠牆的櫃子都會超過比例門檻，所以要真的跟窗戶水平重疊才算擋。
     windows = space_info.get("windows") or []
+    far_windows = [
+        (float(w.get("x", 0.5)), float(w.get("x", 0.5)) + float(w.get("w", 0.15)))
+        for w in windows
+        if w.get("wall") == "far" or (w.get("wall") is None and float(w.get("y", 0.0)) <= 0.15)
+    ]
+
+    def _blocks_window(item: FurnitureItem) -> bool:
+        if not far_windows:
+            return True
+        return any(item.x < x1 and item.x + item.w > x0 for x0, x1 in far_windows)
+
     blocking = sum(
         1 for item in items
         if item.y < 0.15
-        and item.h > 0.08
+        and item.h * room_d >= _WINDOW_BLOCK_DEPTH_M
         and not item.pinned
         and not _is_underlay_type(item.type)
+        and _blocks_window(item)
     )
     if windows:
         natural_light = max(0.0, 1.0 - blocking / max(len(windows), 1))
@@ -421,7 +458,7 @@ def _optimize_positions(
 # ─────────────────────────── Hard Constraints ───────────────────────────
 
 def _apply_hard_constraints(
-    items: list[FurnitureItem], constraints: dict
+    items: list[FurnitureItem], constraints: dict, space_info: dict | None = None
 ) -> list[FurnitureItem]:
     """Enforce must_remove / must_add against the LLM's plan.
 
@@ -455,8 +492,9 @@ def _apply_hard_constraints(
     from collections import Counter
     desired = Counter(must_add)
     have = Counter(normalize_furniture_type(item.type) for item in items)
+    room_w, room_d = room_size(space_info)
     for ftype, want in desired.items():
-        w, h = FURNITURE_SIZES.get(ftype, FURNITURE_SIZES["default"])
+        w, h = default_footprint(ftype, room_w, room_d)
         for _ in range(max(0, want - have.get(ftype, 0))):
             # spawn near centre with a small scatter; _push_apart spreads them out
             jitter = 0.02 * len([i for i in items if normalize_furniture_type(i.type) == ftype])
@@ -597,7 +635,7 @@ def _enforce_move_ops(
         matches = [it for it in items if normalize_furniture_type(it.type) == target]
         if not matches:
             # The planner dropped the piece the user asked to relocate — put it back.
-            w, h = FURNITURE_SIZES.get(target, FURNITURE_SIZES["default"])
+            w, h = default_footprint(target, *room_size(space_info))
             restored = FurnitureItem(f"{target}_{len(items) + 1}", target, 0.5, 0.5, w, h)
             items.append(restored)
             matches = [restored]
@@ -826,7 +864,9 @@ def _enforce_bunk_bed_ladder_clearance(
 
 _LADDER_WALL_THRESHOLD = 0.05  # side is "against wall" if bed edge within this distance
 
-def _inject_bunk_bed_ladder(items: list[FurnitureItem]) -> list[FurnitureItem]:
+def _inject_bunk_bed_ladder(
+    items: list[FurnitureItem], space_info: dict | None = None
+) -> list[FurnitureItem]:
     """Place a bunk_ladder item next to each bunk_bed on its clearest floor-accessible side.
 
     Only non-wall sides are considered — the ladder must start from open floor space,
@@ -835,7 +875,7 @@ def _inject_bunk_bed_ladder(items: list[FurnitureItem]) -> list[FurnitureItem]:
     Safe to call every iteration — skips beds that already have a ladder.
     """
     PAD = 0.02
-    base_lw, base_lh = FURNITURE_SIZES["bunk_ladder"]
+    base_lw, base_lh = default_footprint("bunk_ladder", *room_size(space_info))
 
     others = [i for i in items if i.type not in ("bunk_bed", "bunk_ladder")]
     existing_ids = {i.id for i in items if i.type == "bunk_ladder"}

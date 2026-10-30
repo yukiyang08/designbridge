@@ -145,6 +145,7 @@ class FurnitureCandidate(TypedDict):
     purchase_url: str           # IKEA 商品頁連結
     product_image_url: str      # IKEA 商品圖片 URL
     similarity: float           # cosine similarity 0~1（向量比對得分）
+    size_text: NotRequired[str]  # 商品尺寸（IKEA 規格），查不到就沒有這個欄位
 
 
 class FurnitureItem(TypedDict):

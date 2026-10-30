@@ -234,6 +234,25 @@ def _process_furniture_item(raw: dict, img: Any) -> tuple[FurnitureItem, bool]:
     return item, matched_kb
 
 
+_SKU_IN_URL = re.compile(r"-(\d{8})/?(?:[?#]|$)")
+_SIZE_IN_NAME = re.compile(r"([\d./]+(?:\s*[xX×]\s*[\d./]+)+)\s*公分")
+
+
+def _size_text(cand: dict) -> str:
+    """商品尺寸：有 3D 模型的用 manifest 的寬深高；其餘只能從品名抓，軸向不明就照原樣列。"""
+    from designbridge.layout.product_meshes import get_product
+
+    m = _SKU_IN_URL.search(cand.get("purchase_url") or "")
+    entry = get_product(m.group(1)) if m else None
+    if entry and entry.get("dims_m"):
+        w, d, h = (round(float(v) * 100) for v in entry["dims_m"])
+        return f"寬 {w} × 深 {d} × 高 {h} cm"
+    m = _SIZE_IN_NAME.search(cand.get("name") or "")
+    if m:
+        return re.sub(r"\s*[xX×]\s*", " × ", m.group(1)) + " cm"
+    return ""
+
+
 def build_quotation(
     image_path: str,
     req: dict,
@@ -304,6 +323,12 @@ def build_quotation(
             "selected_index": 0,
         })
         kb_match_count += 1
+
+    for item in furniture_list:
+        for cand in item["candidates"]:
+            size = _size_text(cand)
+            if size:
+                cand["size_text"] = size
 
     # ── 計算三檔預算（以各品項第 0 候選價格為基準）──
     total_mid = sum(

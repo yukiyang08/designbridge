@@ -638,6 +638,7 @@ def project_layout_onto_photo(
     placed = 0
     skipped_non_floor: list[str] = []
     skipped_preserved: list[str] = []
+    footprints: list[tuple[str, np.ndarray]] = []   # 新家具的地面腳印（影像座標），給對齊檢查用
 
     # 遠的先畫、近的後畫仍由 z-buffer 決定勝負，這裡只是讓 id 配置穩定
     for idx, item in sorted(
@@ -674,6 +675,7 @@ def project_layout_onto_photo(
         next_id += 1
         id_to_type[obj_id] = ftype
         placed += 1
+        footprints.append((str(item.get("id") or ftype), base))
 
         if idx in meshes:
             from designbridge.layout.product_meshes import placement_yaw
@@ -762,6 +764,17 @@ def project_layout_onto_photo(
         result["seg_path"] = str(seg_out_path)
 
     _write_product_outputs(result, out_path, colbuf, idbuf, product_ids, output_size)
+
+    if out_path is not None:
+        # 只給除錯台看幾何猜得對不對，失敗不能影響生圖
+        try:
+            from designbridge.layout.photo_alignment import alignment_report
+            result["meta"]["alignment"] = alignment_report(
+                geom, depth_path, seg_path, seg_meta_path, footprints, photo_path,
+                out_path.with_name(out_path.stem + "_alignment.png"),
+            )
+        except Exception as e:  # noqa: BLE001
+            print(f"[scene_graph_to_depth] 對齊檢查失敗（不影響生圖）：{e}")
 
     msg = f"[scene_graph_to_depth] 照片錨定投影完成：{placed} 件家具疊回原照片深度"
     if product_ids:

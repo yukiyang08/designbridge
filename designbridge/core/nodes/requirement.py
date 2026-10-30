@@ -94,6 +94,10 @@ def _normalize_space_info(req: dict[str, Any]) -> None:
 
     size = space_info.get("estimated_size")
     size = size if isinstance(size, dict) else {}
+    # 前端要標出尺寸是 AI 估的還是預設值；LLM 原樣照抄提示詞範例的 5×4 也當成沒估
+    if "size_source" not in space_info:
+        w, d = _positive(size.get("width"), 0), _positive(size.get("depth"), 0)
+        space_info["size_source"] = "ai" if w and d and (w, d) != (5.0, 4.0) else "default"
     space_info["estimated_size"] = {
         "width": _positive(size.get("width"), 5.0),
         "height": _positive(size.get("height"), 2.8),
@@ -139,7 +143,8 @@ def requirement_analyzer(state: DesignBridgeState) -> dict[str, Any]:
                 "user_description_raw": text_prompt,
                 "design_description": text_prompt,
                 "meta": {"room_type": "living_room", "design_goal": "renovation", "user_experience_level": "general"},
-                "space_info": {"estimated_size": {"width": 5.0, "height": 3.0, "depth": 4.0}, "windows": [], "doors": []},
+                "space_info": {"estimated_size": {"width": 5.0, "height": 3.0, "depth": 4.0}, "windows": [], "doors": [],
+                               "size_source": "default"},
                 "style_preferences": {"primary_style": "", "secondary_style": None, "color_palette": [], "material_preferences": [], "style_strength": 0.7, "reference_images": []},
                 "layout_constraints": {"must_keep": [], "must_add": [], "must_remove": [], "immutable_regions": [], "functional_zones": []},
                 "priority_weights": {"layout_rationality": 0.4, "style_consistency": 0.4, "user_preference": 0.2},

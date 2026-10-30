@@ -168,7 +168,9 @@ function onMove(e) {
     const w = clamp(drag.ow + dx, MIN, b.x1 - drag.ox)
     const h = clamp(drag.oh + dy, MIN, b.y1 - drag.oy)
     if (collidesWithOthers({ x: drag.ox, y: drag.oy, w, h }, it.id)) return it
-    return { ...it, w, h }
+    // 尺寸改了就不是原本那件 IKEA 商品，解除綁定讓後端依新尺寸重配
+    const { product_id: _sku, ...rest } = it
+    return { ...rest, w, h }
   })
   commit(next)
 }
@@ -544,7 +546,10 @@ onBeforeUnmount(() => viewportObserver?.disconnect())
           >
             <Icon :icon="iconOf(item.type)" class="node-icon" />
             <span class="node-label">{{ labelOf(item.type) }}</span>
-            <span v-if="showDims" class="node-size">{{ cmOf(item.w, roomW) }}×{{ cmOf(item.h, roomD) }}</span>
+            <span
+              v-if="showDims" class="node-size"
+              :title="item.product_id ? 'IKEA 商品實際尺寸' : '標準尺寸估計'"
+            >{{ item.product_id ? '' : '~' }}{{ cmOf(item.w, roomW) }}×{{ cmOf(item.h, roomD) }}</span>
             <Icon v-if="item.locked" icon="mdi:lock-outline" class="node-lock" />
             <template v-if="faceOf(item)">
               <span class="node-front" :class="`to-${faceOf(item)}`"></span>

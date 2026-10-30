@@ -39,6 +39,8 @@ LAYOUT_AGENT_PROMPT = """你是一位專業的室內空間佈局規劃師。請�
 - x：水平方向，0 = 最左、1 = 最右。
 - y：縱深方向，0 = 上方（遠牆，通常為窗戶側）、1 = 下方（靠近觀看者）。
 - (x, y) 代表家具「左上角」的位置；w 為寬度、h 為深度（皆為正規化比例）。
+- w = 家具實際寬度（公尺）÷ 房間寬度，h = 家具實際深度（公尺）÷ 房間深度；
+  家具大小以下方「標準尺寸」為準，不要因為房間大就把家具放大。靠左右牆轉 90° 擺時長短邊對調。
 - 家具不可超出房間邊界（x + w ≤ 1，y + h ≤ 1），彼此不得重疊。
 - 靠牆家具（如衣櫃、電視櫃、書架、床）應貼近牆面。
 - 主要焦點家具（沙發、床）建議擺在視覺重心，留出足夠動線。
@@ -48,6 +50,9 @@ sofa, loveseat, armchair, chair, coffee_table, side_table, tv_unit, tv,
 dining_table, bed, bunk_bed, wardrobe, dresser, cabinet, desk, bookshelf, shelf,
 nightstand, rug, lamp, plant, cat_tree, dog_bed, litter_box
 （找不到對應的物件就選最接近的一個；同一件家具只列一次）
+
+## 家具標準尺寸（寬 × 深，公尺；寬可在 0.5–1.6 倍、深可在 0.75–1.4 倍內調整，超出會被下游夾回）
+{size_reference}
 
 ## 規劃原則
 1. 滿足所有硬性限制（must_keep / must_add / must_remove / immutable_regions）。

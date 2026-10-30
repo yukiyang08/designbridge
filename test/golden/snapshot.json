@@ -12,51 +12,51 @@
     "layout_prompt": "",
     "placements": [
       {
-        "h": 0.28,
+        "h": 0.5271,
         "id": "bed_1",
         "rotation": 0.0,
         "type": "bed",
         "w": 0.22,
-        "x": 0.3892,
-        "y": 0.7
+        "x": 0.4093,
+        "y": 0.3967
       },
       {
-        "h": 0.08,
+        "h": 0.1286,
         "id": "wardrobe_1",
         "rotation": 0.0,
         "type": "wardrobe",
         "w": 0.18,
-        "x": 0.2304,
+        "x": 0.0497,
         "y": 0.02
       },
       {
-        "h": 0.09,
+        "h": 0.1286,
         "id": "desk_1",
         "rotation": 0.0,
         "type": "desk",
         "w": 0.16,
-        "x": 0.6563,
-        "y": 0.1519
+        "x": 0.7518,
+        "y": 0.02
       },
       {
         "h": 0.07,
         "id": "nightstand_1",
         "rotation": 0.0,
         "type": "nightstand",
-        "w": 0.07,
-        "x": 0.3092,
-        "y": 0.75
+        "w": 0.075,
+        "x": 0.3243,
+        "y": 0.5703
       }
     ],
     "projection_mode": "synthetic",
     "soft_scores": {
-      "balance": 0.756,
+      "balance": 0.988,
       "circulation": 1.0,
       "ergonomics": 1.0,
-      "focal_point": 0.819,
+      "focal_point": 0.882,
       "natural_light": 1.0
     },
-    "weighted_score": 0.9028
+    "weighted_score": 0.9734
   },
   "renderer": {
     "layout_no_depth_all_ok": {

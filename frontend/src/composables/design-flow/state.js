@@ -352,6 +352,29 @@ export function spaceInfo() {
     space_dims: hasPlan ? { w: roomW.value, d: roomD.value } : undefined,
   }
 }
+// 房間尺寸從哪來：只有使用者自己填的長寬是實際值，其餘都是估計（家具比例會跟著錯），要標出來。
+// 照片路徑沒有尺寸步驟，用後端分析出的 space_info（size_source 見 requirement._normalize_space_info）
+export function spaceSize(result) {
+  const { space_dims: dims } = spaceInfo()
+  if (planSource.value === 'cad') {
+    const upload = cadPlanResult.value?.source === 'upload'
+    return { dims, estimated: true, note: upload ? '依上傳平面圖比例與總坪數換算' : '依總坪數自動分配的房間大小' }
+  }
+  if (dims) {
+    return customRoomW.value && customRoomD.value
+      ? { dims, estimated: false, note: '你輸入的長寬' }
+      : { dims, estimated: true, note: '由坪數推算，長寬比假設為 5:4' }
+  }
+  const si = result?.structured_requirement?.space_info
+  const size = si?.estimated_size
+  if (planSource.value !== 'photo' || !size?.width || !size?.depth) return { dims: null }
+  return {
+    dims: { w: size.width, d: size.depth },
+    estimated: true,
+    note: si.size_source === 'ai' ? 'AI 從照片估計' : '照片判讀不出尺寸，使用預設值',
+  }
+}
+
 export const cadBatch = ref({})                // 批次生成進行中：{ [roomId]: { status: 'queued'|'running'|'failed', error } }，不存草稿
 export const cadBatchRunning = ref(false)
 export const cadOverview = ref(false)          // 整層總覽（結果頁的「總覽」分頁）；不存草稿，切到任一房間就關掉
