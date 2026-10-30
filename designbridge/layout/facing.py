@@ -77,11 +77,15 @@ def infer_fronts(placements: list[dict], room_w: float = 1.0, room_d: float = 1.
     - 椅子：面向旁邊的桌子（離最近的桌子太遠就當一般家具）
     - 茶几：面向沙發
     - 其他：背靠最近的牆、正面朝室內
+    - 使用者在編輯器旋轉過的（帶 front 欄位）照使用者的
     """
     items = list(placements or [])
     types = [_norm_type(p.get("type")) for p in items]
     fronts: list[str] = []
     for i, p in enumerate(items):
+        if p.get("front") in OPPOSITE:
+            fronts.append(p["front"])
+            continue
         t = types[i]
         target = None
         if t in _SEATING:
