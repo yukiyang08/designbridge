@@ -1,0 +1,54 @@
+{
+  "cases": [
+    {
+      "name": "2ee5c70c_country_bedroom",
+      "style": "country",
+      "prompt": "A photorealistic country rustic farmhouse bedroom drenched in abundant natural light and warm ambient illumination, featuring a cream, tan, and sage green color palette with charcoal accents. In the foreground, a bed with a warm weathered wood headboard and floral upholstered fabrics rests on the left, flanked by a rustic storage cabinet and a desk in the mid-ground. Opposite, a nightstand and a storage cabinet sit on the right, alongside a tall wooden wardrobe and a compact fridge. In the center mid-ground, a wall-mounted flat TV is mounted above a matching media console. The space seamlessly blends light wood surfaces, dark iron details, soft upholstered textures, vintage decor, clean lines, and gentle curves.",
+      "depth": "artifacts/layout/2ee5c70c-5d6f-4425-9407-ec9bdf38cebf_projected_depth.png",
+      "edge": "artifacts/render/conditions/2ee5c70c-5d6f-4425-9407-ec9bdf38cebf_edge_1024x576.png",
+      "baseline": "artifacts/render/2ee5c70c-5d6f-4425-9407-ec9bdf38cebf_23a7c565.png",
+      "width": 1024, "height": 576, "steps": 20, "guidance": 3.5,
+      "depth_scale": 0.3, "edge_scale": 0.3, "depth_end": 0.7, "edge_end": 0.7, "seed": 1310640116
+    },
+    {
+      "name": "dfed6015_country_bedroom6",
+      "style": "country",
+      "prompt": "A spacious, modern multi-person bedroom for six with bright natural light, clean lines, and light walls. On the left mid-ground stands a tall wardrobe in light natural wood finish #D4B89A. In the center mid-ground, a space-efficient custom bed with a clean-lined headboard is flanked by two matching light wood nightstands. The space features soft textiles, integrated storage, subtle yellow and soft green accents, and a cool blue accent piece, creating an airy, comfortable atmosphere illuminated by warm recessed fixtures and stylish pendant lamps.",
+      "depth": "artifacts/layout/dfed6015-ec45-4735-bd1e-88e285c6e12d_projected_depth.png",
+      "edge": "artifacts/render/conditions/dfed6015-ec45-4735-bd1e-88e285c6e12d_edge_1024x576.png",
+      "baseline": "artifacts/render/dfed6015-ec45-4735-bd1e-88e285c6e12d_25e0926c.png",
+      "width": 1024, "height": 576, "steps": 20, "guidance": 3.5,
+      "depth_scale": 0.3, "edge_scale": 0.3, "depth_end": 0.7, "edge_end": 0.7, "seed": 2011089623
+    },
+    {
+      "name": "f8f09dc0_country_bunkbed",
+      "style": "country",
+      "prompt": "A spacious, sun-drenched bedroom accommodating six people with bunk beds, styled in modern minimalist aesthetics with warm country-inspired touches. Abundant natural light pours in, highlighting a neutral tan (#D4B89A) palette accented with soft yellow and subtle blue tones. Light natural wood textures create a clean, cozy atmosphere. In the mid-ground, a tall wardrobe stands on the left, while a bed with a sleek headboard flancked by two nightstands occupies the center. Warm ambient lighting from recessed fixtures and stylish pendant lamps illuminates the bright, airy interior.",
+      "depth": "artifacts/layout/f8f09dc0-d321-4204-bf62-32e2d98e0b8e_projected_depth.png",
+      "edge": "artifacts/render/conditions/f8f09dc0-d321-4204-bf62-32e2d98e0b8e_edge_1024x576.png",
+      "baseline": "artifacts/render/f8f09dc0-d321-4204-bf62-32e2d98e0b8e_44ac92ef.png",
+      "width": 1024, "height": 576, "steps": 20, "guidance": 3.5,
+      "depth_scale": 0.3, "edge_scale": 0.3, "depth_end": 0.7, "edge_end": 0.7, "seed": 1624310921
+    },
+    {
+      "name": "8ae79ee2_country_dining",
+      "style": "country",
+      "prompt": "A bright, spacious modern country dining room flooded with vibrant natural light, featuring a center mid-ground dining table with clean lines crafted from light natural wood tan #D4B89A, flanked by two dining chairs in the mid-ground and two dining chairs in the foreground center. Soft cheerful yellow #FCDD4F tones, muted green textures, and cool blue #4A7D9D accents adorn the high-quality finishes and comfortably curved seating. Stylish pendant lamps and warm recessed fixtures illuminate the open, cozy atmosphere with sophisticated modern aesthetics.",
+      "depth": "artifacts/layout/8ae79ee2-c718-45f5-95ff-3abd6fff531f_projected_depth.png",
+      "edge": "artifacts/render/conditions/8ae79ee2-c718-45f5-95ff-3abd6fff531f_edge_1024x576.png",
+      "baseline": "artifacts/render/8ae79ee2-c718-45f5-95ff-3abd6fff531f_988a2a65.png",
+      "width": 1024, "height": 576, "steps": 20, "guidance": 3.5,
+      "depth_scale": 0.3, "edge_scale": 0.3, "depth_end": 0.7, "edge_end": 0.7, "seed": 213176609
+    },
+    {
+      "name": "a75c43ac_nordic_bedroom_portrait",
+      "style": "nordic",
+      "prompt": "A refined Scandinavian-style bedroom filled with soft natural light, featuring light wood furniture with clean lines and gentle rounded edges. The space adopts a soft color palette of warm whites (#F8F8F8), muted greige (#DDC8B4), and subtle sage green accents (#8CA88C). Cozy textiles and neutral-tone bedding pair effortlessly with natural materials and minimalist decor, including sleek floating shelves. Warm ambient lighting enhances the cozy, inviting atmosphere and elegant finishes, elevating the overall modern quality of the room.",
+      "depth": "artifacts/render/conditions/a75c43ac-401d-4703-aab2-9e50b3bed633_depth_768x1024.png",
+      "edge": "artifacts/render/conditions/a75c43ac-401d-4703-aab2-9e50b3bed633_edge_768x1024.png",
+      "baseline": "artifacts/render/a75c43ac-401d-4703-aab2-9e50b3bed633_ed4ee260.png",
+      "width": 768, "height": 1024, "steps": 20, "guidance": 3.5,
+      "depth_scale": 0.65, "edge_scale": 0.3, "depth_end": 0.7, "edge_end": 0.7, "seed": 391257646
+    }
+  ]
+}

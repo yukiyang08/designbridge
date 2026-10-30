@@ -4,10 +4,13 @@
 from __future__ import annotations
 
 import base64
+import re
 import threading
+import time
 from pathlib import Path
 
 from designbridge.core.config import Config
+from designbridge.core.timing import record_stage
 
 
 def _png_data_uri(path: str) -> str:
@@ -412,6 +415,181 @@ def _render_flux_controlnet_depth_fal(
         import traceback
         print(f"⚠️  fal.ai FLUX Depth ControlNet 失敗：{e}")
         traceback.print_exc()
+        return False
+
+
+_MODAL_LORA_RE = re.compile(r"designbridge_v5_flux1dev_(\w+)\.safetensors")
+# 自架服務只裝了這兩個 ControlNet 與 v5 風格 LoRA
+_MODAL_DEPTH_CN = "Shakker-Labs/FLUX.1-dev-ControlNet-Depth"
+_MODAL_EDGE_CN = "InstantX/FLUX.1-dev-Controlnet-Canny"
+
+
+_MODAL_UNION_CN = "Shakker-Labs/FLUX.1-dev-ControlNet-Union-Pro"
+_modal_handles: dict[str, object] = {}
+
+
+def _modal_renderer(app_name: str, mode: str = "two"):
+    """已部署類別的 handle 只查一次（每次 from_name 都要往返），失敗時由呼叫端清掉。mode：two | union。"""
+    key = f"{app_name}:{mode}"
+    if key not in _modal_handles:
+        import modal
+
+        _modal_handles[key] = modal.Cls.from_name(app_name, "Renderer")(mode=mode)
+    return _modal_handles[key]
+
+
+def _modal_lora(loras: list[dict] | None) -> tuple[bool, str | None, float]:
+    """(是否支援, 風格 id, 強度)；只支援 0 或 1 個 v5 風格 LoRA。"""
+    if not loras:
+        return True, None, 1.0
+    m = _MODAL_LORA_RE.search(str(loras[0].get("path", "")))
+    if len(loras) != 1 or not m:
+        return False, None, 1.0
+    return True, m.group(1), float(loras[0].get("scale", 1.0))
+
+
+def warmup_modal_gpu(trigger: str) -> list[str]:
+    """依 .env 決定要不要暖機、暖哪個模式；送一個很輕的請求把容器叫起來，不等結果。回傳實際暖機的模式。
+
+    trigger：startup（後端啟動）| studio（前端進入 /studio）。容器之後能活多久由部署時的閒置等待決定。
+    """
+    if not Config.USE_MODAL_GPU:
+        return []
+    setting = Config.MODAL_WARMUP.strip().lower()
+    if setting not in (trigger, "both"):
+        return []
+    modes = {"two": ["two"], "both": ["two", "union"]}.get(Config.MODAL_WARMUP_MODES.strip().lower(), ["union"])
+    done: list[str] = []
+    for m in modes:
+        try:
+            _modal_renderer(Config.MODAL_APP_NAME, m).info.spawn()
+            done.append(m)
+        except Exception as e:
+            print(f"⚠️  Modal 暖機失敗（{m}）：{type(e).__name__}: {e}")
+            _modal_handles.pop(f"{Config.MODAL_APP_NAME}:{m}", None)
+    if done:
+        print(f"☁️  Modal GPU 暖機（{trigger}）：{', '.join(done)}")
+    return done
+
+
+def _modal_timing_detail(res: dict) -> str:
+    """耗時面板的說明文字；開頭的「冷啟動」會被前端認出來加標籤。舊版部署沒有 cold_start 欄位時不標註。"""
+    gen = f"算圖 {res.get('generate_seconds')}s"
+    if res.get("cold_start"):
+        return f"冷啟動｜載入模型 {res.get('load_seconds')}s、{gen}"
+    return f"暖機｜{gen}" if "cold_start" in res else gen
+
+
+def _run_modal(mode: str, out_path: Path, **render_kwargs) -> bool:
+    """呼叫已部署的 Modal 類別生圖並存檔；任何失敗回 False（呼叫端退回 fal）。"""
+    call = None
+    try:
+        print(f"☁️  Modal GPU（{Config.MODAL_APP_NAME}，{mode}）FLUX + ControlNet 推理中...")
+        t0 = time.perf_counter()
+        call = _modal_renderer(Config.MODAL_APP_NAME, mode).render.spawn(**render_kwargs)
+        res = call.get(timeout=Config.MODAL_TIMEOUT_S)
+        out_path.parent.mkdir(parents=True, exist_ok=True)
+        out_path.write_bytes(res["png"])
+        detail = _modal_timing_detail(res)
+        total = time.perf_counter() - t0
+        gen = res.get("generate_seconds")
+        # 子列只記純算圖秒數（靠右對齊），跟外層整段（含傳輸、容器排隊）分開，面板才不會出現兩列同秒數
+        if isinstance(gen, (int, float)) and 0 < gen < total:
+            record_stage("modal.render", t0 + total - gen, gen, detail)
+        else:
+            record_stage("modal.render", t0, total, detail)
+        print(f"✅ Modal GPU 完成：{out_path.name}（{detail}）")
+        return True
+    except Exception as e:
+        print(f"⚠️  Modal GPU 失敗（{type(e).__name__}: {e}），退回 fal")
+        _modal_handles.pop(f"{Config.MODAL_APP_NAME}:{mode}", None)  # 重新部署後 handle 可能失效，下次重查
+        if call is not None:  # 逾時後遠端仍在跑會繼續計費，盡量取消
+            try:
+                call.cancel()
+            except Exception:
+                pass
+        return False
+
+
+def _render_flux_controlnet_depth_modal(
+    prompt: str,
+    depth_path: str,
+    out_path: Path,
+    conditioning_scale: float = 0.7,
+    control_end: float = 1.0,
+    num_steps: int = 28,
+    guidance_scale: float = 3.5,
+    output_size: tuple[int, int] = (1024, 1024),
+    extra_controls: list[dict] | None = None,
+    loras: list[dict] | None = None,
+    controlnet_model: str | None = None,
+    seed: int | None = None,
+) -> bool:
+    """自架 FLUX.1-dev + 深度/邊緣 ControlNet（Modal GPU）。簽名同 fal 版；回 False 讓 renderer 退回 fal。"""
+    if not Config.USE_MODAL_GPU:
+        return False
+    # 不支援的組合直接退回，避免默默生出跟 fal 不同的圖
+    if (controlnet_model or Config.DEPTH_CONTROLNET_MODEL) != _MODAL_DEPTH_CN:
+        return False
+    edge = None
+    for c in extra_controls or []:
+        if c.get("path") != _MODAL_EDGE_CN:
+            return False
+        edge = c
+    ok, style, lora_scale = _modal_lora(loras)
+    if not ok:
+        return False
+    width, height = output_size
+    try:
+        return _run_modal(
+            "two", out_path, prompt=prompt, depth_png=Path(depth_path).read_bytes(),
+            edge_png=Path(edge["image_path"]).read_bytes() if edge else None,
+            width=width, height=height, steps=num_steps, guidance=guidance_scale,
+            depth_scale=conditioning_scale, edge_scale=float(edge["scale"]) if edge else 0.0,
+            depth_end=control_end, edge_end=control_end, seed=seed, lora_style=style, lora_scale=lora_scale,
+        )
+    except OSError as e:  # 條件圖讀不到
+        print(f"⚠️  Modal GPU 略過（讀不到條件圖：{e}）")
+        return False
+
+
+def _render_flux_depth_controlnet_modal(
+    prompt: str,
+    depth_path: str,
+    out_path: Path,
+    *,
+    edge_path: str | None = None,
+    edge_conditioning_scale: float = 0.55,
+    negative_prompt: str = "",
+    conditioning_scale: float = 0.7,
+    depth_control_end: float = 1.0,
+    edge_control_end: float = 1.0,
+    num_steps: int = 28,
+    guidance_scale: float = 3.5,
+    output_size: tuple[int, int] = (1024, 1024),
+    loras: list[dict] | None = None,
+    seed: int | None = None,
+) -> bool:
+    """自架 Union-Pro 版（2D 平面圖投影路徑）。簽名同 _render_flux_depth_controlnet_fal；回 False 讓 renderer 退回 fal。"""
+    if not Config.USE_MODAL_GPU:
+        return False
+    if Config.FAL_DEPTH_CONTROLNET_MODEL != _MODAL_UNION_CN or Config.FAL_DEPTH_CONTROL_MODE != "depth":
+        return False
+    ok, style, lora_scale = _modal_lora(loras)
+    if not ok:
+        return False
+    width, height = output_size
+    try:
+        edge_png = Path(edge_path).read_bytes() if edge_path and Path(edge_path).is_file() else None
+        return _run_modal(
+            "union", out_path, prompt=prompt, depth_png=Path(depth_path).read_bytes(), edge_png=edge_png,
+            width=width, height=height, steps=num_steps, guidance=guidance_scale,
+            depth_scale=conditioning_scale, edge_scale=edge_conditioning_scale,
+            depth_end=depth_control_end, edge_end=edge_control_end, seed=seed,
+            lora_style=style, lora_scale=lora_scale,
+        )
+    except OSError as e:  # 條件圖讀不到
+        print(f"⚠️  Modal GPU 略過（讀不到條件圖：{e}）")
         return False
 
 

@@ -45,6 +45,11 @@ def _record(label: str, start: float, elapsed: float, detail: str | None = None)
     records.append(entry)
 
 
+def record_stage(label: str, start: float, elapsed: float, detail: str | None = None) -> None:
+    """給非 log_stage 的呼叫端（例如 Modal 後端）手動補一筆耗時，detail 會顯示在前端耗時面板。"""
+    _record(label, start, elapsed, detail)
+
+
 @contextmanager
 def log_stage(label: str, task_id: str | None = None):
     prefix = f"[timing][{task_id}]" if task_id else "[timing]"
