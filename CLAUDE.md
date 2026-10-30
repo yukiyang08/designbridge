@@ -4,6 +4,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 DesignBridge is an interior-design AI workflow: a LangGraph pipeline behind a FastAPI backend, with a Vue 3 wizard frontend. Fuller specs live in `docs/DesignBridge.md` and `docs/SCHEMAS.md`; operational scripts (scraping, Supabase upload, quality filter) are in `docs/commands.md`.
 
+**Agent 現況記錄在 `docs/AGENTSTATE.md`**：改動節點讀寫的 state 欄位、graph 邊、節點內迴圈或相關旗標預設值時，同步更新該文件。
+
 ## Commands
 
 Run from the repo root (Windows; `PYTHONUTF8=1` is required in `.env` or emoji `print`s crash).
@@ -43,7 +45,7 @@ requirement_analyzer → visual_preprocessing ─┬─ design   → layout_and_
 - Quotation is deliberately **not** in the graph (30–40 s, doesn't affect the image); it is a separate `POST /api/quotation` the user triggers.
 
 **Layout system** (`designbridge/layout/`) is the largest subsystem:
-- `layout_agent.py` — `run_layout_agent`: LLM proposes placements → loop of hard constraints, geometric optimizer, soft-constraint scoring (stops at score ≥ 0.65 or `LAYOUT_MAX_ITER`) → projects the result to a ControlNet depth map. Falls back to `_default_layout` if the LLM fails.
+- `layout_agent.py` — `run_layout_agent`: LLM proposes placements → hard constraints, geometric optimizer, soft-constraint scoring, then an optional LLM review pass (`LAYOUT_REVIEW_AGENT`) → projects the result to a ControlNet depth map. Falls back to `_default_layout` if the LLM fails.
 - Split modules: `layout_items` (vocabulary, `FurnitureItem`), `layout_enforce` (geometry, scoring, enforcers), `floorplan_parse` (Gemini floor-plan/room detection), `floorplan_render` (pycairo floor-plan PNG), `projected_depth` (scene graph → depth/seg files).
 - Two parallel constraint registries load `SKILL.md` frontmatter: `skills/layout-constraints/*` (always-on hard rules, enforcers in `layout_enforce._LAYOUT_ENFORCERS`) and `skills/constraints/*` (feng-shui rules, `special_constraints.py`, which has paired `_enforce_*`/`_verify_*`).
 - Two depth projectors exist: `scene_graph_to_depth.py` (main path, via `projected_depth`) and `layout_projection.py` (older fallback used in `renderer.py` only when no depth file exists).
