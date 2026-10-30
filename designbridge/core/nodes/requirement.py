@@ -81,12 +81,12 @@ def _normalize_space_info(req: dict[str, Any]) -> None:
     room as a 5.0×4.0 box with no windows and no doors — which makes any "move it to the
     window" instruction unresolvable.
     """
-    def _positive(value: Any, default: float) -> float:
+    def _positive(value: Any, default: float, hi: float) -> float:
         try:
             f = float(value)
         except (TypeError, ValueError):
             return default
-        return f if f > 0 else default
+        return min(f, hi) if f > 0 else default   # hi：LLM 偶爾會吐出離譜的數字，後面的投影與排版都會吃進去
 
     space_info = req.get("space_info")
     if not isinstance(space_info, dict):
@@ -95,9 +95,9 @@ def _normalize_space_info(req: dict[str, Any]) -> None:
     size = space_info.get("estimated_size")
     size = size if isinstance(size, dict) else {}
     space_info["estimated_size"] = {
-        "width": _positive(size.get("width"), 5.0),
-        "height": _positive(size.get("height"), 2.8),
-        "depth": _positive(size.get("depth"), 4.0),
+        "width": _positive(size.get("width"), 5.0, 50.0),
+        "height": _positive(size.get("height"), 2.8, 6.0),
+        "depth": _positive(size.get("depth"), 4.0, 50.0),
     }
 
     for key in ("windows", "doors"):

@@ -1,4 +1,5 @@
 """Upload, chat, generation, quotation and panorama endpoints."""
+import io
 import time
 import uuid
 from pathlib import Path
@@ -21,6 +22,28 @@ router = APIRouter()
 
 _IMAGE_SUFFIXES = {".png", ".jpg", ".jpeg", ".webp", ".gif", ".bmp"}
 _MAX_UPLOAD_BYTES = 20 * 1024 * 1024
+_MAX_UPLOAD_PIXELS = 60_000_000   # 高壓縮的大圖解碼後會吃很多記憶體，只看檔案大小擋不住
+
+
+def _normalize_upload(dest: Path) -> None:
+    """確認真的是圖片且像素數合理；帶 EXIF 的照片轉正後剝除（旋轉資訊只有瀏覽器會套用，
+    後端用 Pillow 讀會是橫躺的；同時去掉 GPS 位置）。不合格就刪檔回 400。"""
+    from PIL import Image, ImageOps
+
+    try:
+        with Image.open(io.BytesIO(dest.read_bytes())) as im:
+            if im.width * im.height > _MAX_UPLOAD_PIXELS:
+                raise ValueError("解析度太高")
+            if im.format not in ("JPEG", "PNG", "WEBP") or not im.getexif():
+                return
+            keep = {k: im.info[k] for k in ("icc_profile",) if k in im.info}   # 色彩設定要留，不然顏色會偏
+            fixed = ImageOps.exif_transpose(im)
+            fmt = im.format
+            fixed.load()
+        fixed.save(dest, format=fmt, **({"quality": 95} if fmt != "PNG" else {}), **keep)
+    except Exception as e:
+        dest.unlink(missing_ok=True)
+        raise HTTPException(status_code=400, detail=f"無法讀取圖片：{e}")
 
 
 @router.post("/api/upload-image")
@@ -43,6 +66,7 @@ def upload_image(file: UploadFile = File(...), user_id: str = Depends(get_user_i
     if too_big:
         dest.unlink(missing_ok=True)
         raise HTTPException(status_code=413, detail="圖片太大（上限 20 MB）")
+    _normalize_upload(dest)
     return {"path": str(dest)}
 
 

@@ -1,6 +1,7 @@
 """請求帶來的路徑／網址守門：路徑穿越、SSRF、SVG 注入、非成員掛進別人的設計。離線。"""
 import pytest
 from fastapi import HTTPException
+from pydantic import ValidationError
 
 import routers.common as common
 from designbridge.style import style_supabase as ss
@@ -78,3 +79,79 @@ def test_redirect_to_internal_is_blocked(tmp_path, monkeypatch):
 def test_svg_room_name_is_escaped():
     from designbridge.roomplan.svg_render import escape
     assert escape("</text><g onload=x>&") == "&lt;/text&gt;&lt;g onload=x&gt;&amp;"
+
+
+def test_request_payload_limits():
+    with pytest.raises(ValidationError):
+        DesignRequest(text_prompt="x" * 2001)
+    with pytest.raises(ValidationError):
+        DesignRequest(scene_graph={"furniture_placements": [{}] * 301})
+    with pytest.raises(ValidationError):   # plan 裡面包的 scene_graph 也要檢查
+        DesignRequest(plan={"scene_graph": {"furniture_placements": [{}] * 301}})
+    with pytest.raises(ValidationError):
+        DesignRequest(cad_plan={"svg": "x" * 2_100_000})
+    with pytest.raises(ValidationError):   # 除錯覆寫欄位不能拿來燒 fal 額度
+        DesignRequest(controlnet_steps_override=10_000)
+    DesignRequest(text_prompt="x" * 2000, scene_graph={"furniture_placements": [{}] * 300})
+
+
+def test_llm_room_size_is_clamped():
+    from designbridge.core.nodes.requirement import _normalize_space_info
+    req = {"space_info": {"estimated_size": {"width": 1e9, "depth": "inf", "height": -3}}}
+    _normalize_space_info(req)
+    assert req["space_info"]["estimated_size"] == {"width": 50.0, "height": 2.8, "depth": 50.0}
+
+
+def _jpeg_with_exif(path, orientation):
+    from PIL import Image
+    im = Image.new("RGB", (400, 300), "white")
+    exif = Image.Exif()
+    exif[0x0112] = orientation   # Orientation
+    exif[0x010F] = "SomePhone"   # Make：代表會被一起剝除的中繼資料
+    im.save(path, "JPEG", exif=exif)
+
+
+def test_upload_is_rotated_and_exif_stripped(tmp_path):
+    from PIL import Image
+    from routers.generate import _normalize_upload
+    f = tmp_path / "a.jpg"
+    _jpeg_with_exif(f, 6)
+    assert Image.open(f).size == (400, 300)   # 不處理的話後端看到的是橫躺的
+    _normalize_upload(f)
+    with Image.open(f) as fixed:
+        assert fixed.size == (300, 400)       # 與瀏覽器顯示的方向一致
+        assert not fixed.getexif()            # 方向以外的中繼資料（含 GPS）一併移除
+
+
+def test_upload_without_exif_is_left_untouched(tmp_path):
+    from PIL import Image
+    from routers.generate import _normalize_upload
+    f = tmp_path / "plain.png"
+    Image.new("RGB", (40, 30)).save(f)
+    before = f.read_bytes()
+    _normalize_upload(f)
+    assert f.read_bytes() == before
+
+
+def test_upload_rejects_non_image_and_huge_images(tmp_path, monkeypatch):
+    from PIL import Image
+    import routers.generate as gen
+    fake = tmp_path / "fake.png"
+    fake.write_bytes(b"<html>not an image</html>")
+    with pytest.raises(HTTPException) as e:
+        gen._normalize_upload(fake)
+    assert e.value.status_code == 400 and not fake.exists()   # 不是圖片：回 400 並刪檔
+
+    big = tmp_path / "big.png"
+    Image.new("RGB", (100, 100)).save(big)
+    monkeypatch.setattr(gen, "_MAX_UPLOAD_PIXELS", 5000)
+    with pytest.raises(HTTPException):
+        gen._normalize_upload(big)
+    assert not big.exists()
+
+
+def test_request_body_over_limit_is_413():
+    from fastapi.testclient import TestClient
+    from api import app
+    r = TestClient(app).post("/api/health", content=b"x" * (31 * 1024 * 1024))
+    assert r.status_code == 413

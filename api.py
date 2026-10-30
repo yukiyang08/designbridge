@@ -11,8 +11,9 @@ from dotenv import load_dotenv
 
 load_dotenv()  # 必須先於 routers 匯入（API_PUBLIC_URL 在匯入時讀取）
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from designbridge.core.config import Config
@@ -57,6 +58,18 @@ app.mount("/product-meshes", StaticFiles(directory=str(product_mesh_dir)), name=
 debug_console_dir = Path("debug-console")
 if debug_console_dir.exists():
     app.mount("/debug-console", StaticFiles(directory=str(debug_console_dir), html=True), name="debug-console")
+
+_MAX_BODY_BYTES = 30 * 1024 * 1024   # 圖片上限 20 MB + multipart 開銷
+
+
+# ponytail: 只看 Content-Length，不帶這個標頭的 chunked 上傳擋不住；要擋再改成串流計數
+@app.middleware("http")
+async def _limit_body(request: Request, call_next):
+    cl = request.headers.get("content-length", "")
+    if cl.isdigit() and int(cl) > _MAX_BODY_BYTES:
+        return JSONResponse({"detail": "請求內容太大"}, status_code=413)
+    return await call_next(request)
+
 
 # 解決前後端跨域問題 (具備彈性與擴充性的解法)
 cors_origins = os.getenv("CORS_ORIGINS", "").split(",") if os.getenv("CORS_ORIGINS") else []
