@@ -24,6 +24,121 @@ def _is_underlay_type(ftype: str) -> bool:
     return normalize_furniture_type(ftype) in _UNDERLAY_TYPES
 
 
+# ─────────────────────────── 家具組 ───────────────────────────
+
+# 主家具 → 會貼著它擺的跟班。綁定後整組移動，組內貼合不算重疊、也不計入動線間距，
+# 否則推擠與優化器會把餐椅一張張推離餐桌。
+_COMPANIONS: dict[str, frozenset[str]] = {
+    "dining_table": frozenset({"chair"}),
+    "desk": frozenset({"chair"}),
+    "bed": frozenset({"nightstand", "side_table"}),
+    "bunk_bed": frozenset({"nightstand", "side_table"}),
+    "sofa": frozenset({"coffee_table", "side_table"}),
+    "loveseat": frozenset({"coffee_table", "side_table"}),
+}
+_COMPANION_GAP = 0.06   # 歸一化邊距，LLM 初稿裡離主家具這麼近才算同一組
+
+
+def _edge_gap(a: FurnitureItem, b: FurnitureItem) -> float:
+    dx = max(a.x - (b.x + b.w), b.x - (a.x + a.w), 0.0)
+    dy = max(a.y - (b.y + b.h), b.y - (a.y + a.h), 0.0)
+    return max(dx, dy)
+
+
+def _separate(c: FurnitureItem, a: FurnitureItem, gap: float = 0.01) -> None:
+    """LLM 常把跟班畫得跟主家具交疊（床頭櫃壓進床），沿穿透較淺的軸推到剛好貼齊。"""
+    ox = min(c.x + c.w, a.x + a.w) - max(c.x, a.x)
+    oy = min(c.y + c.h, a.y + a.h) - max(c.y, a.y)
+    if ox <= 0.0 or oy <= 0.0:
+        return
+    if ox <= oy:
+        c.x = a.x - gap - c.w if c.x + c.w / 2 < a.x + a.w / 2 else a.x + a.w + gap
+    else:
+        c.y = a.y - gap - c.h if c.y + c.h / 2 < a.y + a.h / 2 else a.y + a.h + gap
+
+
+def _bind_companions(items: list[FurnitureItem]) -> list[FurnitureItem]:
+    """依 LLM 初稿把跟班綁到最近的主家具，記下相對位移。"""
+    anchors = [it for it in items if it.type in _COMPANIONS and not it.anchor]
+    for it in items:
+        if it.anchor or it.pinned or it.type in _COMPANIONS:
+            continue
+        near = [
+            (_edge_gap(it, a), a) for a in anchors
+            if it.type in _COMPANIONS[a.type] and _edge_gap(it, a) <= _COMPANION_GAP
+        ]
+        if near:
+            a = min(near, key=lambda t: t[0])[1]
+            _separate(it, a)
+            it.anchor = a.id
+            it.offset = (it.x - a.x, it.y - a.y)
+    return items
+
+
+def _snap_companions(items: list[FurnitureItem]) -> list[FurnitureItem]:
+    """跟班回到主家具旁的相對位置；被釘住（使用者指定位置）或主家具已刪除就解除綁定。"""
+    by_id = {it.id: it for it in items}
+    for it in items:
+        if not it.anchor:
+            continue
+        a = by_id.get(it.anchor)
+        if a is None or it.pinned:
+            it.anchor = ""
+            continue
+        it.x, it.y = a.x + it.offset[0], a.y + it.offset[1]
+    return items
+
+
+def _reattach_companions(
+    items: list[FurnitureItem], before: dict[str, tuple[float, float, float, float]]
+) -> list[FurnitureItem]:
+    """尺寸改過後（換成商品真實尺寸），跟班維持原本在主家具哪一側、間距多少。"""
+    by_id = {it.id: it for it in items}
+    for c in items:
+        a = by_id.get(c.anchor)
+        if a is None or c.id not in before or a.id not in before:
+            continue
+        cx0, cy0, cw0, ch0 = before[c.id]
+        ax0, ay0, aw0, ah0 = before[a.id]
+        rx = (cx0 + cw0 / 2 - ax0 - aw0 / 2) / ((aw0 + cw0) / 2 or 1.0)
+        ry = (cy0 + ch0 / 2 - ay0 - ah0 / 2) / ((ah0 + ch0) / 2 or 1.0)
+        acx, acy = a.x + a.w / 2, a.y + a.h / 2
+        if abs(ry) >= abs(rx):
+            # 上下側：沿桌邊的位置按桌寬比例縮放，垂直方向保持原間距
+            along = (cx0 + cw0 / 2 - ax0 - aw0 / 2) * (a.w / aw0 if aw0 else 1.0)
+            c.x = acx + along - c.w / 2
+            gap = (ay0 - cy0 - ch0) if ry < 0 else (cy0 - ay0 - ah0)
+            c.y = a.y - gap - c.h if ry < 0 else a.y + a.h + gap
+        else:
+            along = (cy0 + ch0 / 2 - ay0 - ah0 / 2) * (a.h / ah0 if ah0 else 1.0)
+            c.y = acy + along - c.h / 2
+            gap = (ax0 - cx0 - cw0) if rx < 0 else (cx0 - ax0 - aw0)
+            c.x = a.x - gap - c.w if rx < 0 else a.x + a.w + gap
+        c.offset = (c.x - a.x, c.y - a.y)
+    return items
+
+
+def _group_index(items: list[FurnitureItem]) -> list[list[int]]:
+    """每件家具所屬組的成員索引（含自己）；沒綁定的就是只有自己的一組。"""
+    idx = {it.id: i for i, it in enumerate(items)}
+    members: dict[int, list[int]] = {}
+    for i, it in enumerate(items):
+        root = idx.get(it.anchor, i) if it.anchor else i
+        members.setdefault(root, []).append(i)
+    out: list[list[int]] = [[] for _ in items]
+    for group in members.values():
+        for i in group:
+            out[i] = group
+    return out
+
+
+def _same_group(a: FurnitureItem, b: FurnitureItem) -> bool:
+    return (
+        a.anchor == b.id or b.anchor == a.id
+        or (bool(a.anchor) and a.anchor == b.anchor)
+    )
+
+
 def _overlaps(a: FurnitureItem, b: FurnitureItem, margin: float = 0.02) -> bool:
     if _is_underlay_type(a.type) or _is_underlay_type(b.type):
         return False
@@ -43,6 +158,13 @@ def _push_apart(items: list[FurnitureItem], iterations: int = 60) -> list[Furnit
     the wall straight back into its neighbour, so the pass reports success while leaving
     a collision behind, and more iterations never help because the clip undoes each one.
     """
+    groups = _group_index(items)
+
+    def shift(i: int, dx: float, dy: float) -> None:
+        for k in groups[i]:
+            items[k].x += dx
+            items[k].y += dy
+
     for _ in range(iterations):
         moved = False
         for i in range(len(items)):
@@ -50,7 +172,7 @@ def _push_apart(items: list[FurnitureItem], iterations: int = 60) -> list[Furnit
                 a, b = items[i], items[j]
                 if _is_underlay_type(a.type) or _is_underlay_type(b.type):
                     continue
-                if not _overlaps(a, b):
+                if _same_group(a, b) or not _overlaps(a, b):
                     continue
                 acx, acy = a.x + a.w / 2, a.y + a.h / 2
                 bcx, bcy = b.x + b.w / 2, b.y + b.h / 2
@@ -59,13 +181,13 @@ def _push_apart(items: list[FurnitureItem], iterations: int = 60) -> list[Furnit
                 oy = (a.y + a.h + 0.02) - b.y if dy >= 0 else b.y + b.h + 0.02 - a.y
                 # Push along shorter overlap axis
                 if abs(ox) <= abs(oy):
-                    half = ox / 2
-                    a.x += half * (1 if dx >= 0 else -1)
-                    b.x -= half * (1 if dx >= 0 else -1)
+                    half = ox / 2 * (1 if dx >= 0 else -1)
+                    shift(i, half, 0.0)
+                    shift(j, -half, 0.0)
                 else:
-                    half = oy / 2
-                    a.y += half * (1 if dy >= 0 else -1)
-                    b.y -= half * (1 if dy >= 0 else -1)
+                    half = oy / 2 * (1 if dy >= 0 else -1)
+                    shift(i, 0.0, half)
+                    shift(j, 0.0, -half)
                 moved = True
         _clip_to_room(items)
         if not moved:
@@ -74,9 +196,24 @@ def _push_apart(items: list[FurnitureItem], iterations: int = 60) -> list[Furnit
 
 
 def _clip_to_room(items: list[FurnitureItem], pad: float = 0.02) -> list[FurnitureItem]:
-    for item in items:
-        item.x = max(pad, min(1.0 - item.w - pad, item.x))
-        item.y = max(pad, min(1.0 - item.h - pad, item.y))
+    # 家具組整組平移進房間，不然貼牆的那張椅子會被單獨夾回來、跟餐桌錯開
+    for group in {id(g): g for g in _group_index(items)}.values():
+        if len(group) > 1:
+            x0 = min(items[k].x for k in group)
+            y0 = min(items[k].y for k in group)
+            x1 = max(items[k].x + items[k].w for k in group)
+            y1 = max(items[k].y + items[k].h for k in group)
+            if x1 - x0 <= 1.0 - 2 * pad and y1 - y0 <= 1.0 - 2 * pad:
+                dx = max(pad - x0, 0.0) - max(x1 - (1.0 - pad), 0.0)
+                dy = max(pad - y0, 0.0) - max(y1 - (1.0 - pad), 0.0)
+                for k in group:
+                    items[k].x += dx
+                    items[k].y += dy
+                continue
+        for k in group:
+            item = items[k]
+            item.x = max(pad, min(1.0 - item.w - pad, item.x))
+            item.y = max(pad, min(1.0 - item.h - pad, item.y))
     return items
 
 
@@ -98,6 +235,8 @@ def _score_soft_constraints(
     for i in range(n):
         for j in range(i + 1, n):
             a, b = items[i], items[j]
+            if _same_group(a, b):
+                continue   # 餐椅貼餐桌是正常擺法，不是動線不足
             gx = max(b.x - (a.x + a.w), a.x - (b.x + b.w), 0.0) * room_w
             gy = max(b.y - (a.y + a.h), a.y - (b.y + b.h), 0.0) * room_d
             gaps_m.append(gx + gy)
@@ -180,7 +319,7 @@ def _layout_objective(items: list[FurnitureItem], space_info: dict) -> float:
         if not solid[i]:
             continue
         for j in range(i + 1, n):
-            if not solid[j]:
+            if not solid[j] or _same_group(a, items[j]):
                 continue
             b = items[j]
             ox = min(a.x + a.w, b.x + b.w) - max(a.x, b.x)
@@ -237,9 +376,12 @@ def _optimize_positions(
     """
     import random
 
+    # 跟班不單獨移動，跟著主家具整組走
+    movable = [i for i in movable if not items[i].anchor]
     if not movable or steps <= 0:
         return items, _layout_objective(items, space_info), 0
 
+    groups = _group_index(items)
     rng = random.Random(seed)
     current = _layout_objective(items, space_info)
     best = current
@@ -248,11 +390,17 @@ def _optimize_positions(
 
     for step in range(steps):
         sigma = 0.18 * (1.0 - step / steps) + 0.01
-        item = items[rng.choice(movable)]
-        prev = (item.x, item.y)
+        group = [items[k] for k in groups[rng.choice(movable)]]
+        prev = [(it.x, it.y) for it in group]
 
-        item.x = min(max(item.x + rng.gauss(0.0, sigma), 0.0), max(0.0, 1.0 - item.w))
-        item.y = min(max(item.y + rng.gauss(0.0, sigma), 0.0), max(0.0, 1.0 - item.h))
+        # 位移量夾在整組外框不出房間的範圍內
+        x0 = min(it.x for it in group); x1 = max(it.x + it.w for it in group)
+        y0 = min(it.y for it in group); y1 = max(it.y + it.h for it in group)
+        dx = min(max(rng.gauss(0.0, sigma), -x0), max(0.0, 1.0 - x1))
+        dy = min(max(rng.gauss(0.0, sigma), -y0), max(0.0, 1.0 - y1))
+        for it in group:
+            it.x += dx
+            it.y += dy
 
         candidate = _layout_objective(items, space_info)
         if candidate > current:
@@ -262,7 +410,8 @@ def _optimize_positions(
                 best = candidate
                 best_pos = [(i.x, i.y) for i in items]
         else:
-            item.x, item.y = prev
+            for it, (x, y) in zip(group, prev):
+                it.x, it.y = x, y
 
     for item, (x, y) in zip(items, best_pos):
         item.x, item.y = x, y
@@ -489,6 +638,9 @@ def _enforce_immutable(
     return items
 
 
+_HEAD_TO_WALL = frozenset({"bed", "bunk_bed"})
+
+
 def _enforce_wall_anchor(
     items: list[FurnitureItem], space_info: dict, params: dict
 ) -> list[FurnitureItem]:
@@ -503,6 +655,12 @@ def _enforce_wall_anchor(
         d_b = 1.0 - (item.y + item.h)
         d_l = item.x
         d_r = 1.0 - (item.x + item.w)
+        # 櫃類是長邊（背面）靠牆，短邊貼牆不算；床是床頭（短邊）靠牆，任一邊都算
+        if item.type not in _HEAD_TO_WALL:
+            if item.w >= item.h:
+                d_l = d_r = 1.0
+            else:
+                d_t = d_b = 1.0
         if min(d_t, d_b, d_l, d_r) <= snap_threshold:
             continue
         if d_t <= d_b and d_t <= d_l and d_t <= d_r:
@@ -561,6 +719,15 @@ def _enforce_semantic_gaps(
     return items
 
 
+def _area_clear(others: list[FurnitureItem], zx: float, zy: float, zw: float, zh: float) -> bool:
+    """矩形區域 (zx, zy, zw, zh) 內沒有任何 others 的家具。"""
+    return all(
+        o.x + o.w <= zx or o.x >= zx + zw or
+        o.y + o.h <= zy or o.y >= zy + zh
+        for o in others
+    )
+
+
 def _enforce_bed_clearance(
     items: list[FurnitureItem], space_info: dict, params: dict
 ) -> list[FurnitureItem]:
@@ -570,18 +737,11 @@ def _enforce_bed_clearance(
     others = [i for i in items if i.type != "bed"]
 
     for bed in beds:
-        def _zone_clear(zx: float, zy: float, zw: float, zh: float) -> bool:
-            return all(
-                o.x + o.w <= zx or o.x >= zx + zw or
-                o.y + o.h <= zy or o.y >= zy + zh
-                for o in others
-            )
-
-        left_ok = bed.x >= side_clearance and _zone_clear(
-            bed.x - side_clearance, bed.y, side_clearance, bed.h
+        left_ok = bed.x >= side_clearance and _area_clear(
+            others, bed.x - side_clearance, bed.y, side_clearance, bed.h
         )
-        right_ok = bed.x + bed.w + side_clearance <= 1.0 and _zone_clear(
-            bed.x + bed.w, bed.y, side_clearance, bed.h
+        right_ok = bed.x + bed.w + side_clearance <= 1.0 and _area_clear(
+            others, bed.x + bed.w, bed.y, side_clearance, bed.h
         )
         if left_ok or right_ok:
             continue
@@ -642,17 +802,10 @@ def _enforce_bunk_bed_ladder_clearance(
     others = [i for i in items if i.type != "bunk_bed"]
 
     for bed in bunk_beds:
-        def _zone_clear(zx: float, zy: float, zw: float, zh: float) -> bool:
-            return all(
-                o.x + o.w <= zx or o.x >= zx + zw or
-                o.y + o.h <= zy or o.y >= zy + zh
-                for o in others
-            )
-
-        top_ok    = bed.y >= LC and _zone_clear(bed.x, bed.y - LC, bed.w, LC)
-        bottom_ok = bed.y + bed.h + LC <= 1.0 and _zone_clear(bed.x, bed.y + bed.h, bed.w, LC)
-        left_ok   = bed.x >= LC and _zone_clear(bed.x - LC, bed.y, LC, bed.h)
-        right_ok  = bed.x + bed.w + LC <= 1.0 and _zone_clear(bed.x + bed.w, bed.y, LC, bed.h)
+        top_ok    = bed.y >= LC and _area_clear(others, bed.x, bed.y - LC, bed.w, LC)
+        bottom_ok = bed.y + bed.h + LC <= 1.0 and _area_clear(others, bed.x, bed.y + bed.h, bed.w, LC)
+        left_ok   = bed.x >= LC and _area_clear(others, bed.x - LC, bed.y, LC, bed.h)
+        right_ok  = bed.x + bed.w + LC <= 1.0 and _area_clear(others, bed.x + bed.w, bed.y, LC, bed.h)
 
         if top_ok or bottom_ok or left_ok or right_ok:
             continue

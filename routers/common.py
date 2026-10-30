@@ -1,4 +1,5 @@
 """Shared helpers/models for the DesignBridge API routers."""
+import json
 import os
 import re
 import threading
@@ -6,7 +7,7 @@ from pathlib import Path
 from typing import Optional, List
 
 from fastapi import Header, HTTPException, Request
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 from designbridge import get_compiled_graph
 from designbridge.style.style_supabase import _get_supabase
@@ -47,14 +48,6 @@ def get_user_id(request: Request, authorization: Optional[str] = Header(None)) -
         raise HTTPException(status_code=401, detail="登入已失效，請重新登入")
 
 
-def get_optional_user_id(request: Request, authorization: Optional[str] = Header(None)) -> Optional[str]:
-    """有帶有效 token 就回 user_id，沒有就 None（給原本不用登入、但有登入時能多做事的端點）。"""
-    try:
-        return get_user_id(request, authorization) or None
-    except HTTPException:
-        return None
-
-
 ARTIFACTS_DIR = (Path(__file__).parent.parent / "artifacts").resolve()
 
 
@@ -68,6 +61,47 @@ def _is_artifact_file(p) -> bool:
 
 
 _RENDER_NAME = re.compile(r"^[A-Za-z0-9._-]+$")
+
+
+def member_project_ids(sb, user_id: str) -> list:
+    """別人邀請我共編的設計 id。"""
+    return [m["project_id"] for m in
+            sb.table("project_members").select("project_id").eq("user_id", user_id).execute().data]
+
+
+def _inside_artifacts(p) -> bool:
+    """路徑解析後是否落在 artifacts/ 底下（不要求檔案存在）。"""
+    try:
+        return Path(p).resolve().is_relative_to(ARTIFACTS_DIR)
+    except (OSError, ValueError):
+        return False
+
+
+def _walk_paths(obj):
+    """巢狀 dict/list 裡所有 *_path 欄位的字串值。"""
+    if isinstance(obj, dict):
+        for k, v in obj.items():
+            if isinstance(v, str) and k.endswith("_path"):
+                if v:
+                    yield v
+            else:
+                yield from _walk_paths(v)
+    elif isinstance(obj, list):
+        for v in obj:
+            yield from _walk_paths(v)
+
+
+def check_request_paths(req) -> None:
+    """請求帶來的本機路徑一律要在 artifacts/ 底下，否則會被拿來讀伺服器上任意檔案
+    （餵給渲染、或上傳到使用者的 Storage）。風格參考圖允許 http(s) 網址，由下載端擋內網。"""
+    paths = [req.initial_image_path, req.mask_image_path, req.floor_plan_path,
+             *_walk_paths(req.scene_graph), *_walk_paths(req.plan)]
+    ref = req.style_reference_image_path
+    if ref and not ref.startswith(("http://", "https://")):
+        paths.append(ref)
+    bad = next((p for p in paths if p and not _inside_artifacts(p)), None)
+    if bad:
+        raise HTTPException(status_code=400, detail=f"路徑不合法：{bad}")
 
 
 def ensure_artifact(p, user_id: Optional[str] = None) -> bool:
@@ -92,6 +126,11 @@ def ensure_artifact(p, user_id: Optional[str] = None) -> bool:
         sb = _get_supabase()
         rows = (sb.table("designs").select("image_path").eq("user_id", user_id)
                 .like("record->>generated_image_path", f"%{path.name}").limit(1).execute().data)
+        if not rows:   # 共編的設計：圖在擁有者名下，只找分享給我的那幾個
+            pids = member_project_ids(sb, user_id)
+            if pids:
+                rows = (sb.table("designs").select("image_path").in_("project_id", pids)
+                        .like("record->>generated_image_path", f"%{path.name}").limit(1).execute().data)
         key = rows[0]["image_path"] if rows else None
         if not key:
             return False
@@ -140,8 +179,12 @@ def _layout_render_config() -> dict:
     }
 
 
+_MAX_PAYLOAD_CHARS = 2_000_000   # cad_plan 內含 SVG，正常約數百 KB
+_MAX_PLACEMENTS = 300            # 一個房間實際不會超過幾十件
+
+
 class DesignRequest(BaseModel):
-    text_prompt: str = ""
+    text_prompt: str = Field(default="", max_length=2000)
     # 「我的設計」分組：同一個設計（一個家）底下可有多個空間；沒帶時各自獨立成一個設計
     project_id: Optional[str] = Field(default=None, pattern=r"^[0-9a-fA-F-]{36}$")
     space_id: Optional[str] = Field(default=None, max_length=64)
@@ -168,13 +211,25 @@ class DesignRequest(BaseModel):
     # 以下四個欄位只給獨立的除錯測試介面（debug-console/）用，測試不同 ControlNet
     # 模型/強度/LoRA 組合；正式產品前端不會帶這些欄位，None 時完全走 Config 預設值。
     controlnet_model_override: Optional[str] = None
-    controlnet_scale_override: Optional[float] = None
-    controlnet_steps_override: Optional[int] = None
-    controlnet_guidance_override: Optional[float] = None
-    controlnet_control_end_override: Optional[float] = None   # 0~1，depth/edge control 在去噪過程中生效到百分之幾就放開
-    lora_overrides: Optional[List[dict]] = None   # [{"path": str, "scale": float}]
+    controlnet_scale_override: Optional[float] = Field(default=None, ge=0, le=2)
+    controlnet_steps_override: Optional[int] = Field(default=None, ge=1, le=60)
+    controlnet_guidance_override: Optional[float] = Field(default=None, ge=0, le=20)
+    controlnet_control_end_override: Optional[float] = Field(default=None, ge=0, le=1)   # 0~1，depth/edge control 在去噪過程中生效到百分之幾就放開
+    lora_overrides: Optional[List[dict]] = Field(default=None, max_length=4)   # [{"path": str, "scale": float}]
     disable_edge_control: Optional[bool] = None   # 停用 edge(canny) ControlNet，只留 depth，方便排查 artifact 來源
     disable_lora: Optional[bool] = None   # 停用風格 LoRA，只留 ControlNet，方便排查 artifact 來源
+
+    @model_validator(mode="after")
+    def _limit_payload(self):
+        """這些 dict 由前端原樣帶回，沒有上限的話一個請求就能塞爆記憶體或讓排版跑很久。"""
+        for name in ("cad_plan", "scene_graph", "plan"):
+            v = getattr(self, name)
+            if v is not None and len(json.dumps(v, ensure_ascii=False, default=str)) > _MAX_PAYLOAD_CHARS:
+                raise ValueError(f"{name} 太大")
+        for sg in (self.scene_graph, (self.plan or {}).get("scene_graph")):
+            if isinstance(sg, dict) and len(sg.get("furniture_placements") or []) > _MAX_PLACEMENTS:
+                raise ValueError("家具數量過多")
+        return self
 
 
 

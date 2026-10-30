@@ -1,0 +1,74 @@
+[
+ {
+  "scenario": "A_nordic",
+  "steps": 42,
+  "ok": true,
+  "wall": 16.11,
+  "fal": 11.9,
+  "detail": "queue 3.50s, fal inference 8.14s"
+ },
+ {
+  "scenario": "A_nordic",
+  "steps": 28,
+  "ok": true,
+  "wall": 11.66,
+  "fal": 6.95,
+  "detail": "queue 0.84s, fal inference 5.74s"
+ },
+ {
+  "scenario": "A_nordic",
+  "steps": 24,
+  "ok": true,
+  "wall": 19.39,
+  "fal": 16.04,
+  "detail": "queue 10.58s, fal inference 4.95s"
+ },
+ {
+  "scenario": "B_japanese",
+  "steps": 42,
+  "ok": true,
+  "wall": 13.29,
+  "fal": 9.49,
+  "detail": "queue 0.70s, fal inference 8.42s"
+ },
+ {
+  "scenario": "B_japanese",
+  "steps": 28,
+  "ok": true,
+  "wall": 11.75,
+  "fal": 6.76,
+  "detail": "queue 0.49s, fal inference 5.74s"
+ },
+ {
+  "scenario": "B_japanese",
+  "steps": 24,
+  "ok": true,
+  "wall": 10.06,
+  "fal": 6.35,
+  "detail": "queue 0.41s, fal inference 5.09s"
+ },
+ {
+  "scenario": "C_industrial",
+  "steps": 42,
+  "ok": true,
+  "wall": 12.86,
+  "fal": 9.34,
+  "detail": "queue 0.48s, fal inference 8.17s"
+ },
+ {
+  "scenario": "C_industrial",
+  "steps": 28,
+  "ok": true,
+  "wall": 10.36,
+  "fal": 6.56,
+  "detail": "queue 0.44s, fal inference 5.74s"
+ },
+ {
+  "scenario": "C_industrial",
+  "steps": 24,
+  "ok": true,
+  "wall": 10.19,
+  "fal": 6.03,
+  "detail": "queue 0.51s, fal inference 4.97s"
+ }
+]

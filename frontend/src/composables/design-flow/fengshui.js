@@ -33,7 +33,7 @@ export function fengshuiRulesFor(type) {
 
 const SIDE_TO_WALL = { top: 'far', bottom: 'near', left: 'left', right: 'right' }
 
-export function openingBox(wall, frac, widthM, W, D) {
+function openingBox(wall, frac, widthM, W, D) {
   if (wall === 'far' || wall === 'near') {
     const w = Math.min(0.9, widthM / W)
     return { x: Math.max(0, Math.min(1 - w, frac - w / 2)), y: wall === 'far' ? 0 : 0.98, w, h: 0.02, wall }
@@ -62,7 +62,7 @@ export function scheduleFengshuiAudit(delay = 400) {
   auditTimer = setTimeout(runFengshuiAudit, delay)
 }
 
-export async function runFengshuiAudit() {
+async function runFengshuiAudit() {
   if (!editPlacements.value.length) { fengshuiReport.value = null; return }
   const seq = ++auditSeq
   fengshuiReportLoading.value = true

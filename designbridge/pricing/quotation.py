@@ -253,6 +253,7 @@ def build_quotation(
     5. 回傳 QuotationResultJSON
     """
     from PIL import Image
+    from designbridge.core.timing import log_stage, timed_call
     from designbridge.pricing.furniture_kb import _get_supabase_client, _load_local_kb, _load_embeddings
 
     # 取風格提示
@@ -261,7 +262,7 @@ def build_quotation(
     if isinstance(style_pref, dict):
         style_hint = style_pref.get("primary_style") or ""
 
-    detected = detect_furniture_gemini(image_path, style_hint)
+    detected = timed_call("quotation.detect_furniture", None, detect_furniture_gemini, image_path, style_hint)
 
     # Gemini 失敗（或圖片無法辨識）→ 用房間類型備用清單
     if not detected:
@@ -283,7 +284,8 @@ def build_quotation(
     _load_embeddings()
 
     with ThreadPoolExecutor(max_workers=min(8, max(1, len(detected)))) as executor:
-        results = list(executor.map(lambda raw: _process_furniture_item(raw, img, style_id), detected))
+        with log_stage("quotation.match_furniture"):
+            results = list(executor.map(lambda raw: _process_furniture_item(raw, img, style_id), detected))
 
     furniture_list: list[FurnitureItem] = [item for item, _ in results]
     kb_match_count = sum(1 for _, matched in results if matched)

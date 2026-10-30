@@ -29,7 +29,11 @@ def layout_and_style_agent_stub(state: DesignBridgeState) -> dict[str, Any]:
 
     style_params = state.get("style_params")
     if style_params is None:
-        style_params = timed_call("layout_and_style.style_search", task_id, build_style_params, req, user_input)
+        # 換風格（已有生成圖）意圖明確，不走代理人，也避免結果不可重現
+        use_agent = Config.STYLE_AGENT and not state.get("generated_image")
+        style_params = timed_call(
+            "layout_and_style.style_search", task_id, build_style_params, req, user_input, use_agent=use_agent
+        )
 
     scene_graph: dict[str, Any] | None = None
     layout_intermediate: dict[str, Any] = {}

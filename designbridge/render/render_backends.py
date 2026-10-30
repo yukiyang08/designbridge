@@ -3,10 +3,17 @@
 
 from __future__ import annotations
 
+import base64
 import threading
 from pathlib import Path
 
 from designbridge.core.config import Config
+
+
+def _png_data_uri(path: str) -> str:
+    """條件圖僅數 KB，直接內嵌請求，省掉 fal_client.upload 的取 token 與上傳往返。"""
+    with open(path, "rb") as f:
+        return "data:image/png;base64," + base64.b64encode(f.read()).decode()
 
 # ── Model caches (loaded once, reused) ────────────────────────────────────────
 
@@ -453,8 +460,7 @@ def _render_flux_depth_controlnet_fal(
 
         print("☁️  fal.ai FLUX-general + ControlNet Union 推理中...")
 
-        with open(depth_path, "rb") as f:
-            depth_url = fal_client.upload(f.read(), content_type="image/png")
+        depth_url = _png_data_uri(depth_path)
 
         width, height = output_size
         image_size = _FAL_SIZE_MAP.get((width, height), {"width": width, "height": height})
@@ -465,8 +471,7 @@ def _render_flux_depth_controlnet_fal(
         # (3D structure) on the SAME Union model.
         controls: list[dict] = []
         if edge_path and os.path.isfile(edge_path):
-            with open(edge_path, "rb") as f:
-                edge_url = fal_client.upload(f.read(), content_type="image/png")
+            edge_url = _png_data_uri(edge_path)
             controls.append({
                 "control_image_url": edge_url,
                 "control_mode": "canny",

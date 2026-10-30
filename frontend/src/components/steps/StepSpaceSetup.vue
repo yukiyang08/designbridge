@@ -672,4 +672,11 @@ function submit() {
   .mode-toggle { width: 100%; }
   .mode-toggle button { flex: 1; }
 }
+/* 手機：房型卡 2 欄緊湊、家具改成可換行的小膠囊，頁面長度砍掉一半以上 */
+@media (max-width: 640px) {
+  .room-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.6rem; }
+  .room-card { aspect-ratio: 16 / 11; }
+  .furniture-list { flex-direction: row; flex-wrap: wrap; justify-content: center; max-width: none; gap: 0.5rem; }
+  .furniture-chip { padding: 0.4rem 0.8rem; }
+}
 </style>

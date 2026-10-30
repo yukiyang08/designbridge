@@ -9,7 +9,7 @@ from typing import Any
 
 from designbridge.core.config import Config
 from designbridge.layout.layout_items import FURNITURE_SIZES, FurnitureItem, _normalize_ftype, _parse_llm_layout
-from designbridge.layout.layout_enforce import _LAYOUT_ENFORCERS, _apply_hard_constraints, _build_semantic_gap_map, _clip_to_room, _enforce_immutable, _enforce_move_ops, _inject_bunk_bed_ladder, _is_underlay_type, _movable_indices, _optimize_positions, _overlaps, _push_apart, _score_soft_constraints, _touched_types, _weighted_score
+from designbridge.layout.layout_enforce import _LAYOUT_ENFORCERS, _apply_hard_constraints, _bind_companions, _build_semantic_gap_map, _clip_to_room, _enforce_immutable, _enforce_move_ops, _inject_bunk_bed_ladder, _is_underlay_type, _movable_indices, _optimize_positions, _overlaps, _push_apart, _reattach_companions, _same_group, _score_soft_constraints, _snap_companions, _touched_types, _weighted_score
 from designbridge.layout.floorplan_render import _generate_floor_plan
 from designbridge.layout.projected_depth import _generate_projected_depth
 from designbridge.layout.layout_constraints import get_layout_constraint_registry
@@ -20,12 +20,24 @@ from designbridge.layout.layout_constraints import get_layout_constraint_registr
 def _call_llm_layout(prompt: str) -> list[FurnitureItem]:
     from designbridge.render.llm import call_llm
 
-    text = call_llm(prompt, json_mode=True)
-    data = _parse_llm_layout(text)
-    furniture_list = (data or {}).get("furniture") or []
-    if not furniture_list:
-        return []
+    data = _parse_llm_layout(call_llm(prompt, json_mode=True))
+    return _items_from_llm((data or {}).get("furniture") or [])
 
+
+def _call_llm_review(prompt: str) -> dict[str, Any]:
+    """檢查報告交回 LLM：回傳 {"decision", "reason", "items"}；解析失敗視為 keep。"""
+    from designbridge.render.llm import call_llm
+
+    data = _parse_llm_layout(call_llm(prompt, json_mode=True)) or {}
+    decision = "revise" if str(data.get("decision", "")).lower() == "revise" else "keep"
+    return {
+        "decision": decision,
+        "reason": str(data.get("reason", "")),
+        "items": _items_from_llm(data.get("furniture") or []) if decision == "revise" else [],
+    }
+
+
+def _items_from_llm(furniture_list: list[dict]) -> list[FurnitureItem]:
     items: list[FurnitureItem] = []
     for f in furniture_list:
         ftype = _normalize_ftype(f.get("type", "default"))
@@ -287,7 +299,7 @@ def run_layout_agent(
           mismatched against the render canvas and the uncovered margins render as unconstrained
           (unrelated) content instead of room geometry. Defaults to a square canvas.
     """
-    from designbridge.core.prompts import LAYOUT_AGENT_PROMPT, LAYOUT_REFINEMENT_PROMPT
+    from designbridge.core.prompts import LAYOUT_AGENT_PROMPT, LAYOUT_REFINEMENT_PROMPT, LAYOUT_REVIEW_PROMPT
     from designbridge.core.timing import log_stage
 
     layout_registry = get_layout_constraint_registry()
@@ -331,6 +343,7 @@ def run_layout_agent(
     except Exception as e:
         print(f"⚠️ LLM layout failed ({e}), using default layout")
         items = _default_layout(room_type)
+    items = _bind_companions(items)
 
     best_items: list[FurnitureItem] = []
     best_score = -1.0
@@ -356,6 +369,7 @@ def run_layout_agent(
         immutable = constraints.get("immutable_regions") or []
         if immutable:
             seq = _enforce_immutable(seq, immutable)
+        seq = _snap_companions(seq)
         seq = _clip_to_room(seq)
         seq = _inject_bunk_bed_ladder(seq)
         seq = _push_apart(seq)
@@ -365,6 +379,8 @@ def run_layout_agent(
                 seq = fn(seq, space_info, card.parameters)
         from designbridge.layout.special_constraints import apply_special_layout_constraints
         seq = apply_special_layout_constraints(seq, structured_requirement)
+        # 規則只搬主家具，跟班要跟過去
+        seq = _snap_companions(seq)
         # The enforcers above snap pieces to walls and push them off doors, which can
         # create overlaps the earlier `_push_apart` had already resolved. Without this
         # second pass those survive into the scene graph and `collision_free` reports
@@ -381,6 +397,7 @@ def run_layout_agent(
         out = [FurnitureItem(**it.to_dict()) for it in seq]
         for src, dst in zip(seq, out):
             dst.pinned = src.pinned
+            dst.anchor, dst.offset = src.anchor, src.offset
         return out
 
     items = _settle(items)
@@ -423,6 +440,50 @@ def run_layout_agent(
         f"erg={scores['ergonomics']:.2f}"
     )
 
+    size = space_info.get("estimated_size") or {}
+    _fp_room_w = float(size.get("width", 4.0))
+    _fp_room_d = float(size.get("depth", 4.0))
+
+    review_log: dict[str, Any] = {}
+    if Config.LAYOUT_REVIEW_AGENT:
+        from designbridge.layout.layout_review import format_issues, issue_penalty, review_layout
+
+        issues = review_layout(best_items, structured_requirement, _fp_room_w, _fp_room_d)
+        review_log = {"issues_before": [i["message"] for i in issues], "decision": "pass"}
+        if issues:
+            current = json.dumps({"furniture": [it.to_dict() for it in best_items]}, ensure_ascii=False)
+            try:
+                with log_stage("layout_agent.llm_review", task_id=task_id):
+                    verdict = _call_llm_review(_build_prompt() + "\n\n" + LAYOUT_REVIEW_PROMPT.format(
+                        current_layout=current, issues=format_issues(issues),
+                    ))
+            except Exception as e:
+                print(f"⚠️ 佈局檢查交回 LLM 失敗（{e}），沿用原佈局")
+                verdict = {"decision": "error", "reason": str(e), "items": []}
+            review_log.update(decision=verdict["decision"], reason=verdict["reason"], accepted=False)
+            print(f"[layout_agent] 檢查發現 {len(issues)} 個問題 → LLM：{verdict['decision']}（{verdict['reason']}）")
+            if verdict["items"]:
+                revised = _settle(_bind_companions(verdict["items"]))
+                revised, _o, _a = _optimize_positions(
+                    revised, space_info,
+                    _movable_indices(revised, constraints, photo_anchored),
+                    steps=Config.LAYOUT_OPTIMIZER_STEPS,
+                )
+                revised = _settle(revised)
+                new_issues = review_layout(revised, structured_requirement, _fp_room_w, _fp_room_d)
+                new_scores = _score_soft_constraints(revised, space_info)
+                new_total = _weighted_score(new_scores)
+                scores_history.append(new_total)
+                review_log["issues_after"] = [i["message"] for i in new_issues]
+                # 重生不保證更好：問題少的優先，一樣多再比軟性分數
+                if (issue_penalty(new_issues), -new_total) < (issue_penalty(issues), -best_score):
+                    best_items, best_score, scores, total = _clone(revised), new_total, new_scores, new_total
+                    review_log["accepted"] = True
+                print(
+                    f"[layout_agent] 重生後問題 {len(issues)} → {len(new_issues)}，"
+                    f"score {new_total:.3f}，{'採用' if review_log['accepted'] else '保留原佈局'}"
+                )
+
     # Optional: fall back to the old LLM refinement when the optimizer cannot reach the
     # threshold. Off by default — a low score usually means the *initial plan* was wrong
     # (missing or mis-sized pieces), which another geometric nudge cannot fix either.
@@ -436,7 +497,7 @@ def run_layout_agent(
                 break
             if not refined:
                 break
-            refined = _settle(refined)
+            refined = _settle(_bind_companions(refined))
             refined, _o, _a = _optimize_positions(
                 refined, space_info,
                 _movable_indices(refined, constraints, photo_anchored),
@@ -488,7 +549,9 @@ def run_layout_agent(
         "must_add_satisfied": all(t in existing for t in must_add_set),
         "must_remove_satisfied": all(t not in existing for t in must_remove_set),
         "collision_free": not any(
-            _overlaps(best_items[i], best_items[j])
+            # 同組（餐椅貼餐桌）只算真的交疊，貼齊不算碰撞
+            _overlaps(best_items[i], best_items[j],
+                      margin=0.0 if _same_group(best_items[i], best_items[j]) else 0.02)
             for i in range(len(best_items))
             for j in range(i + 1, len(best_items))
             if not (_is_underlay_type(best_items[i].type) or _is_underlay_type(best_items[j].type))
@@ -506,13 +569,13 @@ def run_layout_agent(
         ),
     }
 
-    size = space_info.get("estimated_size") or {}
-    _fp_room_w = float(size.get("width", 4.0))
-    _fp_room_d = float(size.get("depth", 4.0))
     if Config.ENABLE_PRODUCT_MESHES:
         # 在畫平面圖前綁 SKU，平面圖、深度圖、3D 預覽都用商品真實尺寸
         from designbridge.layout.product_meshes import assign_products
-        assign_products(best_items, _fp_room_w, _fp_room_d)
+        _before = {it.id: (it.x, it.y, it.w, it.h) for it in best_items}
+        if assign_products(best_items, _fp_room_w, _fp_room_d):
+            # 換成商品尺寸後餐椅可能卡進餐桌，重新貼回主家具旁再解一次碰撞
+            best_items = _clip_to_room(_push_apart(_reattach_companions(best_items, _before)))
     floor_plan_path = _generate_floor_plan(best_items, task_id, room_type, _fp_room_w, _fp_room_d)
 
     preserve_types = _classify_preserved(best_items, constraints)
@@ -585,6 +648,7 @@ def run_layout_agent(
                 "iterations_run": len(scores_history),
                 "feasible": feasible,
                 "infeasible_constraints": infeasible_constraints,
+                "review": review_log,
             }
         },
     }

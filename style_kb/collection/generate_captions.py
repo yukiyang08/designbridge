@@ -114,31 +114,21 @@ def _call_fal(image_url: str, prompt: str) -> dict:
     return _parse_json_output(result["output"])
 
 
-def _call_gemini(image_url: str, prompt: str, api_key: str | None = None) -> dict:
+def _call_gemini(image_url: str, prompt: str, client) -> dict:
     import urllib.request
-    import google.generativeai as genai
-    key = api_key or os.environ.get("GEMINI_API_KEY", "")
-    genai.configure(api_key=key)
-    model = genai.GenerativeModel(
-        MODEL,
-        generation_config=genai.GenerationConfig(
-            temperature=0.3,
-            max_output_tokens=4096,
-        ),
-    )
+    from google.genai import types
     req = urllib.request.Request(image_url, headers={"User-Agent": "Mozilla/5.0"})
     with urllib.request.urlopen(req, timeout=15) as resp:
         img_bytes = resp.read()
     ext = image_url.split(".")[-1].lower()
     mime = "image/jpeg" if ext in ("jpg", "jpeg") else "image/png"
-    gen_cfg = {"temperature": 0.3, "max_output_tokens": 4096}
-    try:
-        gen_cfg["thinking_config"] = genai.types.ThinkingConfig(thinking_budget=0)
-    except AttributeError:
-        pass
-    response = model.generate_content(
-        [prompt, {"mime_type": mime, "data": img_bytes}],
-        generation_config=genai.GenerationConfig(**gen_cfg),
+    response = client.models.generate_content(
+        model=MODEL,
+        contents=[prompt, types.Part.from_bytes(data=img_bytes, mime_type=mime)],
+        config=types.GenerateContentConfig(
+            temperature=0.3, max_output_tokens=4096,
+            thinking_config=types.ThinkingConfig(thinking_budget=0),
+        ),
     )
     return _parse_json_output(response.text)
 
@@ -154,12 +144,18 @@ def _is_quota_error(e: Exception) -> bool:
 
 
 def _call_gemini_with_rotation(image_url: str, prompt: str) -> dict:
-    """依序嘗試所有 Gemini key（共用 designbridge.llm 的輪替邏輯）；全部 quota 耗盡才 raise QuotaExceeded。"""
-    from designbridge.llm import call_with_gemini_key_rotation
-    try:
-        return call_with_gemini_key_rotation(lambda key: _call_gemini(image_url, prompt, api_key=key))
-    except RuntimeError as e:
-        raise QuotaExceeded(str(e)) from e
+    """依序嘗試所有 Gemini key（Vertex 模式只有一次）；全部 quota 耗盡才 raise QuotaExceeded。"""
+    from designbridge.render.llm import _get_client, _resolve_gemini_api_keys
+    keys = _resolve_gemini_api_keys()
+    if not keys:
+        raise RuntimeError("未設定 Gemini 認證（API key 或 service-account.json）")
+    for key in keys:
+        try:
+            return _call_gemini(image_url, prompt, _get_client(key))
+        except Exception as e:
+            if not _is_quota_error(e):
+                raise
+    raise QuotaExceeded("所有 Gemini key 的配額都已耗盡")
 
 
 def analyze_image(image_url: str, style_id: str, provider: str = "auto") -> dict | None:

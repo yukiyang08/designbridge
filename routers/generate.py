@@ -1,5 +1,5 @@
 """Upload, chat, generation, quotation and panorama endpoints."""
-import shutil
+import io
 import time
 import uuid
 from pathlib import Path
@@ -10,21 +10,44 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
 from routers.common import (
-    get_user_id, get_optional_user_id, ensure_artifact,
-    API_PUBLIC_URL, DesignRequest, _artifact_url, _build_user_input, _get_graph,
+    get_user_id, ensure_artifact,
+    API_PUBLIC_URL, DesignRequest, _artifact_url, _build_user_input, _get_graph, _inside_artifacts, check_request_paths,
     _is_artifact_file, _layout_render_config, _require_artifact_file,
 )
 from designbridge.core.config import Config
-from designbridge.core.timing import collect_stages
+from designbridge.core.timing import collect_stages, log_stage
 from routers.history import _save_history, save_panorama, save_quotation
 
 router = APIRouter()
 
 _IMAGE_SUFFIXES = {".png", ".jpg", ".jpeg", ".webp", ".gif", ".bmp"}
+_MAX_UPLOAD_BYTES = 20 * 1024 * 1024
+_MAX_UPLOAD_PIXELS = 60_000_000   # 高壓縮的大圖解碼後會吃很多記憶體，只看檔案大小擋不住
+
+
+def _normalize_upload(dest: Path) -> None:
+    """確認真的是圖片且像素數合理；帶 EXIF 的照片轉正後剝除（旋轉資訊只有瀏覽器會套用，
+    後端用 Pillow 讀會是橫躺的；同時去掉 GPS 位置）。不合格就刪檔回 400。"""
+    from PIL import Image, ImageOps
+
+    try:
+        with Image.open(io.BytesIO(dest.read_bytes())) as im:
+            if im.width * im.height > _MAX_UPLOAD_PIXELS:
+                raise ValueError("解析度太高")
+            if im.format not in ("JPEG", "PNG", "WEBP") or not im.getexif():
+                return
+            keep = {k: im.info[k] for k in ("icc_profile",) if k in im.info}   # 色彩設定要留，不然顏色會偏
+            fixed = ImageOps.exif_transpose(im)
+            fmt = im.format
+            fixed.load()
+        fixed.save(dest, format=fmt, **({"quality": 95} if fmt != "PNG" else {}), **keep)
+    except Exception as e:
+        dest.unlink(missing_ok=True)
+        raise HTTPException(status_code=400, detail=f"無法讀取圖片：{e}")
 
 
 @router.post("/api/upload-image")
-def upload_image(file: UploadFile = File(...)):
+def upload_image(file: UploadFile = File(...), user_id: str = Depends(get_user_id)):
     """接收前端上傳的圖片，儲存到 artifacts/uploads/ 並回傳本機路徑。"""
     upload_dir = Path("artifacts/uploads")
     upload_dir.mkdir(parents=True, exist_ok=True)
@@ -32,8 +55,18 @@ def upload_image(file: UploadFile = File(...)):
     if suffix not in _IMAGE_SUFFIXES:  # /artifacts 是靜態目錄，不能讓 .html/.svg 之類被當網頁開
         raise HTTPException(status_code=400, detail=f"不支援的圖片格式：{suffix or '(無副檔名)'}")
     dest = upload_dir / f"{uuid.uuid4()}{suffix}"
+    size, too_big = 0, False
     with open(dest, "wb") as f:
-        shutil.copyfileobj(file.file, f)
+        while chunk := file.file.read(1 << 20):
+            size += len(chunk)
+            if size > _MAX_UPLOAD_BYTES:
+                too_big = True
+                break
+            f.write(chunk)
+    if too_big:
+        dest.unlink(missing_ok=True)
+        raise HTTPException(status_code=413, detail="圖片太大（上限 20 MB）")
+    _normalize_upload(dest)
     return {"path": str(dest)}
 
 
@@ -51,7 +84,7 @@ class ChatRequest(BaseModel):
 
 
 @router.post("/api/chat")
-def chat(request: ChatRequest):
+def chat(request: ChatRequest, user_id: str = Depends(get_user_id)):
     """通用 LLM chat endpoint，透過 Gemini。
 
     - stream=false（預設）：回傳 { "content": "..." }
@@ -86,6 +119,7 @@ def chat(request: ChatRequest):
 # 3. 建立 POST 路由
 @router.post("/api/generate")
 def generate_design(request: DesignRequest, user_id: str = Depends(get_user_id)):
+    check_request_paths(request)
     try:
         # 微調的底圖、換風格的上一張圖：本機沒有就從 Storage 補回（見 ensure_artifact）
         ensure_artifact(request.initial_image_path, user_id)
@@ -261,14 +295,27 @@ class QuotationRequest(BaseModel):
 def get_quotation(req: QuotationRequest, user_id: str = Depends(get_user_id)):
     """手動觸發估價（使用者點「重新估價」按鈕），可帶入使用者在家具查詢頁手動選擇的家具。"""
     from designbridge.pricing.quotation import build_quotation
+    if not _inside_artifacts(req.image_path):
+        raise HTTPException(status_code=400, detail=f"路徑不合法：{req.image_path}")
     try:
         ensure_artifact(req.image_path, user_id)   # 重新開啟的設計：本機沒有圖就從 Storage 補回
-        quotation = build_quotation(
-            req.image_path,
-            req.structured_requirement or {},
-            preselected=req.selected_furniture,
-            style_id=req.style_profile_id or "",
-        )
+        t0 = time.perf_counter()
+        with collect_stages() as timings, log_stage("quotation", req.task_id):
+            quotation = build_quotation(
+                req.image_path,
+                req.structured_requirement or {},
+                preselected=req.selected_furniture,
+                style_id=req.style_profile_id or "",
+            )
+        if quotation:
+            # 前端把它接到 timing_runs 後面，完整流程耗時才包含估價
+            quotation["timing_run"] = {
+                "kind": "quotation",
+                "task_id": req.task_id,
+                "timestamp": time.strftime("%Y-%m-%dT%H:%M:%S"),
+                "elapsed_seconds": round(time.perf_counter() - t0, 2),
+                "timings": timings,
+            }
         if req.task_id and user_id:
             save_quotation(user_id, req.task_id, quotation)
         return quotation
@@ -315,8 +362,10 @@ def _resolve_depth_for_panorama(request: PanoramaRequest, out_dir: Path) -> Path
 
 
 @router.post("/api/generate-panorama")
-def generate_panorama(request: PanoramaRequest, user_id: Optional[str] = Depends(get_optional_user_id)):
+def generate_panorama(request: PanoramaRequest, user_id: str = Depends(get_user_id)):
     """按需生成 Text2Room 全景圖，獨立於主要生成流程。"""
+    if request.depth_path and not _inside_artifacts(request.depth_path):
+        raise HTTPException(status_code=400, detail=f"路徑不合法：{request.depth_path}")
     out_dir = Path("artifacts/room_mesh") / request.task_id
     image_path = Path(request.image_path)
 

@@ -221,7 +221,7 @@ function openEmptyRoom(croppedPath, room) {
 // 兩種路徑下都會被呼叫，呼叫當下的 stepIndex 不一樣。
 export async function parseFloorPlanAndProceed(path, requestId, roomTypeOverride) {
   loading.value = true
-  loadingMsg.value = { title: '解析平面圖中', sub: 'AI 辨識平面圖上的家具配置' }
+  loadingMsg.value = { title: '解析平面圖中', sub: '已判斷為單一房間，AI 辨識圖上的家具配置' }
   try {
     const res = await jsonFetch('/api/parse-floor-plan', {
       image_path: path,

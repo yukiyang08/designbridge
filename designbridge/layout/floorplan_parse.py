@@ -508,9 +508,11 @@ def _detect_rooms_by_boxes(image_path: str) -> list[dict] | None:
         "relative to the whole image.\n"
         f"For `room_type`, use ONLY one of: {types_csv}. If a space clearly doesn't "
         "match any of these (e.g. bathroom, closet, corridor, balcony, entrance), use "
-        '"other".\n'
+        '"other" and set `space_type` to "bathroom" or "balcony" when it is one, else "other".\n'
+        "`label` is the room name written on the plan (copy it as is), or null if none. "
+        "Boxes must hug the room's walls and must not overlap each other.\n"
         "Return STRICT JSON only, no prose, no markdown fences:\n"
-        '{"rooms":[{"room_type":"bedroom","box_2d":[50,50,450,400]}]}'
+        '{"rooms":[{"room_type":"bedroom","label":"臥室","box_2d":[50,50,450,400]}]}'
     )
 
     try:
@@ -531,13 +533,18 @@ def _detect_rooms_by_boxes(image_path: str) -> list[dict] | None:
         if xywh is None:
             continue
         x, y, w, h = xywh
-        rooms.append({
+        room = {
             "id": f"room_{i + 1}",
             "room_type": _normalize_room_type(r.get("room_type")),
             "x": max(0.0, min(0.98, x)),
             "y": max(0.0, min(0.98, y)),
             "w": max(0.02, min(1.0, w)),
             "h": max(0.02, min(1.0, h)),
-        })
+        }
+        if str(r.get("space_type")) in _EXTRA_SPACE_TYPES:
+            room["space_type"] = r["space_type"]
+        if r.get("label"):
+            room["label"] = str(r["label"]).strip()
+        rooms.append(room)
 
     return rooms or None

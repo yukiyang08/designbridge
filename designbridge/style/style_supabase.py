@@ -73,23 +73,6 @@ def _encode_query_text(text: str):
     return model.encode(t, normalize_embeddings=True)
 
 
-def _encode_passage_texts(texts: list[str]):
-    """Encode candidate passages with model-specific prompt format."""
-    model = _get_text_embedding_model()
-    model_name = getattr(model, "model_card_data", None)
-    name = ""
-    if model_name and getattr(model_name, "model_id", None):
-        name = str(model_name.model_id).lower()
-    else:
-        name = str(os.getenv("DESIGNBRIDGE_TEXT_EMBEDDING_MODEL", "BAAI/bge-m3")).lower()
-
-    prepared = texts
-    if "e5" in name:
-        prepared = [f"passage: {t}" for t in texts]
-
-    return model.encode(prepared, normalize_embeddings=True)
-
-
 def _get_supabase():
     global _supabase_client
     if _supabase_client is None:
@@ -308,8 +291,7 @@ def _query_style_text_to_text(
     client = _get_supabase()
     query_emb = _encode_query_text(text_query)
 
-    # Fast path: query precomputed style_kb_embedding via pgvector RPC (Supabase).
-    # Falls back to in-Python ranking if RPC/column is not available yet.
+    # 只走 pgvector RPC；失敗或無結果直接回空，不在本機重新編碼全表（會卡死後端）
     try:
         res = client.rpc(
             "query_style_kb",
@@ -319,84 +301,81 @@ def _query_style_text_to_text(
                 "top_k": int(top_k),
             },
         ).execute()
-        if res.data:
-            results: list[SupabaseStyleResult] = []
-            for row in res.data:
-                style_name = (row.get("source_meta") or {}).get("style", row["style_id"])
-                results.append(
-                    SupabaseStyleResult(
-                        style_id=row["style_id"],
-                        image_url=row["image_url"],
-                        display_url=_resolve_display_url(row),
-                        style_name=style_name,
-                        similarity=round(float(row["similarity"]), 4),
-                    )
-                )
-            _batch_load_style_kb(client, results)
-            return results
-    except Exception:
-        # silent fallback (keeps current behavior for older DBs)
-        pass
-
-    q = client.table("style_images").select("style_id,image_url,source_meta,style_kb")
-    q = q.not_.is_("style_kb", "null")
-    if style_id:
-        q = q.eq("style_id", style_id)
-    rows = q.execute().data or []
-    if not rows:
-        return []
-
-    docs: list[str] = []
-    valid_rows: list[dict[str, Any]] = []
-    for row in rows:
-        text = _compose_style_kb_text(row)
-        if text:
-            docs.append(text)
-            valid_rows.append(row)
-    if not docs:
-        return []
-
-    doc_embs = _encode_passage_texts(docs)
-    # dot product == cosine similarity because embeddings are normalized
-    sims = (doc_embs @ query_emb).tolist()
-
-    ranked = sorted(
-        zip(valid_rows, sims),
-        key=lambda x: float(x[1]),
-        reverse=True,
-    )[: max(1, top_k)]
+    except Exception as e:
+        raise RuntimeError(f"query_style_kb RPC 失敗：{e}") from e
 
     results: list[SupabaseStyleResult] = []
-    for row, score in ranked:
+    for row in res.data or []:
         style_name = (row.get("source_meta") or {}).get("style", row["style_id"])
-        kb = _pick_style_kb(row)
         results.append(
             SupabaseStyleResult(
                 style_id=row["style_id"],
                 image_url=row["image_url"],
                 display_url=_resolve_display_url(row),
                 style_name=style_name,
-                similarity=round(float(score), 4),
-                style_kb=kb if isinstance(kb, dict) else None,
+                similarity=round(float(row["similarity"]), 4),
             )
         )
+    if results:
+        _batch_load_style_kb(client, results)
     return results
 
 
+_REF_SUFFIXES = {".jpg", ".jpeg", ".png", ".webp", ".gif", ".bmp"}
+_MAX_REF_BYTES = 15 * 1024 * 1024
+
+
+def _assert_public_url(url: str) -> None:
+    """只允許指向公網的 http(s)：擋 localhost、內網、雲端 metadata（169.254.x）。"""
+    import ipaddress
+    import socket
+    from urllib.parse import urlparse
+
+    u = urlparse(url)
+    if u.scheme not in ("http", "https") or not u.hostname:
+        raise ValueError(f"不支援的網址：{url}")
+    for info in socket.getaddrinfo(u.hostname, u.port or (443 if u.scheme == "https" else 80)):
+        if not ipaddress.ip_address(info[4][0]).is_global:
+            raise ValueError(f"不允許的位址：{u.hostname}")
+
+
+def _fetch_image_bytes(url: str, max_hops: int = 3) -> bytes:
+    """下載圖片：每一跳（含轉址）都重新檢查位址，並確認內容真的是圖片、大小在上限內。"""
+    import io
+
+    import httpx
+    from PIL import Image
+
+    for _ in range(max_hops + 1):
+        _assert_public_url(url)
+        resp = httpx.get(url, timeout=15, follow_redirects=False)
+        if resp.is_redirect and resp.next_request is not None:
+            url = str(resp.next_request.url)
+            continue
+        resp.raise_for_status()
+        data = resp.content
+        if len(data) > _MAX_REF_BYTES:
+            raise ValueError("圖片太大")
+        Image.open(io.BytesIO(data)).verify()   # 不是圖片（HTML、內網 JSON…）會丟例外，不落地
+        return data
+    raise ValueError("轉址次數過多")
+
+
 def download_style_image(image_url: str) -> Path | None:
-    """Download image from Supabase Storage to local artifacts/style_ref/. Cached by URL hash."""
+    """Download image to local artifacts/style_ref/ (cached by URL hash). URL 可能來自使用者請求，
+    所以只抓公網圖片，不是圖片就不存。"""
     STYLE_REF_DIR.mkdir(parents=True, exist_ok=True)
     url_hash = hashlib.md5(image_url.encode()).hexdigest()[:12]
-    suffix = Path(image_url.split("?")[0]).suffix or ".jpg"
-    local_path = STYLE_REF_DIR / f"{url_hash}{suffix}"
+    suffix = Path(image_url.split("?")[0]).suffix.lower()
+    local_path = STYLE_REF_DIR / f"{url_hash}{suffix if suffix in _REF_SUFFIXES else '.jpg'}"
     if local_path.exists():
         return local_path
     try:
-        import httpx
-        future = _download_executor.submit(httpx.get, image_url, timeout=15, follow_redirects=True)
-        resp = future.result(timeout=20)   # 硬上限：卡在慢速/斷續回應的來源站也不會拖垮整個請求
-        resp.raise_for_status()
-        local_path.write_bytes(resp.content)
+        future = _download_executor.submit(_fetch_image_bytes, image_url)
+        data = future.result(timeout=20)   # 硬上限：卡在慢速/斷續回應的來源站也不會拖垮整個請求
+        tmp = local_path.with_name(local_path.name + ".part")
+        tmp.write_bytes(data)
+        os.replace(tmp, local_path)   # 原子換名，並行請求不會讀到寫一半的檔
         return local_path
     except FutureTimeoutError:
         print(f"下載風格參考圖逾時（>20s，來源站太慢）：{image_url}")

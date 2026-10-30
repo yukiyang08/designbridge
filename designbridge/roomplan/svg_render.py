@@ -7,6 +7,8 @@ Paint one solid "wall body" rect covering the whole footprint, then paint each r
 
 from __future__ import annotations
 
+from xml.sax.saxutils import escape
+
 from designbridge.roomplan.constants import EXTERIOR_WALL_THICKNESS_M, INTERIOR_WALL_THICKNESS_M, PING_TO_M2
 from designbridge.roomplan.geometry import is_exterior_edge
 from designbridge.roomplan.schemas import DoorOpening, RoomInstance, WallSegment, WindowOpening
@@ -346,7 +348,7 @@ def render_room_plan_svg(
         halo = ' paint-order="stroke" stroke="white" stroke-width="3" stroke-linejoin="round"'
         lines.append(
             f'<text class="plan-name" x="{cx:.1f}" y="{cy-6:.1f}" font-size="13" font-weight="bold"{halo} '
-            f'text-anchor="middle" fill="{_TEXT_FILL}">{room.label_zh}</text>'
+            f'text-anchor="middle" fill="{_TEXT_FILL}">{escape(room.label_zh)}</text>'
         )
         lines.append(
             f'<text class="plan-detail" x="{cx:.1f}" y="{cy+11:.1f}" font-size="11"{halo} '

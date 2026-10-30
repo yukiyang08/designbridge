@@ -272,4 +272,11 @@ onMounted(() => {
   .studio-main :deep(.actions) { flex-direction: row; }
   .studio-main :deep(.actions .db-btn) { flex: 1; width: auto; }
 }
+/* 手機：底部操作列不再黏住（3 個子項疊起來會吃掉半個畫面），改成自然換行、按鈕滿寬 */
+@media (max-width: 640px) {
+  .studio-main :deep(.actions) { position: static; flex-wrap: wrap; gap: 0.6rem; }
+  .studio-main :deep(.actions .db-btn) { flex: 1 1 140px; }
+  .studio-main :deep(.actions p),
+  .studio-main :deep(.actions .skip-btn) { flex: 1 1 100%; text-align: center; }
+}
 </style>

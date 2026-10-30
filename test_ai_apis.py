@@ -18,11 +18,9 @@ PROJECT_ROOT = Path(__file__).resolve().parent
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from designbridge.core.config import Config
-
-
 def _any_llm_key() -> bool:
-    return bool(Config.GEMINI_API_KEY or os.getenv("GEMINI_API_KEY"))
+    from designbridge.render.llm import _resolve_gemini_api_keys
+    return bool(_resolve_gemini_api_keys())   # Vertex 模式回 [None]，也算有認證
 
 
 def test_llm() -> bool:
@@ -72,7 +70,7 @@ def main() -> None:
 
     if args.llm_only:
         if not _any_llm_key():
-            print("LLM: no key (GEMINI_API_KEY)")
+            print("LLM: 沒有認證（service-account.json 或 GEMINI_API_KEY）")
             sys.exit(1)
         try:
             ok = test_llm()

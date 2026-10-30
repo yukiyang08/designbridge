@@ -24,7 +24,7 @@ python -m pytest test/test_fengshui_constraints.py -q       # one file
 python -m pytest test/test_x.py::test_name -q               # one test
 ```
 
-No linter/formatter is configured. `.env` needs `GEMINI_API_KEY`, `FAL_KEY`, `HF_TOKEN`, `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY` (see README for what each is for).
+No linter/formatter is configured. `.env` needs `FAL_KEY`, `HF_TOKEN`, `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY` (see README for what each is for). Gemini runs on Vertex AI via `service-account.json` in the repo root; `GEMINI_API_KEY` is only a fallback when that file is absent.
 
 ## Architecture
 
@@ -51,7 +51,7 @@ requirement_analyzer → visual_preprocessing ─┬─ design   → layout_and_
 
 **Rendering** (`designbridge/render/`, `core/nodes/renderer.py`): backend is chosen by a waterfall of `if backend == "placeholder"` checks (fal.ai FLUX img2img / depth+edge ControlNet, HF Kontext, Imagen, local SDXL). Almost every behaviour is gated by an env-backed flag in `designbridge/core/config.py` — check there before assuming a code path is live. Style swap reuses the previous render's `seed` (stored in `render_result.generation_params`) and, by default, drops the post-estimated depth (`STYLE_SWAP_DEPTH_LOCK`).
 
-**Data:** Supabase (style vector search via bge-m3 text embeddings, storage) plus `designbridge/furniture_kb/ikea_embeddings.npz` (CLIP, IKEA matching). `style_kb/` is the offline pipeline that scrapes, captions, quality-filters and uploads style images; `export_dataset.py` + `train_style_lora.py` train style LoRAs.
+**Data:** Supabase (style vector search via bge-m3 text embeddings, storage) IKEA matching goes through the `ikea_products` table via the `match_ikea_products` pgvector RPC (no local fallback; failure raises). `furniture_kb/ikea_tw.json` is static data for browsing/keyword search, and `ikea_embeddings.npz` is only the source for `scripts/upload_ikea_to_supabase.py`. `style_kb/` is the offline pipeline that scrapes, captions, quality-filters and uploads style images; `export_dataset.py` + `train_style_lora.py` train style LoRAs.
 
 **Frontend** (`frontend/src`): linear wizard `/` → `/start` → `/studio` (direct `/studio` without a draft redirects to `/start`). All wizard state lives in `composables/useDesignFlow.js` composed from `composables/design-flow/*.js`; steps are in `components/steps/`. `/room-plan` is an independent CAD tool unrelated to the wizard.
 
@@ -64,4 +64,4 @@ requirement_analyzer → visual_preprocessing ─┬─ design   → layout_and_
 
 - Source files are CRLF; keep line endings when editing/moving code.
 - `ablation_tests/` is git-ignored (local only); `localtor2.py` and `service-account.json` are ignored because they hold credentials.
-- Tests live in `test/` (plus `requirement_tests/`, `scripts/test_*`); many hit real APIs or need local models, so expect some to be environment-dependent.
+- Tests live in `test/` (plus `scripts/test_*`); many hit real APIs or need local models, so expect some to be environment-dependent.

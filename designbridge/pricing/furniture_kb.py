@@ -1,8 +1,9 @@
 # designbridge/furniture_kb.py
-"""家具知識庫搜尋（IKEA 與其他品牌，見 _BRANDS）。
-  主要路徑：Supabase pgvector RPC（match_ikea_products）
-  Fallback 1：本地 numpy cosine 搜尋（ikea_embeddings.npz，Supabase 未設定或呼叫失敗時使用）
-  Fallback 2：本地 JSON 關鍵字搜尋
+"""家具知識庫搜尋（IKEA 與其他品牌）。
+  向量比對：Supabase pgvector RPC（match_ikea_products）；未設定或呼叫失敗退回本地 {brand}_embeddings.npz，
+            結果標 source="local"（本地只有 _BRANDS，沒有 Supabase 上的燈具品牌）
+  家具瀏覽：Supabase ikea_products（含所有品牌）
+  關鍵字搜尋：本地 {brand}_tw.json
 """
 
 from __future__ import annotations
@@ -93,7 +94,7 @@ def _load_embeddings():
 # ── Supabase pgvector（主要路徑）───────────────────────────────────────────────
 
 def _get_supabase_client():
-    """取得 Supabase client，未設定環境變數則回傳 None（不拋錯，讓上層 fallback）。"""
+    """取得 Supabase client，未設定環境變數則回傳 None（不拋錯）。"""
     global _supabase_client
     if _supabase_client is None:
         url = os.environ.get("SUPABASE_URL", "")
@@ -115,11 +116,11 @@ def _find_top_k_supabase(
     category: str,
     top_k: int,
     min_similarity: float,
-) -> list[dict] | None:
-    """呼叫 Supabase RPC match_ikea_products。回傳 None 代表呼叫失敗（讓上層改走本地 fallback）。"""
+) -> list[dict]:
+    """呼叫 Supabase RPC match_ikea_products。無達標候選回空 list；未設定或呼叫失敗丟 RuntimeError。"""
     client = _get_supabase_client()
     if client is None:
-        return None
+        raise RuntimeError("Supabase 未設定（SUPABASE_URL／SUPABASE_SERVICE_ROLE_KEY），無法做向量比對")
     try:
         res = client.rpc(RPC_NAME, {
             "query_embedding": query_embedding,
@@ -129,11 +130,10 @@ def _find_top_k_supabase(
         }).execute()
         return res.data or []
     except Exception as e:
-        print(f"[furniture_kb] Supabase RPC 呼叫失敗，改用本地 fallback：{e}")
-        return None
+        raise RuntimeError(f"match_ikea_products 呼叫失敗：{e}") from e
 
 
-# ── 向量搜尋（本地 numpy fallback）─────────────────────────────────────────────
+# ── 向量搜尋 ───────────────────────────────────────────────────────────────────
 
 def find_top_k_by_embedding(
     query_embedding: list[float],
@@ -141,18 +141,16 @@ def find_top_k_by_embedding(
     top_k: int = 3,
     min_similarity: float = MIN_SIMILARITY,
 ) -> list[dict]:
-    """
-    向量搜尋入口：優先呼叫 Supabase pgvector RPC，失敗或未設定環境變數則
-    fallback 到本地 numpy cosine 搜尋（ikea_embeddings.npz）。
-
-    相似度低於 min_similarity 的候選不會被回傳（視為「無合適候選」），
-    避免硬塞不相關的 top-3 結果。若最終沒有任何候選達標，回傳空 list。
-    """
-    supabase_hits = _find_top_k_supabase(query_embedding, category, top_k, min_similarity)
-    if supabase_hits is not None:
-        return supabase_hits
-
-    return _find_top_k_local(query_embedding, category, top_k, min_similarity)
+    """向量搜尋：Supabase pgvector，未設定或失敗退回本地 numpy；相似度低於 min_similarity 的候選不回傳。"""
+    if _get_supabase_client() is None:
+        print("[furniture_kb] Supabase 未設定，使用本地向量搜尋")
+        return _find_top_k_local(query_embedding, category, top_k, min_similarity)
+    try:
+        return _find_top_k_supabase(query_embedding, category, top_k, min_similarity)
+    except RuntimeError as e:
+        # 有設定卻失敗 = 服務故障，大聲警告；結果標 source="local" 讓估價看得出走了備援
+        print(f"[furniture_kb] ⚠️ Supabase 向量搜尋失敗，改用本地備援：{e}")
+        return _find_top_k_local(query_embedding, category, top_k, min_similarity)
 
 
 def _find_top_k_local(
@@ -161,26 +159,20 @@ def _find_top_k_local(
     top_k: int = 3,
     min_similarity: float = MIN_SIMILARITY,
 ) -> list[dict]:
-    """本地 numpy cosine 搜尋，embedding 矩陣與 ikea_tw.json 順序對應。"""
+    """本地 numpy cosine 搜尋，embedding 矩陣與 _load_local_kb() 順序對應。"""
     import numpy as np
 
     matrix = _load_embeddings()
     kb = _load_local_kb()
-
     if matrix is None or len(kb) == 0:
         return []
-
     if len(kb) != len(matrix):
         print(f"[furniture_kb] KB({len(kb)}) 與 embedding({len(matrix)}) 長度不符，跳過向量搜尋")
         return []
 
-    q = np.array(query_embedding, dtype="float32")
-    scores = matrix @ q                     # (N,) cosine similarity（已 L2 normalize）
-    order = np.argsort(scores)[::-1]        # 由高到低
-
+    scores = matrix @ np.array(query_embedding, dtype="float32")   # 已 L2 normalize = cosine
     results = []
-    below_threshold_logged = False
-    for idx in order:
+    for idx in np.argsort(scores)[::-1]:
         if len(results) >= top_k:
             break
         item = kb[int(idx)]
@@ -188,15 +180,8 @@ def _find_top_k_local(
             continue
         sim = float(scores[idx])
         if sim < min_similarity:
-            if not below_threshold_logged:
-                print(
-                    f"[furniture_kb] 相似度 {sim:.4f} < 門檻 {min_similarity}，"
-                    f"停止搜尋（category={category or 'any'}，已找到 {len(results)} 筆）"
-                )
-                below_threshold_logged = True
             break
-        results.append({**item, "similarity": round(sim, 4)})
-
+        results.append({**item, "similarity": round(sim, 4), "source": "local"})
     return results
 
 
@@ -313,7 +298,7 @@ def _score_item(item: dict, query: str, category: str) -> float:
 
 
 def search_kb(query: str, category: str = "", top_k: int = 3) -> list[dict]:
-    """本地 JSON 關鍵字搜尋（向量搜尋失敗時的 fallback）。"""
+    """本地 JSON 關鍵字搜尋（向量比對無候選時使用）。"""
     kb = _load_local_kb()
     if not kb:
         return []
@@ -326,19 +311,38 @@ def search_kb(query: str, category: str = "", top_k: int = 3) -> list[dict]:
 
 # ── 家具查詢（供前端瀏覽 / 篩選使用）───────────────────────────────────────────
 
+_PAGE = 1000  # PostgREST 單次最多回 1000 筆
+
+
+def _select_all(columns: str, apply=lambda q: q) -> list[dict]:
+    """分頁取出 ikea_products 全部符合列；Supabase 未設定或失敗丟 RuntimeError。"""
+    client = _get_supabase_client()
+    if client is None:
+        raise RuntimeError("Supabase 未設定（SUPABASE_URL／SUPABASE_SERVICE_ROLE_KEY），無法瀏覽家具")
+    rows: list[dict] = []
+    try:
+        while True:
+            q = apply(client.table(TABLE).select(columns)).order("id").range(len(rows), len(rows) + _PAGE - 1)
+            page = q.execute().data or []
+            rows += page
+            if len(page) < _PAGE:
+                return rows
+    except Exception as e:
+        raise RuntimeError(f"讀取 {TABLE} 失敗：{e}") from e
+
+
 def list_categories() -> list[str]:
-    """回傳本地 KB 中所有出現過的家具分類（依名稱排序）。"""
-    kb = _load_local_kb()
-    return sorted({item.get("category", "") for item in kb if item.get("category")})
+    """回傳 Supabase 中所有出現過的家具分類（依名稱排序）。"""
+    return sorted({r["category"] for r in _select_all("category") if r.get("category")})
 
 
 def list_filters() -> dict:
     """家具查詢頁的品牌、風格篩選選項與件數（依件數多到少）。"""
     from collections import Counter
     from style_kb.styles import STYLES
-    kb = _load_local_kb()
-    brands = Counter(item.get("brand") or "IKEA" for item in kb)
-    styles = Counter(tag for item in kb for tag in item.get("style_tags") or [])
+    rows = _select_all("brand,style_tags")
+    brands = Counter(r.get("brand") or "IKEA" for r in rows)
+    styles = Counter(tag for r in rows for tag in r.get("style_tags") or [])
     names = dict(STYLES)
     return {
         "brands": [{"value": b, "label": b, "count": n} for b, n in brands.most_common()],
@@ -353,26 +357,24 @@ def list_furniture(
     brand: str = "",
     style: str = "",
 ) -> list[dict]:
-    """回傳符合分類 / 價位區間的家具清單（本地 JSON KB）。
+    """回傳符合分類 / 價位區間的家具清單（Supabase ikea_products）。
 
     - category 為空字串代表不篩選分類
     - min_price / max_price 為 None 代表不限制該端
+    - brand / style 為空字串代表不篩選
     """
-    kb = _load_local_kb()
-    results = []
-    for item in kb:
-        if category and item.get("category") != category:
-            continue
-        if brand and (item.get("brand") or "IKEA") != brand:
-            continue
-        if style and style not in (item.get("style_tags") or []):
-            continue
-        price = item.get("price")
-        if price is None:
-            continue
-        if min_price is not None and price < min_price:
-            continue
-        if max_price is not None and price > max_price:
-            continue
-        results.append(item)
-    return results
+    def apply(q):
+        q = q.not_.is_("price", "null")
+        if category:
+            q = q.eq("category", category)
+        if min_price is not None:
+            q = q.gte("price", min_price)
+        if max_price is not None:
+            q = q.lte("price", max_price)
+        if brand:
+            q = q.eq("brand", brand)
+        if style:
+            q = q.contains("style_tags", [style])
+        return q
+
+    return _select_all("id,name,brand,category,subcategory,price,currency,url,image_url,style_tags", apply)

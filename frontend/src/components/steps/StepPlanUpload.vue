@@ -8,11 +8,10 @@
 import { watch } from 'vue'
 import AdvancedPanel from '@/components/shell/AdvancedPanel.vue'
 import PlanParseIssue from '@/components/steps/PlanParseIssue.vue'
-import { ROOM_OPTIONS } from '@/config/furniture'
 import { useDesignFlow, ASPECT_OPTIONS } from '@/composables/useDesignFlow'
 
 const {
-  floorPlanUpload, roomType, spaceSizePing, customRoomW, customRoomD, outputAspect,
+  floorPlanUpload, spaceSizePing, customRoomW, customRoomD, outputAspect,
   loading, useUploadedPlan, planParseIssue,
 } = useDesignFlow()
 
@@ -36,14 +35,9 @@ watch(() => floorPlanUpload.preview, () => { planParseIssue.value = null })
 
     <PlanParseIssue />
 
-    <AdvancedPanel hint="房型・坪數・長寬・比例">
+    <!-- 沒有「房間類型」：上傳的可能是整層平面圖，每間房的類型由 AI 辨識；整戶圖的總坪數在辨識後再校正 -->
+    <AdvancedPanel hint="坪數・長寬・比例">
       <div class="adv-grid">
-        <div class="adv-field">
-          <label class="field-label" for="pu-room">房間類型</label>
-          <select id="pu-room" v-model="roomType" class="db-input">
-            <option v-for="opt in ROOM_OPTIONS" :key="opt.value" :value="opt.value">{{ opt.label }}</option>
-          </select>
-        </div>
         <div class="adv-field">
           <label class="field-label" for="pu-ping">空間坪數</label>
           <input id="pu-ping" v-model.number="spaceSizePing" type="number" min="1" max="100" step="0.5" class="db-input" />

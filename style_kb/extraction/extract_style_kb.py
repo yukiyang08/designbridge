@@ -37,15 +37,14 @@ def _call_gemini_style_kb(
 ) -> dict[str, Any]:
     """Use current Gemini configuration to extract Style KB JSON for a single image."""
     try:
-        from google import genai
         from google.genai import types
+        from designbridge.render.llm import get_gemini_client
     except ImportError as exc:  # noqa: BLE001
         raise RuntimeError(
             "google-genai 未安裝。請先執行: pip install google-genai"
         ) from exc
 
-    api_key = Config.get_gemini_api_key()
-    client = genai.Client(api_key=api_key)
+    client = get_gemini_client()
 
     prompt = STYLE_KB_PROMPT.format(
         style_id=style_id,
