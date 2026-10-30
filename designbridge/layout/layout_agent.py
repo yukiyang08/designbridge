@@ -9,7 +9,7 @@ from typing import Any
 
 from designbridge.core.config import Config
 from designbridge.layout.layout_items import FURNITURE_SIZES, FurnitureItem, _normalize_ftype, _parse_llm_layout
-from designbridge.layout.layout_enforce import _LAYOUT_ENFORCERS, _apply_hard_constraints, _bind_companions, _build_semantic_gap_map, _clip_to_room, _enforce_immutable, _enforce_move_ops, _inject_bunk_bed_ladder, _is_underlay_type, _movable_indices, _optimize_positions, _overlaps, _push_apart, _reattach_companions, _same_group, _score_soft_constraints, _snap_companions, _touched_types, _weighted_score
+from designbridge.layout.layout_enforce import _LAYOUT_ENFORCERS, _apply_hard_constraints, _build_semantic_gap_map, _clip_to_room, _enforce_immutable, _enforce_move_ops, _inject_bunk_bed_ladder, _is_underlay_type, _movable_indices, _optimize_positions, _overlaps, _push_apart, _score_soft_constraints, _touched_types, _weighted_score
 from designbridge.layout.floorplan_render import _generate_floor_plan
 from designbridge.layout.projected_depth import _generate_projected_depth
 from designbridge.layout.layout_constraints import get_layout_constraint_registry
@@ -331,7 +331,6 @@ def run_layout_agent(
     except Exception as e:
         print(f"⚠️ LLM layout failed ({e}), using default layout")
         items = _default_layout(room_type)
-    items = _bind_companions(items)
 
     best_items: list[FurnitureItem] = []
     best_score = -1.0
@@ -357,7 +356,6 @@ def run_layout_agent(
         immutable = constraints.get("immutable_regions") or []
         if immutable:
             seq = _enforce_immutable(seq, immutable)
-        seq = _snap_companions(seq)
         seq = _clip_to_room(seq)
         seq = _inject_bunk_bed_ladder(seq)
         seq = _push_apart(seq)
@@ -367,8 +365,6 @@ def run_layout_agent(
                 seq = fn(seq, space_info, card.parameters)
         from designbridge.layout.special_constraints import apply_special_layout_constraints
         seq = apply_special_layout_constraints(seq, structured_requirement)
-        # 規則只搬主家具，跟班要跟過去
-        seq = _snap_companions(seq)
         # The enforcers above snap pieces to walls and push them off doors, which can
         # create overlaps the earlier `_push_apart` had already resolved. Without this
         # second pass those survive into the scene graph and `collision_free` reports
@@ -385,7 +381,6 @@ def run_layout_agent(
         out = [FurnitureItem(**it.to_dict()) for it in seq]
         for src, dst in zip(seq, out):
             dst.pinned = src.pinned
-            dst.anchor, dst.offset = src.anchor, src.offset
         return out
 
     items = _settle(items)
@@ -441,7 +436,7 @@ def run_layout_agent(
                 break
             if not refined:
                 break
-            refined = _settle(_bind_companions(refined))
+            refined = _settle(refined)
             refined, _o, _a = _optimize_positions(
                 refined, space_info,
                 _movable_indices(refined, constraints, photo_anchored),
@@ -493,9 +488,7 @@ def run_layout_agent(
         "must_add_satisfied": all(t in existing for t in must_add_set),
         "must_remove_satisfied": all(t not in existing for t in must_remove_set),
         "collision_free": not any(
-            # 同組（餐椅貼餐桌）只算真的交疊，貼齊不算碰撞
-            _overlaps(best_items[i], best_items[j],
-                      margin=0.0 if _same_group(best_items[i], best_items[j]) else 0.02)
+            _overlaps(best_items[i], best_items[j])
             for i in range(len(best_items))
             for j in range(i + 1, len(best_items))
             if not (_is_underlay_type(best_items[i].type) or _is_underlay_type(best_items[j].type))
@@ -519,10 +512,7 @@ def run_layout_agent(
     if Config.ENABLE_PRODUCT_MESHES:
         # 在畫平面圖前綁 SKU，平面圖、深度圖、3D 預覽都用商品真實尺寸
         from designbridge.layout.product_meshes import assign_products
-        _before = {it.id: (it.x, it.y, it.w, it.h) for it in best_items}
-        if assign_products(best_items, _fp_room_w, _fp_room_d):
-            # 換成商品尺寸後餐椅可能卡進餐桌，重新貼回主家具旁再解一次碰撞
-            best_items = _clip_to_room(_push_apart(_reattach_companions(best_items, _before)))
+        assign_products(best_items, _fp_room_w, _fp_room_d)
     floor_plan_path = _generate_floor_plan(best_items, task_id, room_type, _fp_room_w, _fp_room_d)
 
     preserve_types = _classify_preserved(best_items, constraints)

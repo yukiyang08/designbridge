@@ -6,7 +6,7 @@
       "must_keep_satisfied": true,
       "must_remove_satisfied": true,
       "semantic_gaps_met": true,
-      "wall_anchored": true
+      "wall_anchored": false
     },
     "feasible": true,
     "layout_prompt": "",
@@ -17,8 +17,8 @@
         "rotation": 0.0,
         "type": "bed",
         "w": 0.22,
-        "x": 0.3892,
-        "y": 0.7
+        "x": 0.4351,
+        "y": 0.53
       },
       {
         "h": 0.08,
@@ -26,8 +26,8 @@
         "rotation": 0.0,
         "type": "wardrobe",
         "w": 0.18,
-        "x": 0.2304,
-        "y": 0.02
+        "x": 0.02,
+        "y": 0.0948
       },
       {
         "h": 0.09,
@@ -35,8 +35,8 @@
         "rotation": 0.0,
         "type": "desk",
         "w": 0.16,
-        "x": 0.6563,
-        "y": 0.1519
+        "x": 0.6521,
+        "y": 0.89
       },
       {
         "h": 0.07,
@@ -44,19 +44,19 @@
         "rotation": 0.0,
         "type": "nightstand",
         "w": 0.07,
-        "x": 0.3092,
-        "y": 0.75
+        "x": 0.4176,
+        "y": 0.02
       }
     ],
     "projection_mode": "synthetic",
     "soft_scores": {
-      "balance": 0.756,
-      "circulation": 1.0,
-      "ergonomics": 1.0,
-      "focal_point": 0.819,
+      "balance": 0.799,
+      "circulation": 0.833,
+      "ergonomics": 0.833,
+      "focal_point": 0.857,
       "natural_light": 1.0
     },
-    "weighted_score": 0.9028
+    "weighted_score": 0.846
   },
   "renderer": {
     "layout_no_depth_all_ok": {

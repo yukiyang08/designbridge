@@ -85,13 +85,12 @@ const scoreTone = s => s == null ? '' : s >= 85 ? 'is-good' : s >= 60 ? 'is-mid'
     <!-- ── 風水開啟：完整報告 ── -->
     <template v-else>
       <div class="rp-scores">
-        <!-- 沒有可評的規則／沒有門時不顯示，避免看起來像壞掉或誤判滿分 -->
-        <div v-if="fs?.score != null" class="rp-score" :class="scoreTone(fs.score)">
-          <span class="rp-score-num">{{ fs.score }}</span>
+        <div class="rp-score" :class="scoreTone(fs?.score)">
+          <span class="rp-score-num">{{ fs?.score ?? '—' }}</span>
           <span class="rp-score-label">風水分數</span>
         </div>
-        <div v-if="circ?.score != null" class="rp-score" :class="scoreTone(circ.score)">
-          <span class="rp-score-num">{{ circ.score }}</span>
+        <div class="rp-score" :class="scoreTone(circ?.score)">
+          <span class="rp-score-num">{{ circ?.score ?? '—' }}</span>
           <span class="rp-score-label">動線分數</span>
         </div>
         <div class="rp-actions">

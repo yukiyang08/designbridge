@@ -155,9 +155,6 @@ class FurnitureItem:
     # Not serialized — it is a within-run marker telling the optimizer to leave it alone
     # and the scorer not to penalise it for being exactly where it was asked to go.
     pinned: bool = False
-    # 跟班家具（餐椅、床頭櫃…）綁定的主家具 id 與相對位移；不序列化，只在單次佈局中整組移動用
-    anchor: str = ""
-    offset: tuple[float, float] = (0.0, 0.0)
     # 綁定的 IKEA SKU（product_meshes.assign_products 填入）；空字串 = 沒有對應商品
     product_id: str = ""
 
