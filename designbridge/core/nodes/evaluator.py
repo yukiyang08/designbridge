@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import threading
 from pathlib import Path
 from typing import Any
 
@@ -30,14 +31,18 @@ def clip_evaluator_node(state: DesignBridgeState) -> dict[str, Any]:
         return {"evaluation_result": {"scores": {}, "weighted_score": 0.0, "decision": "skip", "feedback": "no text prompt", "issues_found": [], "suggestions": []}}
 
     task_id = state.get("task_id")
-    try:
-        from designbridge.render.clip_evaluator import evaluate, _translate_to_english
-        if design_description:
-            text_prompt = design_description
-        else:
-            text_prompt = timed_call("clip_evaluator.translate", task_id, _translate_to_english, raw_prompt)
-        result = timed_call("clip_evaluator.evaluate", task_id, evaluate, image_path, text_prompt)
-    except Exception as e:
-        result = {"scores": {}, "weighted_score": 0.0, "decision": "skip", "feedback": f"CLIP evaluation failed: {e}", "issues_found": [], "suggestions": []}
 
-    return {"evaluation_result": result}
+    def _run() -> None:
+        try:
+            from designbridge.render.clip_evaluator import evaluate, _translate_to_english
+            text_prompt = design_description or timed_call(
+                "clip_evaluator.translate", task_id, _translate_to_english, raw_prompt
+            )
+            result = timed_call("clip_evaluator.evaluate", task_id, evaluate, image_path, text_prompt)
+            print(f"[clip_evaluator][{task_id}] {result.get('feedback')}")
+        except Exception as e:
+            print(f"⚠️ [clip_evaluator] CLIP evaluation failed: {e}")
+
+    # 分數沒有任何下游節點或前端在用，放背景跑，不佔生圖回應時間；結果只印在後端 log
+    threading.Thread(target=_run, daemon=True).start()
+    return {"evaluation_result": {"scores": {}, "weighted_score": 0.0, "decision": "background", "feedback": "CLIP 評分在背景執行，結果見後端 log", "issues_found": [], "suggestions": []}}
