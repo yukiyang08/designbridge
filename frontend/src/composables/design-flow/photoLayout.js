@@ -3,8 +3,8 @@ import { jsonFetch, mediaUrl } from '@/config/api'
 import {
   spacePhoto, spacePhotoPath, photoDetection, photoLayoutLoading, photoLayoutError,
   sceneGraph, editPlacements, roomW, roomD, roomTypeForPlan, roomType,
-  extraPrompt, floorPlanPath, floorPlanUrl, projectId, spaceInfo,
-  photoVersions, photoCurrent, photoBusy, photoStyleId, photoRemovedIds, styleOptions,
+  floorPlanPath, floorPlanUrl, projectId, spaceInfo,
+  photoVersions, photoCurrent, photoBusy, photoStyleId, photoStylePrompt, photoQuoting, styleOptions,
 } from './state'
 import { fengshuiRulesFor } from './fengshui'
 import { uploadFile } from './common'
@@ -74,7 +74,7 @@ export async function autoRelayoutPhoto() {
       room_w: roomW.value,
       room_d: roomD.value,
       furniture_list: editPlacements.value.map(p => p.type),
-      text_prompt: extraPrompt.value,
+      text_prompt: photoStylePrompt.value,
       fengshui_rules: fengshuiRulesFor(roomTypeForPlan.value),
       doors: det.doors,
       windows: det.windows,
@@ -102,19 +102,18 @@ export async function autoRelayoutPhoto() {
 
 export const currentVersion = computed(() => photoVersions.value[photoCurrent.value] || null)
 
-// 照片裡還在、而且偵測框對得上目前這張圖的家具（換／刪家具用）
+// 偵測框對得上目前這張圖的家具（快速圈選用）
 export const editableFurniture = computed(() => {
   if (!currentVersion.value?.aligned) return []
-  const removed = new Set(photoRemovedIds.value)
   return (photoDetection.value?.furniture_placements || [])
-    .filter(p => Array.isArray(p.image_box) && !removed.has(p.id))
+    .filter(p => Array.isArray(p.image_box))
     .map(p => ({ id: p.id, type: p.type, label: furnitureLabel(p.type), box: p.image_box }))
 })
 
-function pushVersion(data, label, aligned) {
+function pushVersion(data, label, aligned, extra = {}) {
   photoVersions.value = [...photoVersions.value, {
     path: data.generated_image_path, url: data.generated_image_url || mediaUrl(data.generated_image_path),
-    label, aligned, seed: data.render_result?.generation_params?.seed,
+    label, aligned, seed: data.render_result?.generation_params?.seed, ...extra,
   }]
   photoCurrent.value = photoVersions.value.length - 1
 }
@@ -149,7 +148,6 @@ export function uploadPhoto(file) {
   return runPhotoJob('上傳並偵測照片中的家具…', async () => {
     photoVersions.value = []
     photoCurrent.value = 0
-    photoRemovedIds.value = []
     photoDetection.value = null
     editPlacements.value = []
     spacePhotoPath.value = await uploadFile(file)
@@ -158,20 +156,34 @@ export function uploadPhoto(file) {
   })
 }
 
-// 換風格：以目前這張為底整張重生，家具留在原位（後端 restyle 不重排、走照片深度）
-export function restylePhoto(styleId) {
+// 換風格：以目前這張為底整張重生，家具留在原位（後端 restyle 不重排、走照片深度）。
+// 同一張底圖換過的風格直接切過去，不重打 API（跟其他入口的一鍵換風格一樣）
+export const styleVersionIndex = (styleId) => {
+  const basePath = currentVersion.value?.basePath || currentVersion.value?.path
+  return photoVersions.value.findIndex(v => v.styleId === styleId && v.basePath === basePath)
+}
+
+// styleId 為空：只用使用者打的描述（例如「地中海風」）找風格
+export function restylePhoto(styleId = '') {
+  const text = photoStylePrompt.value.trim()
+  if (styleId && !text) {
+    const cached = styleVersionIndex(styleId)
+    if (cached >= 0) { photoCurrent.value = cached; photoStyleId.value = styleId; return }
+  }
   const base = currentVersion.value
-  if (!base) return
-  const name = styleOptions.value.find(o => o.value === styleId)?.name || styleId
-  return runPhotoJob(`套用「${name}」風格中…`, async () => {
+  if (!base || (!styleId && !text)) return
+  const basePath = base.basePath || base.path
+  const name = styleId ? (styleOptions.value.find(o => o.value === styleId)?.name || styleId) : text
+  return runPhotoJob(`套用「${name.slice(0, 12)}」風格中…`, async () => {
     const data = await generate({
-      text_prompt: extraPrompt.value.trim() || `${name}風格的室內設計`,
-      style_profile_id: styleId,
+      text_prompt: text || `${name}風格的室內設計`,
+      style_profile_id: styleId || undefined,
       initial_image_path: base.path,
       restyle: true,
     })
-    photoStyleId.value = styleId
-    pushVersion(data, `風格：${name}`, base.aligned)
+    photoStyleId.value = styleId || data.style_params?.style_profile_id || ''
+    // 有自己打描述的版本不進快取，免得下次點同一張卡片拿到的是別的描述
+    pushVersion(data, `風格：${name.slice(0, 8)}`, base.aligned, text ? {} : { styleId, basePath })
   })
 }
 
@@ -182,7 +194,7 @@ export function renderPhotoLayout() {
   return runPhotoJob('依新的家具位置重新生成…', async () => {
     const { baseline, ...sg } = det
     const data = await generate({
-      text_prompt: extraPrompt.value.trim(),
+      text_prompt: photoStylePrompt.value.trim(),
       style_profile_id: photoStyleId.value || undefined,
       no_style_reference: !photoStyleId.value,
       initial_image_path: spacePhotoPath.value,
@@ -192,64 +204,47 @@ export function renderPhotoLayout() {
   })
 }
 
-// 偵測框外擴一點當遮罩（白＝要改），交給 adjuster 局部重繪
-async function boxMask(url, box) {
-  const img = await new Promise((resolve, reject) => {
-    const im = new Image()   // 只讀尺寸、不畫進 canvas，不需要 CORS
-    im.onload = () => resolve(im)
-    im.onerror = () => reject(new Error('讀不到目前的圖片'))
-    im.src = url
-  })
-  const w = img.naturalWidth, h = img.naturalHeight
-  const c = document.createElement('canvas')
-  c.width = w; c.height = h
-  const ctx = c.getContext('2d')
-  ctx.fillStyle = '#000'; ctx.fillRect(0, 0, w, h)
-  const [x0, y0, x1, y1] = box
-  const pad = 0.03
-  ctx.fillStyle = '#fff'
-  ctx.fillRect(Math.max(0, x0 - pad) * w, Math.max(0, y0 - pad) * h, (Math.min(1, x1 + pad) - Math.max(0, x0 - pad)) * w, (Math.min(1, y1 + pad) - Math.max(0, y0 - pad)) * h)
-  const blob = await new Promise(r => c.toBlob(r, 'image/png'))
-  return uploadFile(new File([blob], 'mask.png', { type: 'image/png' }))
-}
-
-// 換／刪家具：action = 'remove' | 'replace'；遮罩來自偵測框（item）或使用者畫筆（maskBlob）
-function editCurrent({ action, replacement, what, getMaskPath, onDone }) {
+// 細節調整：塗抹範圍＋一句描述（刪除、換成什麼都寫在描述裡），跟其他入口的圖上編輯一樣
+export function refinePhoto(maskBlob, text) {
   const base = currentVersion.value
-  if (!base) return
-  const text = action === 'remove'
-    ? `移除${what}，用周圍的地板與牆面自然補齊`
-    : `把${what}換成${replacement.trim()}`
-  return runPhotoJob(action === 'remove' ? `刪除${what}中…` : `把${what}換掉中…`, async () => {
+  if (!base || !maskBlob || !text.trim()) return
+  return runPhotoJob('AI 重繪中，只會改動塗抹的區域…', async () => {
+    const mask_image_path = await uploadFile(new File([maskBlob], 'mask.png', { type: 'image/png' }))
     const data = await generate({
-      text_prompt: text,
+      text_prompt: text.trim(),
       initial_image_path: base.path,
-      mask_image_path: await getMaskPath(base),
+      mask_image_path,
       refine_mode: true,
       no_style_reference: true,
     })
-    pushVersion(data, action === 'remove' ? `刪除${what}` : `${what}→${replacement.trim()}`, base.aligned)
-    onDone?.()
+    pushVersion(data, text.trim().slice(0, 12), base.aligned)
   })
 }
 
-export function editPhotoFurniture(item, action, replacement = '') {
-  if (!item) return
-  return editCurrent({
-    action, replacement, what: item.label,
-    getMaskPath: (base) => boxMask(base.url, item.box),
-    onDone: () => {
-      if (action !== 'remove') return
-      photoRemovedIds.value = [...photoRemovedIds.value, item.id]
-      editPlacements.value = editPlacements.value.filter(p => p.id !== item.id)
-    },
-  })
-}
-
-export function editPhotoByMask(maskBlob, action, replacement = '') {
-  if (!maskBlob) return
-  return editCurrent({
-    action, replacement, what: '塗抹範圍內的家具',
-    getMaskPath: () => uploadFile(new File([maskBlob], 'mask.png', { type: 'image/png' })),
-  })
+// 家具估價清單：跟結果頁同一支 /api/quotation，報價記在各版本上，切回舊版本不用重估
+export async function quotePhoto(force = false) {
+  const v = currentVersion.value
+  if (!v || photoQuoting.value || (v.quotation && !force)) return
+  photoQuoting.value = true
+  const idx = photoCurrent.value
+  const save = (patch) => {
+    photoVersions.value = photoVersions.value.map((x, i) => (i === idx ? { ...x, ...patch } : x))
+  }
+  save({ quoteError: '' })
+  try {
+    const res = await jsonFetch('/api/quotation', {
+      image_path: v.path,
+      structured_requirement: null,
+      selected_furniture: [],
+      style_profile_id: v.styleId || photoStyleId.value || null,
+    })
+    if (!res.ok) throw new Error(await errorDetail(res))
+    const data = await res.json()
+    if (!data?.furniture_list?.length) throw new Error('沒有辨識到畫面中的家具')
+    save({ quotation: data })
+  } catch (e) {
+    save({ quoteError: `估價失敗：${e.message}` })
+  } finally {
+    photoQuoting.value = false
+  }
 }

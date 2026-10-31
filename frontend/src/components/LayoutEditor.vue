@@ -20,8 +20,7 @@ const props = defineProps({
   geometry: { type: Object, default: null },            // 這間房的牆厚／門／窗（CAD 路徑才有，見 utils/roomGeometry）
   // 家具 id → 正面朝向（up/down/left/right），由後端 facing.py 推算，生圖時家具也照這個方向擺
   facing: { type: Object, default: () => ({}) },
-  // 嵌在側欄時只留工具列與畫布，家具面板與屬性欄收起
-  compact: { type: Boolean, default: false },
+  hideEmptyPanel: { type: Boolean, default: false },   // 沒選取時不顯示右側提示欄
 })
 
 const FACING_TEXT = { up: '上', down: '下', left: '左', right: '右' }
@@ -444,18 +443,15 @@ onBeforeUnmount(() => viewportObserver?.disconnect())
 </script>
 
 <template>
-  <div class="editor" :class="{ compact }">
+  <div class="editor">
     <div class="toolbar">
-      <template v-if="!compact">
       <button class="tool-btn active" @click="selectedId = null" title="取消選取">
         <Icon icon="mdi:cursor-default-outline" width="16" /><span>選取</span>
       </button>
       <span class="tool-sep" />
-      </template>
       <button v-if="canRotate(selectedItem)" class="tool-btn" @click="rotate90(selectedItem)" title="旋轉 90°">
         <Icon icon="mdi:rotate-right" width="16" /><span>旋轉</span>
       </button>
-      <template v-if="!compact">
       <button class="tool-btn" @click="zoomIn" title="放大">
         <Icon icon="mdi:magnify-plus-outline" width="16" /><span>放大</span>
       </button>
@@ -465,7 +461,6 @@ onBeforeUnmount(() => viewportObserver?.disconnect())
       <button class="tool-btn" :class="{ active: showDims }" :aria-pressed="showDims" @click="showDims = !showDims" title="顯示／隱藏尺寸標示">
         <Icon icon="mdi:ruler" width="16" /><span>尺寸</span>
       </button>
-      </template>
       <button class="tool-btn" :disabled="!selectedItem" @click="removeItem(selectedItem)" title="刪除">
         <Icon icon="mdi:trash-can-outline" width="16" /><span>刪除</span>
       </button>
@@ -480,7 +475,7 @@ onBeforeUnmount(() => viewportObserver?.disconnect())
 
     <div class="workspace">
       <!-- ── 家具面板 ── -->
-      <aside v-if="!compact" class="palette">
+      <aside class="palette">
         <div class="palette-title">家具</div>
         <select v-model="paletteRoomType" class="palette-room-select">
           <option v-for="r in ROOM_OPTIONS" :key="r.value" :value="r.value">{{ r.label }}</option>
@@ -567,7 +562,6 @@ onBeforeUnmount(() => viewportObserver?.disconnect())
       </div>
 
       <!-- ── 家具設定 ── -->
-      <template v-if="!compact">
       <aside class="props-panel" v-if="selectedItem">
         <div class="props-header">
           <Icon :icon="iconOf(selectedItem.type)" width="20" />
@@ -621,24 +615,19 @@ onBeforeUnmount(() => viewportObserver?.disconnect())
           <input type="number" v-model.number="roomDepthCm" min="100" />
         </label>
       </aside>
-      <aside class="props-panel props-empty" v-else>
+      <aside class="props-panel props-empty" v-else-if="!hideEmptyPanel">
         <Icon icon="mdi:cursor-default-click-outline" width="24" />
         <p>點選畫布上的家具或外框以編輯</p>
       </aside>
-      </template>
     </div>
 
     <span v-if="editorNotice" class="hint hint-notice" role="status">{{ editorNotice }}</span>
-    <span v-else-if="!compact" class="hint">拖動移動 · 右下角縮放 · ⟳ 旋轉 · 靠牆自動吸附 · 點選外框可調整房間尺寸 · 「尺寸」可顯示標註 · 橘色箭頭＝家具正面朝向</span>
+    <span v-else class="hint">拖動移動 · 右下角縮放 · ⟳ 旋轉 · 靠牆自動吸附 · 點選外框可調整房間尺寸 · 「尺寸」可顯示標註 · 橘色箭頭＝家具正面朝向</span>
   </div>
 </template>
 
 <style scoped>
 .editor { display: flex; flex-direction: column; gap: 0.6rem; width: 100%; }
-.editor.compact { gap: 0.4rem; }
-.editor.compact .toolbar { flex-wrap: nowrap; padding: 0.2rem; }
-.editor.compact .tool-btn { flex-direction: row; padding: 0.3rem 0.5rem; }
-.editor.compact .board-viewport { flex-basis: 100%; height: var(--board-h, 280px); }
 
 /* ── Toolbar ── */
 .toolbar {

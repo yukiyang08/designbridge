@@ -1,8 +1,8 @@
 <script setup>
 /**
- * 照片入口（租屋族）：一頁完成四件事——上傳照片、換風格（家具不動）、調整家具位置、換／刪家具。
- * 左邊是目前這一版的圖與歷史版本，右邊四個功能區塊；每個動作都以目前這一版為底產生新版本。
- * 調整家具位置時左邊大畫面換成俯視平面圖；畫筆圈選時換成可塗抹的畫布。
+ * 照片入口（租屋族）。還沒上傳時只引導上傳；上傳後白卡最上方是四個功能（修改風格、調整家具位置、
+ * 置換或刪除家具、家具估價清單），不必照順序。每個功能都是左邊大圖、右邊控制欄，
+ * 版面沿用其他入口的同一功能。每個動作都以目前這一版為底產生新版本。
  */
 import { ref, computed, watch } from 'vue'
 import { Icon } from '@iconify/vue'
@@ -12,364 +12,427 @@ import { useDesignFlow } from '@/composables/useDesignFlow'
 
 const {
   spacePhoto, spacePhotoPath, photoDetection, photoLayoutError, photoBusy, photoLayoutLoading,
-  photoVersions, photoCurrent, photoStyleId, currentVersion, editableFurniture,
-  editPlacements, roomW, roomD, roomTypeForPlan, extraPrompt,
+  photoVersions, photoCurrent, photoStylePrompt, photoQuoting, currentVersion, editableFurniture, styleVersionIndex,
+  editPlacements, roomW, roomD, roomTypeForPlan,
   styleOptions, styleDemoImages,
-  uploadPhoto, restylePhoto, renderPhotoLayout, editPhotoFurniture, editPhotoByMask, autoRelayoutPhoto, resetPhotoLayout,
+  uploadPhoto, restylePhoto, renderPhotoLayout, refinePhoto, quotePhoto, autoRelayoutPhoto, resetPhotoLayout,
 } = useDesignFlow()
 
 const TOOLS = [
-  { key: 'upload',  icon: 'mdi:image-plus-outline', title: '上傳照片',       sub: '拍一張你現在的房間' },
-  { key: 'style',   icon: 'mdi:palette-outline',    title: '修改風格',       sub: '家具位置不變，只換裝潢風格' },
-  { key: 'layout',  icon: 'mdi:arrow-all',          title: '調整家具位置',   sub: '拖曳移動，或讓 AI 自動重排' },
-  { key: 'replace', icon: 'mdi:swap-horizontal',    title: '置換或刪除家具', sub: '點選家具，或用畫筆圈出範圍' },
+  { key: 'style',   icon: 'mdi:palette-outline',      title: '修改風格' },
+  { key: 'layout',  icon: 'mdi:arrow-all',            title: '調整家具位置' },
+  { key: 'replace', icon: 'mdi:swap-horizontal',      title: '置換或刪除家具' },
+  { key: 'quote',   icon: 'mdi:receipt-text-outline', title: '家具估價清單' },
 ]
 const hasPhoto = computed(() => !!spacePhotoPath.value && !!photoDetection.value)
-const tool = ref(hasPhoto.value ? 'style' : 'upload')
+const tool = ref('style')
 const busy = computed(() => !!photoBusy.value || photoLayoutLoading.value)
-
-function openTool(key) {
-  if (key !== 'upload' && !hasPhoto.value) return
-  tool.value = key
-}
-watch(hasPhoto, (ok) => { if (ok && tool.value === 'upload') tool.value = 'style' })
 
 function onFile(e) {
   const f = e.target.files?.[0]
   if (!f) return
   spacePhoto.onChange(e)
+  tool.value = 'style'
   uploadPhoto(f)
   e.target.value = ''
 }
 
-function onPlacements(next) { editPlacements.value = next }
-
-// ── 風格 ──
+// ── 修改風格 ──
 const styles = computed(() => styleOptions.value.filter(o => o.value !== 'auto'))
+const styleThumb = (id) => photoVersions.value[styleVersionIndex(id)]?.url || styleDemoImages.value[id]
 
-// ── 換／刪家具 ──
-const selectedId = ref('')
-const replacement = ref('')
-const selected = computed(() => editableFurniture.value.find(f => f.id === selectedId.value) || null)
-watch(editableFurniture, (list) => { if (!list.some(f => f.id === selectedId.value)) selectedId.value = '' })
-// 'pick' 點偵測框；'brush' 自己塗。家具移過位置的版本框對不上，只能用畫筆
-const pickMode = ref('pick')
-watch(() => currentVersion.value?.aligned, (ok) => { if (ok === false) pickMode.value = 'brush' }, { immediate: true })
-const brushMode = computed(() => tool.value === 'replace' && pickMode.value === 'brush')
+// ── 調整家具位置 ──
+function onPlacements(next) { editPlacements.value = next }
+async function applyLayout() {
+  await renderPhotoLayout()
+  if (!photoLayoutError.value) tool.value = 'style'   // 生成完回到看圖的頁面
+}
+
+// ── 置換或刪除家具（圖上編輯）──
 const canvasRef = ref(null)
 const drawMode = ref('draw')
-const brushSize = ref(36)
+const brushSize = ref(35)
+const eraserSize = ref(35)
+const size = computed({
+  get: () => (drawMode.value === 'erase' ? eraserSize.value : brushSize.value),
+  set: (v) => { (drawMode.value === 'erase' ? eraserSize : brushSize).value = v },
+})
+const refineText = ref('')
 const hasMask = computed(() => !!canvasRef.value?.hasMask)
-const canSubmit = computed(() => (brushMode.value ? hasMask.value : !!selected.value))
-
-async function doEdit(action) {
-  if (!canSubmit.value || (action === 'replace' && !replacement.value.trim())) return
-  if (brushMode.value) await editPhotoByMask(await canvasRef.value.getMaskBlob(), action, replacement.value)
-  else await editPhotoFurniture(selected.value, action, replacement.value)
-  if (!photoLayoutError.value) replacement.value = ''
+async function onRefine() {
+  if (busy.value || !hasMask.value || !refineText.value.trim()) return
+  await refinePhoto(await canvasRef.value.getMaskBlob(), refineText.value)
+  if (!photoLayoutError.value) refineText.value = ''
 }
-const targetLabel = computed(() => (brushMode.value ? '塗抹的範圍' : selected.value?.label || ''))
 
-// 照片上的偵測框：只在點選模式顯示，且目前這張圖的家具還在原位才對得上
-const boxes = computed(() => (tool.value === 'replace' && !brushMode.value ? editableFurniture.value : []).map(f => {
-  const [x0, y0, x1, y1] = f.box
-  return { ...f, style: { left: `${x0 * 100}%`, top: `${y0 * 100}%`, width: `${(x1 - x0) * 100}%`, height: `${(y1 - y0) * 100}%` } }
-}))
+// ── 家具估價清單 ──
+// 打開這一頁或換了版本就估目前這張（已估過的不重打）
+watch([tool, photoCurrent], () => { if (tool.value === 'quote') quotePhoto() })
+const quotation = computed(() => currentVersion.value?.quotation || null)
+const CATEGORY_ZH = {
+  sofa: '沙發', table: '桌子', chair: '椅子', lamp: '燈具', rug: '地毯',
+  curtain: '窗簾', storage: '收納', shelf: '收納', bed: '床',
+}
+const shortName = (name = '') => name.split(/[,，]/)[0].trim()
+const quoteRows = computed(() => (quotation.value?.furniture_list || []).map((item, i) => ({
+  key: i, label: CATEGORY_ZH[item.category] || item.detected_name, c: item.candidates?.[0] || null,
+})))
+const quoteTotal = computed(() => quoteRows.value.reduce((s, r) => s + (r.c?.price || 0), 0))
 </script>
 
 <template>
-  <div class="ps">
-    <!-- ══ 左：目前的圖＋版本 ══ -->
-    <section class="ps-stage">
-      <div class="stage-box">
-        <div v-if="tool === 'layout' && hasPhoto" class="stage-fill stage-editor">
+  <!-- ══ 還沒有照片：只引導上傳 ══ -->
+  <div v-if="!hasPhoto" class="ps-intro">
+    <label class="drop" :class="{ busy }">
+      <input type="file" accept="image/*" hidden :disabled="busy" @change="onFile" />
+      <template v-if="!busy">
+        <span class="drop-icon">📷</span>
+        <span class="drop-label">先上傳你現在的房間照片</span>
+        <small class="drop-hint">JPG、PNG、WebP，盡量拍到地板與整面牆</small>
+        <span class="db-btn drop-btn">選擇照片</span>
+      </template>
+      <template v-else>
+        <div class="spinner"></div>
+        <span class="drop-hint">{{ photoBusy || 'AI 處理中…' }}</span>
+      </template>
+    </label>
+    <p v-if="photoLayoutError" class="db-error">{{ photoLayoutError }}</p>
+    <ul class="intro-features" aria-label="上傳後可以做的事">
+      <li v-for="t in TOOLS" :key="t.key"><Icon :icon="t.icon" width="18" />{{ t.title }}</li>
+    </ul>
+  </div>
+
+  <!-- ══ 有照片：功能列＋工作區 ══ -->
+  <div v-else class="ps">
+    <div class="ps-top">
+      <nav class="ps-tabs" role="tablist" aria-label="功能">
+        <button
+          v-for="t in TOOLS" :key="t.key" type="button" role="tab" class="ps-tab"
+          :class="{ active: tool === t.key }" :aria-selected="tool === t.key" @click="tool = t.key"
+        >
+          <Icon :icon="t.icon" width="20" />
+          <span>{{ t.title }}</span>
+        </button>
+      </nav>
+      <label class="change-photo" :class="{ disabled: busy }" title="換一張照片會重新開始">
+        <input type="file" accept="image/*" hidden :disabled="busy" @change="onFile" />
+        <Icon icon="mdi:camera-retake-outline" width="18" />換照片
+      </label>
+    </div>
+
+    <p v-if="photoLayoutError" class="db-error ps-error">{{ photoLayoutError }}</p>
+
+    <div class="ps-work">
+      <!-- 左：大圖 -->
+      <section class="ps-main">
+        <div class="stage" :class="{ 'stage--canvas': tool === 'replace', 'stage--editor': tool === 'layout' }">
           <LayoutEditor
-            compact
+            v-if="tool === 'layout'"
+            hide-empty-panel
             :placements="editPlacements"
             v-model:room-w="roomW"
             v-model:room-d="roomD"
             :room-type="roomTypeForPlan"
             @update:placements="onPlacements"
           />
+          <RefineCanvas
+            v-else-if="tool === 'replace'"
+            ref="canvasRef" fill :image-url="currentVersion.url" :brush-size="size" :draw-mode="drawMode"
+          />
+          <img v-else :src="currentVersion.url" :alt="currentVersion.label" class="stage-img" />
+
+          <div v-if="busy" class="ps-busy" role="status">
+            <div class="spinner"></div>
+            <p>{{ photoBusy || 'AI 處理中…' }}</p>
+          </div>
         </div>
-        <div v-else-if="brushMode && currentVersion" class="stage-fill">
-          <RefineCanvas ref="canvasRef" fill :image-url="currentVersion.url" :brush-size="brushSize" :draw-mode="drawMode" />
-        </div>
-        <div v-else-if="currentVersion" class="stage-img">
-          <img :src="currentVersion.url" :alt="currentVersion.label" />
+
+        <!-- 每次生成的版本，可以切回去比較或接著改 -->
+        <div v-if="photoVersions.length > 1 && tool !== 'layout'" class="versions" aria-label="版本">
           <button
-            v-for="b in boxes" :key="b.id" type="button"
-            class="fbox" :class="{ active: b.id === selectedId }" :style="b.style"
-            :disabled="busy" @click="selectedId = b.id"
-          ><span class="fbox-tag">{{ b.label }}</span></button>
-        </div>
-        <label v-else class="stage-empty">
-          <input type="file" accept="image/*" hidden :disabled="busy" @change="onFile" />
-          <Icon icon="mdi:camera-outline" width="44" />
-          <strong>上傳你現在的房間照片</strong>
-          <small>JPG、PNG、WebP，盡量拍到地板與整面牆</small>
-        </label>
-
-        <div v-if="busy" class="stage-busy" role="status">
-          <div class="spinner"></div>
-          <span>{{ photoBusy || 'AI 處理中…' }}</span>
-          <small>約 10–60 秒</small>
-        </div>
-      </div>
-
-      <p v-if="photoLayoutError" class="db-error stage-error">{{ photoLayoutError }}</p>
-
-      <div v-if="photoVersions.length > 1" class="versions" aria-label="版本">
-        <button
-          v-for="(v, i) in photoVersions" :key="v.path" type="button" class="ver"
-          :class="{ active: i === photoCurrent }" :disabled="busy" :title="v.label"
-          @click="photoCurrent = i"
-        >
-          <img :src="v.url" :alt="v.label" />
-          <span>{{ v.label }}</span>
-        </button>
-      </div>
-    </section>
-
-    <!-- ══ 右：四個功能 ══ -->
-    <aside class="ps-tools">
-      <section
-        v-for="(t, n) in TOOLS" :key="t.key" class="tool"
-        :class="{ open: tool === t.key, locked: t.key !== 'upload' && !hasPhoto }"
-      >
-        <button type="button" class="tool-head" :aria-expanded="tool === t.key" @click="openTool(t.key)">
-          <span class="tool-num">{{ n + 1 }}</span>
-          <Icon :icon="t.icon" width="22" class="tool-icon" />
-          <span class="tool-text"><strong>{{ t.title }}</strong><small>{{ t.sub }}</small></span>
-        </button>
-
-        <div v-if="tool === t.key" class="tool-body">
-          <!-- 1 上傳 -->
-          <template v-if="t.key === 'upload'">
-            <p v-if="hasPhoto" class="note">已偵測到 {{ photoDetection.furniture_placements.length }} 件家具，可以開始改造。</p>
-            <label class="db-btn db-btn--sm file-btn" :class="{ disabled: busy }">
-              <input type="file" accept="image/*" hidden :disabled="busy" @change="onFile" />
-              {{ hasPhoto ? '換一張照片' : '選擇照片' }}
-            </label>
-          </template>
-
-          <!-- 2 風格 -->
-          <template v-else-if="t.key === 'style'">
-            <div class="style-grid">
-              <button
-                v-for="s in styles" :key="s.value" type="button" class="style-card"
-                :class="{ active: s.value === photoStyleId }" :disabled="busy" @click="restylePhoto(s.value)"
-              >
-                <img v-if="styleDemoImages[s.value]" :src="styleDemoImages[s.value]" :alt="s.name" />
-                <span v-else class="style-empty"></span>
-                <span class="style-name">{{ s.name }}</span>
-              </button>
-            </div>
-            <input v-model="extraPrompt" class="db-input mini-input" placeholder="補充需求（選填），例如：木質感、明亮" />
-          </template>
-
-          <!-- 3 家具位置 -->
-          <template v-else-if="t.key === 'layout'">
-            <div class="row">
-              <button type="button" class="db-btn db-btn--ghost db-btn--sm" :disabled="busy" @click="autoRelayoutPhoto">AI 自動重排</button>
-              <button type="button" class="db-btn db-btn--ghost db-btn--sm" :disabled="busy" @click="resetPhotoLayout">還原</button>
-              <button type="button" class="db-btn db-btn--sm grow" :disabled="busy || !editPlacements.length" @click="renderPhotoLayout">套用並生成</button>
-            </div>
-            <p class="note">在左邊的俯視圖拖曳家具；點一下家具可以旋轉或刪除。上方是遠處的牆，下方靠近鏡頭。</p>
-            <img v-if="currentVersion" :src="currentVersion.url" alt="目前的照片" class="ref-photo" />
-          </template>
-
-          <!-- 4 換／刪家具 -->
-          <template v-else>
-            <div class="seg" role="tablist">
-              <button
-                type="button" role="tab" :class="{ active: pickMode === 'pick' }"
-                :disabled="busy || !currentVersion?.aligned" @click="pickMode = 'pick'"
-              >點選家具</button>
-              <button type="button" role="tab" :class="{ active: pickMode === 'brush' }" :disabled="busy" @click="pickMode = 'brush'">畫筆圈選</button>
-            </div>
-
-            <template v-if="brushMode">
-              <div class="row">
-                <div class="seg seg--sm">
-                  <button type="button" :class="{ active: drawMode === 'draw' }" @click="drawMode = 'draw'">
-                    <Icon icon="mdi:brush" width="15" />畫筆
-                  </button>
-                  <button type="button" :class="{ active: drawMode === 'erase' }" @click="drawMode = 'erase'">
-                    <Icon icon="mdi:eraser" width="15" />橡皮擦
-                  </button>
-                </div>
-                <input v-model.number="brushSize" type="range" min="8" max="120" class="grow" aria-label="筆刷大小" />
-                <button type="button" class="link-btn" :disabled="!hasMask" @click="canvasRef?.clearMask()">清除</button>
-              </div>
-              <p v-if="!hasMask" class="note">在左邊照片上把要換掉或刪除的家具塗紅。</p>
-            </template>
-
-            <template v-else>
-              <p v-if="!currentVersion?.aligned" class="note warn">這一版的家具位置改過，請改用畫筆圈選。</p>
-              <div class="chips">
-                <button
-                  v-for="f in editableFurniture" :key="f.id" type="button" class="chip"
-                  :class="{ active: f.id === selectedId }" :disabled="busy" @click="selectedId = f.id"
-                >{{ f.label }}</button>
-              </div>
-              <p v-if="!selected" class="note">點選左邊照片上的框，或上面的家具名稱。</p>
-            </template>
-
-            <template v-if="canSubmit">
-              <div class="row">
-                <input
-                  v-model="replacement" class="db-input mini-input grow"
-                  :placeholder="`把${targetLabel}換成…（例如：淺灰布沙發）`" @keyup.enter="doEdit('replace')"
-                />
-                <button type="button" class="db-btn db-btn--sm" :disabled="busy || !replacement.trim()" @click="doEdit('replace')">置換</button>
-              </div>
-              <button type="button" class="db-btn db-btn--ghost db-btn--sm danger" :disabled="busy" @click="doEdit('remove')">
-                刪除{{ targetLabel }}
-              </button>
-            </template>
-          </template>
+            v-for="(v, i) in photoVersions" :key="v.path" type="button" class="ver"
+            :class="{ active: i === photoCurrent }" :disabled="busy" :title="v.label"
+            @click="photoCurrent = i"
+          >
+            <img :src="v.url" :alt="v.label" />
+            <span>{{ v.label }}</span>
+          </button>
         </div>
       </section>
-    </aside>
+
+      <!-- 右：控制欄 -->
+      <aside class="ps-side">
+        <!-- 修改風格 -->
+        <template v-if="tool === 'style'">
+          <label class="field-label" for="style-prompt">想要什麼風格？</label>
+          <textarea
+            id="style-prompt" v-model="photoStylePrompt" class="db-textarea style-prompt" rows="3"
+            placeholder="用一句話描述你想要的樣子，例如：溫暖的木質感、明亮的白色系"
+          />
+          <button type="button" class="db-btn" :disabled="busy || !photoStylePrompt.trim()" @click="restylePhoto()">
+            依描述生成
+          </button>
+          <p class="side-note">家具位置不變，只換裝潢風格。</p>
+
+          <h3 class="side-title">或直接選一個風格</h3>
+          <div class="swap-grid">
+            <button
+              type="button" class="swap-card generated" :class="{ active: photoCurrent === 0 }"
+              :disabled="busy" title="回到原照片" @click="photoCurrent = 0"
+            >
+              <span class="swap-thumb"><img :src="photoVersions[0].url" alt="原照片" /></span>
+              <span class="swap-label">原照片</span>
+            </button>
+            <button
+              v-for="s in styles" :key="s.value" type="button" class="swap-card"
+              :class="{ active: currentVersion.styleId === s.value, generated: styleVersionIndex(s.value) >= 0 }"
+              :disabled="busy"
+              :title="styleVersionIndex(s.value) >= 0 ? `${s.name}，已生成，點一下切換` : `${s.name}，點一下生成`"
+              @click="restylePhoto(s.value)"
+            >
+              <span class="swap-thumb">
+                <img v-if="styleThumb(s.value)" :src="styleThumb(s.value)" :alt="s.name" />
+                <span v-else class="swap-thumb-empty">＋</span>
+                <span v-if="styleVersionIndex(s.value) >= 0" class="swap-done" aria-label="已生成">✓</span>
+              </span>
+              <span class="swap-label">{{ s.name }}</span>
+            </button>
+          </div>
+        </template>
+
+        <!-- 調整家具位置 -->
+        <template v-else-if="tool === 'layout'">
+          <h3 class="side-title">原圖</h3>
+          <img :src="photoVersions[0].url" alt="原圖" class="ref-photo" />
+          <p class="side-note">拖曳左邊俯視圖上的家具；上方是遠處的牆，下方靠近鏡頭。點一下家具可以旋轉、刪除。</p>
+          <div class="side-actions">
+            <button type="button" class="db-btn db-btn--ghost db-btn--sm" :disabled="busy" @click="autoRelayoutPhoto">AI 自動重排</button>
+            <button type="button" class="db-btn db-btn--ghost db-btn--sm" :disabled="busy" @click="resetPhotoLayout">還原偵測結果</button>
+          </div>
+          <button type="button" class="db-btn" :disabled="busy || !editPlacements.length" @click="applyLayout">依新位置生成</button>
+        </template>
+
+        <!-- 置換或刪除家具 -->
+        <template v-else-if="tool === 'replace'">
+          <div class="re-tools">
+            <div class="seg" role="group" aria-label="工具">
+              <button type="button" :class="{ active: drawMode === 'draw' }" @click="drawMode = 'draw'">畫筆</button>
+              <button type="button" :class="{ active: drawMode === 'erase' }" @click="drawMode = 'erase'">橡皮擦</button>
+            </div>
+            <input v-model.number="size" type="range" min="5" max="120" step="5" class="re-slider" aria-label="筆刷大小" />
+            <span class="re-size">{{ size }}px</span>
+          </div>
+          <button type="button" class="re-link" :disabled="!hasMask" @click="canvasRef?.clearMask()">清除塗抹</button>
+          <template v-if="editableFurniture.length">
+            <h3 class="side-title">快速圈選</h3>
+            <div class="chips">
+              <button
+                v-for="f in editableFurniture" :key="f.id" type="button" class="chip"
+                @click="canvasRef?.paintBox(f.box)"
+              >{{ f.label }}</button>
+            </div>
+          </template>
+          <label class="field-label" for="refine-text">要怎麼改？</label>
+          <textarea
+            id="refine-text" v-model="refineText" class="db-textarea" rows="2"
+            :placeholder="hasMask ? '例如：刪除、換成淺灰布沙發' : '先在左邊圖上圈出要改的家具'"
+          />
+          <button type="button" class="db-btn" :disabled="busy || !hasMask || !refineText.trim()" @click="onRefine">執行細節調整</button>
+        </template>
+
+        <!-- 家具估價清單 -->
+        <template v-else>
+          <div class="quote-head">
+            <h3 class="side-title">家具估價清單</h3>
+            <button
+              v-if="quotation" type="button" class="re-link" :disabled="photoQuoting"
+              @click="quotePhoto(true)"
+            >重新估價</button>
+          </div>
+          <p class="side-note">依左邊目前這張圖辨識家具並推薦商品。</p>
+          <p v-if="photoQuoting" class="side-note" role="status">估價中，約 30 秒…</p>
+          <p v-else-if="currentVersion.quoteError" class="db-error">{{ currentVersion.quoteError }}</p>
+          <template v-if="quotation">
+            <div class="quote-total">
+              <span>預算 · {{ quoteRows.length }} 件</span>
+              <strong>NT$ {{ quoteTotal.toLocaleString() }}</strong>
+            </div>
+            <ul class="quote-list">
+              <li v-for="r in quoteRows" :key="r.key" class="quote-item">
+                <span class="q-thumb">
+                  <img v-if="r.c?.product_image_url" :src="r.c.product_image_url" :alt="r.c.name" />
+                </span>
+                <span class="q-info">
+                  <small>{{ r.label }}</small>
+                  <a v-if="r.c?.purchase_url" :href="r.c.purchase_url" target="_blank" rel="noopener" :title="r.c.name">{{ shortName(r.c.name) }}</a>
+                  <span v-else>{{ shortName(r.c?.name) || '—' }}</span>
+                </span>
+                <span class="q-price">NT$ {{ (r.c?.price || 0).toLocaleString() }}</span>
+              </li>
+            </ul>
+          </template>
+        </template>
+      </aside>
+    </div>
   </div>
 </template>
 
 <style scoped>
-/* 一個畫面內放完：高度扣掉導覽列、流程列、返回按鈕與卡片上下留白 */
-.ps {
-  --ps-h: max(380px, calc(100vh - 275px));
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) clamp(300px, 34vw, 440px);
-  gap: 1.25rem;
-  height: var(--ps-h);
-  padding-bottom: 0.75rem;
+/* ── 上傳引導 ── */
+.ps-intro { display: flex; flex-direction: column; gap: 1rem; padding-bottom: 1.5rem; }
+.drop {
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 0.7rem;
+  min-height: max(360px, calc(100vh - 360px));
+  border: 2px dashed #cfcfcf; border-radius: 8px; background: var(--db-chip); cursor: pointer;
+  transition: background 0.16s, border-color 0.16s;
 }
+.drop:hover:not(.busy) { background: #cfcfcf; border-color: var(--db-accent); }
+.drop.busy { cursor: progress; }
+.drop-icon { font-size: 2.8rem; }
+.drop-label { font-family: var(--db-font-display); font-size: 1.7rem; color: var(--db-text); }
+.drop-hint { color: var(--db-text-soft); font-size: 0.9rem; }
+.drop-btn { margin-top: 0.4rem; pointer-events: none; }
+.intro-features { display: flex; justify-content: center; flex-wrap: wrap; gap: 0.5rem 1.5rem; margin: 0; padding: 0; list-style: none; }
+.intro-features li { display: inline-flex; align-items: center; gap: 0.35rem; color: var(--db-text-soft); font-size: 0.9rem; }
 
-.ps-stage { display: flex; flex-direction: column; gap: 0.6rem; min-height: 0; }
-.stage-box {
-  position: relative; flex: 1; min-height: 0;
-  display: flex; align-items: center; justify-content: center;
-  border-radius: 12px; background: #f4f2ee; overflow: hidden;
+/* ── 工作台：圖片優先，矮螢幕寧可捲一點也不壓扁圖 ── */
+.ps {
+  --ps-h: max(560px, calc(100vh - 230px));
+  display: flex; flex-direction: column; gap: 0.75rem; height: var(--ps-h); padding-bottom: 0.75rem;
 }
-.stage-img { position: relative; max-width: 100%; max-height: 100%; line-height: 0; }
-.stage-fill { position: absolute; inset: 0; }
-/* 俯視圖吃滿左邊大畫面，扣掉工具列 */
-.stage-editor { display: flex; flex-direction: column; padding: 0.6rem; background: #fff; border: 1px solid #ebe7e0; border-radius: 12px; }
-.stage-editor :deep(.editor) { flex: 1; min-height: 0; }
-.stage-editor :deep(.workspace) { flex: 1; min-height: 0; }
-.stage-editor :deep(.board-viewport) { height: 100%; }
-.stage-img img { display: block; max-width: 100%; max-height: calc(var(--ps-h) - 110px); object-fit: contain; }
-.fbox {
-  position: absolute; padding: 0; border: 2px solid #3b82f6; border-radius: 4px;
-  background: rgba(59, 130, 246, 0.08); cursor: pointer;
+.ps-top { display: flex; align-items: center; gap: 1rem; flex-shrink: 0; }
+.ps-tabs { flex: 1; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 0.5rem; }
+.ps-tab {
+  display: flex; align-items: center; justify-content: center; gap: 0.5rem;
+  padding: 0.7rem 0.75rem; border: 1px solid #e5e1d8; border-radius: var(--db-radius-pill, 999px);
+  background: #fff; color: var(--db-text); font: inherit; font-size: clamp(0.82rem, 1.1vw, 0.98rem); cursor: pointer; min-width: 0;
+  transition: background 0.16s, border-color 0.16s, color 0.16s;
 }
-.fbox:hover { background: rgba(59, 130, 246, 0.2); }
-.fbox.active { border-color: #f59e0b; background: rgba(245, 158, 11, 0.22); }
-.fbox-tag {
-  position: absolute; top: -1px; left: -1px; padding: 2px 6px; border-radius: 4px 0 4px 0;
-  background: #3b82f6; color: #fff; font-size: 0.72rem; line-height: 1.4; white-space: nowrap;
+.ps-tab:hover:not(.active) { border-color: var(--db-accent); background: #f7f6f3; }
+.ps-tab span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ps-tab.active { background: var(--db-accent); border-color: var(--db-accent); color: var(--db-on-accent, #fff); }
+/* 換照片是次要動作：文字連結樣式，不跟四個功能長得一樣 */
+.change-photo {
+  flex-shrink: 0; display: inline-flex; align-items: center; gap: 0.3rem;
+  color: var(--db-text-soft); font-size: 0.88rem; text-decoration: underline; text-underline-offset: 3px; cursor: pointer;
 }
-.fbox.active .fbox-tag { background: #f59e0b; }
-.stage-empty {
-  display: flex; flex-direction: column; align-items: center; gap: 0.5rem;
-  color: var(--db-text-soft); cursor: pointer; text-align: center; padding: 2rem;
+.change-photo:hover { color: var(--db-text); }
+.change-photo.disabled { opacity: 0.4; pointer-events: none; }
+.ps-error { margin: 0; }
+
+.ps-work { flex: 1; min-height: 0; display: grid; grid-template-columns: minmax(0, 1fr) clamp(260px, 26vw, 380px); gap: 1.25rem; }
+.ps-main { min-height: 0; display: flex; flex-direction: column; gap: 0.6rem; }
+.stage {
+  position: relative; flex: 1; min-height: 0; display: flex; align-items: center; justify-content: center;
+  border-radius: 8px; background: var(--db-chip-soft); overflow: hidden;
 }
-.stage-empty strong { color: var(--db-text); font-size: 1.1rem; }
-.stage-busy {
-  position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center;
-  gap: 0.5rem; background: rgba(255, 255, 255, 0.72); backdrop-filter: blur(2px); color: var(--db-text);
+.stage-img { max-width: 100%; max-height: 100%; object-fit: contain; }
+.stage--canvas { background: #1a0d08; }
+.stage--editor { align-items: stretch; padding: 0.6rem; background: #fff; border: 1px solid #ebe7e0; }
+.stage--editor :deep(.editor) { flex: 1; min-height: 0; }
+.stage--editor :deep(.workspace) { flex: 1; min-height: 0; flex-wrap: nowrap; }
+.stage--editor :deep(.board-viewport) { height: 100%; }
+.stage--editor :deep(.palette-list) { max-height: calc(var(--ps-h) - 260px); }
+.stage--editor :deep(.palette) { width: clamp(150px, 14vw, 225px); }
+
+/* ── 右側控制欄 ── */
+.ps-side { min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 0.7rem; padding-right: 2px; }
+.field-label { font-size: 0.95rem; font-weight: 600; color: var(--db-text); }
+.style-prompt { min-height: 96px; background: #fff; border: 2px solid #756d66; font-size: 0.95rem; }
+.style-prompt:focus { outline: none; box-shadow: 0 0 0 3px var(--db-accent-soft); }
+.side-title { margin: 0.4rem 0 0; font-family: var(--db-font-display); font-style: italic; font-weight: 500; font-size: 1.05rem; color: var(--db-text); }
+.side-note { margin: 0; font-size: 0.82rem; color: var(--db-text-soft); line-height: 1.6; }
+.side-actions { display: flex; gap: 0.5rem; }
+.side-actions .db-btn { flex: 1; min-width: 0; }
+.ref-photo { width: 100%; border-radius: 8px; }
+
+/* 一鍵換風格卡片（同 StepResult，改成直排網格） */
+.swap-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0.5rem; }
+.swap-card {
+  display: flex; flex-direction: column; align-items: center; gap: 0.3rem; min-width: 0;
+  padding: 0; border: none; background: none; font-family: var(--db-font-body); cursor: pointer;
 }
-.stage-busy small { color: var(--db-text-soft); }
+.swap-thumb {
+  position: relative; display: grid; place-items: center; width: 100%; aspect-ratio: 1;
+  border-radius: 12px; overflow: hidden; border: 2px solid #ececec; background: #f5f3ee;
+  transition: border-color 0.16s, box-shadow 0.16s, transform 0.16s;
+}
+.swap-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.swap-thumb-empty { font-size: 1.4rem; color: var(--db-placeholder); }
+.swap-done {
+  position: absolute; top: 4px; right: 4px; width: 18px; height: 18px; border-radius: 50%;
+  display: grid; place-items: center; background: var(--db-accent); color: #fff; font-size: 0.7rem; line-height: 1;
+}
+.swap-card:hover:not(:disabled) .swap-thumb { border-color: var(--db-accent); }
+.swap-card.active .swap-thumb { border-color: var(--db-accent); box-shadow: 0 0 0 3px var(--db-accent-soft); }
+.swap-label { font-size: 0.78rem; color: var(--db-text-soft); text-align: center; line-height: 1.3; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
+.swap-card.active .swap-label { color: var(--db-text); font-weight: 600; }
+.swap-card:disabled { opacity: 0.6; cursor: not-allowed; }
+
+/* 圖上編輯工具（同 RefineEditor） */
+.re-tools { display: flex; flex-wrap: wrap; align-items: center; gap: 0.6rem; }
+.seg { display: inline-flex; border-radius: 6px; overflow: hidden; background: var(--db-chip-soft); }
+.seg button { padding: 0.4rem 0.9rem; border: none; background: none; color: var(--db-text-soft); font-size: 0.88rem; cursor: pointer; }
+.seg button.active { background: var(--db-accent); color: var(--db-on-accent, #fff); cursor: default; }
+.seg button:not(.active):hover { background: var(--db-chip); }
+.re-slider { flex: 1; min-width: 80px; accent-color: var(--db-accent); }
+.re-size { min-width: 3.2em; font-size: 0.8rem; color: var(--db-text-soft); font-variant-numeric: tabular-nums; }
+.re-link {
+  align-self: flex-start; border: none; background: none; padding: 0; color: var(--db-accent-deep); font-size: 0.85rem;
+  text-decoration: underline; text-underline-offset: 3px; cursor: pointer;
+}
+.re-link:disabled { opacity: 0.4; cursor: not-allowed; text-decoration: none; }
+.chips { display: flex; flex-wrap: wrap; gap: 0.4rem; }
+.chip {
+  padding: 0.25rem 0.7rem; border: 1px solid #e2ddd4; border-radius: 999px; background: #fff;
+  font: inherit; font-size: 0.82rem; cursor: pointer;
+}
+.chip:hover { border-color: var(--db-accent); }
+
+/* 估價清單（同結果頁的家具推薦） */
+.quote-head { display: flex; align-items: baseline; justify-content: space-between; }
+.quote-total {
+  display: flex; align-items: baseline; justify-content: space-between; padding: 0.6rem 0.8rem;
+  border-radius: 8px; background: var(--db-chip-soft); font-size: 0.88rem; color: var(--db-text-soft);
+}
+.quote-total strong { font-size: 1.15rem; color: var(--db-text); }
+.quote-list { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 0.5rem; }
+.quote-item { display: grid; grid-template-columns: 48px minmax(0, 1fr) auto; align-items: center; gap: 0.6rem; }
+.q-thumb { width: 48px; height: 48px; border-radius: 6px; overflow: hidden; background: #f1eee8; }
+.q-thumb img { width: 100%; height: 100%; object-fit: cover; }
+.q-info { display: flex; flex-direction: column; min-width: 0; font-size: 0.86rem; }
+.q-info small { color: var(--db-text-soft); font-size: 0.74rem; }
+.q-info a, .q-info span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--db-text); }
+.q-price { font-size: 0.86rem; font-variant-numeric: tabular-nums; }
+
+/* ── 版本 ── */
+.versions { display: flex; gap: 0.5rem; overflow-x: auto; flex-shrink: 0; padding-bottom: 2px; }
+.ver {
+  flex: 0 0 auto; display: flex; flex-direction: column; gap: 2px; width: 88px; padding: 3px;
+  border: 2px solid transparent; border-radius: 8px; background: #fff; cursor: pointer; text-align: left;
+}
+.ver img { width: 100%; height: 46px; object-fit: cover; border-radius: 5px; }
+.ver span { font-size: 0.7rem; color: var(--db-text-soft); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ver.active { border-color: var(--db-accent); }
+
+/* ── 處理中 ── */
+.ps-busy {
+  position: absolute; inset: 0; z-index: 5; display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 0.5rem; background: rgba(255, 255, 255, 0.7); backdrop-filter: blur(2px);
+}
+.ps-busy p { margin: 0; padding: 0.3rem 0.9rem; border-radius: 999px; background: rgba(255, 255, 255, 0.9); font-weight: 600; }
 .spinner {
-  width: 34px; height: 34px; border-radius: 50%;
-  border: 3px solid #e5e1d8; border-top-color: #756d66;
+  width: 34px; height: 34px; border-radius: 50%; border: 3px solid #e5e1d8; border-top-color: var(--db-accent);
   animation: spin 0.9s linear infinite;
 }
 @keyframes spin { to { transform: rotate(360deg); } }
-.stage-error { margin: 0; }
 
-.versions { display: flex; gap: 0.5rem; overflow-x: auto; flex-shrink: 0; padding-bottom: 2px; }
-.ver {
-  flex: 0 0 auto; display: flex; flex-direction: column; gap: 2px; width: 92px; padding: 3px;
-  border: 2px solid transparent; border-radius: 8px; background: #fff; cursor: pointer; text-align: left;
-}
-.ver img { width: 100%; height: 54px; object-fit: cover; border-radius: 5px; }
-.ver span { font-size: 0.7rem; color: var(--db-text-soft); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.ver.active { border-color: #756d66; }
-
-.ps-tools { display: flex; flex-direction: column; gap: 0.5rem; min-height: 0; overflow-y: auto; }
-.tool { flex-shrink: 0; border: 1px solid #ebe7e0; border-radius: 12px; background: #fff; }
-.tool.open { flex-shrink: 1; min-height: 0; border-color: #756d66; display: flex; flex-direction: column; }
-.tool.locked .tool-head { opacity: 0.45; cursor: not-allowed; }
-.tool-head {
-  display: flex; align-items: center; gap: 0.65rem; width: 100%; padding: 0.65rem 0.85rem;
-  border: none; background: none; cursor: pointer; text-align: left; font: inherit; color: var(--db-text);
-}
-.tool-num {
-  flex-shrink: 0; width: 22px; height: 22px; border-radius: 50%; display: grid; place-items: center;
-  background: #f1eee8; font-size: 0.75rem; color: var(--db-text-soft);
-}
-.tool.open .tool-num { background: #756d66; color: #fff; }
-.tool-icon { flex-shrink: 0; color: #756d66; }
-.tool-text { display: flex; flex-direction: column; min-width: 0; }
-.tool-text strong { font-size: 0.98rem; font-weight: 600; }
-.tool-text small { font-size: 0.76rem; color: var(--db-text-soft); }
-.tool-body {
-  display: flex; flex-direction: column; gap: 0.6rem; padding: 0 0.85rem 0.85rem;
-  min-height: 0; overflow-y: auto;
-}
-
-.note { margin: 0; font-size: 0.82rem; color: var(--db-text-soft); line-height: 1.6; }
-.note.warn { color: #b45309; }
-.row { display: flex; gap: 0.45rem; align-items: center; }
-/* 側欄空間有限：按鈕比全站預設小一號 */
-.tool-body .db-btn { min-width: 0; min-height: 34px; padding: 0.35rem 0.85rem; font-size: 0.88rem; white-space: nowrap; }
-.grow { flex: 1; }
-.mini-input { padding: 0.45rem 0.7rem; font-size: 0.85rem; }
-.file-btn { align-self: flex-start; cursor: pointer; }
-.file-btn.disabled { opacity: 0.5; pointer-events: none; }
-.danger { color: #b91c1c; align-self: flex-start; }
-
-.style-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 0.45rem; }
-.style-card {
-  display: flex; flex-direction: column; gap: 3px; padding: 3px; border: 2px solid transparent;
-  border-radius: 8px; background: #faf9f6; cursor: pointer;
-}
-.style-card img, .style-empty { width: 100%; aspect-ratio: 4 / 3; object-fit: cover; border-radius: 5px; background: #ece8e1; }
-.style-name { font-size: 0.72rem; color: var(--db-text); text-align: center; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.style-card.active { border-color: #756d66; }
-.style-card:disabled { opacity: 0.6; cursor: default; }
-
-.ref-photo { width: 100%; max-height: 160px; object-fit: contain; border-radius: 8px; background: #f4f2ee; }
-.seg { display: flex; padding: 3px; border-radius: 999px; background: #f1eee8; }
-.seg button {
-  flex: 1; display: inline-flex; align-items: center; justify-content: center; gap: 0.25rem;
-  padding: 0.35rem 0.7rem; border: none; border-radius: 999px; background: none;
-  font: inherit; font-size: 0.85rem; color: var(--db-text-soft); cursor: pointer;
-}
-.seg button.active { background: #fff; color: var(--db-text); box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12); }
-.seg button:disabled { opacity: 0.45; cursor: not-allowed; }
-.seg--sm { flex: 0 0 auto; }
-.link-btn { border: none; background: none; font: inherit; font-size: 0.82rem; text-decoration: underline; cursor: pointer; color: var(--db-text-soft); }
-.link-btn:disabled { opacity: 0.4; cursor: default; }
-
-.chips { display: flex; flex-wrap: wrap; gap: 0.4rem; }
-.chip {
-  padding: 0.3rem 0.75rem; border: 1px solid #e2ddd4; border-radius: 999px; background: #fff;
-  font: inherit; font-size: 0.82rem; cursor: pointer;
-}
-.chip.active { border-color: #f59e0b; background: #fff7e8; }
-
-/* 矮螢幕：收起來的區塊只留標題，讓展開的那一塊有空間 */
-@media (max-height: 760px) {
-  .tool:not(.open) .tool-text small { display: none; }
-  .tool-head { padding: 0.5rem 0.8rem; }
-}
 @media (max-width: 760px) {
-  .ps { grid-template-columns: 1fr; height: auto; }
-  .stage-box { min-height: 300px; }
-  .stage-img img { max-height: 60vh; }
-  .ps-tools { overflow: visible; }
+  .ps { height: auto; }
+  .ps-top { flex-direction: column; align-items: stretch; }
+  .ps-tabs { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .ps-work { grid-template-columns: 1fr; }
+  .stage { min-height: 360px; }
+  .ps-side { overflow: visible; }
 }
 </style>

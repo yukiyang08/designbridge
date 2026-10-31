@@ -185,6 +185,17 @@ function refreshHasMask() {
   hasMask.value = any
 }
 
+// 正規化框 [x0, y0, x1, y1] 整塊塗進遮罩（快速圈選偵測到的家具）
+function paintBox(box) {
+  const c = drawRef.value
+  const [x0, y0, x1, y1] = box
+  const ctx = c.getContext('2d')
+  ctx.globalCompositeOperation = 'source-over'
+  ctx.fillStyle = '#ff3c3c'
+  ctx.fillRect(x0 * c.width, y0 * c.height, (x1 - x0) * c.width, (y1 - y0) * c.height)
+  hasMask.value = true
+}
+
 function clearMask() {
   const c = drawRef.value
   c.getContext('2d').clearRect(0, 0, c.width, c.height)
@@ -218,7 +229,7 @@ function getMaskBlob() {
   })
 }
 
-defineExpose({ getMaskBlob, clearMask, hasMask, resetView })
+defineExpose({ getMaskBlob, clearMask, paintBox, hasMask, resetView })
 </script>
 
 <template>

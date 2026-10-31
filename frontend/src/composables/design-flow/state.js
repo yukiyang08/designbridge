@@ -418,7 +418,9 @@ export const photoVersions         = ref([])
 export const photoCurrent          = ref(0)
 export const photoBusy             = ref('')     // 進行中的工作說明，空字串＝閒置
 export const photoStyleId          = ref('')     // 最近套用的風格，移家具重生時沿用
-export const photoRemovedIds       = ref([])     // 已從照片刪掉的偵測家具
+// 照片工作台自己的風格描述：不用 extraPrompt，那個會存進草稿、把別的入口打過的字帶進來
+export const photoStylePrompt      = ref('')
+export const photoQuoting          = ref(false)
 
 // ── 風格 ──
 export const selectedStyle       = ref('auto')
