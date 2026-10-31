@@ -221,7 +221,7 @@ export async function handleCadRoomSelected(room, requestId = ++requestState.cur
 const DETECTABLE = new Set(['living_room', 'bedroom', 'kitchen', 'dining_room', 'study'])
 
 // 上傳平面圖的房間第一次點進來：從原圖裁出這間（房外塗白），支援的房型用 Gemini 辨識圖上的家具；
-// 辨識不到時套預設擺法（目前只有客廳），其他房型給空白配置。房間尺寸用整層資料換算好的公尺。
+// 辨識不到時套該房型的預設擺法（沒有預設的房型才空白）。房間尺寸用整層資料換算好的公尺。
 async function prepareUploadedRoom(room, requestId) {
   const plan = cadPlanResult.value
   loadingMsg.value = { title: '準備房間中', sub: '裁出這間房並辨識家具' }
@@ -255,8 +255,8 @@ async function prepareUploadedRoom(room, requestId) {
     }
   }
 
-  // 沒辨識到家具：客廳給預設擺法並重畫 2D 平面圖；其他房型空白，底圖用裁切圖
-  const preset = type === 'living_room' ? cadDefaultPlacements(type, roomW.value, roomD.value, roomGeometry.value) : []
+  // 沒辨識到家具：套該房型的預設擺法並重畫 2D 平面圖；沒有預設的房型空白，底圖用裁切圖
+  const preset = cadDefaultPlacements(type, roomW.value, roomD.value, roomGeometry.value)
   editPlacements.value = preset
   if (preset.length) {
     const res = await jsonFetch('/api/render-floor-plan', {

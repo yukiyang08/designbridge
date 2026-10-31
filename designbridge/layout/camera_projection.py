@@ -231,6 +231,17 @@ def furniture_parts(
             return (0.0, frac, 0.0, 1.0, z0, z1)
         return (1.0 - frac, 1.0, 0.0, 1.0, z0, z1)  # right
 
+    if normalize_furniture_type(ftype) == "chair":
+        # 餐椅：薄座面＋四隻細腳＋薄椅背；四周內縮讓椅子與桌面輪廓不黏成一團
+        seat_h = min(0.45, height * 0.5)
+        lo, hi, leg = 0.05, 0.95, 0.12
+        parts = [(lo, hi, lo, hi, seat_h - 0.05, seat_h)]
+        for u0, u1 in ((lo, lo + leg), (hi - leg, hi)):
+            for v0, v1 in ((lo, lo + leg), (hi - leg, hi)):
+                parts.append((u0, u1, v0, v1, 0.0, seat_h - 0.05))
+        parts.append(_slab(0.12, seat_h, height))
+        return parts
+
     if kind == "seat":
         seat_h = min(0.45, height * 0.5)
         arm_h = min(height, seat_h + 0.18)

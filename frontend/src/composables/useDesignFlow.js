@@ -23,7 +23,7 @@ export { ORIGINAL_STYLE_KEY } from './design-flow/render'
 
 import {
   planSource, stepIndex, steps, currentStep, isLastStep,
-  floorPlanUrl, floorPlanPath, sceneGraph, floorPlanUpload, uploadedPlanUrl, detectedRooms, planParseIssue,
+  floorPlanUrl, floorPlanPath, sceneGraph, floorPlanUpload, uploadedPlanUrl, detectedRooms, planParseIssue, uploadTotalPing,
   cadCounts, cadTotalPing, cadRoomW, cadRoomD, cadExtraRooms, cadPlanResult, cadActiveRoomId, cadRoomStatus, cadRendering,
   cadBatch, cadBatchRunning, cadRoomSnapshots, cadOverview, cadQuoting,
   editPlacements, roomW, roomD, roomTypeForPlan, layoutViewMode, layoutRenderConfig,
@@ -79,7 +79,7 @@ export function useDesignFlow() {
     // 平面圖
     floorPlanUrl, floorPlanPath, sceneGraph, floorPlanUpload, uploadedPlanUrl,
     detectedRooms, handleRoomSelected,
-    planParseIssue, retryPlanParse, parseAsSingleRoom, continueWithoutFurniture,
+    planParseIssue, retryPlanParse, parseAsSingleRoom, continueWithoutFurniture, uploadTotalPing,
     // CAD 房型生成
     cadCounts, cadTotalPing, cadRoomW, cadRoomD, cadExtraRooms, cadPlanResult, submitRoomProgram, rescaleUploadedPlan, fetchRoomPlan, handleCadRoomSelected,
     cadActiveRoomId, cadRoomStatus, jumpToCadRoom, abandonCadRoom,

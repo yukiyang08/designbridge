@@ -347,7 +347,7 @@ function submit() {
 .mode-toggle-wrap {
   display: flex;
   flex-direction: column;
-  align-items: flex-end;
+  align-items: flex-start;   /* 整層房屋那頁的切換鈕在左側，單間也靠左，切換時位置不跳 */
   gap: 0.35rem;
   margin-bottom: 1.25rem;
 }
