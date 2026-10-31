@@ -57,7 +57,6 @@ def list_available_style_profiles() -> list[dict[str, str]]:
 def build_style_params(
     req: dict[str, Any],
     user_input: dict[str, Any] | None = None,
-    use_agent: bool = False,
 ) -> dict[str, Any] | None:
     """
     建立 Renderer 可用的風格參數。
@@ -78,7 +77,6 @@ def build_style_params(
     query = text_query or style_profile_id or "interior design"
 
     # ── 1. Supabase pgvector 搜尋（文字對比） ──────────────────────────────────
-    rationale = ""
     try:
         from designbridge.style.style_supabase import (
             query_style_images_supabase,
@@ -91,22 +89,13 @@ def build_style_params(
             # 參考圖不一致，兩張圖的風格描述都被塞進最終 prompt）
             results = query_style_image_by_url(style_ref)
         else:
-            results, rationale = None, ""
-            if use_agent:
-                from designbridge.style.style_agent import pick_style_results
-                picked = pick_style_results(req, query, style_profile_id)
-                if picked:
-                    results, rationale = picked
-            if results is None:
-                results = query_style_images_supabase(
-                    text_query=query,
-                    style_id=style_profile_id,
-                    top_k=3,
-                )
+            results = query_style_images_supabase(
+                text_query=query,
+                style_id=style_profile_id,
+                top_k=3,
+            )
         if results:
             params = blend_style_params_supabase(results)
-            if params and rationale:
-                params["agent_rationale"] = rationale
             return params
     except Exception as e:
         print(f"⚠️  Supabase 向量搜尋失敗：{e}")

@@ -21,7 +21,9 @@ from designbridge.render.render_backends import (
     _render_hf_inference,
     _render_hf_kontext,
     _render_flux_controlnet_depth_fal,
+    _render_flux_controlnet_depth_modal,
     _render_flux_depth_controlnet_fal,
+    _render_flux_depth_controlnet_modal,
     _render_flux_fal,
     _render_product_mesh_fal,
 )
@@ -547,7 +549,7 @@ def renderer(state: DesignBridgeState) -> dict[str, Any]:
     if (
         backend == "placeholder"
         and Config.LAYOUT_DEPTH_CONTROL_BACKEND == "controlnet"
-        and Config.FAL_KEY
+        and (Config.FAL_KEY or Config.USE_MODAL_GPU)
         and effective_depth_path and Path(str(effective_depth_path)).is_file()
     ):
         _extra_controls: list[dict[str, Any]] = []
@@ -569,10 +571,7 @@ def renderer(state: DesignBridgeState) -> dict[str, Any]:
         _cn_control_end = _ro.get("controlnet_control_end")
         _cn_control_end = Config.REAL_PHOTO_DEPTH_CONTROL_END if _cn_control_end is None else max(0.0, min(1.0, float(_cn_control_end)))
 
-        if timed_call(
-            "renderer.flux_controlnet_depth_fal", task_id,
-            _render_flux_controlnet_depth_fal,
-            prompt, str(effective_depth_path), out_path,
+        _cn_kwargs = dict(
             conditioning_scale=_cn_scale,
             control_end=_cn_control_end,
             num_steps=_cn_steps,
@@ -582,9 +581,25 @@ def renderer(state: DesignBridgeState) -> dict[str, Any]:
             loras=style_loras,
             controlnet_model=_cn_model,
             seed=seed,
+        )
+        _cn_model_label = None
+        # 自架 GPU（Modal）開關打開時先走它；失敗／逾時／不支援的組合回 False，往下退回 fal
+        if Config.USE_MODAL_GPU and timed_call(
+            "renderer.flux_controlnet_depth_modal", task_id,
+            _render_flux_controlnet_depth_modal,
+            prompt, str(effective_depth_path), out_path, **_cn_kwargs,
+        ):
+            backend = "flux_controlnet_depth_modal"
+            _cn_model_label = f"modal FLUX.1-dev + {_cn_model}"
+        elif Config.FAL_KEY and timed_call(
+            "renderer.flux_controlnet_depth_fal", task_id,
+            _render_flux_controlnet_depth_fal,
+            prompt, str(effective_depth_path), out_path, **_cn_kwargs,
         ):
             backend = "flux_controlnet_depth_fal"
-            generation_params["model"] = f"fal-ai/flux-general + {_cn_model}"
+            _cn_model_label = f"fal-ai/flux-general + {_cn_model}"
+        if _cn_model_label:
+            generation_params["model"] = _cn_model_label
             generation_params["depth_conditioning_scale"] = _cn_scale
             generation_params["controlnet_control_end"] = _cn_control_end
             generation_params["controlnet_steps"] = _cn_steps
@@ -613,57 +628,29 @@ def renderer(state: DesignBridgeState) -> dict[str, Any]:
     if (
         backend == "placeholder"
         and Config.ENABLE_LAYOUT_CONTROLNET
-        and Config.FAL_KEY
+        and (Config.FAL_KEY or Config.USE_MODAL_GPU)
         and furniture_placements
         and not (effective_depth_path and Path(str(effective_depth_path)).is_file())
     ):
         layout_depth_path: str | None = None
         layout_edge_path: str | None = None
         try:
-            from designbridge.layout.layout_projection import (
-                render_layout_depth_map,
-                render_layout_edge_map,
-            )
+            from designbridge.layout.condition_prefetch import get_conditions
 
             # 優先用 Step-1 佈局帶來的真實房間尺寸，否則投影比例失真、家具偏離平面圖
             _room = (req.get("space_info") or {}).get("estimated_size") or {}
             _rw = float(scene_graph_data.get("room_w") or _room.get("width", 4.0) or 4.0)
             _rd = float(scene_graph_data.get("room_d") or _room.get("depth", 4.0) or 4.0)
-            # Elevated three-quarter "look-at" camera so the floor layout reads
-            # clearly. A few candidate station points around the Config base are
-            # scored by furniture occlusion and the best one picked once here, then
-            # pinned for both calls below — otherwise each call would independently
-            # auto-select and could pick two different angles for the same job.
-            from designbridge.layout.camera_projection import base_camera_from_config, select_best_camera
-            from dataclasses import asdict
-
-            _base_cam = base_camera_from_config(_rw, _rd)
-            if Config.LAYOUT_CAMERA_AUTO_SELECT:
-                _chosen_cam, _picked = select_best_camera(
-                    _base_cam, _rw, _rd, 2.70, output_width, output_height,
-                    furniture_placements, semantic_shapes=Config.ENABLE_SEMANTIC_SHAPES,
-                    candidates=Config.LAYOUT_CAMERA_CANDIDATES,
-                )
-                generation_params["layout_camera_score"] = _picked["score"]
-                print(
-                    f"[renderer] 候選角度評分選用相機：{_chosen_cam.summary()}（分數 {_picked['score']:.3f}）"
-                )
-            else:
-                _chosen_cam = _base_cam
-            _cam = asdict(_chosen_cam)
-            generation_params["layout_camera"] = _cam
-            # Canny of furniture FOOTPRINTS = distance-independent placement without
-            # forcing cuboid shapes; depth of the room shell = 3D structure.
-            layout_edge_path = render_layout_edge_map(
-                furniture_placements, task_id, room_w=_rw, room_d=_rd,
-                img_w=output_width, img_h=output_height,
-                footprints_only=True, cam_kwargs=_cam,
+            # 相機評分＋家具輪廓邊緣圖＋房間深度圖：前端在風格選擇頁已預先算過就直接用，沒命中才現算
+            _cond = timed_call(
+                "renderer.layout_conditions", task_id, get_conditions,
+                furniture_placements, _rw, _rd, output_width, output_height,
             )
-            layout_depth_path = render_layout_depth_map(
-                furniture_placements, task_id, room_w=_rw, room_d=_rd,
-                img_w=output_width, img_h=output_height,
-                semantic_shapes=Config.ENABLE_SEMANTIC_SHAPES, cam_kwargs=_cam,
-            )
+            generation_params["layout_camera"] = _cond["camera"]
+            if _cond.get("score") is not None:
+                generation_params["layout_camera_score"] = _cond["score"]
+            layout_edge_path = _cond["edge_path"]
+            layout_depth_path = _cond["depth_path"]
         except Exception as e:
             print(f"⚠️  layout projection failed: {e}")
 
@@ -678,12 +665,7 @@ def renderer(state: DesignBridgeState) -> dict[str, Any]:
                 " Clean tidy space, well-proportioned realistic furniture with proper legs, "
                 "nothing draped on the sofa, professional interior design photography, high detail."
             )
-            if timed_call(
-                "renderer.fal_flux_depth_controlnet", task_id,
-                _render_flux_depth_controlnet_fal,
-                layout_prompt,
-                layout_depth_path,
-                out_path,
+            _union_kwargs = dict(
                 edge_path=layout_edge_path,
                 edge_conditioning_scale=Config.FAL_EDGE_CONDITIONING_SCALE,
                 conditioning_scale=Config.FAL_DEPTH_CONDITIONING_SCALE,
@@ -694,10 +676,26 @@ def renderer(state: DesignBridgeState) -> dict[str, Any]:
                 output_size=output_size,
                 loras=style_loras,
                 seed=seed,
+            )
+            _union_provider = None
+            # 自架 GPU（Modal）開關打開時先走它；回 False（失敗／逾時／不支援）就往下退回 fal
+            if Config.USE_MODAL_GPU and timed_call(
+                "renderer.modal_flux_depth_controlnet", task_id,
+                _render_flux_depth_controlnet_modal,
+                layout_prompt, layout_depth_path, out_path, **_union_kwargs,
+            ):
+                backend = "flux_depth_controlnet_modal"
+                _union_provider = "modal FLUX.1-dev + Union-Pro"
+            elif Config.FAL_KEY and timed_call(
+                "renderer.fal_flux_depth_controlnet", task_id,
+                _render_flux_depth_controlnet_fal,
+                layout_prompt, layout_depth_path, out_path, **_union_kwargs,
             ):
                 backend = "flux_depth_controlnet_fal"
+                _union_provider = "fal-ai/flux-general"
+            if _union_provider:
                 generation_params["model"] = Config.FAL_DEPTH_CONTROLNET_MODEL
-                generation_params["provider"] = "fal-ai/flux-general"
+                generation_params["provider"] = _union_provider
                 generation_params["layout_edge_conditioning_scale"] = Config.FAL_EDGE_CONDITIONING_SCALE
                 generation_params["layout_depth_conditioning_scale"] = Config.FAL_DEPTH_CONDITIONING_SCALE
                 generation_params["layout_depth_control_end"] = Config.FAL_DEPTH_CONTROL_END
@@ -774,7 +772,8 @@ def renderer(state: DesignBridgeState) -> dict[str, Any]:
     # 這輪完全沒有深度可用時（純文字/無 hint_layout），對生成圖補跑深度估計存進 vision_features，
     # 下次換風格才有結構可鎖，避免整張重新構圖。
     # 商品網格路徑的結構來自 scene graph 投影，換風格時會重新投影，不需要補估深度
-    if (not vision.get("depth") and not using_projected_depth
+    # STYLE_SWAP_DEPTH_LOCK 預設關：換風格時 routers/generate.py 會把這份補估深度丟掉，白算約 5 秒
+    if (Config.STYLE_SWAP_DEPTH_LOCK and not vision.get("depth") and not using_projected_depth
             and backend not in ("placeholder", "product_mesh_fal") and Path(path_str).is_file()):
         try:
             from designbridge.layout.vision import run_depth_estimation

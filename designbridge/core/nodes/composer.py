@@ -58,6 +58,43 @@ def _layout_facts_text(state: DesignBridgeState, req: dict[str, Any]) -> str:
     return " ".join(parts)
 
 
+_MAX_REVISIONS = 2
+_META_WORDS = ("user", "style reference", "layout", "conflict", "使用者", "風格參考", "佈局")
+
+
+def check_prompt(prompt: str, placements: list[dict]) -> list[str]:
+    """純程式檢查 composer 草稿：家具是否都提到、有無後設詞、字數。回傳問題清單（空 = 通過）。"""
+    # ponytail: 只比對家具名詞是否出現，不驗數量與方位；需要時再加
+    from designbridge.core.nodes.renderer import _FURNITURE_DESC
+
+    low = prompt.lower()
+    issues: list[str] = []
+    for raw in dict.fromkeys(p.get("type", "") for p in placements):
+        desc = _FURNITURE_DESC.get(raw, "a " + raw.replace("_", " "))
+        # tv_unit 這類名稱 prompt 常寫成 "TV console"，所以任一字出現即算提到
+        nouns = [w.lower().rstrip("s") for w in raw.split("_") if len(w) > 1]
+        if nouns and not any(n in low for n in nouns):
+            issues.append(f"家具佈局的 {raw}（{desc}）沒有出現在 prompt 裡，必須補回")
+    for w in _META_WORDS:
+        if w in low:
+            issues.append(f"出現後設詞「{w}」，請改成直接描述空間")
+    if len(prompt.split()) > 150:
+        issues.append("超過 130 字，請精簡")
+    return issues
+
+
+def _parse_composer_output(text: str) -> tuple[str, str | None, str | None]:
+    """解析 composer 的 JSON 輸出 → (prompt, ra_issue, layout_issue)；不是 JSON 就整段當 prompt。"""
+    import json
+
+    t = text.strip().removeprefix("```json").removeprefix("```").removesuffix("```").strip()
+    try:
+        d = json.loads(t)
+        return str(d.get("prompt") or "").strip(), (d.get("ra_issue") or None), (d.get("layout_issue") or None)
+    except Exception:
+        return text.strip(), None, None
+
+
 def composer_node(state: DesignBridgeState) -> dict[str, Any]:
     """Merge design_description + style_params + layout furniture facts into one
     `composed_prompt`.
@@ -94,14 +131,6 @@ def composer_node(state: DesignBridgeState) -> dict[str, Any]:
         return {}
 
     user_text_prompt = ((state.get("user_input") or {}).get("text_prompt") or "").strip()
-    # style_params=None here on purpose: reuse the existing base-prompt logic
-    # (design_description, or the room+style fallback when it's empty) without
-    # its own naive style concatenation — that's exactly the part this node replaces.
-    base_prompt = _build_imagen_prompt_from_requirement(
-        req, style_params=None, user_text_prompt=user_text_prompt, is_style_swap=is_style_swap,
-        style_id_override=(style_params.get("style_profile_id") or None) if is_style_swap else None,
-    )
-
     style_name = (style_params.get("style_profile_id") or "unspecified").strip()
     strength = style_params.get("style_strength", 0.7)
 
@@ -113,24 +142,81 @@ def composer_node(state: DesignBridgeState) -> dict[str, Any]:
     ]
     palette = ", ".join(palette_bits) if palette_bits else "無特定色碼"
 
-    prompt_text = COMPOSER_PROMPT.format(
-        base_prompt=base_prompt,
-        style_name=style_name,
-        strength=strength,
-        palette=palette,
-        style_reference_text=style_prompt or "無",
-        furniture_facts=furniture_facts or "無指定家具佈局",
-    )
+    def _build_prompt(r: dict[str, Any], facts: str) -> str:
+        # style_params=None：沿用 base-prompt 邏輯但不做天真的風格串接，那正是本節點取代的部分
+        base = _build_imagen_prompt_from_requirement(
+            r, style_params=None, user_text_prompt=user_text_prompt, is_style_swap=is_style_swap,
+            style_id_override=(style_params.get("style_profile_id") or None) if is_style_swap else None,
+        )
+        return COMPOSER_PROMPT.format(
+            base_prompt=base,
+            style_name=style_name,
+            strength=strength,
+            palette=palette,
+            style_reference_text=style_prompt or "無",
+            furniture_facts=facts or "無指定家具佈局",
+            raw_text=user_text_prompt or "無",
+        )
 
     try:
+        from designbridge.core.nodes.requirement import revise_requirement
         from designbridge.render.llm import call_llm
-        composed = call_llm(prompt_text, temperature=0.3, max_tokens=280).strip()
+
+        def _ask(text: str) -> tuple[str, str | None, str | None]:
+            return _parse_composer_output(call_llm(text, temperature=0.3, max_tokens=360))
+
+        prompt_text = _build_prompt(req, furniture_facts)
+        composed, ra_issue, layout_issue = _ask(prompt_text)
         if not composed:
             raise ValueError("empty composer output")
+        log: dict[str, Any] = {"revisions": []}
+        out: dict[str, Any] = {}
+        # 與 RA / layout 的溝通：發現矛盾就回頭請對方修正，只回頭一輪、修完合併一次
+        # 風格切換重播不觸發；layout 只在本輪真的排過版時才重排（Step 1 使用者確認過的佈局不動）
+        scene_graph = state.get("scene_graph") or {}
+        layout_ran = ((state.get("intermediate_outputs") or {}).get("layout_and_style_agent") or {}).get("layout") == "ok"
+        redo = False
+        if ra_issue and not is_style_swap:
+            req = revise_requirement(req, ra_issue, user_text_prompt)
+            out["structured_requirement"] = req
+            log["ra_issue"] = ra_issue
+            redo = True
+        if layout_issue and layout_ran and not is_style_swap:
+            from designbridge.core.nodes.layout_and_style import replan_layout
+
+            log["layout_issue"] = layout_issue
+            new_sg = replan_layout(state, req, layout_issue)
+            if new_sg:
+                scene_graph = new_sg
+                out["scene_graph"] = new_sg
+                furniture_facts = _layout_facts_text({**state, "scene_graph": new_sg}, req)
+                redo = True
+        if redo:
+            prompt_text = _build_prompt(req, furniture_facts)
+            composed, _, _ = _ask(prompt_text)
+            if not composed:
+                raise ValueError("empty composer output after revision")
+        # 生成 → 程式檢查 → 帶問題修訂，最多 _MAX_REVISIONS 次；修不好就用最後一版
+        placements = scene_graph.get("furniture_placements") or []
+        for step in range(_MAX_REVISIONS):
+            issues = check_prompt(composed, placements)
+            log["revisions"].append({"step": step, "issues": issues})
+            if not issues:
+                break
+            fix, _, _ = _ask(
+                f"{prompt_text}\n\n## 上一版輸出\n{composed}\n\n## 程式檢查發現的問題（逐項修正）\n"
+                + "\n".join(f"- {i}" for i in issues) + "\n\n修正後輸出："
+            )
+            if not fix:
+                break
+            composed = fix
         print(f"[composer] merged prompt: {composed[:120]}")
+        out_log = {**(state.get("intermediate_outputs") or {}), "composer": log}
         return {
+            **out,
             "composed_prompt": composed,
             "composed_includes_furniture": bool(furniture_facts),
+            "intermediate_outputs": out_log,
         }
     except Exception as e:
         print(f"⚠️ [composer] failed ({e}), renderer will fall back to naive concatenation")

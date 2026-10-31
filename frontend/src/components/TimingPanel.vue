@@ -29,6 +29,10 @@ const STEP_LABEL = {
   layout_agent: '家具佈局',
   llm_layout: 'LLM 擺放家具',
   optimize_positions: '位置最佳化',
+  reproject: '重新投影平面圖／深度圖',
+  camera_select: '候選相機角度評分',
+  layout_edge_map: '家具輪廓邊緣圖',
+  layout_depth_map: '房間深度圖',
   gemini_style_analysis: 'Gemini 風格分析',
   post_depth_estimation: '出圖後補跑深度估計',
   detect_furniture: 'Gemini 辨識家具',
@@ -44,12 +48,17 @@ const STEP_LABEL = {
 function labelOf(raw) {
   if (NODE_LABEL[raw]) return NODE_LABEL[raw]
   if (raw.startsWith('fal.')) return `fal.ai 請求（${raw.slice(4)}）`
+  if (raw.startsWith('modal.')) return 'Modal GPU 純算圖'
   const step = raw.split('.').pop()
   if (STEP_LABEL[step]) return STEP_LABEL[step]
+  if (/modal/.test(step)) return `Modal GPU 出圖（${step}）`
   if (/fal/.test(step)) return `fal.ai 出圖（${step}）`
   if (/hf_/.test(step)) return `Hugging Face（${step}）`
   return step
 }
+
+// 後端在 detail 開頭寫「冷啟動」：這次生圖被冷啟動（啟動容器＋載入模型）拖慢
+const isCold = r => (r.detail || '').startsWith('冷啟動')
 
 const KIND_LABEL = { generate: '生成設計', style_swap: '換風格', refine: '微調', quotation: '家具推薦與估價' }
 const NUM = ['①', '②', '③', '④', '⑤', '⑥', '⑦', '⑧', '⑨', '⑩']
@@ -113,7 +122,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey))
         </h4>
         <ul class="tp-list">
           <li v-for="(r, i) in sec.rows" :key="i" :class="['tp-row', `d${r.depth}`]" :title="r.detail ? `${r.label}（${r.detail}）` : r.label">
-            <span class="tp-name">{{ r.name }}</span>
+            <span class="tp-name">{{ r.name }}<em v-if="isCold(r)" class="tp-cold">冷啟動</em></span>
             <span class="tp-track">
               <span class="tp-bar" :style="{ left: r.left + '%', width: r.width + '%' }" />
             </span>
@@ -182,6 +191,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey))
 .tp-row.d1 .tp-name { padding-left: 1rem; color: var(--db-text-soft); }
 .tp-row.d2 .tp-name { padding-left: 2rem; color: var(--db-placeholder); }
 .tp-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tp-cold { margin-left: 0.4rem; padding: 0.05rem 0.4rem; border-radius: 4px; font-size: 0.7rem; font-style: normal; font-weight: 500; background: #fdf0d8; color: #8a5a00; }
 .tp-track { position: relative; height: 8px; border-radius: 4px; background: #f2efe8; }
 .tp-bar { position: absolute; top: 0; bottom: 0; border-radius: 4px; background: var(--db-text-soft); }
 .tp-row.d0 .tp-bar { background: var(--db-text); }

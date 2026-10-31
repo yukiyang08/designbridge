@@ -5,6 +5,7 @@
  */
 import { computed, onMounted, watch } from 'vue'
 import { useRouter } from 'vue-router'
+import { jsonFetch } from '@/config/api'
 import AppNav from '@/components/shell/AppNav.vue'
 import StepBar from '@/components/shell/StepBar.vue'
 import LoadingState from '@/components/shell/LoadingState.vue'
@@ -113,10 +114,28 @@ const maxReached = computed(() => {
   return reachable
 })
 
+// 停在風格選擇頁（result 步驟、還沒生成）時，後端先把生圖要用的條件圖算好，按生圖就不用再等
+let prefetchTimer = null
+watch(
+  () => [currentStep.value, editPlacements.value, flow.roomW.value, flow.roomD.value, outputAspect.value, spacePhotoPath.value, result.value],
+  ([step, placements, w, d, aspect, photo, res]) => {
+    clearTimeout(prefetchTimer)
+    if (step !== 'result' || res || photo || !placements?.length || !w || !d) return
+    prefetchTimer = setTimeout(() => {
+      jsonFetch('/api/prefetch-layout-conditions', {
+        furniture_placements: placements, room_w: w, room_d: d, output_aspect: aspect,
+      }).catch(() => {})
+    }, 800)
+  },
+  { immediate: true, deep: true },
+)
+
 onMounted(() => {
   // 風格下拉選單的選項要先跟後端要；順便當作後端健康檢查
   if (flow.styleOptions.value.length <= 1) fetchStyleOptions()
   fetchStyleDemoImages()
+  // 先把雲端 GPU 容器叫起來（是否動作由後端 .env 決定），使用者填完資料按生圖時就不用等冷啟動
+  jsonFetch('/api/modal-warmup', {}).catch(() => {})
 })
 </script>
 

@@ -80,18 +80,6 @@ nightstand, rug, lamp, plant, cat_tree, dog_bed, litter_box
 """
 
 
-LAYOUT_REFINEMENT_PROMPT = """目前佈局的軟性評分如下（0 = 差，1 = 佳）：
-- 動線 (circulation): {circulation}
-- 平衡 (balance): {balance}
-- 焦點 (focal_point): {focal_point}
-- 自然採光 (natural_light): {natural_light}
-- 人因 (ergonomics): {ergonomics}
-
-請針對分數較低的面向調整家具位置，重新輸出完整的佈局 JSON（格式與先前相同，僅輸出純 JSON）。
-維持所有硬性限制不變，並避免家具重疊或超出房間邊界。
-"""
-
-
 LAYOUT_REVIEW_PROMPT = """## 目前的佈局（你上一輪的規劃，已經過幾何修正）
 {current_layout}
 

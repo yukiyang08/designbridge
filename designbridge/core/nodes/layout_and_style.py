@@ -11,6 +11,28 @@ from designbridge.core.timing import timed_call
 from designbridge.style.style_apply import build_style_params
 
 
+def replan_layout(state: DesignBridgeState, req: dict[str, Any], hint: str) -> dict[str, Any] | None:
+    """composer 回頭請 layout agent 依提示重排一次；失敗回 None，呼叫端沿用原佈局。"""
+    from designbridge.layout.layout_agent import run_layout_agent
+    from designbridge.render.render_prompt import _resolve_output_size
+
+    user_input = state.get("user_input") or {}
+    try:
+        return run_layout_agent(
+            req, state.get("task_id") or str(uuid.uuid4()),
+            existing_layout=state.get("layout_from_depth"),
+            output_size=_resolve_output_size(
+                str(user_input.get("output_aspect") or "auto"), user_input.get("initial_image")
+            ),
+            vision_features=state.get("vision_features"),
+            image_path=user_input.get("initial_image"),
+            extra_hint=hint,
+        ).get("scene_graph")
+    except Exception as e:
+        print(f"⚠️ [composer] layout replan failed ({e}), keep original layout")
+        return None
+
+
 def layout_and_style_agent_stub(state: DesignBridgeState) -> dict[str, Any]:
     """Layout + style agent.
 
@@ -29,10 +51,8 @@ def layout_and_style_agent_stub(state: DesignBridgeState) -> dict[str, Any]:
 
     style_params = state.get("style_params")
     if style_params is None:
-        # 換風格（已有生成圖）意圖明確，不走代理人，也避免結果不可重現
-        use_agent = Config.STYLE_AGENT and not state.get("generated_image")
         style_params = timed_call(
-            "layout_and_style.style_search", task_id, build_style_params, req, user_input, use_agent=use_agent
+            "layout_and_style.style_search", task_id, build_style_params, req, user_input
         )
 
     scene_graph: dict[str, Any] | None = None
@@ -45,7 +65,8 @@ def layout_and_style_agent_stub(state: DesignBridgeState) -> dict[str, Any]:
         output_size = _resolve_output_size(
             str(user_input.get("output_aspect") or "auto"), user_input.get("initial_image")
         )
-        scene_graph = reproject_scene_graph(
+        scene_graph = timed_call(
+            "layout_and_style.reproject", task_id, reproject_scene_graph,
             existing_scene_graph, req.get("space_info") or {}, task_id, output_size,
         )
         layout_status = "reused_from_step1"

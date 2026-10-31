@@ -1,0 +1,21 @@
+{
+  "cases": [
+    {
+      "name": "4986fcdb_nordic",
+      "style": "nordic",
+      "prompt": "A cozy and comfortable Nordic-style living room bathed in natural soft light, featuring a clean white backdrop with blush pink and vibrant orange accents, matte finishes, and geometric wall art. In the foreground on the left, a low coffee table rests on a soft rug beside a plush fabric upholstered sofa backed by a solid wall, with a small side table nearby. Cute stuffed animal toys rest on the seating, adding warmth. A single upholstered accent armchair with armrests sits centrally in the foreground. On the right in the mid-ground, a tall minimalist bookshelf provides storage. A stylish screen cabinet buffers the entrance, while a mirror is subtly positioned away from direct line of sight from the doorway.",
+      "depth": "artifacts/layout/4986fcdb-f449-47e1-9d71-c495ec75735a_projected_depth.png",
+      "edge": "artifacts/render/conditions/4986fcdb-f449-47e1-9d71-c495ec75735a_edge_1024x576.png",
+      "baseline": "artifacts/render/4986fcdb-f449-47e1-9d71-c495ec75735a_f3e7a3d4.png",
+      "width": 1024,
+      "height": 576,
+      "steps": 20,
+      "guidance": 3.5,
+      "depth_scale": 0.3,
+      "edge_scale": 0.3,
+      "depth_end": 0.7,
+      "edge_end": 0.7,
+      "seed": 2113980517
+    }
+  ]
+}

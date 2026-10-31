@@ -27,7 +27,13 @@ const CW = { up: 'right', right: 'down', down: 'left', left: 'up' }
 const SCREEN_TO_FRONT = { up: 'far', down: 'near', left: 'left', right: 'right' }
 const FRONT_TO_SCREEN = { far: 'up', near: 'down', left: 'left', right: 'right' }
 // 使用者轉過的以 front 為準（後端健檢回來前就要看得到），其餘用後端推算的朝向
-const faceOf = (item) => FRONT_TO_SCREEN[item.front] || props.facing?.[item.id] || ''
+// 桌几、盆栽、地毯等四面都一樣的家具不標正面
+const NO_FRONT_TYPES = new Set([
+  'coffee_table', 'side_table', 'dining_table', 'desk', 'plant', 'rug', 'carpet', 'lamp', 'bean_bag', 'drying_rack',
+])
+const canRotate = (item) => !!item && !NO_FRONT_TYPES.has(item.type)
+const faceOf = (item) => canRotate(item)
+  ? FRONT_TO_SCREEN[item.front] || props.facing?.[item.id] || '' : ''
 const emit = defineEmits(['update:placements', 'room-size-changed', 'opening-change'])
 
 // 公尺，點畫布外框可直接調整（雙向綁定回父層，3D 預覽/最終渲染跟著用同一組數字）
@@ -75,15 +81,6 @@ function collidesWithOthers(rect, excludeId) {
   return items.value.some((it) => (
     it.id !== excludeId && rectsOverlap(rect, it)
   ))
-}
-// 旋轉只擋「轉完多壓到」的東西：餐椅本來就貼著餐桌，用 collidesWithOthers 會永遠轉不了
-function rotationBlocked(before, after) {
-  const hit = (r) => [
-    ...doorKeepouts.value.filter((k) => rectsOverlap(r, k)),
-    ...items.value.filter((it) => it.id !== before.id && rectsOverlap(r, it)),
-  ]
-  const was = new Set(hit(before))
-  return hit(after).some((o) => !was.has(o))
 }
 const labelOf = (t) => furnitureLabel(t)
 const iconOf = (t) => furnitureIcon(t)
@@ -259,53 +256,35 @@ const opOffsetCm = computed({
 const OP_SIDE = { top: '上牆', bottom: '下牆', left: '左牆', right: '右牆' }
 
 // ── Item ops ────────────────────────────────────────────────────
-// 90° 增量旋轉：交換 footprint 的 w/h（保持中心點不變）。後端的碰撞偵測/深度投影只讀
-// x/y/w/h 當成永遠是「已經是正的」矩形，不知道 rotation 這件事——所以只支援 90° 倍數，
-// 用交換寬深來讓 footprint 本身保持正確，而不是疊加 CSS transform 讓兩邊對不起來。
+// 90° 增量旋轉只轉正面朝向 front（寫進去讓後端箭頭、生圖、3D 照使用者方向），長寬位置不動。
+// 沒正面的家具（NO_FRONT_TYPES）不給轉。
 function rotateNTimes90(item, times) {
-  let { x, y, w, h, rotation } = item
-  rotation = rotation || 0
-  // 正面朝向跟著順時針轉，寫進 front 讓後端（箭頭、生圖、3D）照使用者的方向，
-  // 不然方形家具（椅子）轉了也看不出差別、生圖仍照自動推算的方向擺
-  let face = faceOf(item)
+  let rotation = item.rotation || 0
+  let face = faceOf(item) || 'up'
   for (let i = 0; i < times; i++) {
-    const cx = x + w / 2, cy = y + h / 2
-    ;[w, h] = [h, w]
-    x = clamp(cx - w / 2, bounds.value.x0, bounds.value.x1 - w)
-    y = clamp(cy - h / 2, bounds.value.y0, bounds.value.y1 - h)
     rotation = (rotation + 90) % 360
-    if (face) face = CW[face]
+    face = CW[face]
   }
-  return { ...item, x, y, w, h, rotation, ...(face ? { front: SCREEN_TO_FRONT[face] } : {}) }
+  return { ...item, rotation, front: SCREEN_TO_FRONT[face] }
+}
+
+function applyRotation(item, steps) {
+  const rotated = rotateNTimes90(item, steps)
+  editorNotice.value = ''
+  pushHistory()
+  commit(items.value.map((it) => (it.id === item.id ? rotated : it)))
 }
 
 function rotate90(item) {
-  if (!item) return
-  const rotated = rotateNTimes90(item, 1)
-  if (rotationBlocked(item, rotated)) {
-    editorNotice.value = '這個位置會和門或其他家具重疊，無法旋轉。'
-    return
-  }
-  editorNotice.value = ''
-  pushHistory()
-  commit(items.value.map((it) => (it.id === item.id ? rotated : it)))
+  if (canRotate(item)) applyRotation(item, 1)
 }
 
-// 面板輸入任意角度：四捨五入到最近的 90° 倍數（理由同上，footprint 只能用交換寬深表達）。
+// 面板輸入任意角度：四捨五入到最近的 90° 倍數（理由同上）。
 function setRotationDeg(item, deg) {
-  if (!item) return
+  if (!canRotate(item)) return
   const target = (((Math.round(deg / 90) * 90) % 360) + 360) % 360
   const current = item.rotation || 0
-  if (target === current) return
-  const steps = ((target - current) / 90 + 4) % 4
-  const rotated = rotateNTimes90(item, steps)
-  if (rotationBlocked(item, rotated)) {
-    editorNotice.value = '這個位置會和門或其他家具重疊，無法旋轉。'
-    return
-  }
-  editorNotice.value = ''
-  pushHistory()
-  commit(items.value.map((it) => (it.id === item.id ? rotated : it)))
+  if (target !== current) applyRotation(item, ((target - current) / 90 + 4) % 4)
 }
 
 function removeItem(item) {
@@ -469,7 +448,7 @@ onBeforeUnmount(() => viewportObserver?.disconnect())
         <Icon icon="mdi:cursor-default-outline" width="16" /><span>選取</span>
       </button>
       <span class="tool-sep" />
-      <button class="tool-btn" :disabled="!selectedItem" @click="rotate90(selectedItem)" title="旋轉 90°">
+      <button v-if="canRotate(selectedItem)" class="tool-btn" @click="rotate90(selectedItem)" title="旋轉 90°">
         <Icon icon="mdi:rotate-right" width="16" /><span>旋轉</span>
       </button>
       <button class="tool-btn" @click="zoomIn" title="放大">
@@ -555,8 +534,12 @@ onBeforeUnmount(() => viewportObserver?.disconnect())
             </template>
 
             <template v-if="selectedId === item.id && !item.locked">
-              <!-- 刪除鈕在家具外的右上角（貼上牆時改放下方，不然被畫布裁掉點不到）；旋轉改用右側面板 -->
+              <!-- 按鈕在家具外的右上角（貼上牆時改放下方，不然被畫布裁掉點不到）；旋轉每按一次轉 90° -->
               <div class="node-btns" :class="{ below: item.y < 0.08 }">
+                <button v-if="canRotate(item)" class="node-btn rot" :title="`旋轉 90°（目前 ${item.rotation || 0}°）`"
+                        @pointerdown.stop @click.stop="rotate90(item)">
+                  <Icon icon="mdi:rotate-right" width="12" />
+                </button>
                 <button class="node-btn del" title="刪除"
                         @pointerdown.stop @click.stop="removeItem(item)">
                   <Icon icon="mdi:close" width="12" />
@@ -591,7 +574,7 @@ onBeforeUnmount(() => viewportObserver?.disconnect())
           <span>深度 (cm)</span>
           <input type="number" v-model.number="depthCm" min="1" />
         </label>
-        <label class="props-field">
+        <label v-if="canRotate(selectedItem)" class="props-field">
           <span>旋轉角度 (°)</span>
           <select v-model.number="rotationDeg">
             <option v-for="d in [0, 90, 180, 270]" :key="d" :value="d">{{ d }}°</option>
@@ -799,6 +782,7 @@ onBeforeUnmount(() => viewportObserver?.disconnect())
   display: flex; align-items: center; justify-content: center; padding: 0;
   box-shadow: 0 1px 3px rgba(0,0,0,0.25);
 }
+.node-btn.rot { background: #6b4f30; }
 .node-btn.del { background: #c0392b; }
 .handle {
   position: absolute; right: -6px; bottom: -6px; width: 13px; height: 13px; z-index: 3;

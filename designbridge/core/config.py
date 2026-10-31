@@ -119,6 +119,16 @@ class Config:
     )
     FAL_CONTROLNET_STEPS: int = int(os.getenv("DESIGNBRIDGE_FAL_CONTROLNET_STEPS", "20"))
     FAL_CONTROLNET_GUIDANCE: float = float(os.getenv("DESIGNBRIDGE_FAL_CONTROLNET_GUIDANCE", "3.5"))
+    # 自架 GPU（Modal，需先 modal deploy scripts/modal_flux/modal_app.py）：打開後 ControlNet 生圖先走它，
+    # 失敗／逾時／不支援的模型組合都退回 fal
+    # 一個變數切換：off（預設，全走 fal）｜dev 省錢、不暖機｜demo 展示、進 /studio 就暖機。GPU／閒置等待見 scripts/modal_flux/profiles.py
+    MODAL_MODE: str = os.getenv("DESIGNBRIDGE_MODAL_MODE", "off").strip().lower()
+    USE_MODAL_GPU: bool = MODAL_MODE in ("dev", "demo")
+    MODAL_APP_NAME: str = os.getenv("DESIGNBRIDGE_MODAL_APP_NAME", "designbridge-flux")
+    MODAL_TIMEOUT_S: float = float(os.getenv("DESIGNBRIDGE_MODAL_TIMEOUT_S", "120"))  # 含冷啟動約 35~60 秒
+    # 暖機：先叫起容器，使用者按生圖時就不用等冷啟動；只暖 Union 路徑（CAD／平面圖流程）
+    MODAL_WARMUP: str = "studio" if MODAL_MODE == "demo" else "off"
+    MODAL_WARMUP_MODES: str = "union"
     # 投影深度是軸對齊方塊，條件過強會讓家具漂浮成方塊，故設上限
     PROJECTED_DEPTH_MAX_CONDITIONING_SCALE: float = float(
         os.getenv("DESIGNBRIDGE_PROJECTED_DEPTH_MAX_CONDITIONING_SCALE", "0.3")
@@ -155,13 +165,10 @@ class Config:
 
     # ── 佈局 agent 與投影 ───────────────────────────────────────────────
     ARTIFACTS_DIR: str = os.getenv("DESIGNBRIDGE_ARTIFACTS_DIR", "artifacts")
-    LAYOUT_MAX_ITER: int = int(os.getenv("DESIGNBRIDGE_LAYOUT_MAX_ITER", "3"))
     # 幾何優化器在 LLM 初稿後嘗試的微調次數：幾毫秒的浮點運算，比再問一次 LLM 便宜有效
     LAYOUT_OPTIMIZER_STEPS: int = int(os.getenv("DESIGNBRIDGE_LAYOUT_OPTIMIZER_STEPS", "2000"))
-    LAYOUT_LLM_REFINE: bool = _flag("DESIGNBRIDGE_LAYOUT_LLM_REFINE", "false")
-    STYLE_AGENT: bool = _flag("DESIGNBRIDGE_STYLE_AGENT", "false")
     # 佈局檢查 agent：有風水／動線問題才把報告交回 LLM 決定是否重排，最多一次
-    LAYOUT_REVIEW_AGENT: bool = _flag("DESIGNBRIDGE_LAYOUT_REVIEW_AGENT", "false")
+    LAYOUT_REVIEW_AGENT: bool = _flag("DESIGNBRIDGE_LAYOUT_REVIEW_AGENT", "true")
     ENABLE_LAYOUT_DEPTH_PROJECTION: bool = _flag("DESIGNBRIDGE_ENABLE_LAYOUT_DEPTH_PROJECTION", "true")
     LAYOUT_PHOTO_ANCHORED_DEPTH: bool = _flag("DESIGNBRIDGE_LAYOUT_PHOTO_ANCHORED_DEPTH", "true")
     LAYOUT_CAMERA_EYE_HEIGHT: float = float(os.getenv("DESIGNBRIDGE_LAYOUT_CAMERA_EYE_HEIGHT", "1.5"))  # 只影響家具高度

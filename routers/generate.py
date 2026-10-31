@@ -116,6 +116,37 @@ def chat(request: ChatRequest, user_id: str = Depends(get_user_id)):
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@router.post("/api/modal-warmup")
+def modal_warmup(user_id: str = Depends(get_user_id)):
+    """前端進入 /studio 時呼叫：DESIGNBRIDGE_MODAL_MODE=demo 才會先叫起 Modal 容器，其他模式不動作。不等結果。"""
+    from designbridge.render.render_backends import warmup_modal_gpu
+
+    return {"warmed": warmup_modal_gpu("studio")}
+
+
+class PrefetchConditionsRequest(BaseModel):
+    furniture_placements: List[dict] = Field(max_length=300)
+    room_w: float = Field(gt=0, le=100)
+    room_d: float = Field(gt=0, le=100)
+    output_aspect: str = "auto"
+
+
+@router.post("/api/prefetch-layout-conditions")
+def prefetch_layout_conditions(request: PrefetchConditionsRequest, user_id: str = Depends(get_user_id)):
+    """前端停在風格選擇頁時呼叫：先在背景算好 Union 生圖要用的相機評分與條件圖，按生圖時直接命中。不等結果。"""
+    if not (Config.ENABLE_LAYOUT_CONTROLNET and (Config.FAL_KEY or Config.USE_MODAL_GPU)) or not request.furniture_placements:
+        return {"started": False}
+    from designbridge.layout.condition_prefetch import normalize_placements, prefetch
+    from designbridge.render.render_prompt import _resolve_output_size
+
+    width, height = _resolve_output_size(request.output_aspect, None)
+    try:
+        placements = normalize_placements(request.furniture_placements)
+    except (TypeError, ValueError):   # 前端帶來的座標欄位格式不對
+        raise HTTPException(status_code=422, detail="furniture_placements 格式不正確")
+    return {"started": prefetch(placements, request.room_w, request.room_d, width, height)}
+
+
 # 3. 建立 POST 路由
 @router.post("/api/generate")
 def generate_design(request: DesignRequest, user_id: str = Depends(get_user_id)):

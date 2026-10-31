@@ -108,6 +108,27 @@ def _normalize_space_info(req: dict[str, Any]) -> None:
     req["space_info"] = space_info
 
 
+def revise_requirement(req: dict[str, Any], issue: str, raw_text: str) -> dict[str, Any]:
+    """composer 回報 design_description 與使用者原話矛盾時，只重寫 design_description。
+
+    失敗就原樣回傳，composer 照舊以原話為準。
+    """
+    # ponytail: 只改 design_description，不重跑整個 RA；路由與其他欄位需要重判時再擴充
+    from designbridge.render.llm import call_llm
+
+    try:
+        fixed = call_llm(
+            f"使用者原話：{raw_text}\n目前的空間描述：{req.get('design_description', '')}\n"
+            f"發現的矛盾：{issue}\n\n重寫空間描述，忠實反映使用者原話，保留原本的語言與長度。"
+            "只輸出描述本身。",
+            temperature=0.2, max_tokens=300,
+        ).strip()
+    except Exception as e:
+        print(f"⚠️ [requirement_analyzer] revise failed ({e}), keep original description")
+        return req
+    return {**req, "design_description": fixed} if fixed else req
+
+
 def requirement_analyzer(state: DesignBridgeState) -> dict[str, Any]:
     """
     Parse user_input into structured_requirement (JSON) using Gemini API.
