@@ -301,6 +301,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey))
   position: relative;
   align-self: center;
   max-width: 100%;
+  flex-shrink: 0;   /* 圖層用 % 定位在這個框上：框被壓得比圖矮，家具圖層就會整排往上偏 */
   line-height: 0;
   border-radius: 8px;
   overflow: hidden;
