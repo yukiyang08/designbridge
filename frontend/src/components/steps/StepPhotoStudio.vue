@@ -336,8 +336,9 @@ const quoteTotal = computed(() => quoteRows.value.reduce((s, r) => s + (r.c?.pri
 }
 .stage-img { max-width: 100%; max-height: 100%; object-fit: contain; }
 .stage--canvas { background: #1a0d08; }
-.stage--mover { align-items: stretch; }
-.stage--mover :deep(.fm-img) { max-height: calc(var(--ps-h) - 90px); }
+/* 圖下方還有分頁列與移動工具列，要先扣掉，圖才不會把工具列擠出框外 */
+.stage--mover { align-items: stretch; overflow-y: auto; }
+.stage--mover :deep(.fm-img) { max-height: calc(var(--ps-h) - 160px); }
 
 /* ── 右側控制欄 ── */
 .ps-side { min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 0.7rem; padding-right: 2px; }
