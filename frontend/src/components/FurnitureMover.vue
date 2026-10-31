@@ -4,12 +4,14 @@
  * 點選（Shift 多選）後拖曳，即時預覽透視縮放、擋重疊；按「套用」才請 AI 修接縫與光影。
  */
 import { ref, reactive, computed, watch, onMounted, onBeforeUnmount } from 'vue'
-import { fetchFurnitureInstances, applyFurnitureMove, applyingMove, undoMove, canUndoMove } from '@/composables/design-flow/move'
+import { fetchFurnitureInstances, applyFurnitureMove, applyFurnitureMoveOn, applyingMove, undoMove, canUndoMove } from '@/composables/design-flow/move'
 
 const props = defineProps({
   imageUrl: { type: String, required: true },
+  // 照片工作台傳 { generated_image_path }：在那張圖上移，套用後 emit('applied', 新圖) 由它收成新版本
+  plan: { type: Object, default: null },
 })
-const emit = defineEmits(['close'])
+const emit = defineEmits(['close', 'applied'])
 
 // 語意分割的英文類別 → 提示文字
 const LABEL_ZH = {
@@ -42,7 +44,7 @@ async function load() {
   lastValid = {}
   alphaMaps = {}
   try {
-    data.value = await fetchFurnitureInstances()
+    data.value = await fetchFurnitureInstances(props.plan)
     if (!instances.value.length) errorMsg.value = '這張圖沒有辨識到可以移動的家具。'
     instances.value.forEach(loadAlpha)
   } catch (e) {
@@ -212,11 +214,13 @@ async function onApply() {
   if (!movedList.value.length || blockedSet.value.size || applyingMove.value) return
   errorMsg.value = ''
   try {
-    await applyFurnitureMove(movedList.value.map(i => ({
+    const moves = movedList.value.map(i => ({
       index: i.index,
       x: clamp(placed.value[i.index].anchor.x, 0, 1),
       y: clamp(placed.value[i.index].anchor.y, 0, 1),
-    })))
+    }))
+    if (props.plan) emit('applied', await applyFurnitureMoveOn(props.plan, moves))
+    else await applyFurnitureMove(moves)
     // 套用完回到單純的渲染圖；要再搬就再按一次「移動家具」
     emit('close')
   } catch (e) {
@@ -282,7 +286,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey))
         <template v-else>已移動 {{ movedList.length }} 件，放好了就按「套用」，AI 會重新補光影與接縫</template>
       </p>
       <div class="fm-actions">
-        <button v-if="canUndoMove" type="button" class="fm-link" :disabled="applyingMove" @click="undoMove">↶ 復原上一次移動</button>
+        <button v-if="canUndoMove && !plan" type="button" class="fm-link" :disabled="applyingMove" @click="undoMove">↶ 復原上一次移動</button>
         <button v-if="movedList.length" type="button" class="db-btn db-btn--ghost db-btn--sm" :disabled="applyingMove" @click="resetAll">全部還原</button>
         <button type="button" class="db-btn db-btn--sm" :disabled="!movedList.length || blockedSet.size > 0 || applyingMove" @click="onApply">套用</button>
       </div>

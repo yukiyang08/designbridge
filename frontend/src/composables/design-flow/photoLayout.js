@@ -206,6 +206,11 @@ export function renderPhotoLayout() {
   })
 }
 
+// 在圖上拖曳家具（FurnitureMover，跟結果頁同一套）的結果收成新版本；家具位置變了，偵測框不再對得上
+export function adoptPhotoMove(data) {
+  pushVersion(data, '移動家具', false)
+}
+
 // 細節調整：塗抹範圍＋一句描述（刪除、換成什麼都寫在描述裡），跟其他入口的圖上編輯一樣
 export function refinePhoto(maskBlob, text) {
   const base = currentVersion.value

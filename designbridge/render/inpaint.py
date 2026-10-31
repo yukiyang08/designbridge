@@ -301,33 +301,6 @@ def sam2_mask_from_box(
         return None
 
 
-def sam2_mask_from_point(image_path: str, point_xy: tuple[float, float]) -> Any:
-    """單點提示取得物件遮罩（bool ndarray），失敗回傳 None。
-
-    用 SAM 2 自己的單一輸出：實測挑最大候選會吃到旁邊的桌面、地毯，先用語意分割找整件又會連地毯一起選。
-    """
-    import numpy as np
-    from PIL import Image
-
-    predictor = _get_sam2_predictor()
-    if predictor is None:
-        return None
-    try:
-        import torch
-
-        img_rgb = np.array(Image.open(image_path).convert("RGB"))
-        with torch.inference_mode(), _SAM2_INFER_LOCK:
-            predictor.set_image(img_rgb)
-            masks, scores, _ = predictor.predict(
-                point_coords=np.array([point_xy], dtype=np.float32), point_labels=np.array([1]),
-                multimask_output=False,
-            )
-        return masks[int(np.asarray(scores).argmax())].astype(bool)
-    except Exception as e:
-        print(f"[SAM2] point-prompt inference failed: {e}")
-        return None
-
-
 def generate_mask_with_sam2(
     image_path: str,
     drawn_mask: Any,

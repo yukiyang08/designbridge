@@ -37,8 +37,9 @@ async function errorText(res) {
 }
 
 // 這張圖上自動切出的每件可移動家具（每張圖第一次約 40 秒，之後後端讀快取）
-export async function fetchFurnitureInstances() {
-  const res = await jsonFetch('/api/move-furniture/instances', { plan: planOf(result.value) })
+// plan 不給就是結果頁目前這張；照片工作台傳 { generated_image_path } 指定它的版本
+export async function fetchFurnitureInstances(plan = null) {
+  const res = await jsonFetch('/api/move-furniture/instances', { plan: plan || planOf(result.value) })
   if (!res.ok) throw new Error(await errorText(res))
   return res.json()
 }
@@ -62,6 +63,18 @@ function adopt(data) {
     floorPlanUrl.value = data.floor_plan_url || mediaUrl(data.floor_plan_path)
   }
   if (planSource.value === 'cad' && cadActiveRoomId.value) snapshotCurrentCadRoom()
+}
+
+// 指定圖片（照片工作台的版本）上移家具：只回傳新圖，由呼叫端收成新版本，不動結果頁的 result
+export async function applyFurnitureMoveOn(plan, moves) {
+  applyingMove.value = true
+  try {
+    const res = await jsonFetch('/api/move-furniture', { plan, moves })
+    if (!res.ok) throw new Error(await errorText(res))
+    return await res.json()
+  } finally {
+    applyingMove.value = false
+  }
 }
 
 // moves = [{ index, x, y }]：每件家具的碰地點拖到的位置（0–1），可一次好幾件

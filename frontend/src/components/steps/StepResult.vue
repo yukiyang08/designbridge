@@ -24,10 +24,7 @@ import DesignDetails from '@/components/steps/DesignDetails.vue'
 import TimingPanel from '@/components/TimingPanel.vue'
 import RefineEditor from '@/components/RefineEditor.vue'
 import FurnitureMover from '@/components/FurnitureMover.vue'
-import ImageFurnitureMover from '@/components/ImageFurnitureMover.vue'
 import { canMoveFurniture, canUndoMove, undoMove, applyingMove } from '@/composables/design-flow/move'
-import { adoptMovedResult } from '@/composables/design-flow/imageMove'
-import { undoRefine, canUndoRefine } from '@/composables/design-flow/refine'
 import { useDesignFlow, ASPECT_OPTIONS, ORIGINAL_STYLE_KEY } from '@/composables/useDesignFlow'
 import { spaceInfo, ROOM_TYPE_LABEL } from '@/composables/design-flow/state'
 import { useFurnitureSelection } from '@/composables/useFurnitureSelection'
@@ -370,16 +367,6 @@ function toFavoriteItem(item, c) {
             :image-url="imageUrl"
             @close="moving = false"
           />
-          <!-- 沒有家具配置的結果（直接描述）：只靠影像搬 -->
-          <ImageFurnitureMover
-            v-else-if="moving && imageUrl && result.generated_image_path"
-            :image-url="imageUrl"
-            :image-path="result.generated_image_path"
-            :can-undo="canUndoRefine"
-            @applied="adoptMovedResult"
-            @undo="undoRefine"
-            @close="moving = false"
-          />
           <div v-else class="stage-img-wrap">
             <img v-if="imageUrl" :src="imageUrl" alt="生成的 3D 渲染圖" class="result-img" />
             <p v-else class="no-img">生成完成，但沒有取得圖片 URL。</p>
@@ -392,7 +379,7 @@ function toFavoriteItem(item, c) {
             <!-- 右上角：直接在圖上編輯／全螢幕編輯 -->
             <div v-if="imageUrl && result.task_id" class="img-tools">
               <button
-                v-if="canMoveFurniture || result.generated_image_path" type="button" :disabled="swappingStyle"
+                v-if="canMoveFurniture" type="button" :disabled="swappingStyle"
                 title="在圖上直接拖曳家具" @click="startMove"
               >✥ 移動家具</button>
               <button
