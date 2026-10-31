@@ -1,4 +1,5 @@
 import { getAccessToken } from '@/composables/useAuth'
+import { DEMO_MODE, demoIntercept } from '@/config/demo'
 
 export const API_BASE = import.meta.env.VITE_API_BASE || 'http://localhost:8000'
 
@@ -16,7 +17,11 @@ export async function authFetch(path, opts = {}) {
   })
 }
 
-export function jsonFetch(path, data, method = 'POST', signal) {
+export async function jsonFetch(path, data, method = 'POST', signal) {
+  if (DEMO_MODE) {
+    const hit = await demoIntercept(path, data)
+    if (hit) return hit
+  }
   return authFetch(path, {
     method,
     signal,

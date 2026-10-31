@@ -20,6 +20,7 @@ import StyleSuggestions from '@/components/StyleSuggestions.vue'
 import { ROOM_OPTIONS, FURNITURE_BY_ROOM, roomIcon, roomPhoto, furnitureIcon, furnitureLabel, furnitureKeyFromInput } from '@/config/furniture'
 import { useDesignFlow, ASPECT_OPTIONS } from '@/composables/useDesignFlow'
 import { API_BASE } from '@/config/api'
+import DemoPromptChips from '@/components/DemoPromptChips.vue'
 
 const {
   planSource, roomType, roomTypeForPlan, spaceSizePing, customRoomW, customRoomD, outputAspect,
@@ -286,6 +287,7 @@ function submit() {
         rows="3"
         placeholder="例如：木質感、採光充足的明亮感…"
       />
+      <DemoPromptChips />
       <p class="describe-hint">
         這段描述會用來搜尋風格參考圖，也會直接影響生成的效果圖。
       </p>

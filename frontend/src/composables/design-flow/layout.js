@@ -1,4 +1,5 @@
 import { mediaUrl, jsonFetch } from '@/config/api'
+import { demoPlan, isDemoPlan, DEMO_PLAN_PATH } from '@/config/demo'
 import {
   requestState, timers,
   error, loading, loadingMsg, result,
@@ -85,7 +86,8 @@ export async function useUploadedPlan() {
   loadingMsg.value = { title: '上傳平面圖中', sub: '處理你的平面配置圖' }
   result.value = null
   try {
-    const path = await uploadFile(floorPlanUpload.file)
+    demoPlan.value = isDemoPlan()
+    const path = demoPlan.value ? DEMO_PLAN_PATH : await uploadFile(floorPlanUpload.file)
     if (requestId !== requestState.current) return
     uploadedPlanUrl.value = mediaUrl(path)
     uploadedPlanPath.value = path

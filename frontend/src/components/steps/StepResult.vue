@@ -17,6 +17,7 @@ import { ref, computed, watch, defineAsyncComponent } from 'vue'
 import { useRouter } from 'vue-router'
 import AdvancedPanel from '@/components/shell/AdvancedPanel.vue'
 import StyleSuggestions from '@/components/StyleSuggestions.vue'
+import DemoPromptChips from '@/components/DemoPromptChips.vue'
 import ImageUpload from '@/components/ImageUpload.vue'
 import DesignDetails from '@/components/steps/DesignDetails.vue'
 import TimingPanel from '@/components/TimingPanel.vue'
@@ -156,6 +157,7 @@ function startOver() {
           placeholder="輸入…例如：木質感、採光充足的明亮感"
           @input="onPromptInput"
         />
+        <DemoPromptChips />
       </template>
 
       <!-- StyleSuggestions 自己有「AI 推薦風格參考」標題，這裡不再重複一層 -->

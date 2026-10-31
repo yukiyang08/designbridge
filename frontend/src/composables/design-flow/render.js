@@ -1,4 +1,5 @@
 import { jsonFetch } from '@/config/api'
+import { demoPhoto, DEMO_PHOTO_PATH } from '@/config/demo'
 import {
   ROOM_TYPE_LABEL, requestState, timers,
   error, loading, loadingMsg, result, submitKey, swappingStyle, styleSwapCache,
@@ -34,12 +35,12 @@ export async function submitPhoto() {
   loading.value = true
   loadingMsg.value = { title: '上傳空間照片中', sub: '準備分析你的空間' }
   try {
-    spacePhotoPath.value = await uploadFile(spacePhoto.file)
+    spacePhotoPath.value = demoPhoto.value ? DEMO_PHOTO_PATH : await uploadFile(spacePhoto.file)
     // 結果頁同時放偵測到的佈局、渲染圖、換風格與局部修改；先偵測家具再依偵測佈局生第一張。
     // 偵測失敗就照舊只拿照片生成（不帶 scene_graph）。
     nextStep()
     loadingMsg.value = { title: '偵測照片中的家具', sub: 'AI 辨識家具位置與房間尺寸，約 10–20 秒' }
-    const detected = await detectPhotoLayout()
+    const detected = demoPhoto.value ? false : await detectPhotoLayout()
     if (!detected) editPlacements.value = []
     await submit3D()
   } catch (e) {

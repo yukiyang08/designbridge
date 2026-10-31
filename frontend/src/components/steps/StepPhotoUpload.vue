@@ -14,6 +14,10 @@ import PhotoFengshuiAudit from '@/components/PhotoFengshuiAudit.vue'
 import { ROOM_OPTIONS } from '@/config/furniture'
 import { useDesignFlow, ASPECT_OPTIONS } from '@/composables/useDesignFlow'
 import { API_BASE } from '@/config/api'
+import { watch } from 'vue'
+import { DEMO_MODE, demoPhoto } from '@/config/demo'
+import DemoPromptChips from '@/components/DemoPromptChips.vue'
+import livingRoom from '@/assets/rooms/living_room.jpg'
 
 const {
   spacePhoto, roomType, spaceSizePing, outputAspect, extraPrompt,
@@ -21,6 +25,17 @@ const {
   showSuggestions, styleCandidates, candidatesLoading, candidatesError, confirmedStyle,
   confirmStyle, clearConfirmedStyle, fetchStyleCandidates, showNextRound,
 } = useDesignFlow()
+
+// DEMO：載入範例照片，之後的生成與換風格直接回預先生成的圖（見 config/demo.js）
+let sampleFile = null
+async function useSamplePhoto() {
+  const blob = await (await fetch(livingRoom)).blob()
+  sampleFile = new File([blob], 'living_room.jpg', { type: blob.type })
+  spacePhoto.file = sampleFile
+  spacePhoto.preview = URL.createObjectURL(sampleFile)
+  demoPhoto.value = true
+}
+watch(() => spacePhoto.file, (f) => { if (f !== sampleFile) demoPhoto.value = false })
 </script>
 
 <template>
@@ -30,6 +45,7 @@ const {
       <span class="drop-icon">📷</span>
       <span class="drop-label">點擊上傳</span>
       <small class="drop-hint">拍一張空間現況照，JPG、PNG、WebP</small>
+      <button v-if="DEMO_MODE" type="button" class="db-btn" @click.prevent="useSamplePhoto">使用範例照片</button>
     </label>
 
     <div v-else class="preview">
@@ -55,6 +71,7 @@ const {
         placeholder="例如：木質感、採光充足的明亮感…"
         @input="scheduleSearch"
       />
+      <DemoPromptChips />
       <p class="describe-hint">
         這段描述會用來搜尋風格參考圖，也會直接影響生成的效果圖。
       </p>

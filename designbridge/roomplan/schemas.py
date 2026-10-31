@@ -100,6 +100,7 @@ class DoorOpening:
     y: float
     width_m: float
     swing_into_room_id: str
+    flip: bool = False  # 絞鏈改在另一端（水平門在右、垂直門在下），只影響整層圖的畫法
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -110,6 +111,7 @@ class DoorOpening:
             "x": round(self.x, 4), "y": round(self.y, 4),
             "width_m": self.width_m,
             "swing_into_room_id": self.swing_into_room_id,
+            "flip": self.flip,
         }
 
 

@@ -523,7 +523,7 @@ def _specs(rooms: list[RoomInstance], walls, doors, windows) -> dict[str, list[d
 
 def _assemble(
     image_path: str, metas: list[dict], rects: list[Rect], scale_source: str,
-    make_openings=None, openings_source: str = "inferred",
+    make_openings=None, openings_source: str = "inferred", furniture: dict | None = None,
 ) -> dict[str, Any]:
     """metas[i] 是第 i 間房的非幾何資料（id、房型、名稱、多邊形…），rects[i] 是它的公尺矩形。
     make_openings(rooms) 回 (doors, windows)；沒給或結果是空的就用 roomplan 依相鄰關係推估。"""
@@ -541,7 +541,7 @@ def _assemble(
     if not doors and not windows:
         doors, windows, openings_source = derived_doors, derived_windows, "inferred"
     total_m2 = sum(r.actual_area_m2 for r in rooms)
-    svg_markup = render_room_plan_svg(rooms, walls, doors, windows, bw, bd, total_m2)
+    svg_markup = render_room_plan_svg(rooms, walls, doors, windows, bw, bd, total_m2, furniture)
 
     out_dir = Path(Config.ARTIFACTS_DIR) / "room_plan"
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -575,6 +575,7 @@ def _assemble(
         "svg_path": str(svg_path),
         "svg_markup": svg_markup,
         "warnings": warnings,
+        **({"furniture": furniture} if furniture else {}),
     }
 
 
@@ -674,4 +675,4 @@ def rescale_upload_plan(plan: dict[str, Any], total_ping: float) -> dict[str, An
         return ([DoorOpening(**s(d)) for d in plan["doors"]], [WindowOpening(**s(w)) for w in plan["windows"]])
 
     return _assemble(plan["image_path"], metas, rects, "user", make_openings=scaled,
-                     openings_source=plan.get("openings_source", "inferred"))
+                     openings_source=plan.get("openings_source", "inferred"), furniture=plan.get("furniture"))

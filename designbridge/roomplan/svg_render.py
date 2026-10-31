@@ -257,9 +257,13 @@ _SYMBOL_FNS = {
 }
 
 
-def _furniture_svg(room: RoomInstance, fx1: float, fy1: float, fx2: float, fy2: float) -> list[str]:
+_SYMBOL_ALIASES = {"bookshelf": "shelf", "armchair": "sofa"}   # 辨識出的家具類型 → 既有符號
+
+
+def _furniture_svg(room: RoomInstance, fx1: float, fy1: float, fx2: float, fy2: float,
+                   override: list[dict] | None = None) -> list[str]:
     key = _ROOM_TYPE_TO_FURNITURE_KEY.get(room.room_type)
-    items = _DEFAULT_FURNITURE.get(key, []) if key else []
+    items = override if override else (_DEFAULT_FURNITURE.get(key, []) if key else [])
     if not items:
         return []
     rw, rh = fx2 - fx1, fy2 - fy1
@@ -267,7 +271,7 @@ def _furniture_svg(room: RoomInstance, fx1: float, fy1: float, fx2: float, fy2: 
     for item in items:
         x, y = fx1 + item["x"] * rw, fy1 + item["y"] * rh
         w, h = item["w"] * rw, item["h"] * rh
-        fn = _SYMBOL_FNS.get(item["type"], _sym_default)
+        fn = _SYMBOL_FNS.get(_SYMBOL_ALIASES.get(item["type"], item["type"]), _sym_default)
         if "facing" in item:
             lines.extend(fn(x, y, w, h, facing=item["facing"]))
         else:
@@ -283,6 +287,7 @@ def render_room_plan_svg(
     bounding_w: float,
     bounding_d: float,
     total_m2: float,
+    furniture: dict[str, list[dict]] | None = None,   # {room_id: 房內正規化的家具}，有給就取代預設符號
 ) -> str:
     e = EXTERIOR_WALL_THICKNESS_M
     i_t = INTERIOR_WALL_THICKNESS_M
@@ -344,7 +349,7 @@ def render_room_plan_svg(
         # Wrapped in its own group (class="room-furniture") so the frontend can swap
         # these default symbols out for the user's actual live-edited placements
         # (see CadRoomMiniMap.vue) without touching the floor rect or the labels.
-        furniture_lines = _furniture_svg(room, fx1r, fy1r, fx2r, fy2r)
+        furniture_lines = _furniture_svg(room, fx1r, fy1r, fx2r, fy2r, (furniture or {}).get(room.id))
         if furniture_lines:
             lines.append('<g class="room-furniture">')
             lines.extend(furniture_lines)
@@ -379,12 +384,13 @@ def render_room_plan_svg(
             lines.append(
                 f'<rect x="{cx-half_w:.1f}" y="{cy-gap_h/2:.1f}" width="{half_w*2:.1f}" height="{gap_h:.1f}" fill="{gap_fill}"/>'
             )
+            hx, ox, sweep = (cx + half_w, cx - half_w, 0) if door.flip else (cx - half_w, cx + half_w, 1)
             lines.append(
-                f'<line x1="{cx-half_w:.1f}" y1="{cy:.1f}" x2="{cx-half_w:.1f}" y2="{cy-half_w*2:.1f}" '
+                f'<line x1="{hx:.1f}" y1="{cy:.1f}" x2="{hx:.1f}" y2="{cy-half_w*2:.1f}" '
                 f'stroke="{_DOOR_STROKE}" stroke-width="1.3"/>'
             )
             lines.append(
-                f'<path d="M {cx-half_w:.1f} {cy-half_w*2:.1f} A {half_w*2:.1f} {half_w*2:.1f} 0 0 1 {cx+half_w:.1f} {cy:.1f}" '
+                f'<path d="M {hx:.1f} {cy-half_w*2:.1f} A {half_w*2:.1f} {half_w*2:.1f} 0 0 {sweep} {ox:.1f} {cy:.1f}" '
                 f'stroke="{_DOOR_STROKE}" stroke-width="1.1" fill="none" stroke-dasharray="4,3"/>'
             )
         else:
@@ -392,12 +398,13 @@ def render_room_plan_svg(
             lines.append(
                 f'<rect x="{cx-gap_w/2:.1f}" y="{cy-half_w:.1f}" width="{gap_w:.1f}" height="{half_w*2:.1f}" fill="{gap_fill}"/>'
             )
+            hy, oy, sweep = (cy + half_w, cy - half_w, 0) if door.flip else (cy - half_w, cy + half_w, 1)
             lines.append(
-                f'<line x1="{cx:.1f}" y1="{cy-half_w:.1f}" x2="{cx+half_w*2:.1f}" y2="{cy-half_w:.1f}" '
+                f'<line x1="{cx:.1f}" y1="{hy:.1f}" x2="{cx+half_w*2:.1f}" y2="{hy:.1f}" '
                 f'stroke="{_DOOR_STROKE}" stroke-width="1.3"/>'
             )
             lines.append(
-                f'<path d="M {cx+half_w*2:.1f} {cy-half_w:.1f} A {half_w*2:.1f} {half_w*2:.1f} 0 0 1 {cx:.1f} {cy+half_w:.1f}" '
+                f'<path d="M {cx+half_w*2:.1f} {hy:.1f} A {half_w*2:.1f} {half_w*2:.1f} 0 0 {sweep} {cx:.1f} {oy:.1f}" '
                 f'stroke="{_DOOR_STROKE}" stroke-width="1.1" fill="none" stroke-dasharray="4,3"/>'
             )
 
