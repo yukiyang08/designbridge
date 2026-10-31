@@ -5,6 +5,7 @@ import {
   floorPlanUpload, uploadedPlanUrl, uploadedPlanPath, detectedRooms, planParseIssue,
   cadPlanResult, cadActiveRoomId, cadRoomStatus, cadRoomSnapshots, openingEdits, cadOverview,
   spacePhoto, spacePhotoPath, spaceImage, styleRefImage, photoDetection, photoLayoutError,
+  photoVersions, photoCurrent, photoBusy, photoStyleId, photoRemovedIds,
   result, loading,
   styleCandidates, styleCandidatePool, candidatesSearched, confirmedStyle, matchedStylePreview,
   lastGeneratedImage, manualMaskPath, refineHistory, textPrompt,
@@ -60,6 +61,11 @@ export function resetFlow() {
   spacePhotoPath.value = ''
   photoDetection.value = null
   photoLayoutError.value = ''
+  photoVersions.value = []
+  photoCurrent.value = 0
+  photoBusy.value = ''
+  photoStyleId.value = ''
+  photoRemovedIds.value = []
   spaceImage.remove()
   styleRefImage.remove()
   result.value = null

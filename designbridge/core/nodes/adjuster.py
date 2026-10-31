@@ -177,6 +177,23 @@ def _expand_mask_to_box(mask: Any, img_size: tuple) -> Any:
     return out
 
 
+def _mask_area(mask: Any) -> int:
+    import numpy as np
+    return int((np.asarray(mask.convert("L")) > 128).sum())
+
+
+def _shrunk_too_much(sam2_mask: Any, drawn_mask: Any, ratio: float = 0.4) -> bool:
+    """SAM 2 結果不到使用者塗抹範圍的 ratio：多半只抓到大件家具的一部分。手繪細線（面積小）不受影響。"""
+    return _mask_area(sam2_mask) < ratio * _mask_area(drawn_mask)
+
+
+def _union_masks(a: Any, b: Any) -> Any:
+    import numpy as np
+    from PIL import Image
+    b = b.convert("L").resize(a.size, Image.NEAREST)
+    return Image.fromarray(np.maximum(np.asarray(a.convert("L")), np.asarray(b)), mode="L")
+
+
 def adjuster_agent_stub(state: DesignBridgeState) -> dict[str, Any]:
     """
     Design Adjuster Agent：對初始圖片進行局部 inpainting。
@@ -283,7 +300,13 @@ def adjuster_agent_stub(state: DesignBridgeState) -> dict[str, Any]:
                 "adjuster.sam2", task_id, generate_mask_with_sam2,
                 image_path, drawn_mask, img_size, aux_mask=seg_aux_mask,
             )
-            if sam2_ok:
+            if sam2_ok and _shrunk_too_much(sam2_mask, drawn_mask):
+                # 框選整件家具時 SAM 2 常只抓到其中一塊（沙發的單人位），補回分割圖的同類範圍
+                mask = _union_masks(sam2_mask, seg_aux_mask if seg_aux_mask is not None else drawn_mask)
+                mask_source = "sam2_instance+seg"
+                seg_labels = seg_aux_labels
+                print("[adjuster] SAM 2 mask far smaller than the drawn area, merged with segmentation")
+            elif sam2_ok:
                 mask = sam2_mask
                 mask_source = "sam2_instance"
                 seg_labels = seg_aux_labels
@@ -311,6 +334,12 @@ def adjuster_agent_stub(state: DesignBridgeState) -> dict[str, Any]:
         else:
             mask = fallback_center_mask(img_size)
             mask_source = "fallback_center"
+
+    if has_manual_mask and _shrunk_too_much(mask, drawn_mask):
+        # 多物件拆分或 SAM 2 把使用者塗的範圍縮到幾乎沒有時，至少保留原筆跡
+        mask = _union_masks(mask, drawn_mask)
+        mask_source += "+drawn"
+        print("[adjuster] refined mask lost most of the drawn area, merged the drawing back")
 
     # Prompt 組裝：使用者輸入 text_prompt 為主，風格資訊為輔
     user_text = (user_input.get("text_prompt") or "").strip()

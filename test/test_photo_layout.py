@@ -152,3 +152,34 @@ def test_photo_layout_always_routes_to_full_design(monkeypatch):
 def test_photo_box_repairs_gemini_quirks(raw, want):
     got = photo_fengshui._box(raw)
     assert got == want if want is None else got == pytest.approx(want)
+
+
+def test_restyle_keeps_photo_layout(monkeypatch):
+    """只換風格：LLM 判成局部修改或想重排都要被擋下，家具留在照片原位。"""
+    def fake(text_prompt, initial_image, style_reference_image=""):
+        return {"design_description": "x", "meta": {}, "hint_layout": True, "_routing_decision": "design_adjuster"}
+    monkeypatch.setattr(ra, "_call_llm_requirement_analyzer", fake)
+    out = ra.requirement_analyzer({"user_input": {"text_prompt": "北歐風", "initial_image": "p.jpg", "restyle": True}})
+    assert out["routing_decision"] == "design"
+    assert out["structured_requirement"]["hint_layout"] is False
+
+
+def test_restyle_flag_reaches_user_input():
+    from routers.common import DesignRequest, _build_user_input
+    assert _build_user_input(DesignRequest(text_prompt="x", restyle=True))["restyle"] is True
+    assert "restyle" not in _build_user_input(DesignRequest(text_prompt="x"))
+
+
+def test_box_mask_not_shrunk_to_one_piece_by_sam2():
+    """框住整張沙發、SAM 2 只回傳單人位時，要補回分割圖的範圍。"""
+    from PIL import Image, ImageDraw
+    from designbridge.core.nodes import adjuster
+
+    def rect(box):
+        m = Image.new("L", (100, 100), 0)
+        ImageDraw.Draw(m).rectangle(box, fill=255)
+        return m
+    drawn, sam2, seg = rect((0, 50, 60, 99)), rect((0, 70, 15, 99)), rect((0, 55, 58, 95))
+    assert adjuster._shrunk_too_much(sam2, drawn)
+    assert not adjuster._shrunk_too_much(seg, drawn)
+    assert adjuster._mask_area(adjuster._union_masks(sam2, seg)) >= adjuster._mask_area(seg)

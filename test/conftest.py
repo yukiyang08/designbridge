@@ -8,3 +8,4 @@ from designbridge.core.config import Config
 @pytest.fixture(autouse=True)
 def _no_modal_gpu(monkeypatch):
     monkeypatch.setattr(Config, "USE_MODAL_GPU", False)
+    monkeypatch.setattr(Config, "USE_MODAL_EDIT", False)   # 啟動時就由 .env 算好，不會跟著上一行變

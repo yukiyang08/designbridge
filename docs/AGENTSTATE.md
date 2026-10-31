@@ -42,6 +42,7 @@ requirement_analyzer → visual_preprocessing ─┬─ design → layout_and_st
 - state 已有 `generated_image`（風格切換重播）→ composer 不使用 `design_description`；風格代理人也不啟用。
 - state 已有 `scene_graph`（Step 1 排版結果）→ layout_and_style 只重新投影，不重排；`vision_features` 有照片深度（非 `post_estimate`）時疊回照片投影。
 - `scene_graph.source == "photo"`（入口二 `/api/photo-layout` 偵測的佈局）→ requirement_analyzer 一律走 `design`（refine_mode 仍優先）；renderer 跟 `hint_layout` 一樣改用投影深度。
+- `user_input.restyle`（入口二「修改風格」）→ requirement_analyzer 走 `design` 並把 `hint_layout` 設為 false，家具留在照片原位。
 
 ## 3. 節點內部的迴圈
 
@@ -52,7 +53,7 @@ requirement_analyzer → visual_preprocessing ─┬─ design → layout_and_st
 | layout_agent `layout/layout_agent.py` | LLM 提案 → 硬約束 / 優化器 / 軟約束評分，優化器後算分數（0.65 僅用於 `acceptance_rate` 統計，不再觸發重排） | 啟動條件：`hint_layout`，或 `ENABLE_PRODUCT_MESHES` 且沒有照片 | `scene_graph`、`intermediate_outputs`；LLM 失敗退回 `_default_layout` |
 | layout 檢查 `layout/layout_review.py` | 規則檢查風水／動線問題 → 有問題才把報告交回 LLM 重排一次 → 重新優化後比較「問題數、軟性分數」，更差就保留原佈局 | `DESIGNBRIDGE_LAYOUT_REVIEW_AGENT`，**預設 true**（2026-10-30 起） | `intermediate_outputs` 的 review_log（`decision`、`issues_before/after`、`accepted`） |
 | composer `core/nodes/composer.py` | LLM 合併並回報 `ra_issue`（使用者原話與 RA 描述核心矛盾）→ 有矛盾就呼叫 `revise_requirement` 重寫 `design_description`，重合併一次；原話明確指定的家具與佈局不符（`layout_issue`）且本輪真的排過版時，帶提示呼叫 `replan_layout` 重排並覆寫 `scene_graph`（Step 1 使用者確認過的佈局不重排）。RA / layout 共用同一輪，只回頭一輪；風格切換重播不觸發→ `check_prompt`（程式檢查家具是否都提到、後設詞、字數）→ 帶問題修訂，最多 2 次 | 一律啟用 | `composed_prompt`、被修正時的 `structured_requirement` / `scene_graph`、`intermediate_outputs["composer"]`（`ra_issue`、`layout_issue`、`revisions`） |
-| adjuster | 遮罩過小時改用 bbox（只看遮罩，不驗證結果圖） | 一律啟用 | 結果圖 |
+| adjuster | 遮罩過小時改用 bbox；手繪/框選遮罩經 SAM 2（含多物件拆分）後若不到原範圍 40%，併入分割圖同類範圍或原筆跡（只看遮罩，不驗證結果圖） | 一律啟用 | 結果圖 |
 
 ## 4. 已知缺口
 
@@ -85,3 +86,4 @@ requirement_analyzer → visual_preprocessing ─┬─ design → layout_and_st
 | 2026-10-30 | composer 可請 layout agent 重排（`ask_layout`，`run_layout_agent(extra_hint=...)`）；未實測 |
 | 2026-10-30 | `LAYOUT_REVIEW_AGENT` 預設改為 true；移除舊的 `LAYOUT_LLM_REFINE`（分數回饋給 LLM）與 `LAYOUT_MAX_ITER` |
 | 2026-10-31 | 入口二：`scene_graph.source="photo"` 影響路由與 renderer 投影深度；reproject 帶入照片 `vision_features` |
+| 2026-10-31 | 入口二改成單頁工作台：`restyle` 旗標；adjuster SAM 2 縮太小時併入分割圖 |

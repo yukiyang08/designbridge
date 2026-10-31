@@ -199,12 +199,16 @@ def requirement_analyzer(state: DesignBridgeState) -> dict[str, Any]:
     if user.get("refine_mode"):
         routing_decision = "design_adjuster"
         print("[requirement_analyzer] refine_mode=True → design_adjuster")
-    elif (state.get("scene_graph") or {}).get("source") == "photo":
-        # 照片入口改過佈局：一定要整張重生，局部修改無法搬動家具
+    elif (state.get("scene_graph") or {}).get("source") == "photo" or user.get("restyle"):
+        # 照片入口改佈局或換風格：一定要整張重生，局部修改做不到
         routing_decision = "design"
     elif not routing_decision:
         routing_decision = "design"
         print("[requirement_analyzer] no routing_decision available → default design")
+
+    if user.get("restyle") and structured_requirement:
+        # 換風格要保留照片的家具位置，不讓 layout agent 重排
+        structured_requirement = {**structured_requirement, "hint_layout": False}
 
     return {
         "task_id": task_id,

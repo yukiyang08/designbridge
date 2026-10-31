@@ -23,7 +23,6 @@ import ImageUpload from '@/components/ImageUpload.vue'
 import DesignDetails from '@/components/steps/DesignDetails.vue'
 import TimingPanel from '@/components/TimingPanel.vue'
 import RefineEditor from '@/components/RefineEditor.vue'
-import PhotoLayoutPanel from '@/components/PhotoLayoutPanel.vue'
 import { useDesignFlow, ASPECT_OPTIONS, ORIGINAL_STYLE_KEY } from '@/composables/useDesignFlow'
 import { spaceInfo, ROOM_TYPE_LABEL } from '@/composables/design-flow/state'
 import { useFurnitureSelection } from '@/composables/useFurnitureSelection'
@@ -67,8 +66,6 @@ const editFull = ref(false)     // 編輯時是否全螢幕
 
 const imageUrl = computed(() => result.value?.generated_image_url || '')
 const isSkipPath = computed(() => planSource.value === 'skip')
-// 照片入口：偵測佈局、生圖、換風格、局部修改都在這一頁
-const isPhotoPath = computed(() => planSource.value === 'photo')
 
 // 這一步一律在最上面寫出「現在是哪個房間」：整層是房間名稱，其他路徑是房型
 const roomTitle = computed(() => {
@@ -227,8 +224,6 @@ function toFavoriteItem(item, c) {
 
     <!-- ══ 尚未生成：描述 + 風格推薦 ══ -->
     <template v-if="!result">
-      <PhotoLayoutPanel v-if="isPhotoPath" />
-
       <!-- 不排家具路徑在第一頁就填過描述了（那是它唯一的設定頁），這裡只回顧，
            不再放一個綁同一個欄位的輸入框，免得同一件事被問兩次。
            排家具路徑的第一頁專心決定房型／家具／坪數，描述在這裡才填。 -->
@@ -331,8 +326,6 @@ function toFavoriteItem(item, c) {
 
     <!-- ══ 已生成：結果圖 + 微調 + 預算，整頁往下排 ══ -->
     <template v-else>
-      <PhotoLayoutPanel v-if="isPhotoPath" />
-
       <!-- 寬螢幕：左圖右清單（清單 sticky）；窄螢幕退回單欄往下排 -->
       <div class="result-grid">
 

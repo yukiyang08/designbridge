@@ -11,6 +11,7 @@ import StepBar from '@/components/shell/StepBar.vue'
 import LoadingState from '@/components/shell/LoadingState.vue'
 import StepSpaceSetup from '@/components/steps/StepSpaceSetup.vue'
 import StepPhotoUpload from '@/components/steps/StepPhotoUpload.vue'
+import StepPhotoStudio from '@/components/steps/StepPhotoStudio.vue'
 import StepPlanUpload from '@/components/steps/StepPlanUpload.vue'
 import StepRoomProgram from '@/components/steps/StepRoomProgram.vue'
 import StepRoomPick from '@/components/steps/StepRoomPick.vue'
@@ -84,6 +85,7 @@ function backToModeSelect() {
 const STEP_COMPONENTS = {
   space:       StepSpaceSetup,
   photo:       StepPhotoUpload,
+  photoStudio: StepPhotoStudio,
   planUpload:  StepPlanUpload,
   roomProgram: StepRoomProgram,
   roomPick:    StepRoomPick,
@@ -143,7 +145,9 @@ onMounted(() => {
   <div class="db-scene studio" :style="{ '--db-scene-image': `url(${sceneBg})` }">
     <AppNav />
 
+    <!-- 只有一步（照片工作台）就不用流程列，把高度留給工作區 -->
     <StepBar
+      v-if="steps.length > 1"
       class="studio-steps"
       :steps="steps"
       :current="stepIndex"

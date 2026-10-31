@@ -28,10 +28,9 @@ export const STEP_FLOWS = {
     { key: 'plan',   label: '繪製平面圖' },
     { key: 'result', label: '生成設計' },
   ],
-  // 上傳現有空間照片
+  // 上傳現有空間照片（租屋族）：上傳、換風格、移家具、換／刪家具都在同一頁
   photo: [
-    { key: 'photo',  label: '空間照片上傳' },
-    { key: 'result', label: '生成設計' },
+    { key: 'photoStudio', label: '空間改造' },
   ],
   // 從零開始，直接描述理想空間
   skip: [
@@ -414,6 +413,12 @@ export const photoAuditError       = ref('')
 export const photoDetection        = ref(null)
 export const photoLayoutLoading    = ref(false)
 export const photoLayoutError      = ref('')
+// 照片工作台：每次生成的版本（第 0 張是原照片），aligned＝家具還在原照片位置、偵測框對得上
+export const photoVersions         = ref([])
+export const photoCurrent          = ref(0)
+export const photoBusy             = ref('')     // 進行中的工作說明，空字串＝閒置
+export const photoStyleId          = ref('')     // 最近套用的風格，移家具重生時沿用
+export const photoRemovedIds       = ref([])     // 已從照片刪掉的偵測家具
 
 // ── 風格 ──
 export const selectedStyle       = ref('auto')
