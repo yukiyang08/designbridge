@@ -527,3 +527,52 @@ def generate_panorama(request: PanoramaRequest, user_id: str = Depends(get_user_
     if user_id:   # 登入的使用者：環景也存雲端，之後從「我的設計」繼續編輯時看得到
         save_panorama(user_id, request.task_id, t2r["panorama"])
     return {"room_panorama_url": _artifact_url(t2r["panorama"])}
+
+# ── 在任何一張圖上搬家具（照片入口、直接描述的結果；CAD 結果走上面的 /api/move-furniture）──
+class ImagePickRequest(BaseModel):
+    image_path: str
+    x: float = Field(ge=0, le=1)
+    y: float = Field(ge=0, le=1)
+
+
+class ImageMoveRequest(BaseModel):
+    image_path: str
+    mask_path: str
+    x: float = Field(ge=0, le=1)          # 家具底部（地板錨點）拖到的位置
+    y: float = Field(ge=0, le=1)
+    horizon_y: float = Field(default=0.45, ge=0, le=1)
+
+
+@router.post("/api/image-move/pick")
+def image_move_pick(request: ImagePickRequest, user_id: str = Depends(get_user_id)):
+    """點圖上的家具，回傳去背圖層與地板錨點；沒點到家具回 {"mask_path": null}。"""
+    from designbridge.render.image_move import pick
+
+    if not _inside_artifacts(request.image_path):
+        raise HTTPException(status_code=400, detail="路徑不合法")
+    _require_artifact_file(request.image_path, 404, user_id)
+    hit = pick(request.image_path, request.x, request.y, Path(Config.ARTIFACTS_DIR) / "render")
+    if not hit:
+        return {"mask_path": None}
+    return {**hit, "layer_url": _artifact_url(hit["layer_path"])}
+
+
+@router.post("/api/image-move")
+def image_move_apply(request: ImageMoveRequest, user_id: str = Depends(get_user_id)):
+    """把點選的家具搬到新位置：一次 inpaint 補舊位置、融新位置邊緣，房間其他像素不動。"""
+    from designbridge.render.image_move import default_inpaint, move
+
+    for p in (request.image_path, request.mask_path):
+        if not _inside_artifacts(p):
+            raise HTTPException(status_code=400, detail="路徑不合法")
+    _require_artifact_file(request.image_path, 404, user_id)
+    if not Path(request.mask_path).is_file():
+        raise HTTPException(status_code=404, detail="選取已失效，請重新點選家具")
+    out = Path(Config.ARTIFACTS_DIR) / "render" / f"move_{uuid.uuid4().hex[:10]}.png"
+    with collect_stages() as timings, log_stage("image_move", None):
+        try:
+            move(request.image_path, request.mask_path, (request.x, request.y), request.horizon_y, out, default_inpaint)
+        except (ValueError, RuntimeError) as e:
+            raise HTTPException(status_code=502, detail=str(e))
+    path = str(out).replace("\\", "/")
+    return {"generated_image_path": path, "generated_image_url": _artifact_url(path), "timings": timings}

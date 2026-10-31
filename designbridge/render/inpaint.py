@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import json
 import re
+import threading
 from pathlib import Path
 from typing import Any
 
@@ -15,6 +16,8 @@ from designbridge.core.config import Config
 # ---------------------------------------------------------------------------
 
 _sam2_predictor: Any = None
+# predictor 共用且 set_image→predict 有狀態，多人同時用會拿到別人照片的遮罩
+_SAM2_INFER_LOCK = threading.Lock()
 
 # checkpoint 與 config 路徑（相對於本專案 model/ 資料夾）
 _SAM2_CHECKPOINT = Path(__file__).parent.parent.parent / "model" / "sam2" / "checkpoints" / "sam2.1_hiera_tiny.pt"
@@ -287,7 +290,7 @@ def sam2_mask_from_box(
         import torch
 
         img_rgb = np.array(Image.open(image_path).convert("RGB"))
-        with torch.inference_mode():
+        with torch.inference_mode(), _SAM2_INFER_LOCK:
             predictor.set_image(img_rgb)
             masks, scores, _ = predictor.predict(
                 box=np.asarray(box_xyxy), multimask_output=False
@@ -295,6 +298,33 @@ def sam2_mask_from_box(
         return masks[int(scores.argmax())].astype(bool)
     except Exception as e:
         print(f"[SAM2] box-prompt inference failed: {e}")
+        return None
+
+
+def sam2_mask_from_point(image_path: str, point_xy: tuple[float, float]) -> Any:
+    """單點提示取得物件遮罩（bool ndarray），失敗回傳 None。
+
+    用 SAM 2 自己的單一輸出：實測挑最大候選會吃到旁邊的桌面、地毯，先用語意分割找整件又會連地毯一起選。
+    """
+    import numpy as np
+    from PIL import Image
+
+    predictor = _get_sam2_predictor()
+    if predictor is None:
+        return None
+    try:
+        import torch
+
+        img_rgb = np.array(Image.open(image_path).convert("RGB"))
+        with torch.inference_mode(), _SAM2_INFER_LOCK:
+            predictor.set_image(img_rgb)
+            masks, scores, _ = predictor.predict(
+                point_coords=np.array([point_xy], dtype=np.float32), point_labels=np.array([1]),
+                multimask_output=False,
+            )
+        return masks[int(np.asarray(scores).argmax())].astype(bool)
+    except Exception as e:
+        print(f"[SAM2] point-prompt inference failed: {e}")
         return None
 
 
@@ -393,7 +423,7 @@ def generate_mask_with_sam2(
 
         img_rgb = np.array(Image.open(image_path).convert("RGB"))
 
-        with torch.inference_mode():
+        with torch.inference_mode(), _SAM2_INFER_LOCK:
             predictor.set_image(img_rgb)
             box = np.array([x_min, y_min, x_max, y_max])
             masks, scores, _ = predictor.predict(
