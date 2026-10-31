@@ -31,6 +31,7 @@ import {
   furnitureItems, furnitureQty, extraPrompt, fengshuiEnabled, fengshuiExcluded, fengshuiRules, outputAspect,
   spacePhoto, spacePhotoPath,
   fengshuiReport, fengshuiReportLoading, fengshuiLastFix, photoAudit, photoAuditLoading, photoAuditError,
+  photoDetection, photoLayoutLoading, photoLayoutError,
   selectedStyle, noStyleReference, styleMethod, styleRefImage,
   styleOptions, styleLoading, styleError,
   styleCandidates, candidatesLoading, candidatesError, candidatesSearched, confirmedStyle, matchedStylePreview,
@@ -57,6 +58,7 @@ import {
 import { applyToRooms, cancelCadBatch } from './design-flow/cadBatch'
 import { submitRoomProgram, rescaleUploadedPlan, fetchRoomPlan, handleCadRoomSelected, jumpToCadRoom, abandonCadRoom, setOpeningEdit } from './design-flow/cad'
 import { submitPhoto, submit3D, swapStyle, restoreOriginal, generatePanorama } from './design-flow/render'
+import { detectPhotoLayout, autoRelayoutPhoto, resetPhotoLayout } from './design-flow/photoLayout'
 import { handleMaskReady, submitRefine, undoRefine, canUndoRefine, refining } from './design-flow/refine'
 import { fetchQuotation, quoteRooms } from './design-flow/quotation'
 import { restoreProject } from './design-flow/projectSync'
@@ -87,6 +89,7 @@ export function useDesignFlow() {
     furnitureItems, furnitureQty, extraPrompt, outputAspect,
     // 空間照片
     spacePhoto, spacePhotoPath,
+    photoDetection, photoLayoutLoading, photoLayoutError, detectPhotoLayout, autoRelayoutPhoto, resetPhotoLayout,
     // 風水＋動線健檢
     fengshuiEnabled, fengshuiExcluded, fengshuiRules, fengshuiRulesFor,
     fengshuiReport, fengshuiReportLoading, fengshuiLastFix, scheduleFengshuiAudit, applyFengshuiFix, undoFengshuiFix,

@@ -21,6 +21,14 @@ class LayoutRequest(BaseModel):
     furniture_list: List[str] = []   # 預計擺放的家具
     text_prompt: str = ""
     fengshui_rules: List[str] = []
+    # 照片入口自動重排時帶入照片偵測到的門窗，沒給就用預設位置
+    doors: Optional[List[dict]] = None
+    windows: Optional[List[dict]] = None
+
+
+class PhotoLayoutRequest(BaseModel):
+    image_path: str
+    room_type: Optional[str] = None
 
 
 class RoomProgramRequest(BaseModel):
@@ -67,8 +75,8 @@ def generate_layout(request: LayoutRequest, user_id: str = Depends(get_user_id))
             },
             "space_info": {
                 "estimated_size": {"width": width, "height": 2.8, "depth": depth},
-                "windows": [{"x": 0.5, "y": 0.0, "w": 0.2, "h": 0.02}],
-                "doors": [{"x": 0.5, "y": 1.0, "w": 0.1, "h": 0.02}],
+                "windows": request.windows or [{"x": 0.5, "y": 0.0, "w": 0.2, "h": 0.02}],
+                "doors": request.doors or [{"x": 0.5, "y": 1.0, "w": 0.1, "h": 0.02}],
             },
             "style_preferences": {
                 "primary_style": "", "secondary_style": None,
@@ -415,3 +423,41 @@ def plan_layout(request: DesignRequest, user_id: str = Depends(get_user_id)):
         import traceback
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/api/photo-layout")
+def photo_layout(request: PhotoLayoutRequest, user_id: str = Depends(get_user_id)):
+    """照片入口：偵測照片裡的家具與門窗成可編輯的俯視佈局，同時跑深度/分割供之後疊回照片投影。"""
+    from concurrent.futures import ThreadPoolExecutor
+
+    from designbridge.core.nodes import visual_preprocessing_local
+    from designbridge.layout.photo_fengshui import parse_room_photo
+
+    _require_artifact_file(request.image_path, 404, user_id)
+    task_id = str(uuid.uuid4())
+    vision_state = {"user_input": {"initial_image": request.image_path}, "task_id": task_id}
+    # Gemini 偵測與本機深度/分割互不相依，並行省一半等待
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        plan_future = pool.submit(parse_room_photo, request.image_path, request.room_type)
+        vision_future = pool.submit(visual_preprocessing_local, vision_state)
+        plan = plan_future.result()
+        vision = vision_future.result() or {}
+    if not plan:
+        raise HTTPException(status_code=422, detail="無法從照片辨識出房間配置，請換一張較完整的照片")
+
+    scene_graph = {
+        "source": "photo",
+        "furniture_placements": plan["placements"],
+        "room_w": plan["room_w"],
+        "room_d": plan["room_d"],
+        "room_type": plan["room_type"],
+        "doors": plan["doors"],
+        "windows": plan["windows"],
+    }
+    return {
+        "status": "success",
+        "task_id": task_id,
+        "scene_graph": scene_graph,
+        "vision_features": vision.get("vision_features") or {},
+        "confidence": plan.get("confidence"),
+    }

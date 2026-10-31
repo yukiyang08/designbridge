@@ -74,12 +74,25 @@ def _clamp(v: Any, lo: float, hi: float, default: float) -> float:
         return default
 
 
+def _unit(v: Any) -> float:
+    """Gemini 偶爾漏掉小數點（6.72）或改用 0–1000 刻度，除以 10 直到落回 [0, 1]。"""
+    v = abs(float(v))
+    while v > 1.0:
+        v /= 10.0
+    return v
+
+
 def _box(raw: Any) -> list[float] | None:
     if isinstance(raw, list) and len(raw) == 4:
         try:
-            return [max(0.0, min(1.0, float(v))) for v in raw]
+            x0, y0, x1, y1 = (_unit(v) for v in raw)
         except (TypeError, ValueError):
             return None
+        x0, x1 = sorted((x0, x1))
+        y0, y1 = sorted((y0, y1))
+        if x1 - x0 < 0.01 or y1 - y0 < 0.01:
+            return None
+        return [x0, y0, x1, y1]
     return None
 
 

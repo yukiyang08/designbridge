@@ -14,6 +14,7 @@ import { uploadFile } from './common'
 import { updateFloorPlan } from './layout'
 import { snapshotCurrentCadRoom } from './cad'
 import { saveProjectSettings } from './projectSync'
+import { detectPhotoLayout } from './photoLayout'
 
 // 原圖（submit3D 第一次生成的那張）在 styleSwapCache 裡的固定 key——跟真正的
 // style_profile_id 分開存，這樣就算原圖沒套風格（no_style_reference / 風格搜尋落空，
@@ -34,10 +35,12 @@ export async function submitPhoto() {
   loadingMsg.value = { title: '上傳空間照片中', sub: '準備分析你的空間' }
   try {
     spacePhotoPath.value = await uploadFile(spacePhoto.file)
-    // 描述跟風格推薦都已經在這頁打完/選完了（見 StepPhotoUpload.vue 的
-    // @input="scheduleSearch"），不用再經過一個只為了選風格存在的中繼頁，
-    // 直接進結果頁生成渲染圖。
+    // 結果頁同時放偵測到的佈局、渲染圖、換風格與局部修改；先偵測家具再依偵測佈局生第一張。
+    // 偵測失敗就照舊只拿照片生成（不帶 scene_graph）。
     nextStep()
+    loadingMsg.value = { title: '偵測照片中的家具', sub: 'AI 辨識家具位置與房間尺寸，約 10–20 秒' }
+    const detected = await detectPhotoLayout()
+    if (!detected) editPlacements.value = []
     await submit3D()
   } catch (e) {
     error.value = `上傳失敗：${e.message}`
@@ -217,6 +220,8 @@ export async function swapStyle(styleId) {
       style_profile_id:  styleId,
       output_aspect:      outputAspect.value,
       style_method:       styleMethod.value,
+      // 照片流程：輸出比例跟第一張一樣依照片決定，不然換風格會變成預設比例
+      initial_image_path: spacePhotoPath.value || undefined,
       plan,
       project_id:         projectId.value,
       ...spaceInfo(),

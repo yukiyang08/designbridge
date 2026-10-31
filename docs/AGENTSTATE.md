@@ -3,7 +3,7 @@
 > 記錄**程式目前實際的樣子**，不是規劃。規劃與改善見 [agent_roadmap.md](agent_roadmap.md)。
 > 改了節點讀寫的 state 欄位、graph 邊、節點內迴圈或相關旗標預設值，請同步更新本文件並改下方日期。
 >
-> 最後核對：2026-10-30（對照 commit `3efd3cf7`）
+> 最後核對：2026-10-31（入口二：照片偵測佈局）
 
 ## 1. 溝通方式
 
@@ -27,7 +27,7 @@ requirement_analyzer → visual_preprocessing ─┬─ design → layout_and_st
 
 | 節點 | 檔案 | 讀 | 寫 |
 |---|---|---|---|
-| requirement_analyzer | `core/nodes/requirement.py` | `user_input`、`task_id`、`iteration`、已有的 `structured_requirement` / `routing_decision` | `structured_requirement`、`routing_decision`、`iteration`（原值回傳） |
+| requirement_analyzer | `core/nodes/requirement.py` | `user_input`、`task_id`、`iteration`、已有的 `structured_requirement` / `routing_decision`、`scene_graph.source` | `structured_requirement`、`routing_decision`、`iteration`（原值回傳） |
 | visual_preprocessing | `core/nodes/visual_preprocessing.py` | 上傳照片 | `vision_features`、`layout_from_depth` |
 | layout_and_style_agent | `core/nodes/layout_and_style.py` | `structured_requirement`、`user_input`、`style_params`（已有就不重查）、`scene_graph`、`layout_from_depth`、`vision_features`、`generated_image` | `style_params`、`scene_graph`、`intermediate_outputs` |
 | composer | `core/nodes/composer.py` | `structured_requirement`、`style_params`、`scene_graph`、`layout_from_depth`、`user_input`、`generated_image` | `composed_prompt`、`composed_includes_furniture`；沒東西可合併或失敗回 `{}` |
@@ -40,7 +40,8 @@ requirement_analyzer → visual_preprocessing ─┬─ design → layout_and_st
 - `composed_includes_furniture=True` → renderer 不再注入自己的家具描述（避免重複）。
 - adjuster 已寫 `generated_image` 且 `routing_decision == "design_adjuster"` → renderer 跳過。
 - state 已有 `generated_image`（風格切換重播）→ composer 不使用 `design_description`；風格代理人也不啟用。
-- state 已有 `scene_graph`（Step 1 排版結果）→ layout_and_style 只重新投影，不重排。
+- state 已有 `scene_graph`（Step 1 排版結果）→ layout_and_style 只重新投影，不重排；`vision_features` 有照片深度（非 `post_estimate`）時疊回照片投影。
+- `scene_graph.source == "photo"`（入口二 `/api/photo-layout` 偵測的佈局）→ requirement_analyzer 一律走 `design`（refine_mode 仍優先）；renderer 跟 `hint_layout` 一樣改用投影深度。
 
 ## 3. 節點內部的迴圈
 
@@ -83,3 +84,4 @@ requirement_analyzer → visual_preprocessing ─┬─ design → layout_and_st
 | 2026-10-30 | composer 可回頭請 RA 修正 `design_description`（`ask_ra`）；尚未接 layout。實測 RA 20 筆無真實錯誤，未另做 RA 自身迴圈 |
 | 2026-10-30 | composer 可請 layout agent 重排（`ask_layout`，`run_layout_agent(extra_hint=...)`）；未實測 |
 | 2026-10-30 | `LAYOUT_REVIEW_AGENT` 預設改為 true；移除舊的 `LAYOUT_LLM_REFINE`（分數回饋給 LLM）與 `LAYOUT_MAX_ITER` |
+| 2026-10-31 | 入口二：`scene_graph.source="photo"` 影響路由與 renderer 投影深度；reproject 帶入照片 `vision_features` |

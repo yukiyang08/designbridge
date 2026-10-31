@@ -264,6 +264,11 @@ def _furniture_to_spatial_text(placements: list[dict]) -> str:
     return "; ".join(parts)
 
 
+def _wants_projected_depth(req: dict, scene_graph: dict) -> bool:
+    """重排過佈局（hint_layout）或照片入口使用者改過家具位置時，照片原深度已對不上新佈局。"""
+    return bool(req.get("hint_layout")) or (scene_graph or {}).get("source") == "photo"
+
+
 def renderer(state: DesignBridgeState) -> dict[str, Any]:
     """Renderer：依序嘗試各雲端後端出圖，全部失敗則不產圖。adjuster 已產出 inpaint 圖時直接跳過。"""
     # Adjuster 已產出 inpainted 圖片，renderer 不再重新生成
@@ -356,7 +361,7 @@ def renderer(state: DesignBridgeState) -> dict[str, Any]:
 
     # 重排佈局後原照片深度與新家具位置不符，改用 scene graph 投影的深度
     using_projected_depth = False
-    if req.get("hint_layout") and Config.ENABLE_LAYOUT_DEPTH_PROJECTION:
+    if _wants_projected_depth(req, state.get("scene_graph") or {}) and Config.ENABLE_LAYOUT_DEPTH_PROJECTION:
         _sg = state.get("scene_graph") or {}
         _proj_depth = _sg.get("projected_depth_path")
         if _proj_depth and Path(_proj_depth).exists():

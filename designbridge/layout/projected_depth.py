@@ -143,6 +143,8 @@ def reproject_scene_graph(
     space_info: dict[str, Any],
     task_id: str,
     output_size: tuple[int, int] | None = None,
+    vision_features: dict[str, Any] | None = None,
+    photo_path: str | None = None,
 ) -> dict[str, Any]:
     """Re-run the floor-plan/depth-projection step against `furniture_placements` that
     may have been hand-edited by the user in the 3D preview (drag to reposition).
@@ -179,8 +181,12 @@ def reproject_scene_graph(
     floor_plan_path = _generate_floor_plan(
         items, task_id, room_type=room_type, room_w=room_w, room_d=room_d
     )
+    # 照片流程：改過的佈局要疊回原照片的深度，不能退回合成相機
+    if vision_features:
+        space_info = {**(space_info or {}), "estimated_size": {**_size, "width": room_w, "depth": room_d}}
     projected_depth_path, projected_seg_path, projection_mode = _generate_projected_depth(
-        items, space_info, task_id, output_size=output_size or (1024, 1024)
+        items, space_info, task_id, vision_features=vision_features,
+        output_size=output_size or (1024, 1024), photo_path=photo_path,
     )
 
     return {

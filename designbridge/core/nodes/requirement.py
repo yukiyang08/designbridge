@@ -199,6 +199,9 @@ def requirement_analyzer(state: DesignBridgeState) -> dict[str, Any]:
     if user.get("refine_mode"):
         routing_decision = "design_adjuster"
         print("[requirement_analyzer] refine_mode=True → design_adjuster")
+    elif (state.get("scene_graph") or {}).get("source") == "photo":
+        # 照片入口改過佈局：一定要整張重生，局部修改無法搬動家具
+        routing_decision = "design"
     elif not routing_decision:
         routing_decision = "design"
         print("[requirement_analyzer] no routing_decision available → default design")

@@ -65,9 +65,14 @@ def layout_and_style_agent_stub(state: DesignBridgeState) -> dict[str, Any]:
         output_size = _resolve_output_size(
             str(user_input.get("output_aspect") or "auto"), user_input.get("initial_image")
         )
+        # 有照片時疊回照片深度；post_estimate 是上一張生成圖的估計深度，不是照片，不能拿來錨定
+        vision = state.get("vision_features") or {}
+        photo_vision = vision if vision.get("depth") and vision.get("depth_source") != "post_estimate" else None
         scene_graph = timed_call(
             "layout_and_style.reproject", task_id, reproject_scene_graph,
             existing_scene_graph, req.get("space_info") or {}, task_id, output_size,
+            vision_features=photo_vision,
+            photo_path=user_input.get("initial_image") if photo_vision else None,
         )
         layout_status = "reused_from_step1"
     elif hint_layout or (Config.ENABLE_PRODUCT_MESHES and not user_input.get("initial_image")):

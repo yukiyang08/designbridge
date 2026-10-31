@@ -4,7 +4,7 @@ import {
   floorPlanUrl, floorPlanPath, sceneGraph, editPlacements, layoutViewMode, layoutRenderConfig,
   floorPlanUpload, uploadedPlanUrl, uploadedPlanPath, detectedRooms, planParseIssue,
   cadPlanResult, cadActiveRoomId, cadRoomStatus, cadRoomSnapshots, openingEdits, cadOverview,
-  spacePhoto, spacePhotoPath, spaceImage, styleRefImage,
+  spacePhoto, spacePhotoPath, spaceImage, styleRefImage, photoDetection, photoLayoutError,
   result, loading,
   styleCandidates, styleCandidatePool, candidatesSearched, confirmedStyle, matchedStylePreview,
   lastGeneratedImage, manualMaskPath, refineHistory, textPrompt,
@@ -58,6 +58,8 @@ export function resetFlow() {
   cancelCadBatch()
   spacePhoto.remove()
   spacePhotoPath.value = ''
+  photoDetection.value = null
+  photoLayoutError.value = ''
   spaceImage.remove()
   styleRefImage.remove()
   result.value = null

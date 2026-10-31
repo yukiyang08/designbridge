@@ -410,6 +410,10 @@ export const fengshuiLastFix       = ref(null)    // { moved, previous }：一�
 export const photoAudit            = ref(null)    // /api/fengshui/photo-audit 的回應 { plan, report }
 export const photoAuditLoading     = ref(false)
 export const photoAuditError       = ref('')
+// 照片入口：/api/photo-layout 偵測到的原始佈局（還原用）與照片框
+export const photoDetection        = ref(null)
+export const photoLayoutLoading    = ref(false)
+export const photoLayoutError      = ref('')
 
 // ── 風格 ──
 export const selectedStyle       = ref('auto')
