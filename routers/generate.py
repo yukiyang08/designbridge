@@ -1,5 +1,6 @@
 """Upload, chat, generation, quotation and panorama endpoints."""
 import io
+import json
 import time
 import uuid
 from pathlib import Path
@@ -7,11 +8,11 @@ from typing import Optional, List
 
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
 from fastapi.responses import StreamingResponse
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 from routers.common import (
-    get_user_id, ensure_artifact,
-    API_PUBLIC_URL, DesignRequest, _artifact_url, _build_user_input, _get_graph, _inside_artifacts, check_request_paths,
+    get_user_id, ensure_artifact, _MAX_PAYLOAD_CHARS,
+    API_PUBLIC_URL, DesignRequest, _artifact_url, _build_user_input, _get_graph, _inside_artifacts, _walk_paths, check_request_paths,
     _is_artifact_file, _layout_render_config, _require_artifact_file,
 )
 from designbridge.core.config import Config
@@ -310,6 +311,103 @@ def generate_design(request: DesignRequest, user_id: str = Depends(get_user_id))
         import traceback
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))
+
+
+# ── 渲染圖上移家具 ─────────────────────────────────────────────────────────────
+
+class _PlanRequest(BaseModel):
+    plan: dict                       # 上一輪 /api/generate 的完整回應
+
+    @model_validator(mode="after")
+    def _limit_payload(self):
+        if len(json.dumps(self.plan, ensure_ascii=False, default=str)) > _MAX_PAYLOAD_CHARS:
+            raise ValueError("plan 太大")
+        return self
+
+
+class PickFurnitureRequest(_PlanRequest):
+    x: float = Field(ge=0, le=1)     # 點在渲染圖上的位置（0–1，左上為原點）
+    y: float = Field(ge=0, le=1)
+
+
+class FurnitureDrag(BaseModel):
+    id: str = Field(max_length=128)
+    x: float = Field(ge=0, le=1)     # 家具地板錨點拖到的位置（pick 回傳的 anchor 加上拖曳位移）
+    y: float = Field(ge=0, le=1)
+
+
+class MoveFurnitureRequest(_PlanRequest):
+    drag: Optional[FurnitureDrag] = None   # 在渲染圖上拖曳；跟 furniture_placements 二擇一
+    furniture_placements: Optional[List[dict]] = Field(default=None, max_length=300)   # 改完的家具清單
+    strength: Optional[float] = Field(default=None, ge=0.1, le=1.0)
+
+
+def _checked_plan(request: _PlanRequest, user_id: str) -> dict:
+    bad = next((p for p in _walk_paths(request.plan) if not _inside_artifacts(p)), None)
+    if bad:
+        raise HTTPException(status_code=400, detail=f"路徑不合法：{bad}")
+    plan = request.plan
+    _require_artifact_file(plan.get("generated_image_path") or (plan.get("render_result") or {}).get("generated_image_path"), 404, user_id)
+    return plan
+
+
+@router.post("/api/move-furniture/pick")
+def pick_furniture_endpoint(request: PickFurnitureRequest, user_id: str = Depends(get_user_id)):
+    """點渲染圖上的家具，回傳拖曳用的圖層；沒點到家具回 {"id": null}。"""
+    from designbridge.render.move_furniture import MoveFurnitureError, pick_furniture
+
+    plan = _checked_plan(request, user_id)
+    try:
+        return pick_furniture(plan, request.x, request.y) or {"id": None}
+    except MoveFurnitureError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.post("/api/move-furniture")
+def move_furniture_endpoint(request: MoveFurnitureRequest, user_id: str = Depends(get_user_id)):
+    """移動/刪除/轉向家具後，用舊圖剪貼出的合成圖當起點、新深度圖約束重繪，不從零重生。"""
+    from designbridge.render.move_furniture import MoveFurnitureError, drag_to_placements, move_furniture
+
+    plan = _checked_plan(request, user_id)
+    try:
+        t0 = time.perf_counter()
+        with collect_stages() as timings, log_stage("move_furniture", plan.get("task_id")):
+            if request.drag:
+                placements = drag_to_placements(plan, request.drag.id, request.drag.x, request.drag.y)
+            elif request.furniture_placements is not None:
+                placements = request.furniture_placements
+            else:
+                raise MoveFurnitureError("要帶 drag 或 furniture_placements")
+            moved = move_furniture(plan, placements, request.strength)
+        elapsed = time.perf_counter() - t0
+    except MoveFurnitureError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=str(e))
+
+    timing_runs = [*(plan.get("timing_runs") or []), {
+        "kind": "move_furniture",
+        "task_id": plan.get("task_id"),
+        "timestamp": time.strftime("%Y-%m-%dT%H:%M:%S"),
+        "elapsed_seconds": round(elapsed, 2),
+        "timings": timings,
+    }]
+    scene_graph = moved["scene_graph"]
+    # 回傳跟 /api/generate 同形狀，前端直接換掉手上的 plan 就能接著換風格、估價或再移
+    return {
+        **plan,
+        **moved,
+        "status": "success",
+        "elapsed_time": f"{elapsed:.2f}s",
+        "generated_image_url": _artifact_url(moved["generated_image_path"]),
+        "composite_image_url": _artifact_url(moved["composite_image_path"]),
+        "floor_plan_path": scene_graph.get("floor_plan_path"),
+        "floor_plan_url": _artifact_url(scene_graph.get("floor_plan_path")),
+        "timings": timings,
+        "timing_runs": timing_runs,
+    }
 
 
 # ── Quotation ─────────────────────────────────────────────────────────────────

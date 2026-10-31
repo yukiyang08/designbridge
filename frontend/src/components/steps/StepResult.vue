@@ -23,6 +23,8 @@ import ImageUpload from '@/components/ImageUpload.vue'
 import DesignDetails from '@/components/steps/DesignDetails.vue'
 import TimingPanel from '@/components/TimingPanel.vue'
 import RefineEditor from '@/components/RefineEditor.vue'
+import FurnitureMover from '@/components/FurnitureMover.vue'
+import { canMoveFurniture } from '@/composables/design-flow/move'
 import { useDesignFlow, ASPECT_OPTIONS, ORIGINAL_STYLE_KEY } from '@/composables/useDesignFlow'
 import { spaceInfo, ROOM_TYPE_LABEL } from '@/composables/design-flow/state'
 import { useFurnitureSelection } from '@/composables/useFurnitureSelection'
@@ -117,10 +119,13 @@ async function startPano() {
 watch(() => result.value?.task_id, () => { viewMode.value = 'image' })
 
 // ── 微調 ──────────────────────────────────────────────────
-function startEdit(full) { editing.value = true; editFull.value = full }
+function startEdit(full) { moving.value = false; editing.value = true; editFull.value = full }
 function stopEdit() { editing.value = false; editFull.value = false }
-// 切到別間房：編輯中的塗抹屬於舊那張圖，直接結束
-watch(cadActiveRoomId, stopEdit)
+// ── 在圖上拖曳家具 ────────────────────────────────────────
+const moving = ref(false)
+function startMove() { stopEdit(); moving.value = true }
+// 切到別間房：編輯中的塗抹、選到的家具都屬於舊那張圖，直接結束
+watch(cadActiveRoomId, () => { stopEdit(); moving.value = false })
 
 // ── 家具預算 ──────────────────────────────────────────────
 const quotation = computed(() => result.value?.quotation_result || null)
@@ -357,6 +362,11 @@ function toFavoriteItem(item, c) {
             :image-url="imageUrl"
             @close="stopEdit"
           />
+          <FurnitureMover
+            v-else-if="moving && imageUrl && canMoveFurniture"
+            :image-url="imageUrl"
+            @close="moving = false"
+          />
           <div v-else class="stage-img-wrap">
             <img v-if="imageUrl" :src="imageUrl" alt="生成的 3D 渲染圖" class="result-img" />
             <p v-else class="no-img">生成完成，但沒有取得圖片 URL。</p>
@@ -368,6 +378,10 @@ function toFavoriteItem(item, c) {
 
             <!-- 右上角：直接在圖上編輯／全螢幕編輯 -->
             <div v-if="imageUrl && result.task_id" class="img-tools">
+              <button
+                v-if="canMoveFurniture" type="button" :disabled="swappingStyle"
+                title="在圖上直接拖曳家具" @click="startMove"
+              >✥ 移動家具</button>
               <button type="button" :disabled="swappingStyle" @click="startEdit(false)">✎ 編輯</button>
               <button type="button" :disabled="swappingStyle" title="全螢幕編輯" aria-label="全螢幕編輯" @click="startEdit(true)">⛶</button>
             </div>

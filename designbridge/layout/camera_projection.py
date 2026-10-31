@@ -479,12 +479,14 @@ def build_tagged_scene(
     semantic_shapes: bool = True,
     start_id: int = 4,
     fronts: list[str] | None = None,
+    index_out: dict[int, int] | None = None,
 ) -> tuple[list[tuple[np.ndarray, int]], dict[int, str]]:
     """Assemble room-shell + furniture triangles, each tagged with an object id.
 
     Shell ids are fixed (1=floor, 2=ceiling, 3=wall); furniture gets one id per
     item starting at ``start_id``, shared across all of that item's sub-parts so
     it still reads as a single instance in the id map.
+    ``index_out``：給了就填 object id → placements 索引（移家具要找出某件家具佔的像素）。
     """
     W, D, H = room_w, room_d, room_h
     tagged: list[tuple[np.ndarray, int]] = []
@@ -531,6 +533,8 @@ def build_tagged_scene(
         obj_id = next_id
         next_id += 1
         id_to_type[obj_id] = ftype
+        if index_out is not None:
+            index_out[obj_id] = idx
 
         if semantic_shapes and height >= 0.10:
             from designbridge.layout.facing import OPPOSITE

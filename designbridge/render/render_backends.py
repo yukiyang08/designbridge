@@ -868,3 +868,79 @@ def _render_product_mesh_fal(
         print(f"⚠️  fal.ai 商品網格渲染失敗：{e}")
         traceback.print_exc()
         return False
+
+
+def _render_inpaint_depth_fal(
+    prompt: str,
+    image_path: str,
+    mask_path: str,
+    depth_path: str,
+    out_path: Path,
+    *,
+    strength: float = 0.95,
+    depth_conditioning_scale: float = 0.5,
+    num_steps: int = 28,
+    guidance_scale: float = 3.5,
+    output_size: tuple[int, int] = (1024, 1024),
+    loras: list[dict] | None = None,
+    seed: int | None = None,
+) -> bool:
+    """只重畫遮罩（白）範圍的 inpaint，同時掛深度 ControlNet；移家具時補舊位置、融合新位置邊緣。"""
+    if not Config.FAL_KEY:
+        return False
+    try:
+        import io
+        import os
+
+        import fal_client
+        from PIL import Image
+
+        os.environ["FAL_KEY"] = Config.FAL_KEY
+
+        def _upload(img: "Image.Image") -> str:
+            buf = io.BytesIO()
+            img.save(buf, format="PNG")
+            return fal_client.upload(buf.getvalue(), content_type="image/png")
+
+        image = Image.open(image_path).convert("RGB").resize(output_size, Image.LANCZOS)
+        mask = Image.open(mask_path).convert("L").resize(output_size, Image.NEAREST)
+        depth = Image.open(depth_path).convert("L").resize(output_size, Image.LANCZOS)
+        width, height = output_size
+        arguments: dict = {
+            "prompt": prompt,
+            "num_inference_steps": num_steps,
+            "guidance_scale": guidance_scale,
+            "image_size": _FAL_SIZE_MAP.get((width, height), {"width": width, "height": height}),
+            "image_url": _upload(image),
+            "mask_url": _upload(mask),
+            "strength": strength,
+            "controlnet_unions": [{
+                "path": Config.FAL_DEPTH_CONTROLNET_MODEL,
+                "controls": [{
+                    "control_image_url": _upload(depth),
+                    "control_mode": Config.FAL_DEPTH_CONTROL_MODE,
+                    "conditioning_scale": depth_conditioning_scale,
+                    "start_percentage": 0.0,
+                    "end_percentage": 1.0,
+                }],
+            }],
+        }
+        if seed is not None:
+            arguments["seed"] = int(seed)
+        if loras:
+            arguments["loras"] = loras
+
+        print(f"☁️  fal.ai inpaint + 深度 ControlNet（strength={strength}）")
+        out_path.parent.mkdir(parents=True, exist_ok=True)
+        out_path.write_bytes(_fal_flux_general("fal-ai/flux-general/inpainting", arguments))
+        print(f"✅ fal.ai inpaint 完成：{out_path.name}")
+        return True
+    except ImportError:
+        print("⚠️  fal_client 未安裝，請執行：pip install fal-client")
+        return False
+    except Exception as e:
+        import traceback
+
+        print(f"⚠️  fal.ai inpaint 失敗：{e}")
+        traceback.print_exc()
+        return False
