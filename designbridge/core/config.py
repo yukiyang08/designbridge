@@ -199,3 +199,10 @@ class Config:
     # 整張圖補光影的低強度 img2img；太高家具會被改掉，0 = 跳過
     PRODUCT_HARMONIZE_STRENGTH: float = float(os.getenv("DESIGNBRIDGE_PRODUCT_HARMONIZE_STRENGTH", "0.3"))
     PRODUCT_DEPTH_CONDITIONING_SCALE: float = float(os.getenv("DESIGNBRIDGE_PRODUCT_DEPTH_CONDITIONING_SCALE", "0.6"))
+
+    # ── 渲染圖上移家具（/api/move-furniture）──────────────────────────
+    # 只重畫舊位置與新位置邊緣的 inpaint 強度；舊位置的補洞只是粗填，要夠高才會畫成真的地板／牆
+    MOVE_FURNITURE_STRENGTH: float = float(os.getenv("DESIGNBRIDGE_MOVE_FURNITURE_STRENGTH", "0.95"))
+    MOVE_FURNITURE_DEPTH_SCALE: float = float(os.getenv("DESIGNBRIDGE_MOVE_FURNITURE_DEPTH_SCALE", "0.5"))
+    # 第二段只修貼上的家具本體＋邊緣：補回放大掉的細節、融光影；太高家具會被改掉，0 = 跳過
+    MOVE_FURNITURE_HARMONIZE_STRENGTH: float = float(os.getenv("DESIGNBRIDGE_MOVE_FURNITURE_HARMONIZE_STRENGTH", "0.3"))
