@@ -15,10 +15,10 @@ import { ORIGINAL_STYLE_KEY } from './render'
 export const applyingMove = ref(false)
 const moveHistory = ref([])   // 每次套用前的整份 result，復原用
 
-// 只有合成相機的投影能換算回地板座標（照片流程的投影是照片本身的幾何）
+// 家具是從渲染圖本身切的，有圖就能移；照片流程另有自己的搬家具工作台
 export const canMoveFurniture = computed(() => {
-  const sg = result.value?.scene_graph
-  return !!sg?.furniture_placements?.length && (!sg.projection_mode || sg.projection_mode === 'synthetic')
+  const r = result.value
+  return !!r?.generated_image_path && !String(r.scene_graph?.projection_mode || '').startsWith('photo')
 })
 export const canUndoMove = computed(() => {
   const last = moveHistory.value.at(-1)
@@ -36,11 +36,11 @@ async function errorText(res) {
   return body.detail || `HTTP ${res.status}`
 }
 
-export async function pickFurniture(x, y) {
-  const res = await jsonFetch('/api/move-furniture/pick', { plan: planOf(result.value), x, y })
+// 這張圖上自動切出的每件可移動家具（每張圖第一次約 40 秒，之後後端讀快取）
+export async function fetchFurnitureInstances() {
+  const res = await jsonFetch('/api/move-furniture/instances', { plan: planOf(result.value) })
   if (!res.ok) throw new Error(await errorText(res))
-  const data = await res.json()
-  return data.id ? data : null
+  return res.json()
 }
 
 function adopt(data) {
@@ -64,13 +64,13 @@ function adopt(data) {
   if (planSource.value === 'cad' && cadActiveRoomId.value) snapshotCurrentCadRoom()
 }
 
-// drag = { id, x, y }：家具地板錨點拖到的位置（0–1）
-export async function applyFurnitureMove(drag) {
+// moves = [{ index, x, y }]：每件家具的碰地點拖到的位置（0–1），可一次好幾件
+export async function applyFurnitureMove(moves) {
   const requestId = ++requestState.current
   const before = result.value
   applyingMove.value = true
   try {
-    const res = await jsonFetch('/api/move-furniture', { plan: planOf(before), drag })
+    const res = await jsonFetch('/api/move-furniture', { plan: planOf(before), moves })
     if (!res.ok) throw new Error(await errorText(res))
     const data = await res.json()
     if (requestId !== requestState.current) return
