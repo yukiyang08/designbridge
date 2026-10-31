@@ -262,7 +262,6 @@ const quoteTotal = computed(() => quoteRows.value.reduce((s, r) => s + (r.c?.pri
               <span>預算 · {{ quoteRows.length }} 件</span>
               <strong>NT$ {{ quoteTotal.toLocaleString() }}</strong>
             </div>
-            <h4 v-if="shopRows.length" class="q-sub">精準導購</h4>
             <ul v-if="shopRows.length" class="quote-list">
               <li v-for="r in shopRows" :key="r.key" class="quote-item">
                 <span class="q-thumb">

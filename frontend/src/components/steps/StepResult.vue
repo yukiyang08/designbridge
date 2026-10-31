@@ -488,7 +488,6 @@ function toFavoriteItem(item, c) {
             <span class="total-val">NT$ {{ computedTotal.toLocaleString() }}</span>
           </div>
 
-          <h3 v-if="shopGroups.length" class="sub-title">精準導購</h3>
           <ul v-if="shopGroups.length" class="furn-list">
             <li v-for="g in shopGroups" :key="g.key" class="furn">
               <template v-for="c in [pickedOf(g)]" :key="c?.id || g.key">
