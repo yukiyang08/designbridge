@@ -44,6 +44,7 @@ class FluxFiller:
         steps: int = 28,
         guidance: float = 30.0,
         seed: int | None = None,
+        strength: float = 1.0,
     ) -> dict:
         import torch
         from PIL import Image
@@ -66,6 +67,7 @@ class FluxFiller:
             height=h,
             num_inference_steps=steps,
             guidance_scale=guidance,
+            strength=strength,   # < 1 只微調遮罩內（移家具修細節用），1 = 整塊重畫
             max_sequence_length=512,
             generator=gen,
         ).images[0]

@@ -25,7 +25,7 @@ import TimingPanel from '@/components/TimingPanel.vue'
 import RefineEditor from '@/components/RefineEditor.vue'
 import FurnitureMover from '@/components/FurnitureMover.vue'
 import ImageFurnitureMover from '@/components/ImageFurnitureMover.vue'
-import { canMoveFurniture } from '@/composables/design-flow/move'
+import { canMoveFurniture, canUndoMove, undoMove, applyingMove } from '@/composables/design-flow/move'
 import { adoptMovedResult } from '@/composables/design-flow/imageMove'
 import { undoRefine, canUndoRefine } from '@/composables/design-flow/refine'
 import { useDesignFlow, ASPECT_OPTIONS, ORIGINAL_STYLE_KEY } from '@/composables/useDesignFlow'
@@ -395,6 +395,10 @@ function toFavoriteItem(item, c) {
                 v-if="canMoveFurniture || result.generated_image_path" type="button" :disabled="swappingStyle"
                 title="在圖上直接拖曳家具" @click="startMove"
               >✥ 移動家具</button>
+              <button
+                v-if="canUndoMove" type="button" :disabled="swappingStyle || applyingMove"
+                title="回到移動家具之前的圖" @click="undoMove"
+              >↶ 復原移動</button>
               <button type="button" :disabled="swappingStyle" @click="startEdit(false)">✎ 編輯</button>
               <button type="button" :disabled="swappingStyle" title="全螢幕編輯" aria-label="全螢幕編輯" @click="startEdit(true)">⛶</button>
             </div>
