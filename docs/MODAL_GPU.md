@@ -32,7 +32,15 @@
 | ① `flux_controlnet_depth_*` | 已有深度圖 | 深度 + 邊緣兩個 ControlNet（`two`） | 20 |
 | ② `flux_depth_controlnet_*` | 沒深度圖、有家具配置，用 2D 平面圖投影 | Union-Pro（`union`） | 42 |
 
-不走 Modal：局部修改（fal 的 `flux-pro/v1/fill` 沒有開放權重）、純文字生圖、Kontext 系列、擴圖、商品 3D 模型；用了 8 個 v5 以外的 LoRA 或自訂 ControlNet 也會退回 fal。
+局部修改與擴圖另有一個部署 `designbridge-edit`（FLUX.1 Fill dev，`scripts/modal_flux/edit_app.py`），跟上面的主渲染分開，部署互不覆蓋：
+
+1. 下載權重（一次，約 34 GB；HF token 的帳號要先在 FLUX.1-Fill-dev 模型頁同意授權）：`modal run scripts/modal_flux/edit_app.py::download`
+2. 部署：`python scripts/modal_flux/deploy.py --app edit`
+3. 用的人 `.env` 加 `DESIGNBRIDGE_MODAL_EDIT=true`（另外 `DESIGNBRIDGE_MODAL_MODE` 要是 dev／demo），重啟後端；log 出現 `Modal GPU（designbridge-edit）FLUX Fill dev` 就是走自架
+
+局部修改預設模型已改為 Fill dev（`fal-ai/flux-lora-fill`），Modal 失敗時退回 fal 也是同一個模型。擴圖改用 Fill dev 後沒有 negative prompt，浮水印壓制比 fal 的 flux-general 弱，**品質尚未驗收**。
+
+仍不走 Modal：純文字生圖（schnell）、Kontext 系列（兩者都只是前面失敗時的備援）、商品 3D 模型；用了 8 個 v5 以外的 LoRA 或自訂 ControlNet 也會退回 fal。
 
 ## 4. 實測數據
 

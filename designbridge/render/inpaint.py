@@ -584,6 +584,30 @@ def load_mask_from_path(mask_path: str, image_size: tuple[int, int]) -> Any:
 
 
 
+def _inpaint_on_modal(image_path: str, mask: Any, mask_path: str | None, prompt: str,
+                      out_path: Path, num_steps: int) -> bool:
+    """先試自架 Fill dev；失敗回 False 讓呼叫端走 fal。"""
+    from PIL import Image
+    from designbridge.render.render_backends import modal_fill
+    try:
+        original = Image.open(image_path).convert("RGB")
+        if mask_path and Path(mask_path).is_file():
+            mask_img = Image.open(mask_path).convert("L")
+        else:
+            mask_img = mask.convert("L")
+        mask_img = mask_img.resize(original.size, Image.NEAREST)
+    except Exception as e:
+        print(f"[modal] inpaint 輸入讀取失敗（{e}），改走 fal")
+        return False
+    painted = modal_fill(original, mask_img, prompt, steps=num_steps,
+                         guidance=Config.FAL_INPAINT_DEV_GUIDANCE, label="modal.inpaint")
+    if painted is None:
+        return False
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    painted.save(str(out_path))
+    return True
+
+
 def run_fal_inpainting(
     image_path: str,
     mask: Any,
@@ -608,6 +632,8 @@ def run_fal_inpainting(
     Returns:
         True = 成功，False = 失敗
     """
+    if Config.USE_MODAL_EDIT and _inpaint_on_modal(image_path, mask, mask_path, prompt, out_path, num_steps):
+        return True
     if not Config.FAL_KEY:
         return False
     try:
@@ -755,6 +781,23 @@ def make_context_fill(
     return ctx
 
 
+def _finish_outpaint(painted: Any, canvas: Any, mask: Any, out_dir: "Path | None", tag: str) -> Any:
+    """遮罩外貼回原畫布（整張過 VAE 會讓已渲染的房間變糊），並存除錯圖。"""
+    from PIL import Image, ImageFilter
+
+    painted = painted.convert("RGB")
+    if painted.size != canvas.size:
+        painted = painted.resize(canvas.size, Image.LANCZOS)
+    soft = mask.convert("L").filter(ImageFilter.GaussianBlur(3))
+    merged = Image.composite(painted, canvas, soft)
+    if out_dir is not None:
+        d = Path(out_dir)
+        d.mkdir(parents=True, exist_ok=True)
+        painted.save(str(d / f"{tag}_raw.png"))
+        merged.save(str(d / f"{tag}_merged.png"))
+    return merged
+
+
 def run_fal_outpainting(
     canvas: "Image.Image",
     mask: "Image.Image",
@@ -774,6 +817,15 @@ def run_fal_outpainting(
     already-rendered part of the room is preserved exactly.
     """
     from designbridge.core.config import Config
+
+    if Config.USE_MODAL_EDIT:
+        # 自架 Fill dev 沒有 negative_prompt，浮水印壓制會比 fal 的 flux-general 弱
+        from designbridge.render.render_backends import modal_fill
+        painted = modal_fill(canvas, mask, prompt, steps=Config.OUTPAINT_STEPS,
+                             guidance=Config.FAL_INPAINT_DEV_GUIDANCE, label="modal.outpaint")
+        if painted is not None:
+            print(f"[outpaint] {tag}: {canvas.size[0]}x{canvas.size[1]} via Modal Fill dev")
+            return _finish_outpaint(painted, canvas, mask, out_dir, tag)
 
     if not Config.FAL_KEY:
         print("[outpaint] No FAL_KEY configured, skipping outpainting")
@@ -838,23 +890,7 @@ def run_fal_outpainting(
         resp = requests.get(images[0]["url"], timeout=120)
         resp.raise_for_status()
         painted = Image.open(io.BytesIO(resp.content)).convert("RGB")
-        if painted.size != (W, H):
-            painted = painted.resize((W, H), Image.LANCZOS)
-
-        # Composite: keep the original pixels wherever the mask is black.  This
-        # endpoint round-trips the whole canvas through a VAE, which would
-        # otherwise soften the part of the room that was already rendered.
-        from PIL import ImageFilter
-        soft = mask.convert("L").filter(ImageFilter.GaussianBlur(3))
-        merged = Image.composite(painted, canvas, soft)
-
-        if out_dir is not None:
-            d = Path(out_dir)
-            d.mkdir(parents=True, exist_ok=True)
-            painted.save(str(d / f"{tag}_raw.png"))
-            merged.save(str(d / f"{tag}_merged.png"))
-
-        return merged
+        return _finish_outpaint(painted, canvas, mask, out_dir, tag)
 
     except ImportError:
         print("[outpaint] fal_client not installed (pip install fal-client)")

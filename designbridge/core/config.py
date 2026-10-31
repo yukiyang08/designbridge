@@ -41,7 +41,8 @@ class Config:
 
     # ── 出圖後端：fal.ai / Hugging Face ──────────────────────────────────
     FAL_KEY: str | None = os.getenv("FAL_KEY")
-    FAL_INPAINT_MODEL: str = os.getenv("DESIGNBRIDGE_FAL_INPAINT_MODEL", "fal-ai/flux-pro/v1/fill")
+    # 預設 Fill dev（公開權重，可自架）；要用閉源的 Fill Pro 設成 fal-ai/flux-pro/v1/fill
+    FAL_INPAINT_MODEL: str = os.getenv("DESIGNBRIDGE_FAL_INPAINT_MODEL", "fal-ai/flux-lora-fill")
     # 局部修改改用可下載的 Fill dev（fal-ai/flux-lora-fill）時的 guidance
     FAL_INPAINT_DEV_GUIDANCE: float = float(os.getenv("DESIGNBRIDGE_FAL_INPAINT_DEV_GUIDANCE", "30"))
 
@@ -128,6 +129,9 @@ class Config:
     USE_MODAL_GPU: bool = MODAL_MODE in ("dev", "demo")
     MODAL_APP_NAME: str = os.getenv("DESIGNBRIDGE_MODAL_APP_NAME", "designbridge-flux")
     MODAL_TIMEOUT_S: float = float(os.getenv("DESIGNBRIDGE_MODAL_TIMEOUT_S", "120"))  # 含冷啟動約 35~60 秒
+    # 局部修改／擴圖走自架 Fill dev（另一個部署 designbridge-edit，見 scripts/modal_flux/edit_app.py）；失敗退回 fal
+    USE_MODAL_EDIT: bool = USE_MODAL_GPU and _flag("DESIGNBRIDGE_MODAL_EDIT", "false")
+    MODAL_EDIT_APP_NAME: str = os.getenv("DESIGNBRIDGE_MODAL_EDIT_APP_NAME", "designbridge-edit")
     # 暖機：先叫起容器，使用者按生圖時就不用等冷啟動；只暖 Union 路徑（CAD／平面圖流程）
     MODAL_WARMUP: str = "studio" if MODAL_MODE == "demo" else "off"
     MODAL_WARMUP_MODES: str = "union"

@@ -511,6 +511,49 @@ def _run_modal(mode: str, out_path: Path, **render_kwargs) -> bool:
         return False
 
 
+def modal_fill(image, mask, prompt: str, *, steps: int, guidance: float, seed: int | None = None,
+               label: str = "modal.fill"):
+    """自架 FLUX Fill dev（Modal 的 designbridge-edit）重畫遮罩區域，回傳 PIL 圖；未啟用或失敗回 None（呼叫端退回 fal）。"""
+    if not Config.USE_MODAL_EDIT:
+        return None
+    import io
+
+    from PIL import Image
+
+    def _png(img) -> bytes:
+        buf = io.BytesIO()
+        img.save(buf, format="PNG")
+        return buf.getvalue()
+
+    key = f"{Config.MODAL_EDIT_APP_NAME}:edit"
+    call = None
+    try:
+        print(f"☁️  Modal GPU（{Config.MODAL_EDIT_APP_NAME}）FLUX Fill dev 推理中...")
+        t0 = time.perf_counter()
+        if key not in _modal_handles:
+            import modal
+
+            _modal_handles[key] = modal.Cls.from_name(Config.MODAL_EDIT_APP_NAME, "Editor")()
+        call = _modal_handles[key].fill.spawn(
+            prompt=prompt, image_png=_png(image.convert("RGB")), mask_png=_png(mask.convert("L")),
+            steps=steps, guidance=guidance, seed=seed,
+        )
+        res = call.get(timeout=Config.MODAL_TIMEOUT_S)
+        detail = _modal_timing_detail(res)
+        record_stage(label, t0, time.perf_counter() - t0, detail)
+        print(f"✅ Modal GPU 完成（{detail}）")
+        return Image.open(io.BytesIO(res["png"])).convert("RGB")
+    except Exception as e:
+        print(f"⚠️  Modal GPU 失敗（{type(e).__name__}: {e}），退回 fal")
+        _modal_handles.pop(key, None)
+        if call is not None:
+            try:
+                call.cancel()
+            except Exception:
+                pass
+        return None
+
+
 def _render_flux_controlnet_depth_modal(
     prompt: str,
     depth_path: str,
