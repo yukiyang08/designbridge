@@ -6,16 +6,16 @@
  */
 import { ref, computed, watch } from 'vue'
 import { Icon } from '@iconify/vue'
-import LayoutEditor from '@/components/LayoutEditor.vue'
+import FurnitureMover from '@/components/FurnitureMover.vue'
 import RefineCanvas from '@/components/RefineCanvas.vue'
 import { useDesignFlow } from '@/composables/useDesignFlow'
+import { adoptPhotoMove } from '@/composables/design-flow/photoLayout'
 
 const {
   spacePhoto, spacePhotoPath, photoDetection, photoLayoutError, photoBusy, photoLayoutLoading,
   photoVersions, photoCurrent, photoStylePrompt, photoQuoting, currentVersion, editableFurniture, styleVersionIndex,
-  editPlacements, roomW, roomD, roomTypeForPlan,
   styleOptions, styleDemoImages,
-  uploadPhoto, restylePhoto, renderPhotoLayout, refinePhoto, quotePhoto, autoRelayoutPhoto, resetPhotoLayout,
+  uploadPhoto, restylePhoto, refinePhoto, quotePhoto,
 } = useDesignFlow()
 
 const TOOLS = [
@@ -41,12 +41,9 @@ function onFile(e) {
 const styles = computed(() => styleOptions.value.filter(o => o.value !== 'auto'))
 const styleThumb = (id) => photoVersions.value[styleVersionIndex(id)]?.url || styleDemoImages.value[id]
 
-// ── 調整家具位置 ──
-function onPlacements(next) { editPlacements.value = next }
-async function applyLayout() {
-  await renderPhotoLayout()
-  if (!photoLayoutError.value) tool.value = 'style'   // 生成完回到看圖的頁面
-}
+// ── 調整家具位置：跟結果頁同一套（FurnitureMover），在目前這一版的圖上直接拖家具 ──
+// 不帶照片的 scene_graph：後端照「沒有排版相機」的圖處理，家具從圖本身切
+const movePlan = computed(() => (currentVersion.value ? { generated_image_path: currentVersion.value.path } : null))
 
 // ── 置換或刪除家具（圖上編輯）──
 const canvasRef = ref(null)
@@ -74,9 +71,14 @@ const CATEGORY_ZH = {
   curtain: '窗簾', storage: '收納', shelf: '收納', bed: '床',
 }
 const shortName = (name = '') => name.split(/[,，]/)[0].trim()
-const quoteRows = computed(() => (quotation.value?.furniture_list || []).map((item, i) => ({
-  key: i, label: CATEGORY_ZH[item.category] || item.detected_name, c: item.candidates?.[0] || null,
-})))
+// 有商品圖的才當精準導購（優先選有圖的候選），都沒圖的只列預估價
+const quoteRows = computed(() => (quotation.value?.furniture_list || []).map((item, i) => {
+  const cands = item.candidates || []
+  return { key: i, label: CATEGORY_ZH[item.category] || item.detected_name,
+           c: cands.find(c => c?.product_image_url) || cands[0] || null }
+}))
+const shopRows = computed(() => quoteRows.value.filter(r => r.c?.product_image_url))
+const estimateRows = computed(() => quoteRows.value.filter(r => r.c && !r.c.product_image_url))
 const quoteTotal = computed(() => quoteRows.value.reduce((s, r) => s + (r.c?.price || 0), 0))
 </script>
 
@@ -125,15 +127,14 @@ const quoteTotal = computed(() => quoteRows.value.reduce((s, r) => s + (r.c?.pri
     <div class="ps-work">
       <!-- 左：大圖 -->
       <section class="ps-main">
-        <div class="stage" :class="{ 'stage--canvas': tool === 'replace', 'stage--editor': tool === 'layout' }">
-          <LayoutEditor
-            v-if="tool === 'layout'"
-            hide-empty-panel
-            :placements="editPlacements"
-            v-model:room-w="roomW"
-            v-model:room-d="roomD"
-            :room-type="roomTypeForPlan"
-            @update:placements="onPlacements"
+        <div class="stage" :class="{ 'stage--canvas': tool === 'replace', 'stage--mover': tool === 'layout' }">
+          <FurnitureMover
+            v-if="tool === 'layout' && movePlan"
+            :key="currentVersion.path"
+            :image-url="currentVersion.url"
+            :plan="movePlan"
+            @applied="adoptPhotoMove"
+            @close="tool = 'style'"
           />
           <RefineCanvas
             v-else-if="tool === 'replace'"
@@ -148,7 +149,7 @@ const quoteTotal = computed(() => quoteRows.value.reduce((s, r) => s + (r.c?.pri
         </div>
 
         <!-- 每次生成的版本，可以切回去比較或接著改 -->
-        <div v-if="photoVersions.length > 1 && tool !== 'layout'" class="versions" aria-label="版本">
+        <div v-if="photoVersions.length > 1" class="versions" aria-label="版本">
           <button
             v-for="(v, i) in photoVersions" :key="v.path" type="button" class="ver"
             :class="{ active: i === photoCurrent }" :disabled="busy" :title="v.label"
@@ -202,14 +203,9 @@ const quoteTotal = computed(() => quoteRows.value.reduce((s, r) => s + (r.c?.pri
 
         <!-- 調整家具位置 -->
         <template v-else-if="tool === 'layout'">
-          <h3 class="side-title">原圖</h3>
-          <img :src="photoVersions[0].url" alt="原圖" class="ref-photo" />
-          <p class="side-note">拖曳左邊俯視圖上的家具；上方是遠處的牆，下方靠近鏡頭。點一下家具可以旋轉、刪除。</p>
-          <div class="side-actions">
-            <button type="button" class="db-btn db-btn--ghost db-btn--sm" :disabled="busy" @click="autoRelayoutPhoto">AI 自動重排</button>
-            <button type="button" class="db-btn db-btn--ghost db-btn--sm" :disabled="busy" @click="resetPhotoLayout">還原偵測結果</button>
-          </div>
-          <button type="button" class="db-btn" :disabled="busy || !editPlacements.length" @click="applyLayout">依新位置生成</button>
+          <h3 class="side-title">✥ 移動家具</h3>
+          <p class="side-note">在左邊圖上直接拖曳家具到新位置，可以一次搬好幾件，按「套用」後 AI 會補上原位置並融合光影。</p>
+          <p class="side-note">第一次會先辨識圖上的家具，約需 40 秒。每次套用都會多一個版本，可以從下方版本列切回去比較。</p>
         </template>
 
         <!-- 置換或刪除家具 -->
@@ -257,19 +253,31 @@ const quoteTotal = computed(() => quoteRows.value.reduce((s, r) => s + (r.c?.pri
               <span>預算 · {{ quoteRows.length }} 件</span>
               <strong>NT$ {{ quoteTotal.toLocaleString() }}</strong>
             </div>
-            <ul class="quote-list">
-              <li v-for="r in quoteRows" :key="r.key" class="quote-item">
+            <ul v-if="shopRows.length" class="quote-list">
+              <li v-for="r in shopRows" :key="r.key" class="quote-item">
                 <span class="q-thumb">
-                  <img v-if="r.c?.product_image_url" :src="r.c.product_image_url" :alt="r.c.name" />
+                  <img :src="r.c.product_image_url" :alt="r.c.name" />
                 </span>
                 <span class="q-info">
                   <small>{{ r.label }}</small>
-                  <a v-if="r.c?.purchase_url" :href="r.c.purchase_url" target="_blank" rel="noopener" :title="r.c.name">{{ shortName(r.c.name) }}</a>
-                  <span v-else>{{ shortName(r.c?.name) || '—' }}</span>
+                  <a v-if="r.c.purchase_url" :href="r.c.purchase_url" target="_blank" rel="noopener" :title="r.c.name">{{ shortName(r.c.name) }}</a>
+                  <span v-else>{{ shortName(r.c.name) }}</span>
                 </span>
-                <span class="q-price">NT$ {{ (r.c?.price || 0).toLocaleString() }}</span>
+                <span class="q-price">NT$ {{ (r.c.price || 0).toLocaleString() }}</span>
               </li>
             </ul>
+            <template v-if="estimateRows.length">
+              <h4 class="q-sub">預估估價項目</h4>
+              <ul class="quote-list">
+                <li v-for="r in estimateRows" :key="r.key" class="quote-item q-est">
+                  <span class="q-info">
+                    <small>{{ r.label }}</small>
+                    <span :title="r.c.name">{{ shortName(r.c.name) || '—' }}</span>
+                  </span>
+                  <span class="q-price">NT$ {{ (r.c.price || 0).toLocaleString() }}</span>
+                </li>
+              </ul>
+            </template>
           </template>
         </template>
       </aside>
@@ -328,12 +336,8 @@ const quoteTotal = computed(() => quoteRows.value.reduce((s, r) => s + (r.c?.pri
 }
 .stage-img { max-width: 100%; max-height: 100%; object-fit: contain; }
 .stage--canvas { background: #1a0d08; }
-.stage--editor { align-items: stretch; padding: 0.6rem; background: #fff; border: 1px solid #ebe7e0; }
-.stage--editor :deep(.editor) { flex: 1; min-height: 0; }
-.stage--editor :deep(.workspace) { flex: 1; min-height: 0; flex-wrap: nowrap; }
-.stage--editor :deep(.board-viewport) { height: 100%; }
-.stage--editor :deep(.palette-list) { max-height: calc(var(--ps-h) - 260px); }
-.stage--editor :deep(.palette) { width: clamp(150px, 14vw, 225px); }
+.stage--mover { align-items: stretch; }
+.stage--mover :deep(.fm-img) { max-height: calc(var(--ps-h) - 90px); }
 
 /* ── 右側控制欄 ── */
 .ps-side { min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 0.7rem; padding-right: 2px; }
@@ -404,6 +408,8 @@ const quoteTotal = computed(() => quoteRows.value.reduce((s, r) => s + (r.c?.pri
 .q-info small { color: var(--db-text-soft); font-size: 0.74rem; }
 .q-info a, .q-info span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--db-text); }
 .q-price { font-size: 0.86rem; font-variant-numeric: tabular-nums; }
+.q-sub { margin: 0.6rem 0 0.1rem; font-size: 0.78rem; font-weight: 600; color: var(--db-text-soft); letter-spacing: 0.04em; }
+.q-est { grid-template-columns: minmax(0, 1fr) auto; }   /* 預估項目沒有縮圖欄 */
 
 /* ── 版本 ── */
 .versions { display: flex; gap: 0.5rem; overflow-x: auto; flex-shrink: 0; padding-bottom: 2px; }

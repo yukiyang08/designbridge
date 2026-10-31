@@ -325,20 +325,15 @@ class _PlanRequest(BaseModel):
         return self
 
 
-class PickFurnitureRequest(_PlanRequest):
-    x: float = Field(ge=0, le=1)     # 點在渲染圖上的位置（0–1，左上為原點）
-    y: float = Field(ge=0, le=1)
-
-
-class FurnitureDrag(BaseModel):
-    id: str = Field(max_length=128)
-    x: float = Field(ge=0, le=1)     # 家具地板錨點拖到的位置（pick 回傳的 anchor 加上拖曳位移）
+class InstanceMove(BaseModel):
+    index: int = Field(ge=0, le=500)  # /api/move-furniture/instances 回傳的第幾件
+    x: float = Field(ge=0, le=1)     # 這件的碰地點拖到畫面上的位置（0–1，左上為原點）
     y: float = Field(ge=0, le=1)
 
 
 class MoveFurnitureRequest(_PlanRequest):
-    drag: Optional[FurnitureDrag] = None   # 在渲染圖上拖曳；跟 furniture_placements 二擇一
-    furniture_placements: Optional[List[dict]] = Field(default=None, max_length=300)   # 改完的家具清單
+    moves: Optional[List[InstanceMove]] = Field(default=None, max_length=50)   # 在渲染圖上拖曳，可一次好幾件
+    furniture_placements: Optional[List[dict]] = Field(default=None, max_length=300)   # 或直接給改完的家具清單
     strength: Optional[float] = Field(default=None, ge=0.1, le=1.0)
 
 
@@ -351,34 +346,37 @@ def _checked_plan(request: _PlanRequest, user_id: str) -> dict:
     return plan
 
 
-@router.post("/api/move-furniture/pick")
-def pick_furniture_endpoint(request: PickFurnitureRequest, user_id: str = Depends(get_user_id)):
-    """點渲染圖上的家具，回傳拖曳用的圖層；沒點到家具回 {"id": null}。"""
-    from designbridge.render.move_furniture import MoveFurnitureError, pick_furniture
+@router.post("/api/move-furniture/instances")
+def furniture_instances_endpoint(request: _PlanRequest, user_id: str = Depends(get_user_id)):
+    """渲染圖上自動切出的每件可移動家具（圖層、碰地點、碰撞範圍）。每張圖第一次要切約 40 秒，之後讀快取。"""
+    from designbridge.render.move_furniture import MoveFurnitureError, list_instances
 
     plan = _checked_plan(request, user_id)
     try:
-        return pick_furniture(plan, request.x, request.y) or {"id": None}
+        data = list_instances(plan)
     except MoveFurnitureError as e:
         raise HTTPException(status_code=400, detail=str(e))
+    for inst in data["instances"]:
+        inst["layer_url"] = _artifact_url(inst.pop("layer_path"))
+        inst["patch_url"] = _artifact_url(inst.pop("patch_path"))
+    return data
 
 
 @router.post("/api/move-furniture")
 def move_furniture_endpoint(request: MoveFurnitureRequest, user_id: str = Depends(get_user_id)):
-    """移動/刪除/轉向家具後，用舊圖剪貼出的合成圖當起點、新深度圖約束重繪，不從零重生。"""
-    from designbridge.render.move_furniture import MoveFurnitureError, drag_to_placements, move_furniture
+    """移動家具後，用舊圖剪貼出的合成圖當起點，只重修舊位置與家具邊緣，不從零重生。"""
+    from designbridge.render.move_furniture import MoveFurnitureError, move_furniture, move_instances
 
     plan = _checked_plan(request, user_id)
     try:
         t0 = time.perf_counter()
         with collect_stages() as timings, log_stage("move_furniture", plan.get("task_id")):
-            if request.drag:
-                placements = drag_to_placements(plan, request.drag.id, request.drag.x, request.drag.y)
+            if request.moves:
+                moved = move_instances(plan, [m.model_dump() for m in request.moves], request.strength)
             elif request.furniture_placements is not None:
-                placements = request.furniture_placements
+                moved = move_furniture(plan, request.furniture_placements, request.strength)
             else:
-                raise MoveFurnitureError("要帶 drag 或 furniture_placements")
-            moved = move_furniture(plan, placements, request.strength)
+                raise MoveFurnitureError("要帶 moves 或 furniture_placements")
         elapsed = time.perf_counter() - t0
     except MoveFurnitureError as e:
         raise HTTPException(status_code=400, detail=str(e))

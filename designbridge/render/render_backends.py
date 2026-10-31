@@ -511,10 +511,17 @@ def _run_modal(mode: str, out_path: Path, **render_kwargs) -> bool:
         return False
 
 
+_modal_fill_no_strength = False
+
+
 def modal_fill(image, mask, prompt: str, *, steps: int, guidance: float, seed: int | None = None,
-               label: str = "modal.fill"):
-    """自架 FLUX Fill dev（Modal 的 designbridge-edit）重畫遮罩區域，回傳 PIL 圖；未啟用或失敗回 None（呼叫端退回 fal）。"""
-    if not Config.USE_MODAL_EDIT:
+               label: str = "modal.fill", strength: float = 1.0):
+    """自架 FLUX Fill dev（Modal 的 designbridge-edit）重畫遮罩區域，回傳 PIL 圖；未啟用或失敗回 None（呼叫端退回 fal）。
+
+    strength < 1 要部署新版 edit_app；舊部署收到不認得的參數會失敗，照樣退回 fal。
+    """
+    global _modal_fill_no_strength
+    if not Config.USE_MODAL_EDIT or (strength < 1 and _modal_fill_no_strength):
         return None
     import io
 
@@ -536,7 +543,7 @@ def modal_fill(image, mask, prompt: str, *, steps: int, guidance: float, seed: i
             _modal_handles[key] = modal.Cls.from_name(Config.MODAL_EDIT_APP_NAME, "Editor")()
         call = _modal_handles[key].fill.spawn(
             prompt=prompt, image_png=_png(image.convert("RGB")), mask_png=_png(mask.convert("L")),
-            steps=steps, guidance=guidance, seed=seed,
+            steps=steps, guidance=guidance, seed=seed, **({"strength": strength} if strength < 1 else {}),
         )
         res = call.get(timeout=Config.MODAL_TIMEOUT_S)
         detail = _modal_timing_detail(res)
@@ -545,6 +552,9 @@ def modal_fill(image, mask, prompt: str, *, steps: int, guidance: float, seed: i
         return Image.open(io.BytesIO(res["png"])).convert("RGB")
     except Exception as e:
         print(f"⚠️  Modal GPU 失敗（{type(e).__name__}: {e}），退回 fal")
+        if strength < 1 and "strength" in str(e):
+            # 部署的還是不支援 strength 的舊版：這個程序之後不再試，免得每次都白等一次冷啟動
+            _modal_fill_no_strength = True
         _modal_handles.pop(key, None)
         if call is not None:
             try:

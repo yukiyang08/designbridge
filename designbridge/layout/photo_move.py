@@ -134,22 +134,34 @@ def move_furniture_in_photo(
         if box:
             hole |= _object_mask(image_path, _box_px(box, size), size, segment)
 
-    current = image_path
-    if hole.any():
-        cleaned = out_dir / f"{tag}_cleared.png"
-        prompt = "empty floor and wall continuing the surrounding room, no furniture, photorealistic"
-        if not inpaint(current, _dilate(hole, 12), prompt, cleaned):
-            raise RuntimeError("補背景失敗（inpaint 服務都沒有回應）")
-        current = str(cleaned)
-
-    # 2. 原家具貼到新位置：遠的先貼，近的蓋在上面
-    canvas = Image.open(current).convert("RGB").resize(size)
+    # 2. 原家具先貼到新位置（遠的先貼，近的蓋在上面），再一次重畫「舊位置＋新位置邊緣一圈」：
+    #    跟渲染圖拖曳（move_furniture）同一個順序，邊緣才融得進去、有接觸陰影；先補洞再貼會留下硬邊
+    placed = Image.new("RGBA", size, (0, 0, 0, 0))
     for new, crop, (x0, y0, x1, y1), _s in sorted(cutouts, key=lambda c: float(c[0].get("y", 0)) + float(c[0].get("h", 0))):
         piece = crop.resize((max(1, int(round(x1 - x0))), max(1, int(round(y1 - y0)))), Image.LANCZOS)
-        canvas.paste(piece, (int(round(x0)), int(round(y0))), piece)
+        placed.paste(piece, (int(round(x0)), int(round(y0))), piece)
+    new_obj = np.asarray(placed.getchannel("A")) > 127
+    canvas = photo.copy()
+    canvas.paste(placed, (0, 0), placed)
     composed = out_dir / f"{tag}_moved.png"
     canvas.save(composed)
     current = str(composed)
+
+    # 接縫只畫在家具外圍，不碰家具本身：細椅腳、鏤空椅背被內縮或蓋到就會被補背景整個抹掉
+    region = (np.asarray(_dilate(hole, 12)) > 127) & ~new_obj
+    if new_obj.any():
+        region |= (np.asarray(_dilate(new_obj, 8)) > 127) & ~new_obj
+    if region.any():
+        blended = out_dir / f"{tag}_blended.png"
+        prompt = ("empty floor and wall continuing the surrounding room, natural soft contact shadows, "
+                  "no new furniture, photorealistic")
+        if not inpaint(current, Image.fromarray((region * 255).astype(np.uint8), mode="L"), prompt, blended):
+            raise RuntimeError("補背景失敗（inpaint 服務都沒有回應）")
+        # 家具本體貼回原像素：重畫只負責背景與接縫，不改家具長相
+        out = Image.open(blended).convert("RGB").resize(size, Image.LANCZOS)
+        out.paste(placed.convert("RGB"), (0, 0), placed.getchannel("A"))
+        out.save(blended)
+        current = str(blended)
 
     # 3. 新加的家具：在新位置的外框裡生成
     for i, p in enumerate(added):

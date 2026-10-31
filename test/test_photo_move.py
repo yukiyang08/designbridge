@@ -75,6 +75,21 @@ def test_move_pastes_same_pixels_at_new_place_and_clears_old(tmp_path):
     assert tuple(out[20, 180]) == (200, 200, 200)  # 房間其他地方完全沒動
 
 
+def test_move_repaints_old_spot_and_new_edges_but_not_the_furniture(tmp_path):
+    """跟渲染圖拖曳同順序：先貼、再一次重畫舊位置＋新位置邊緣一圈，家具本體不給 inpaint 改。"""
+    photo, calls = _photo(tmp_path), []
+    detected = [_item("a", 0.1, image_box=[0.1, 100 / H, 0.3, 140 / H])]
+    pm.move_furniture_in_photo(
+        photo, FakeGeom(), detected, [_item("a", 0.1)], [_item("a", 0.4)],
+        Path(tmp_path), "t", inpaint=_fake_inpaint(calls),
+    )
+    region = calls[0][1]
+    assert region[120, 40]                  # 舊位置
+    assert region[120, 78] or region[120, 122] or region[97, 100]   # 新位置外圍的接縫
+    assert not region[120, 100]             # 新位置的家具本體
+    assert not region[20, 180]              # 遠處牆面
+
+
 def test_no_change_does_nothing(tmp_path):
     calls = []
     res = pm.move_furniture_in_photo(

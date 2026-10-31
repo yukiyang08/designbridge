@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import json
 import re
+import threading
 from pathlib import Path
 from typing import Any
 
@@ -15,6 +16,8 @@ from designbridge.core.config import Config
 # ---------------------------------------------------------------------------
 
 _sam2_predictor: Any = None
+# predictor 共用且 set_image→predict 有狀態，多人同時用會拿到別人照片的遮罩
+_SAM2_INFER_LOCK = threading.Lock()
 
 # checkpoint 與 config 路徑（相對於本專案 model/ 資料夾）
 _SAM2_CHECKPOINT = Path(__file__).parent.parent.parent / "model" / "sam2" / "checkpoints" / "sam2.1_hiera_tiny.pt"
@@ -287,7 +290,7 @@ def sam2_mask_from_box(
         import torch
 
         img_rgb = np.array(Image.open(image_path).convert("RGB"))
-        with torch.inference_mode():
+        with torch.inference_mode(), _SAM2_INFER_LOCK:
             predictor.set_image(img_rgb)
             masks, scores, _ = predictor.predict(
                 box=np.asarray(box_xyxy), multimask_output=False
@@ -393,7 +396,7 @@ def generate_mask_with_sam2(
 
         img_rgb = np.array(Image.open(image_path).convert("RGB"))
 
-        with torch.inference_mode():
+        with torch.inference_mode(), _SAM2_INFER_LOCK:
             predictor.set_image(img_rgb)
             box = np.array([x_min, y_min, x_max, y_max])
             masks, scores, _ = predictor.predict(

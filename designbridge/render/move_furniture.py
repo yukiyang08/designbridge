@@ -179,6 +179,24 @@ def refine_mask(box: np.ndarray, seg: np.ndarray | None, labels: dict[int, str])
     return _dilate(keep, 2)
 
 
+def segment_image(image_path: str, size: tuple[int, int]) -> tuple[np.ndarray | None, dict[int, str]]:
+    """圖的語意分割，依圖檔快取：同一張圖點第二件家具、按套用都不用再跑一次。失敗回 (None, {})。"""
+    out_dir = Path(Config.ARTIFACTS_DIR) / "vision" / "move_seg" / Path(image_path).stem
+    seg_path, meta_path = out_dir / "segmentation.png", out_dir / "segmentation_meta.json"
+    try:
+        if not (seg_path.is_file() and meta_path.is_file()):
+            from designbridge.layout.vision import run_segmentation
+            run_segmentation(str(image_path), model_name=Config.SEGMENTATION_MODEL, out_dir=out_dir)
+        seg = Image.open(seg_path)
+        if seg.size != size:
+            seg = seg.resize(size, Image.NEAREST)
+        labels = json.loads(meta_path.read_text(encoding="utf-8")).get("present_labels") or {}
+        return np.asarray(seg).astype(np.int32), {int(k): v for k, v in labels.items()}
+    except Exception as e:
+        print(f"[move_furniture] 語意分割失敗，退回投影方塊：{e}")
+        return None, {}
+
+
 _precise_cache: dict[tuple, np.ndarray] = {}
 _lama_model = None
 
@@ -324,12 +342,19 @@ class _Context:
             raise MoveFurnitureError("找不到上一張渲染圖")
         if self.scene_graph.get("projection_mode") not in (None, "synthetic"):
             raise MoveFurnitureError("照片流程的渲染圖目前還不能直接移家具")
-        self.camera = _camera_of(self.scene_graph, self.gen)
-        if not self.camera:
-            raise MoveFurnitureError("找不到上一張圖的相機參數，請重新生成一次")
         self.old = self.scene_graph.get("furniture_placements") or []
         self.space_info = (plan.get("structured_requirement") or {}).get("space_info") or {}
         self.room_w, self.room_d, _ = _room_dims(self.space_info)
+        self.camera = _camera_of(self.scene_graph, self.gen)
+        self.bounded = bool(self.camera)   # 有排版相機，房間大小才是真的
+        if not self.camera:
+            # 沒排家具就生的圖沒有投影相機：假設正面平視（預設相機是斜角站在牆角，左半邊會被
+            # 換算到很遠的地方），縮放與碰撞是近似但前後一致
+            from dataclasses import asdict, replace
+
+            from designbridge.layout.camera_projection import base_camera_from_config
+            base = base_camera_from_config(self.room_w, self.room_d)
+            self.camera = asdict(replace(base, eye_x_frac=0.5, target_x_frac=0.5))
 
         size_cfg = self.gen.get("output_size") or {}
         prev = Image.open(self.image_path).convert("RGB")
@@ -341,21 +366,7 @@ class _Context:
         return LookAtCamera(self.room_w, self.room_d, self.size[0], self.size[1], CameraParams(**self.camera))
 
     def segmentation(self) -> tuple[np.ndarray | None, dict[int, str]]:
-        """渲染圖的語意分割，依圖檔快取：同一張圖點第二件家具、按套用都不用再跑一次。"""
-        out_dir = Path(Config.ARTIFACTS_DIR) / "vision" / "move_seg" / Path(self.image_path).stem
-        seg_path, meta_path = out_dir / "segmentation.png", out_dir / "segmentation_meta.json"
-        try:
-            if not (seg_path.is_file() and meta_path.is_file()):
-                from designbridge.layout.vision import run_segmentation
-                run_segmentation(str(self.image_path), model_name=Config.SEGMENTATION_MODEL, out_dir=out_dir)
-            seg = Image.open(seg_path)
-            if seg.size != self.size:
-                seg = seg.resize(self.size, Image.NEAREST)
-            labels = json.loads(meta_path.read_text(encoding="utf-8")).get("present_labels") or {}
-            return np.asarray(seg).astype(np.int32), {int(k): v for k, v in labels.items()}
-        except Exception as e:
-            print(f"[move_furniture] 語意分割失敗，退回投影方塊：{e}")
-            return None, {}
+        return segment_image(str(self.image_path), self.size)
 
     def object_masks(self, precise: tuple[str, ...] = ()) -> dict[str, np.ndarray]:
         """家具 id → 圖上輪廓。全部先用語意分割（快、夠用來保護旁邊的家具）；
@@ -399,120 +410,191 @@ def _is_floor_item(p: dict) -> bool:
     return normalize_furniture_type(str(p.get("type", ""))) in _DEPTH_SKIP_TYPES
 
 
-def _obstacles(placements: list[dict], furniture_id: str) -> list[dict]:
-    """拖這件家具時不能碰到的其他家具。
+def _overlaps(a: dict, b: dict, eps: float = 1e-3) -> bool:
+    return (a["x"] < b["x"] + b["w"] - eps and a["x"] + a["w"] > b["x"] + eps
+            and a["y"] < b["y"] + b["h"] - eps and a["y"] + a["h"] > b["y"] + eps)
 
-    原本就跟它重疊的不算（AI 排的餐椅常常塞在餐桌底下一點），不然一開始就動彈不得。
+
+def _floor_to_pixel(cam, x: float, z: float) -> tuple[float, float]:
+    c = cam.to_cam(np.array([[x, 0.0, z]]))[0]
+    return cam.cx + cam.f * c[0] / c[2], cam.cy - cam.f * c[1] / c[2]
+
+
+def _clamp_fp(fp: dict, bounded: bool = True) -> dict:
+    """夾在房間內；沒有排版相機（房間大小也是猜的）時不夾，不然家具全被擠到猜出來的牆邊。"""
+    if not bounded:
+        return dict(fp)
+    w, h = min(fp["w"], 1.0), min(fp["h"], 1.0)
+    return {"x": min(max(fp["x"], 0.0), 1.0 - w), "y": min(max(fp["y"], 0.0), 1.0 - h), "w": w, "h": h}
+
+
+def _instance_layout(ctx: "_Context", insts: list[dict], cam) -> dict[int, dict]:
+    """每件切出來的家具在平面圖上的位置（擋碰撞用），能對到 scene_graph 的家具就記下 id。
+
+    碰地點是輪廓最下緣、也就是家具最靠鏡頭的那條邊。對得到排版家具就用它的寬深，
+    對不到（AI 自己多畫的）就用碰地那段的寬度估。
     """
-    others = [
-        {k: p.get(k) for k in ("id", "type", "x", "y", "w", "h")}
-        for p in placements if str(p.get("id")) != furniture_id and not _is_floor_item(p)
-    ]
-    me = next((p for p in placements if str(p.get("id")) == furniture_id), None)
-    already = {str(o["id"]) for o in _overlapping(me, others)} if me else set()
-    return [o for o in others if str(o["id"]) not in already]
+    cands = [p for p in ctx.old if not _is_floor_item(p)]
+    info, dist = {}, []
+    for inst in insts:
+        if not inst["movable"]:
+            continue
+        x0, _, x1, _ = inst["bbox"]
+        cu, cv = inst["contact"]
+        X, Z = _pixel_to_floor(cam, cu, cv)
+        # 用整件的寬度換算，不能只看最下緣：沙發、桌子最下面只有細細的腳
+        span = abs(_pixel_to_floor(cam, float(x1), cv)[0] - _pixel_to_floor(cam, float(x0), cv)[0])
+        info[inst["index"]] = {"front": (X / ctx.room_w, 1.0 - Z / ctx.room_d), "span": max(span, 0.3)}
+        for p in cands:
+            fx = (float(p["x"]) + float(p["w"]) / 2) * ctx.room_w
+            fz = (1.0 - float(p["y"]) - float(p["h"])) * ctx.room_d
+            dist.append((float(np.hypot(fx - X, fz - Z)), inst["index"], str(p["id"])))
+    # 近的先配，一件排版家具只配一次；離超過 1 公尺就當作對不到
+    used, match = set(), {}
+    for d, idx, pid in sorted(dist):
+        if d <= 1.0 and idx not in match and pid not in used:
+            match[idx] = pid
+            used.add(pid)
+    by_id = {str(p["id"]): p for p in ctx.old}
+    for idx, it in info.items():
+        fx, fy = it["front"]
+        p = by_id.get(match.get(idx, ""))
+        fw = float(p["w"]) if p else it["span"] / ctx.room_w
+        fh = float(p["h"]) if p else 0.8 * it["span"] / ctx.room_d
+        it["footprint"] = _clamp_fp({"x": fx - fw / 2, "y": fy - fh, "w": fw, "h": fh}, ctx.bounded)
+        it["placement_id"] = match.get(idx)
+    return info
 
 
-def _overlapping(item: dict, obstacles: list[dict], eps: float = 1e-3) -> list[dict]:
-    x, y, w, h = (float(item[k]) for k in ("x", "y", "w", "h"))
-    return [
-        o for o in obstacles
-        if x < float(o["x"]) + float(o["w"]) - eps and x + w > float(o["x"]) + eps
-        and y < float(o["y"]) + float(o["h"]) - eps and y + h > float(o["y"]) + eps
-    ]
+def _blockers(index: int, layout: dict[int, dict]) -> list[int]:
+    """拖這件時不能碰到的其他家具；原本就跟它重疊的不算（AI 畫的餐椅常塞在餐桌底下一點）。"""
+    me = layout[index]["footprint"]
+    return [k for k, o in layout.items() if k != index and not _overlaps(me, o["footprint"])]
 
 
-def _png_data_uri(arr: np.ndarray) -> str:
-    import base64
-    import io
-    buf = io.BytesIO()
-    Image.fromarray(arr).save(buf, format="PNG")
-    return "data:image/png;base64," + base64.b64encode(buf.getvalue()).decode()
+def list_instances(plan: dict[str, Any]) -> dict[str, Any]:
+    """渲染圖上自動切出的每件家具：前端一進移動模式就全部框出來，點選、多選、拖曳都不用再問後端。
 
+    每件給：去背圖層、蓋住原位置的粗補貼片（預覽用）、碰地點、平面圖上的位置與碰撞對象。
+    圖層存成檔案（同一張圖第二次直接用），回傳的是路徑，router 轉成網址。
+    """
+    from designbridge.render.furniture_instances import segment_furniture
 
-def pick_furniture(plan: dict[str, Any], u: float, v: float) -> dict[str, Any] | None:
-    """點到渲染圖上 (u, v)（0–1）的家具：回傳可拖曳的家具圖層、蓋住原位置的補洞貼片、地板錨點與地平線。"""
     ctx = _Context(plan)
     w, h = ctx.size
-    px, py = min(int(u * w), w - 1), min(int(v * h), h - 1)
-    masks = ctx.object_masks()
-    # 點在輪廓外一點點也算；同時命中好幾件時取面積最小的（通常是站在前面的那件）
-    hits = [k for k, m in masks.items() if m[py, px]] or [k for k, m in masks.items() if _dilate(m, 10)[py, px]]
-    if not hits:
-        return None
-    pid = min(hits, key=lambda k: int(masks[k].sum()))
-    item = next(p for p in ctx.old if str(p.get("id")) == pid)
-    masks[pid] = precise_mask(str(ctx.image_path), masks[pid], *ctx.segmentation())
-
-    image = np.asarray(ctx.image)
-    mask = masks[pid]
-    x0, y0, x1, y1 = _bbox(mask)
-    rgba = np.dstack([image, mask.astype(np.uint8) * 255])[y0:y1, x0:x1]
-    patch_mask = _dilate(mask, 4)
-    px0, py0, px1, py1 = _bbox(patch_mask)
-    patch = np.dstack([fill_holes(image, patch_mask), patch_mask.astype(np.uint8) * 255])[py0:py1, px0:px1]
-
+    insts = segment_furniture(str(ctx.image_path), ctx.size)
     cam = ctx.lookat()
-    au, av, _ = ctx.floor_anchor(cam, item)
+    layout = _instance_layout(ctx, insts, cam)
+    out_dir = Path(Config.ARTIFACTS_DIR) / "vision" / "move_seg" / Path(ctx.image_path).stem
+    out_dir.mkdir(parents=True, exist_ok=True)
+    image = np.asarray(ctx.image)
+    items = []
+    for inst in insts:
+        if not inst["movable"]:
+            continue
+        k, m = inst["index"], inst["mask"]
+        layer_path, patch_path = out_dir / f"layer_{k}.png", out_dir / f"patch_{k}.png"
+        x0, y0, x1, y1 = inst["bbox"]
+        pm = _dilate(m, 4)
+        px0, py0, px1, py1 = _bbox(pm)
+        if not (layer_path.is_file() and patch_path.is_file()):
+            Image.fromarray(np.dstack([image, m.astype(np.uint8) * 255])[y0:y1, x0:x1]).save(layer_path)
+            patch = np.dstack([fill_holes(image, pm), pm.astype(np.uint8) * 255])[py0:py1, px0:px1]
+            Image.fromarray(patch).save(patch_path)
+        items.append({
+            "index": k, "label": inst["label"],
+            "bbox": {"x0": x0 / w, "y0": y0 / h, "x1": x1 / w, "y1": y1 / h},
+            "anchor": {"x": inst["contact"][0] / w, "y": inst["contact"][1] / h},
+            "layer_path": str(layer_path), "patch_path": str(patch_path),
+            "patch_bbox": {"x0": px0 / w, "y0": py0 / h, "x1": px1 / w, "y1": py1 / h},
+            "footprint": layout[k]["footprint"], "blockers": _blockers(k, layout),
+            "placement_id": layout[k]["placement_id"],
+        })
     return {
-        "id": pid,
-        "type": item.get("type"),
-        "layer": _png_data_uri(rgba),
-        "bbox": {"x0": x0 / w, "y0": y0 / h, "x1": x1 / w, "y1": y1 / h},
-        "patch": _png_data_uri(patch),
-        "patch_bbox": {"x0": px0 / w, "y0": py0 / h, "x1": px1 / w, "y1": py1 / h},
-        "anchor": {"x": au / w, "y": av / h},
+        "instances": items,
         "horizon_y": _horizon_v(cam) / h,
-        # 前端拖曳時自己換算地板位置、擋碰撞與出界，不用每動一下就問後端
-        "camera": {
-            "R": cam.R.tolist(), "eye": cam.eye.tolist(), "f": cam.f, "cx": cam.cx, "cy": cam.cy,
-            "width": w, "height": h,
-        },
+        # 前端拖曳時自己換算地板位置、擋碰撞與出界
+        "camera": {"R": cam.R.tolist(), "eye": cam.eye.tolist(), "f": cam.f, "cx": cam.cx, "cy": cam.cy,
+                   "width": w, "height": h},
         "room": {"w": ctx.room_w, "d": ctx.room_d},
-        "footprint": {k: float(item[k]) for k in ("x", "y", "w", "h")},
-        "obstacles": _obstacles(ctx.old, pid),
+        "bounded": ctx.bounded,   # false：房間大小是猜的，前端拖曳也不要夾在房間內
     }
 
 
-def drag_to_placements(plan: dict[str, Any], furniture_id: str, u: float, v: float) -> list[dict]:
-    """把家具的地板錨點拖到畫面 (u, v) 後的新家具清單。
+def move_instances(plan: dict[str, Any], moves: list[dict], strength: float | None = None) -> dict[str, Any]:
+    """moves = [{index, x, y}]：第 index 件家具的碰地點拖到畫面 (x, y)（0–1）。可以一次搬好幾件。
 
-    每件家具的朝向都釘在拖之前的：不然沙發一移，茶几、椅子的推算朝向跟著變，
-    圖上沒動的家具也會被當成「轉向」重畫，拖的那件貼過去的像素方向也會不對。
+    用的是 list_instances 同一份切分輪廓，貼的位置、縮放跟前端預覽同一套算法；
+    對得到排版家具的，scene_graph 跟著平移，2D 佈局與之後換風格才對得上。
     """
     from designbridge.layout.facing import infer_fronts
+    from designbridge.render.furniture_instances import segment_furniture
 
     ctx = _Context(plan)
-    if not any(str(p.get("id")) == furniture_id for p in ctx.old):
-        raise MoveFurnitureError("找不到這件家具")
-    fronts = infer_fronts(ctx.old, ctx.room_w, ctx.room_d)
-    wx, wz = _pixel_to_floor(ctx.lookat(), u * ctx.size[0], v * ctx.size[1])
-    out = []
-    for p, front in zip(ctx.old, fronts):
+    w, h = ctx.size
+    insts = {i["index"]: i for i in segment_furniture(str(ctx.image_path), ctx.size)}
+    cam = ctx.lookat()
+    horizon = _horizon_v(cam)
+    layout = _instance_layout(ctx, list(insts.values()), cam)
+
+    plans, new_fp = {}, {}
+    for mv in moves:
+        k = int(mv["index"])
+        if k not in layout:
+            raise MoveFurnitureError("這件家具不能移動")
+        au, av = insts[k]["contact"]
+        X0, Z0 = _pixel_to_floor(cam, au, av)
+        X1, Z1 = _pixel_to_floor(cam, float(mv["x"]) * w, float(mv["y"]) * h)
+        fp = layout[k]["footprint"]
+        moved_fp = _clamp_fp({**fp, "x": fp["x"] + (X1 - X0) / ctx.room_w, "y": fp["y"] - (Z1 - Z0) / ctx.room_d}, ctx.bounded)
+        # 夾回房間內之後，碰地點從夾過的位置重算，貼的位置才不會跑到牆外
+        dx, dz = (moved_fp["x"] - fp["x"]) * ctx.room_w, -(moved_fp["y"] - fp["y"]) * ctx.room_d
+        bu, bv = _floor_to_pixel(cam, X0 + dx, Z0 + dz)
+        if abs(bu - au) + abs(bv - av) < 1:
+            continue
+        plans[k] = (au, av, bu, bv, max(0.2, min(4.0, (bv - horizon) / max(av - horizon, 1e-3))), dx, dz)
+        new_fp[k] = moved_fp
+    if not plans:
+        raise MoveFurnitureError("家具位置沒有變動")
+
+    final_fp = {k: new_fp.get(k, it["footprint"]) for k, it in layout.items()}
+    for k in plans:
+        if any(_overlaps(final_fp[k], final_fp[o]) for o in _blockers(k, layout)):
+            raise MoveFurnitureError("這個位置會跟其他家具重疊，請放到空的地方")
+
+    masks = {str(k): i["mask"] for k, i in insts.items()}
+    moves_px, occluders = {}, {}
+    for k, (au, av, bu, bv, s, _, _) in sorted(plans.items(), key=lambda kv: kv[1][3]):   # 遠的先貼
+        moves_px[str(k)] = (au, av, bu, bv, s)
+        # 沒動、而且碰地點比新位置更靠鏡頭的家具留在上層
+        occ = np.zeros((h, w), dtype=bool)
+        for o, inst in insts.items():
+            if o not in plans and inst["contact"][1] > bv:
+                occ |= inst["mask"]
+        occluders[str(k)] = occ
+    empty = np.zeros((h, w), dtype=bool)
+    composite, fill_mask, pasted = build_move_composite(np.asarray(ctx.image), masks, moves_px, [], empty, occluders)
+
+    # scene_graph：對得到的排版家具跟著平移，朝向全部釘住（不然別件家具的推算朝向會跟著變）
+    shift = {layout[k]["placement_id"]: (dx, dz) for k, (*_, dx, dz) in plans.items() if layout[k]["placement_id"]}
+    new = []
+    for p, front in zip(ctx.old, infer_fronts(ctx.old, ctx.room_w, ctx.room_d)):
         p = {**p, "front": front}
-        if str(p.get("id")) == furniture_id:
-            fw, fh = float(p["w"]), float(p["h"])
-            p["x"] = min(max(wx / ctx.room_w - fw / 2, 0.0), 1.0 - fw)
-            p["y"] = min(max(1.0 - wz / ctx.room_d - fh / 2, 0.0), 1.0 - fh)
-            if not _is_floor_item(p) and _overlapping(p, _obstacles(ctx.old, furniture_id)):
-                raise MoveFurnitureError("這個位置會跟其他家具重疊，請放到空的地方")
-        out.append(p)
-    return out
+        if str(p.get("id")) in shift:
+            dx, dz = shift[str(p["id"])]
+            p.update(_clamp_fp({"x": float(p["x"]) + dx / ctx.room_w, "y": float(p["y"]) - dz / ctx.room_d,
+                                "w": float(p["w"]), "h": float(p["h"])}))
+        new.append(p)
+    changed = {"moved": sorted(shift), "instances": sorted(plans), "turned": [], "removed": [], "added": []}
+    return _finish_move(ctx, plan, new, composite, fill_mask, pasted, empty, strength, changed)
 
 
 def move_furniture(plan: dict[str, Any], new_placements: list[dict], strength: float | None = None) -> dict[str, Any]:
     """plan = 上一輪 /api/generate 的完整回應；new_placements = 改完的家具清單。回傳更新後的 plan 欄位。"""
-    from designbridge.core.nodes.renderer import _fit_condition_image, _instances_to_spatial_text, _projection_instances
-    from designbridge.layout.floorplan_render import _generate_floor_plan
     from designbridge.layout.layout_enforce import _clip_to_room
     from designbridge.layout.layout_items import FurnitureItem
-    from designbridge.layout.projected_depth import _write_projection_meta
-    from designbridge.layout.scene_graph_to_depth import project_scene_graph_to_depth
-    from designbridge.render.render_backends import _render_inpaint_depth_fal
-    from designbridge.style.style_apply import resolve_style_loras
 
     ctx = _Context(plan)
-    scene_graph, render_result, gen = ctx.scene_graph, ctx.render_result, ctx.gen
     camera, space_info, old = ctx.camera, ctx.space_info, ctx.old
     items = _clip_to_room([FurnitureItem(
         id=str(p.get("id", "")), type=str(p.get("type", "default")),
@@ -562,6 +644,28 @@ def move_furniture(plan: dict[str, Any], new_placements: list[dict], strength: f
         np.asarray(ctx.image), masks, moves, [*removed, *[p for p in turned if p in masks]], redraw, occluders,
     )
 
+    changed = {"moved": moved, "turned": turned, "removed": removed, "added": added}
+    return _finish_move(ctx, plan, new, composite, fill_mask, pasted, redraw, strength, changed)
+
+
+def _finish_move(ctx: "_Context", plan: dict[str, Any], new: list[dict], composite: np.ndarray,
+                 fill_mask: np.ndarray, pasted: np.ndarray, redraw: np.ndarray, strength: float | None,
+                 changed: dict) -> dict[str, Any]:
+    """合成圖之後的共用流程：新深度圖 → LaMa 補洞 → FLUX 修 → 存檔、更新 scene_graph。"""
+    from designbridge.core.nodes.renderer import _fit_condition_image, _instances_to_spatial_text, _projection_instances
+    from designbridge.layout.floorplan_render import _generate_floor_plan
+    from designbridge.layout.layout_items import FurnitureItem
+    from designbridge.layout.projected_depth import _write_projection_meta
+    from designbridge.layout.scene_graph_to_depth import project_scene_graph_to_depth
+    from designbridge.render.render_backends import _render_inpaint_depth_fal, modal_fill
+    from designbridge.style.style_apply import resolve_style_loras
+
+    scene_graph, render_result, gen = ctx.scene_graph, ctx.render_result, ctx.gen
+    camera, space_info, output_size = ctx.camera, ctx.space_info, ctx.size
+    items = [FurnitureItem(
+        id=str(p.get("id", "")), type=str(p.get("type", "default")), x=float(p["x"]), y=float(p["y"]),
+        w=float(p["w"]), h=float(p["h"]), rotation=float(p.get("rotation", 0.0)), product_id=str(p.get("product_id") or ""),
+    ) for p in new]
     task_id = plan.get("task_id") or str(uuid.uuid4())
     key = f"{task_id}_mv{uuid.uuid4().hex[:6]}"
     render_dir = Path(Config.ARTIFACTS_DIR) / "render"
@@ -591,6 +695,15 @@ def move_furniture(plan: dict[str, Any], new_placements: list[dict], strength: f
         src_path, mask_path, raw_path = (render_dir / f"{key}_{tag}{s}.png" for s in ("_in", "_mask", ""))
         Image.fromarray(src).save(src_path)
         Image.fromarray(mask.astype(np.uint8) * 255).save(mask_path)
+        # 有開 Modal 局部修改就先走自架 Fill dev（沒有深度 ControlNet，靠遮罩外的原圖定位），失敗退回 fal
+        painted = modal_fill(
+            Image.fromarray(src), Image.fromarray(mask.astype(np.uint8) * 255), prompt,
+            steps=28, guidance=Config.FAL_INPAINT_DEV_GUIDANCE, seed=gen.get("seed"),
+            label=f"modal.move_{tag}", strength=pass_strength,
+        )
+        if painted is not None:
+            painted.save(raw_path)
+            return np.asarray(painted.convert("RGB").resize(output_size, Image.LANCZOS))
         if not _render_inpaint_depth_fal(
             prompt, str(src_path), str(mask_path), str(depth_path), raw_path,
             strength=pass_strength, depth_conditioning_scale=Config.MOVE_FURNITURE_DEPTH_SCALE,
@@ -631,7 +744,6 @@ def move_furniture(plan: dict[str, Any], new_placements: list[dict], strength: f
         "projected_seg_path": res.get("seg_path"),
         "projection_mode": "synthetic",
     }
-    changed = {"moved": moved, "turned": turned, "removed": removed, "added": added}
     generation_params = {
         **gen,
         "backend": "move_furniture_inpaint_fal",

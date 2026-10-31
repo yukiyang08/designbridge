@@ -122,70 +122,97 @@ def test_refine_mask_takes_pillows_with_the_bed():
     assert not m[60, 90]
 
 
+# ── 用自動切分的家具搬（list_instances / move_instances）─────────────────────
+# 切分與 AI 重修都換成假的：用投影方塊當「切出來的家具」，_finish_move 只記下收到什麼
+
+def _fake_instances(placements, size=SIZE):
+    masks = _instance_masks(placements, SPACE, CAMERA, size)
+    out = []
+    for k, (pid, m) in enumerate(masks.items()):
+        ys, xs = np.nonzero(m)
+        y1 = int(ys.max()) + 1
+        out.append({
+            "index": k, "label": pid.split("_")[0], "mask": m, "movable": True,
+            "bbox": [int(xs.min()), int(ys.min()), int(xs.max()) + 1, y1],
+            "contact": [float(xs[ys >= y1 - 3].mean()), float(y1 - 1)], "area": int(m.sum()), "depth": 100.0,
+        })
+    return out
+
+
 @pytest.fixture
-def no_seg(monkeypatch):
-    # 空白測試圖跑語意分割、SAM 2 沒意義又慢，直接走投影方塊
-    from designbridge.render import move_furniture as mf
-    monkeypatch.setattr(mf._Context, "segmentation", lambda self: (None, {}))
-    monkeypatch.setattr(mf, "precise_mask", lambda path, coarse, seg, labels: coarse)
-
-
-def _plan(tmp_path, placements):
+def staged(monkeypatch, tmp_path):
     from PIL import Image
-    img = tmp_path / "prev.png"
-    Image.new("RGB", SIZE, (200, 200, 200)).save(img)
-    return {
-        "generated_image_path": str(img),
-        "structured_requirement": {"space_info": SPACE},
-        "scene_graph": {"furniture_placements": placements, "projection_mode": "synthetic"},
-        "render_result": {"generation_params": {"layout_camera": CAMERA, "output_size": {"width": SIZE[0], "height": SIZE[1]}}},
-    }
+
+    from designbridge.core.config import Config
+    from designbridge.render import furniture_instances as fi
+    from designbridge.render import move_furniture as mf
+
+    monkeypatch.setattr(Config, "ARTIFACTS_DIR", str(tmp_path))
+    captured = {}
+
+    def finish(ctx, plan, new, composite, fill_mask, pasted, redraw, strength, changed):
+        captured.update(new=new, composite=composite, fill=fill_mask, pasted=pasted, changed=changed)
+        return {"changed": changed}
+
+    monkeypatch.setattr(mf, "_finish_move", finish)
+
+    def make(placements, camera=True):
+        img = tmp_path / "prev.png"
+        Image.new("RGB", SIZE, (200, 200, 200)).save(img)
+        gen = {"output_size": {"width": SIZE[0], "height": SIZE[1]}, **({"layout_camera": CAMERA} if camera else {})}
+        insts = _fake_instances(placements or _layout(0.30))
+        monkeypatch.setattr(fi, "segment_furniture", lambda path, size=None, **kw: insts)
+        plan = {"generated_image_path": str(img), "structured_requirement": {"space_info": SPACE},
+                "scene_graph": {"furniture_placements": placements, "projection_mode": "synthetic"},
+                "render_result": {"generation_params": gen}}
+        return plan, insts
+
+    return make, captured
 
 
-def test_pick_then_drag_back_to_same_anchor_keeps_position(tmp_path, no_seg):
-    from designbridge.render.move_furniture import drag_to_placements, pick_furniture
+def test_list_instances_matches_layout_and_writes_layers(staged):
+    from pathlib import Path
 
-    plan = _plan(tmp_path, _layout(0.30))
-    masks = _instance_masks(_layout(0.30), SPACE, CAMERA, SIZE)
-    ys, xs = np.nonzero(masks["sofa_1"])
-    picked = pick_furniture(plan, xs.mean() / SIZE[0], ys.mean() / SIZE[1])
-    assert picked["id"] == "sofa_1"
-    assert picked["layer"].startswith("data:image/png;base64,")
-    assert 0 < picked["horizon_y"] < picked["anchor"]["y"]   # 地板上的點一定在地平線下方
+    from designbridge.render.move_furniture import list_instances
 
-    same = drag_to_placements(plan, "sofa_1", picked["anchor"]["x"], picked["anchor"]["y"])
-    sofa = next(p for p in same if p["id"] == "sofa_1")
-    assert abs(sofa["x"] - 0.30) < 0.01 and abs(sofa["y"] - 0.70) < 0.01
-    assert all(p.get("front") for p in same)                 # 朝向全部釘住
+    make, _ = staged
+    plan, _ = make(_layout(0.30))
+    data = list_instances(plan)
+    got = {i["placement_id"] for i in data["instances"]}
+    assert got == {"sofa_1", "cabinet_1"}
+    assert all(Path(i["layer_path"]).is_file() and Path(i["patch_path"]).is_file() for i in data["instances"])
+    assert 0 < data["horizon_y"] < min(i["anchor"]["y"] for i in data["instances"])
 
 
-def test_drag_moves_sofa_and_nothing_else(tmp_path, no_seg):
-    from designbridge.render.move_furniture import drag_to_placements, pick_furniture
+def test_move_instances_shifts_matched_furniture_only(staged):
+    from designbridge.render.move_furniture import move_instances
 
-    plan = _plan(tmp_path, _layout(0.30))
-    masks = _instance_masks(_layout(0.30), SPACE, CAMERA, SIZE)
-    ys, xs = np.nonzero(masks["sofa_1"])
-    a = pick_furniture(plan, xs.mean() / SIZE[0], ys.mean() / SIZE[1])["anchor"]
-    moved = drag_to_placements(plan, "sofa_1", a["x"] + 0.15, a["y"])
-    sofa, cab = moved
-    assert sofa["x"] > 0.35
-    assert cab["x"] == 0.40 and cab["y"] == 0.02
-    m, turned, removed, added = _changed_ids(_layout(0.30), moved, 5.0, 4.0)
-    assert m == ["sofa_1"] and not turned and not removed and not added
+    make, captured = staged
+    plan, insts = make(_layout(0.30))
+    sofa = next(i for i in insts if i["label"] == "sofa")
+    u, v = sofa["contact"]
+    move_instances(plan, [{"index": sofa["index"], "x": (u - 25) / SIZE[0], "y": v / SIZE[1]}])
+    new = {p["id"]: p for p in captured["new"]}
+    assert new["sofa_1"]["x"] < 0.30 and new["cabinet_1"]["x"] == 0.40
+    assert captured["changed"]["moved"] == ["sofa_1"]
+    assert captured["pasted"].any() and captured["fill"].any()
 
 
-def test_drag_into_other_furniture_is_rejected(tmp_path, no_seg):
-    from designbridge.render.move_furniture import MoveFurnitureError, _Context, drag_to_placements, pick_furniture
+def test_move_instances_rejects_overlap(staged):
+    from designbridge.render.move_furniture import MoveFurnitureError, move_instances
 
-    layout = _layout(0.30) + [{"id": "rug_1", "type": "rug", "x": 0.1, "y": 0.3, "w": 0.6, "h": 0.5}]
-    plan = _plan(tmp_path, layout)
-    masks = _instance_masks(layout, SPACE, CAMERA, SIZE)
-    ys, xs = np.nonzero(masks["sofa_1"])
-    picked = pick_furniture(plan, xs.mean() / SIZE[0], ys.mean() / SIZE[1])
-    assert [o["id"] for o in picked["obstacles"]] == ["cabinet_1"]   # 地毯不算障礙
-
-    ctx = _Context(plan)
-    cab = layout[1]
-    u, v, _ = ctx.floor_anchor(ctx.lookat(), {"x": cab["x"], "y": cab["y"], "w": cab["w"], "h": cab["h"]})
+    make, _ = staged
+    plan, insts = make(_layout(0.30))
+    sofa = next(i for i in insts if i["label"] == "sofa")
+    cab = next(i for i in insts if i["label"] == "cabinet")
     with pytest.raises(MoveFurnitureError):
-        drag_to_placements(plan, "sofa_1", u / SIZE[0], v / SIZE[1])   # 拖到櫃子正上方
+        move_instances(plan, [{"index": sofa["index"], "x": cab["contact"][0] / SIZE[0], "y": cab["contact"][1] / SIZE[1]}])
+
+
+def test_render_without_layout_uses_default_camera(staged):
+    from designbridge.render.move_furniture import list_instances
+
+    make, _ = staged
+    plan, _ = make([], camera=False)                     # 沒排家具就生的圖：沒有投影相機也沒有 scene_graph 家具
+    data = list_instances(plan)
+    assert len(data["instances"]) == 2 and all(i["placement_id"] is None for i in data["instances"])
