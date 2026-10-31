@@ -30,7 +30,8 @@ app = modal.App("designbridge-edit")
 weights = modal.Volume.from_name("designbridge-weights")
 
 _base = modal.Image.debian_slim(python_version="3.11").env({"HF_HOME": f"{MOUNT}/hf"})
-download_image = _base.pip_install("huggingface_hub")
+# 容器內也會載入本檔（頂端 import profiles），每個映像都要帶上 profiles.py
+download_image = _base.pip_install("huggingface_hub").add_local_file(HERE / "profiles.py", "/root/profiles.py")
 gpu_image = (
     _base.pip_install(
         "torch", "diffusers==0.42.1", "transformers", "accelerate", "sentencepiece",
