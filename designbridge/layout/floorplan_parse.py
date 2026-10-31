@@ -15,7 +15,35 @@ from designbridge.layout.floorplan_render import _generate_floor_plan
 
 # Vocabulary we constrain Gemini to, so parsed types line up with FURNITURE_SIZES,
 # heights, semantic shapes and floor-plan colors downstream.
-_KNOWN_FURNITURE_TYPES = sorted(k for k in FURNITURE_SIZES if k != "default")
+# 地毯不從平面圖解析：圖上的大塊區域常被誤認成地毯，產品決定一律不出
+_EXCLUDED_TYPES = frozenset({"default", "rug"})
+_KNOWN_FURNITURE_TYPES = sorted(k for k in FURNITURE_SIZES if k not in _EXCLUDED_TYPES)
+
+# 標準真實尺寸（公尺，長邊 × 短邊），跟前端 FURNITURE_REAL_SIZE_M 同值。
+# FURNITURE_SIZES 是「佔房間比例」，不能拿來判斷 Gemini 框出來的尺寸合不合理。
+_REAL_SIZE_M: dict[str, tuple[float, float]] = {
+    "sofa": (2.0, 0.9), "loveseat": (1.5, 0.85), "coffee_table": (1.0, 0.5),
+    "tv_unit": (1.6, 0.4), "tv": (1.2, 0.3), "dining_table": (1.4, 0.8),
+    "chair": (0.45, 0.45), "armchair": (0.8, 0.8), "bed": (2.0, 1.5),
+    "bunk_bed": (2.0, 1.0), "bunk_ladder": (0.45, 0.3), "wardrobe": (1.8, 0.6),
+    "desk": (1.2, 0.6), "bookshelf": (0.9, 0.3), "side_table": (0.45, 0.45),
+    "nightstand": (0.45, 0.4), "lamp": (0.3, 0.3), "rug": (2.0, 1.4),
+    "plant": (0.4, 0.4), "cabinet": (1.2, 0.55), "dresser": (1.0, 0.45),
+    "shelf": (0.9, 0.3), "cat_tree": (0.5, 0.5), "dog_bed": (0.8, 0.6),
+    "litter_box": (0.5, 0.4), "stove": (0.75, 0.5), "toilet": (0.7, 0.4),
+    "sink": (0.6, 0.45), "fridge": (0.7, 0.7), "mirror": (0.6, 0.1),
+}
+_SIZE_RATIO_MIN, _SIZE_RATIO_MAX = 0.4, 2.0
+
+
+def _plausible_size(ftype: str, w_m: float, d_m: float) -> bool:
+    """長邊、短邊各自跟標準尺寸比，任一邊超出 0.4–2 倍就當誤判（門弧、標註、文字被認成家具）。"""
+    std = _REAL_SIZE_M.get(ftype)
+    if not std:
+        return False   # 沒有標準尺寸的類型（含 default）多半是認不出來的符號，不收
+    long_, short = max(w_m, d_m), min(w_m, d_m)
+    return all(_SIZE_RATIO_MIN <= got / ref <= _SIZE_RATIO_MAX
+               for got, ref in ((long_, std[0]), (short, std[1])))
 
 
 def _box_to_xywh(obj: dict) -> tuple[float, float, float, float] | None:
@@ -79,15 +107,20 @@ def parse_floor_plan_image(
 
     types_csv = ", ".join(_KNOWN_FURNITURE_TYPES)
     prompt = (
-        "You are given a 2D top-down interior FLOOR PLAN image. Identify every piece "
-        "of furniture drawn in it and return each one's footprint as a bounding box.\n"
+        "You are given a 2D top-down interior FLOOR PLAN image. First decide whether "
+        "any furniture is actually DRAWN in it — many architectural plans show only walls, "
+        "doors, windows, dimension lines and room labels. Door swing arcs, windows, walls, "
+        "columns, dimension lines and text are NOT furniture. If nothing is drawn, return "
+        '{"has_furniture": false, "furniture": []}. Never invent furniture that is not drawn.\n'
+        "Otherwise identify every piece of furniture drawn and return each one's footprint "
+        "as a bounding box.\n"
         "Use `box_2d` = [ymin, xmin, ymax, xmax], integers normalized to 0-1000, "
         "measured relative to the room interior: x = 0 is the left wall, 1000 is the "
         "right wall; y = 0 is the back/top wall, 1000 is the front/bottom wall.\n"
         f"Use ONLY these furniture type keywords (map synonyms to the closest one): "
         f"{types_csv}. Skip any symbol you cannot confidently classify.\n"
         "Return STRICT JSON only, no prose, no markdown fences:\n"
-        '{"furniture":[{"type":"sofa","box_2d":[300,50,430,350]}]}'
+        '{"has_furniture":true,"furniture":[{"type":"sofa","box_2d":[300,50,430,350]}]}'
     )
 
     try:
@@ -101,16 +134,22 @@ def parse_floor_plan_image(
         return None
 
     data = _parse_llm_layout(text)
+    if (data or {}).get("has_furniture") is False:
+        print("[parse_floor_plan] Gemini 判斷圖上沒有畫家具")
+        return None
     raw = (data or {}).get("furniture") or _salvage_boxes(text, "type")
     if not raw:
         print("⚠️  Gemini floor-plan parse returned no furniture")
         return None
 
     items: list[FurnitureItem] = []
+    dropped: list[str] = []
     for i, f in enumerate(raw):
         ftype = str(f.get("type", "default")).lower().replace(" ", "_")
         if ftype not in FURNITURE_SIZES:
             ftype = "default"
+        if ftype == "rug":
+            continue
         dw, dh = FURNITURE_SIZES.get(ftype, FURNITURE_SIZES["default"])
         xywh = _box_to_xywh(f)
         if xywh is None:
@@ -118,6 +157,9 @@ def parse_floor_plan_image(
         x, y, w, h = xywh
         w = w or dw
         h = h or dh
+        if not _plausible_size(ftype, w * room_w, h * room_d):
+            dropped.append(f"{ftype}({w * room_w:.2f}x{h * room_d:.2f}m)")
+            continue
         items.append(
             FurnitureItem(
                 id=f"{ftype}_{i + 1}",
@@ -130,6 +172,8 @@ def parse_floor_plan_image(
             )
         )
 
+    if dropped:
+        print(f"[parse_floor_plan] 尺寸不合理丟掉 {len(dropped)} 件：{', '.join(dropped)}")
     if not items:
         return None
 

@@ -18,13 +18,13 @@ const ENTRIES = [
   {
     source: 'cad',
     thumb: thumbPlan,
-    title: ['從 CAD 平面圖開始'],
+    title: ['我是屋主，', '我要上傳 CAD 圖'],
     desc: '填房型＋坪數自動切割整層格局，也能上傳自己的平面圖，或跳過直接排單間家具',
   },
   {
     source: 'photo',
     thumb: thumbPhoto,
-    title: ['上傳現有空間照片'],
+    title: ['我是租屋族，', '要改變現有空間'],
     desc: '拍一張現況照，AI 讀懂格局後直接改造成你要的樣子',
   },
   {

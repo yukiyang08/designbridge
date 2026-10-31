@@ -1,13 +1,14 @@
 <script setup>
 /**
  * 首頁：Figma MacBook Air - 5 的標語＋開始設計，往下是功能介紹的捲動故事。
- * Hero 維持 Figma 原圖；下方打字示範只是「可以怎麼描述」的範例（有暫停鍵、滑入就停、減少動態時不播）。
+ * Hero 維持 Figma 原圖；下方打字示範只是「可以怎麼描述」的範例（滑入就停、減少動態時不播）。
  */
 import { ref, computed, onMounted, onBeforeUnmount } from 'vue'
 import { useRouter } from 'vue-router'
 import AppNav from '@/components/shell/AppNav.vue'
 import StoryPlan from '@/components/home/StoryPlan.vue'
 import PlanPrecision from '@/components/home/PlanPrecision.vue'
+import FengshuiDemo from '@/components/home/FengshuiDemo.vue'
 import CompareSlider from '@/components/home/CompareSlider.vue'
 import StyleDial from '@/components/home/StyleDial.vue'
 import StyleDeck from '@/components/home/StyleDeck.vue'
@@ -55,11 +56,6 @@ function run() {
   }
   type()
 }
-function toggle() {
-  playing.value = !playing.value
-  if (playing.value) run()
-  else { stop(); shown.value = PROMPTS[cur.value].text }
-}
 function setHover(v) {
   hovering.value = v
   if (v) { stop(); shown.value = PROMPTS[cur.value].text } else run()
@@ -88,16 +84,6 @@ const caretOn = computed(() => playing.value && !hovering.value)
             <span class="demo-label">描述你理想中的空間…</span>
             <span class="typed">{{ shown }}<i :class="['caret', { blink: caretOn }]"></i></span>
           </div>
-          <button
-            type="button"
-            class="demo-pause"
-            :aria-pressed="!playing"
-            :aria-label="playing ? '暫停範例動畫' : '播放範例動畫'"
-            @click="toggle"
-          >
-            <svg v-if="playing" viewBox="0 0 24 24" aria-hidden="true"><rect x="6" y="5" width="4" height="14" rx="1" /><rect x="14" y="5" width="4" height="14" rx="1" /></svg>
-            <svg v-else viewBox="0 0 24 24" aria-hidden="true"><path d="M7 5l12 7-12 7z" /></svg>
-          </button>
         </div>
 
         <button class="start-btn" type="button" @click="start">開始設計</button>
@@ -126,6 +112,7 @@ const caretOn = computed(() => playing.value && !hovering.value)
 
       <StoryPlan />
       <PlanPrecision />
+      <FengshuiDemo />
       <CompareSlider />
       <StyleDial />
       <StyleDeck />
@@ -220,19 +207,6 @@ const caretOn = computed(() => playing.value && !hovering.value)
 .caret { display: inline-block; width: 2px; height: 1.1em; margin-left: 2px; background: #fff; vertical-align: -0.15em; }
 .caret.blink { animation: blink 1s steps(2) infinite; }
 @keyframes blink { 50% { opacity: 0; } }
-.demo-pause {
-  display: grid;
-  place-items: center;
-  flex: none;
-  width: 44px;
-  height: 44px;
-  border: 1px solid rgba(255, 255, 255, 0.55);
-  border-radius: 50%;
-  background: rgba(20, 18, 14, 0.42);
-  cursor: pointer;
-}
-.demo-pause svg { width: 18px; height: 18px; fill: #fff; }
-.demo-pause:hover { background: rgba(20, 18, 14, 0.62); }
 
 .start-btn {
   min-width: 211px;
@@ -249,7 +223,7 @@ const caretOn = computed(() => playing.value && !hovering.value)
 }
 .start-btn:hover { background: var(--db-accent-deep); box-shadow: 0 10px 30px rgba(0, 0, 0, 0.32); transform: translateY(-2px); }
 .start-btn:active { transform: translateY(0); }
-.start-btn:focus-visible, .demo-pause:focus-visible, .scroll-cue:focus-visible, .entry:focus-visible {
+.start-btn:focus-visible,.scroll-cue:focus-visible, .entry:focus-visible {
   outline: 3px solid #fff;
   outline-offset: 3px;
 }

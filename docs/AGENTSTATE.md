@@ -52,7 +52,7 @@ requirement_analyzer → visual_preprocessing ─┬─ design → layout_and_st
 |---|---|---|---|
 | layout_agent `layout/layout_agent.py` | LLM 提案 → 硬約束 / 優化器 / 軟約束評分，優化器後算分數（0.65 僅用於 `acceptance_rate` 統計，不再觸發重排） | 啟動條件：`hint_layout`，或 `ENABLE_PRODUCT_MESHES` 且沒有照片 | `scene_graph`、`intermediate_outputs`；LLM 失敗退回 `_default_layout` |
 | layout 檢查 `layout/layout_review.py` | 規則檢查風水／動線問題 → 有問題才把報告交回 LLM 重排一次 → 重新優化後比較「問題數、軟性分數」，更差就保留原佈局 | `DESIGNBRIDGE_LAYOUT_REVIEW_AGENT`，**預設 true**（2026-10-30 起） | `intermediate_outputs` 的 review_log（`decision`、`issues_before/after`、`accepted`） |
-| composer `core/nodes/composer.py` | LLM 合併並回報 `ra_issue`（使用者原話與 RA 描述核心矛盾）→ 有矛盾就呼叫 `revise_requirement` 重寫 `design_description`，重合併一次；原話明確指定的家具與佈局不符（`layout_issue`）且本輪真的排過版時，帶提示呼叫 `replan_layout` 重排並覆寫 `scene_graph`（Step 1 使用者確認過的佈局不重排）。RA / layout 共用同一輪，只回頭一輪；風格切換重播不觸發→ `check_prompt`（程式檢查家具是否都提到、後設詞、字數）→ 帶問題修訂，最多 2 次 | 一律啟用 | `composed_prompt`、被修正時的 `structured_requirement` / `scene_graph`、`intermediate_outputs["composer"]`（`ra_issue`、`layout_issue`、`revisions`） |
+| composer `core/nodes/composer.py` | LLM 合併並回報 `ra_issue`（使用者原話與 RA 描述核心矛盾）→ 有矛盾就呼叫 `revise_requirement` 重寫 `design_description`，重合併一次；原話明確指定的家具與佈局不符（`layout_issue`）且本輪真的排過版時，帶提示呼叫 `replan_layout` 重排並覆寫 `scene_graph`（Step 1 使用者確認過的佈局不重排）。RA / layout 共用同一輪，只回頭一輪；風格切換重播不觸發→ `check_prompt`（程式檢查投影後畫面內的家具是否都提到、後設詞、字數；畫面外的不要求）→ 帶問題修訂，最多 2 次 | 一律啟用 | `composed_prompt`、被修正時的 `structured_requirement` / `scene_graph`、`intermediate_outputs["composer"]`（`ra_issue`、`layout_issue`、`revisions`） |
 | adjuster | 遮罩過小時改用 bbox；手繪/框選遮罩經 SAM 2（含多物件拆分）後若不到原範圍 40%，併入分割圖同類範圍或原筆跡（只看遮罩，不驗證結果圖） | 一律啟用 | 結果圖 |
 
 ## 4. 已知缺口
@@ -87,3 +87,4 @@ requirement_analyzer → visual_preprocessing ─┬─ design → layout_and_st
 | 2026-10-30 | `LAYOUT_REVIEW_AGENT` 預設改為 true；移除舊的 `LAYOUT_LLM_REFINE`（分數回饋給 LLM）與 `LAYOUT_MAX_ITER` |
 | 2026-10-31 | 入口二：`scene_graph.source="photo"` 影響路由與 renderer 投影深度；reproject 帶入照片 `vision_features` |
 | 2026-10-31 | 入口二改成單頁工作台：`restyle` 旗標；adjuster SAM 2 縮太小時併入分割圖 |
+| 2026-10-31 | composer：`check_prompt` 只檢查投影後可見的家具；composer 提示詞只給色名不給色碼、accent 色不套到主要家具、同種家具多件用同款式描述 |

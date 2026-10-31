@@ -5,15 +5,17 @@
  * 設計稿目前沒有指向這條路的入口卡，但後端 /api/parse-floor-plan 與流程邏輯都保留著。
  * 要重新開放：在 StartView 的 ENTRIES 補一筆 { source: 'upload', ... } 即可。
  */
-import { watch } from 'vue'
+import { computed, watch } from 'vue'
 import AdvancedPanel from '@/components/shell/AdvancedPanel.vue'
 import PlanParseIssue from '@/components/steps/PlanParseIssue.vue'
 import { useDesignFlow, ASPECT_OPTIONS } from '@/composables/useDesignFlow'
 
 const {
-  floorPlanUpload, spaceSizePing, customRoomW, customRoomD, outputAspect,
+  floorPlanUpload, uploadTotalPing, customRoomW, customRoomD, outputAspect,
   loading, useUploadedPlan, planParseIssue,
 } = useDesignFlow()
+
+const pingValid = computed(() => uploadTotalPing.value >= 1 && uploadTotalPing.value <= 500)
 
 // 換了一張圖，上一張的解析結果就不適用了
 watch(() => floorPlanUpload.preview, () => { planParseIssue.value = null })
@@ -35,13 +37,20 @@ watch(() => floorPlanUpload.preview, () => { planParseIssue.value = null })
 
     <PlanParseIssue />
 
-    <!-- 沒有「房間類型」：上傳的可能是整層平面圖，每間房的類型由 AI 辨識；整戶圖的總坪數在辨識後再校正 -->
-    <AdvancedPanel hint="坪數・長寬・比例">
+    <!-- 解析前先填總坪數：比例尺以它換算，單間圖則直接當該房坪數 -->
+    <div class="ping-field">
+      <label class="field-label" for="pu-total-ping">總坪數 <span class="req">*</span></label>
+      <div class="ping-input">
+        <input id="pu-total-ping" v-model.number="uploadTotalPing" type="number" min="1" max="500" step="0.5"
+               class="db-input" placeholder="例如 28" />
+        <span class="unit">坪</span>
+      </div>
+      <small class="ping-hint">整戶圖填整戶室內坪數，單一房間圖填該房間坪數</small>
+    </div>
+
+    <!-- 沒有「房間類型」：上傳的可能是整層平面圖，每間房的類型由 AI 辨識 -->
+    <AdvancedPanel hint="長寬・比例">
       <div class="adv-grid">
-        <div class="adv-field">
-          <label class="field-label" for="pu-ping">空間坪數</label>
-          <input id="pu-ping" v-model.number="spaceSizePing" type="number" min="1" max="100" step="0.5" class="db-input" />
-        </div>
         <div class="adv-field">
           <label class="field-label">自訂長寬（公尺，可留空）</label>
           <div class="pair">
@@ -59,7 +68,7 @@ watch(() => floorPlanUpload.preview, () => { planParseIssue.value = null })
     </AdvancedPanel>
 
     <div class="actions">
-      <button v-if="!planParseIssue" class="db-btn" :disabled="loading || !floorPlanUpload.preview" @click="useUploadedPlan">
+      <button v-if="!planParseIssue" class="db-btn" :disabled="loading || !floorPlanUpload.preview || !pingValid" @click="useUploadedPlan">
         解析平面圖
       </button>
     </div>
@@ -119,6 +128,12 @@ watch(() => floorPlanUpload.preview, () => { planParseIssue.value = null })
   display: block; margin-bottom: 0.45rem;
   font-size: 0.88rem; font-weight: 500; color: var(--db-text-soft);
 }
+
+.ping-field { padding-top: 1.25rem; }
+.ping-input { display: flex; align-items: center; gap: 0.5rem; max-width: 240px; }
+.unit { color: var(--db-text-soft); }
+.req { color: var(--db-accent); }
+.ping-hint { display: block; margin-top: 0.4rem; color: var(--db-placeholder); font-size: 0.8rem; }
 
 .actions { display: flex; justify-content: center; padding-top: 1.5rem; }
 .actions .db-btn { min-width: 337px; }

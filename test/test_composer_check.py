@@ -64,3 +64,18 @@ def test_composer_asks_layout(monkeypatch):
 
 def test_check_prompt_multiword_type():
     assert check_prompt("a media console with a wall-mounted TV", [{"type": "tv_unit"}]) == []
+
+
+def test_visible_placements_drops_out_of_frame(monkeypatch):
+    import sys
+
+    from designbridge.core.nodes import composer
+
+    # nodes/__init__ 把 renderer 函式蓋在同名子模組上，所以直接取 sys.modules
+    monkeypatch.setattr(sys.modules["designbridge.core.nodes.renderer"], "_projection_instances", lambda _p: [
+        {"type": "sofa", "visible": True}, {"type": "bookshelf", "visible": False}])
+    sg = {"projected_depth_path": "x.png",
+          "furniture_placements": [{"type": "sofa"}, {"type": "bookshelf"}]}
+    assert [p["type"] for p in composer._visible_placements(sg)] == ["sofa"]
+    # 沒有投影資訊時維持原行為
+    assert len(composer._visible_placements({"furniture_placements": [{"type": "sofa"}, {"type": "bookshelf"}]})) == 2

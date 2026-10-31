@@ -24,7 +24,7 @@ from typing import Any
 
 from designbridge.core.prompts import COMPOSER_PROMPT
 from designbridge.core.state import DesignBridgeState
-from designbridge.render.render_prompt import _build_imagen_prompt_from_requirement, _describe_color
+from designbridge.render.render_prompt import _build_imagen_prompt_from_requirement, _nearest_color_name
 
 
 def _layout_facts_text(state: DesignBridgeState, req: dict[str, Any]) -> str:
@@ -56,6 +56,18 @@ def _layout_facts_text(state: DesignBridgeState, req: dict[str, Any]) -> str:
         parts.append(layout_prompt)
 
     return " ".join(parts)
+
+
+def _visible_placements(scene_graph: dict[str, Any]) -> list[dict]:
+    """投影後在畫面外的家具不要求 prompt 提到，否則模型會把它硬塞進畫面。"""
+    placements = scene_graph.get("furniture_placements") or []
+    proj = scene_graph.get("projected_depth_path")
+    if not proj:
+        return placements
+    from designbridge.core.nodes.renderer import _projection_instances
+
+    seen = {i.get("type") for i in _projection_instances(str(proj)) if i.get("visible")}
+    return [p for p in placements if p.get("type") in seen] if seen else placements
 
 
 _MAX_REVISIONS = 2
@@ -136,7 +148,7 @@ def composer_node(state: DesignBridgeState) -> dict[str, Any]:
 
     color_guidance = style_params.get("color_guidance") or {}
     palette_bits = [
-        f"{label} {_describe_color(color_guidance[key])}"
+        f"{label} {_nearest_color_name(color_guidance[key]) or color_guidance[key]}"  # 只給色名，不給色碼
         for label, key in (("primary", "primary_color"), ("secondary", "secondary_color"), ("accent", "accent_color"))
         if color_guidance.get(key)
     ]
@@ -197,7 +209,7 @@ def composer_node(state: DesignBridgeState) -> dict[str, Any]:
             if not composed:
                 raise ValueError("empty composer output after revision")
         # 生成 → 程式檢查 → 帶問題修訂，最多 _MAX_REVISIONS 次；修不好就用最後一版
-        placements = scene_graph.get("furniture_placements") or []
+        placements = _visible_placements(scene_graph)
         for step in range(_MAX_REVISIONS):
             issues = check_prompt(composed, placements)
             log["revisions"].append({"step": step, "issues": issues})

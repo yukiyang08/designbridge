@@ -104,7 +104,7 @@ function putLivingRoom(put, zoneX, zoneW, D) {
 }
 
 const CAD_DEFAULT_LAYOUT = {
-  // 上傳平面圖點進客廳、卻沒辨識到家具時也用這份（見 layout.js parseFloorPlanAndProceed）
+  // 上傳平面圖的房間沒辨識到家具時也用這份（見 cad.js prepareUploadedRoom、layout.js parseFloorPlanAndProceed）
   living_room: (W, D, put) => putLivingRoom(put, 0, W, D),
   bedroom: (W, D, put) => {
     const bx = (W - 1.5) / 2
@@ -138,6 +138,12 @@ const CAD_DEFAULT_LAYOUT = {
     put('chair', dx + 0.1, D / 2 - 0.9)
     put('chair', dx - 0.55, D / 2 + 0.45)
     put('chair', dx + 0.1, D / 2 + 0.45)
+  },
+  study: (W, D, put) => {
+    const dx = (W - 1.2) / 2
+    put('desk', dx, 0.05)                        // 書桌靠上牆置中、椅子在前
+    put('chair', dx + 0.4, 0.7)
+    put('bookshelf', 0.05, D - 0.35)
   },
   kitchen: (W, D, put) => {
     put('cabinet', 0.05, 0.05, 2.4, 0.6)         // 流理台沿上牆
@@ -295,6 +301,7 @@ export const detectedRooms     = ref([])   // /api/detect-rooms 偵測到的房�
 // 平面圖解析沒結果時停下來讓使用者決定，不默默退回後備路徑：
 // { kind: 'rooms' | 'furniture', reason: 'failed' | 'empty', path, roomType }
 export const planParseIssue    = ref(null)
+export const uploadTotalPing   = ref(null)   // 上傳平面圖前先填的總坪數，決定比例尺（不靠 AI 猜圖上標註）
 
 // ── CAD 房型生成（designbridge/roomplan）──
 export const cadCounts     = ref({ bedroom_count: 2, living_count: 1, dining_count: 1, bathroom_count: 1, kitchen_count: 1, balcony_count: 1 })
@@ -498,6 +505,7 @@ const DRAFT_KEY = 'db.flow'
 const DRAFT_FIELDS = {
   planSource, roomType, spaceSizePing, customRoomW, customRoomD, furnitureItems, furnitureQty,
   extraPrompt, fengshuiEnabled, fengshuiExcluded, outputAspect, selectedStyle, noStyleReference, styleMethod,
+  uploadTotalPing,
   cadCounts, cadTotalPing, cadRoomW, cadRoomD, cadExtraRooms,   // 整層房型表單（幾房幾廳＋坪數＋長寬），重整後不用重填
 }
 
