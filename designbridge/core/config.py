@@ -42,6 +42,8 @@ class Config:
     # ── 出圖後端：fal.ai / Hugging Face ──────────────────────────────────
     FAL_KEY: str | None = os.getenv("FAL_KEY")
     FAL_INPAINT_MODEL: str = os.getenv("DESIGNBRIDGE_FAL_INPAINT_MODEL", "fal-ai/flux-pro/v1/fill")
+    # 局部修改改用可下載的 Fill dev（fal-ai/flux-lora-fill）時的 guidance
+    FAL_INPAINT_DEV_GUIDANCE: float = float(os.getenv("DESIGNBRIDGE_FAL_INPAINT_DEV_GUIDANCE", "30"))
 
     HF_TOKEN: str | None = os.getenv("HF_TOKEN")
     ENABLE_HF_INFERENCE: bool = _flag("DESIGNBRIDGE_ENABLE_HF_INFERENCE", "true")

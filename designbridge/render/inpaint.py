@@ -644,20 +644,23 @@ def run_fal_inpainting(
             b64 = base64.b64encode(buf.getvalue()).decode()
             return f"data:image/png;base64,{b64}"
 
-        print(f"[fal] num_steps={num_steps}  guidance_scale={guidance_scale}")
-        result = fal_subscribe("inpaint",
-            Config.FAL_INPAINT_MODEL,
-            arguments={
-                "prompt": prompt,
-                "image_url": _to_data_url(original),
-                "mask_url": _to_data_url(mask_img),
-                "num_images": 1,
-                "num_inference_steps": num_steps,
-                "guidance_scale": guidance_scale,
-                "output_format": "png",
-                "safety_tolerance": "2",
-            },
-        )
+        arguments = {
+            "prompt": prompt,
+            "image_url": _to_data_url(original),
+            "mask_url": _to_data_url(mask_img),
+            "num_images": 1,
+            "num_inference_steps": num_steps,
+            "guidance_scale": guidance_scale,
+            "output_format": "png",
+        }
+        if Config.FAL_INPAINT_MODEL == "fal-ai/flux-lora-fill":
+            # Fill dev 的 guidance 尺度和 Pro 不同（官方建議 30），沿用 Pro 的 3~5 會幾乎不跟 prompt
+            arguments.update(guidance_scale=Config.FAL_INPAINT_DEV_GUIDANCE, paste_back=True)
+        else:
+            arguments["safety_tolerance"] = "2"
+
+        print(f"[fal] model={Config.FAL_INPAINT_MODEL}  num_steps={num_steps}  guidance_scale={arguments['guidance_scale']}")
+        result = fal_subscribe("inpaint", Config.FAL_INPAINT_MODEL, arguments=arguments)
 
         images = result.get("images") or []
         if not images:
