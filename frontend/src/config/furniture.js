@@ -101,7 +101,6 @@ export const FURNITURE_BY_ROOM = {
     { value: 'coffee_table',  label: '茶几' },
     { value: 'tv_unit',       label: '電視櫃' },
     { value: 'armchair',      label: '扶手椅' },
-    { value: 'rug',           label: '地毯' },
     { value: 'plant',         label: '植物' },
     { value: 'bookshelf',     label: '書架' },
     { value: 'side_table',    label: '邊桌' },
@@ -156,7 +155,6 @@ export const FURNITURE_BY_ROOM = {
     { value: 'bookshelf',     label: '書架' },
     { value: 'toy_storage',   label: '玩具收納' },
     { value: 'bean_bag',      label: '懶骨頭' },
-    { value: 'rug',           label: '地毯' },
   ],
   // 客餐廳合一——CAD 房型生成（designbridge/roomplan）把客廳跟餐廳算成同一間房，
   // 家具面板就把兩邊清單合併，不用另外拆房間。
@@ -167,7 +165,6 @@ export const FURNITURE_BY_ROOM = {
     { value: 'dining_table',  label: '餐桌' },
     { value: 'chair',         label: '餐椅' },
     { value: 'armchair',      label: '扶手椅' },
-    { value: 'rug',           label: '地毯' },
     { value: 'plant',         label: '植物' },
     { value: 'bookshelf',     label: '書架' },
     { value: 'side_table',    label: '邊桌' },

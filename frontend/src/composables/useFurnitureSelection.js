@@ -6,20 +6,31 @@ import { useAuth } from './useAuth'
 const selectedFurniture = ref([])
 
 // 登入者的家具收藏存在後端（furniture_favorites）：登入後載入，之後每次變動整份覆寫回去
+// 雲端同步還沒做好，先關閉：收藏只存在記憶體，重新整理就清空
+const FAVORITES_SYNC = false
 const { user } = useAuth()
-let loaded = false
-watch(user, async u => {
-  loaded = false
-  if (!u) { selectedFurniture.value = []; return }
+// 最後一次與雲端一致的內容（JSON）；null = 還沒載入成功，不回寫，避免空清單蓋掉雲端資料
+let synced = null
+// 只看 id：切回分頁、token 更新時 Supabase 會換一個新的 user 物件，看整個物件會一直重抓
+watch(() => user.value?.id, async id => {
+  synced = null
+  if (!id) { selectedFurniture.value = []; return }
+  if (!FAVORITES_SYNC) return
   try {
     const res = await authFetch('/api/furniture-favorites')
-    if (res.ok) selectedFurniture.value = await res.json()
-    loaded = true   // 載入成功前不回寫，避免空清單蓋掉雲端資料
+    if (res.ok) {
+      const items = await res.json()
+      synced = JSON.stringify(items)
+      selectedFurniture.value = items
+    }
   } catch { /* 離線時只在記憶體內操作 */ }
 }, { immediate: true })
 
 watch(selectedFurniture, items => {
-  if (!loaded) return
+  if (synced === null) return
+  const json = JSON.stringify(items)
+  if (json === synced) return   // 剛從雲端載入的內容不用寫回去
+  synced = json
   authFetch('/api/furniture-favorites', {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },

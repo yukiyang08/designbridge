@@ -15,7 +15,9 @@ from designbridge.layout.floorplan_render import _generate_floor_plan
 
 # Vocabulary we constrain Gemini to, so parsed types line up with FURNITURE_SIZES,
 # heights, semantic shapes and floor-plan colors downstream.
-_KNOWN_FURNITURE_TYPES = sorted(k for k in FURNITURE_SIZES if k != "default")
+# 地毯不從平面圖解析：圖上的大塊區域常被誤認成地毯，產品決定一律不出
+_EXCLUDED_TYPES = frozenset({"default", "rug"})
+_KNOWN_FURNITURE_TYPES = sorted(k for k in FURNITURE_SIZES if k not in _EXCLUDED_TYPES)
 
 # 標準真實尺寸（公尺，長邊 × 短邊），跟前端 FURNITURE_REAL_SIZE_M 同值。
 # FURNITURE_SIZES 是「佔房間比例」，不能拿來判斷 Gemini 框出來的尺寸合不合理。
@@ -146,6 +148,8 @@ def parse_floor_plan_image(
         ftype = str(f.get("type", "default")).lower().replace(" ", "_")
         if ftype not in FURNITURE_SIZES:
             ftype = "default"
+        if ftype == "rug":
+            continue
         dw, dh = FURNITURE_SIZES.get(ftype, FURNITURE_SIZES["default"])
         xywh = _box_to_xywh(f)
         if xywh is None:
