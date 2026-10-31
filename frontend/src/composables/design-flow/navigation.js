@@ -6,7 +6,7 @@ import {
   cadPlanResult, cadActiveRoomId, cadRoomStatus, cadRoomSnapshots, openingEdits, cadOverview,
   spacePhoto, spacePhotoPath, spaceImage, styleRefImage, photoDetection, photoLayoutError,
   photoVersions, photoCurrent, photoBusy, photoStyleId, photoStylePrompt,
-  result, loading,
+  result, loading, extraPrompt,
   styleCandidates, styleCandidatePool, candidatesSearched, confirmedStyle, matchedStylePreview,
   lastGeneratedImage, manualMaskPath, refineHistory, textPrompt,
   panoUrl, panoError, panoLoading, quotationError,
@@ -69,6 +69,7 @@ export function resetFlow() {
   spaceImage.remove()
   styleRefImage.remove()
   result.value = null
+  extraPrompt.value = ''   // 描述會存進草稿，不清掉的話上一個設計打的字會帶進新的設計
   error.value = ''
   loading.value = false
   styleCandidates.value = []
