@@ -31,6 +31,14 @@ class PhotoLayoutRequest(BaseModel):
     room_type: Optional[str] = None
 
 
+class PhotoMoveRequest(BaseModel):
+    photo_path: str                                  # 原照片：用來解地板幾何
+    image_path: str                                  # 要改的那一版（家具仍在原位，例如原照片或換過風格的版本）
+    detected: List[dict] = Field(max_length=200)     # /api/photo-layout 偵測到的家具（含 image_box）
+    baseline: List[dict] = Field(max_length=200)     # 編輯前的佈局
+    placements: List[dict] = Field(max_length=200)   # 使用者調整後的佈局
+
+
 class RoomProgramRequest(BaseModel):
     """輸入：整層樓的房間需求（幾房幾廳…）+ 總坪數，獨立於既有單房家具佈局流程。"""
     bedroom_count: int = 2
@@ -460,4 +468,53 @@ def photo_layout(request: PhotoLayoutRequest, user_id: str = Depends(get_user_id
         "scene_graph": scene_graph,
         "vision_features": vision.get("vision_features") or {},
         "confidence": plan.get("confidence"),
+    }
+
+
+@router.post("/api/photo-move")
+def photo_move(request: PhotoMoveRequest, user_id: str = Depends(get_user_id)):
+    """在原圖上搬家具：挖掉舊位置、補背景、把同一件家具貼到新位置，房間其他部分不重新生成。"""
+    from designbridge.core.config import Config
+    from designbridge.core.nodes import visual_preprocessing_local
+    from designbridge.layout.camera_projection import furniture_height
+    from designbridge.layout.photo_geometry import resolve_floor_geometry
+    from designbridge.layout.photo_move import move_furniture_in_photo
+    from designbridge.render.inpaint import run_fal_inpainting, run_lama_inpainting, sam2_mask_from_box
+
+    _require_artifact_file(request.photo_path, 404, user_id)
+    _require_artifact_file(request.image_path, 404, user_id)
+    task_id = str(uuid.uuid4())
+    vf = visual_preprocessing_local(
+        {"user_input": {"initial_image": request.photo_path}, "task_id": task_id}
+    ).get("vision_features") or {}
+    geom = None
+    if all(vf.get(k) for k in ("depth", "segmentation", "segmentation_meta")):
+        geom = resolve_floor_geometry(
+            vf["depth"], vf["segmentation"], vf["segmentation_meta"], eye_height=Config.LAYOUT_CAMERA_EYE_HEIGHT,
+        )
+    if geom is None:
+        raise HTTPException(status_code=422, detail="這張照片看不出地板範圍，無法在原圖上搬動家具")
+
+    def inpaint(src, mask, prompt, out):
+        # 補洞（挖掉家具）用 LaMa：純背景重建，FLUX Fill 常在洞裡畫出新家具；新加家具才用 FLUX Fill
+        if prompt.startswith("empty floor"):
+            return run_lama_inpainting(src, mask, out) or run_fal_inpainting(src, mask, prompt, out, num_steps=40)
+        return run_fal_inpainting(src, mask, prompt, out, num_steps=40)
+
+    try:
+        res = move_furniture_in_photo(
+            request.image_path, geom, request.detected, request.baseline, request.placements,
+            Path("artifacts/render"), task_id,
+            inpaint=inpaint, segment=sam2_mask_from_box, height_of=furniture_height,
+        )
+    except RuntimeError as e:
+        raise HTTPException(status_code=502, detail=str(e))
+    if not res["image_path"]:
+        raise HTTPException(status_code=400, detail="家具位置沒有變動")
+    return {
+        "status": "success",
+        "task_id": task_id,
+        "generated_image_path": res["image_path"],
+        "generated_image_url": _artifact_url(res["image_path"]),
+        **{k: res[k] for k in ("moved", "removed", "added", "pasted")},
     }

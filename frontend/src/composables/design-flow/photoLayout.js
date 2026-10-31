@@ -187,20 +187,22 @@ export function restylePhoto(styleId = '') {
   })
 }
 
-// 移家具：照片原深度清掉舊家具、新位置疊回去整張重生
+// 移家具：在原圖上把家具挖掉、補背景、貼到新位置，房間其他部分不重新生成。
+// 底圖用目前這一版（家具還在原位時）或原照片，位移一律跟偵測基準比
 export function renderPhotoLayout() {
   const det = photoDetection.value
-  if (!det || !editPlacements.value.length) return
-  return runPhotoJob('依新的家具位置重新生成…', async () => {
-    const { baseline, ...sg } = det
-    const data = await generate({
-      text_prompt: photoStylePrompt.value.trim(),
-      style_profile_id: photoStyleId.value || undefined,
-      no_style_reference: !photoStyleId.value,
-      initial_image_path: spacePhotoPath.value,
-      scene_graph: { ...sg, furniture_placements: editPlacements.value, room_w: roomW.value, room_d: roomD.value },
+  if (!det) return
+  const base = currentVersion.value?.aligned ? currentVersion.value : photoVersions.value[0]
+  return runPhotoJob('在原圖上搬動家具…', async () => {
+    const res = await jsonFetch('/api/photo-move', {
+      photo_path: spacePhotoPath.value,
+      image_path: base.path,
+      detected: det.furniture_placements,
+      baseline: det.baseline,
+      placements: editPlacements.value,
     })
-    pushVersion(data, '新的家具位置', false)
+    if (!res.ok) throw new Error(await errorDetail(res))
+    pushVersion(await res.json(), '新的家具位置', false)
   })
 }
 
