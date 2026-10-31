@@ -124,6 +124,9 @@ const scoreTone = s => s == null ? '' : s >= 85 ? 'is-good' : s >= 60 ? 'is-mid'
         <FengshuiMiniPlan title="門窗位置（推估）與違規家具" :plan="planOf(placements)" :offenders="currentOffenders" />
       </div>
 
+      <!-- 問題多時預設收合，首屏只看分數；只有 1 項時直接展開 -->
+      <details class="rp-more" :open="failed.length <= 1">
+        <summary>詳細說明<template v-if="failed.length">（{{ failed.length }} 項待改善）</template></summary>
       <ul v-if="failed.length" class="rp-list">
         <li v-for="r in failed" :key="r.trigger" class="rp-item is-fail">
           <p class="rp-item-head">
@@ -142,6 +145,7 @@ const scoreTone = s => s == null ? '' : s >= 85 ? 'is-good' : s >= 60 ? 'is-mid'
       <p v-if="passed.length" class="rp-passed">
         已符合：{{ passed.map(r => r.label).join('、') }}
       </p>
+      </details>
     </template>
 
     <!-- 動線問題不論風水開關都顯示：擋門、走不到是實際的使用問題 -->
@@ -195,6 +199,8 @@ const scoreTone = s => s == null ? '' : s >= 85 ? 'is-good' : s >= 60 ? 'is-mid'
 .rp-off p { margin: 0; font-size: 0.92rem; }
 .rp-off-list { color: var(--db-text-soft); font-size: 0.85rem; }
 
+.rp-more { margin-top: 0.6rem; }
+.rp-more > summary { cursor: pointer; font-size: 0.88rem; color: var(--db-text-soft); }
 .rp-scores { display: flex; flex-wrap: wrap; align-items: center; gap: 1.5rem; margin-top: 0.8rem; }
 .rp-score { display: flex; flex-direction: column; align-items: center; min-width: 4.5rem; }
 .rp-score-num { font-family: var(--db-font-num); font-size: 1.9rem; line-height: 1.1; }

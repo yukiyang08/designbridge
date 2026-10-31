@@ -241,6 +241,30 @@ def _simplify(pts: list[tuple[float, float]], eps: float) -> list[tuple[float, f
     return [tuple(v) for v in arr[keep]]
 
 
+def _work_gray(image_path: str) -> np.ndarray:
+    """灰階圖統一縮放到 _WORK_SIDE 長邊，像素參數才對得上。"""
+    im = Image.open(image_path).convert("L")
+    scale = _WORK_SIDE / max(im.size)
+    if abs(scale - 1) > 0.05:
+        im = im.resize((round(im.width * scale), round(im.height * scale)), Image.LANCZOS)
+    return np.asarray(im)
+
+
+def _wall_mask(g: np.ndarray) -> np.ndarray:
+    """實心深色牆塊；細線（家具、標註、窗、門弧線）被開運算濾掉。"""
+    H, W = g.shape
+    wall = ndi.binary_opening(g < _WALL_GRAY, structure=np.ones((_WALL_KERNEL, _WALL_KERNEL)))
+    # 粗字（尺寸數字、房名）也會留下來；它們是孤立小塊，牆和柱子則長或大
+    wl, wn = ndi.label(wall)
+    if wn:
+        boxes = ndi.find_objects(wl)
+        span = np.array([max(b[0].stop - b[0].start, b[1].stop - b[1].start) for b in boxes])
+        keep = np.zeros(wn + 1, bool)
+        keep[1:] = span >= _MIN_WALL_SPAN * max(H, W)
+        wall = keep[wl]
+    return wall
+
+
 def segment_rooms(image_path: str, seeds: list[dict]) -> list[dict[str, Any]] | None:
     """依種子點把平面圖切成房間。
 
@@ -249,12 +273,7 @@ def segment_rooms(image_path: str, seeds: list[dict]) -> list[dict[str, Any]] | 
     polygon 為 ``[[x, y], ...]`` 且含外圍牆厚（裁切時才不會把牆塗掉）。
     切不出任何房間時回傳 ``None``。
     """
-    im = Image.open(image_path).convert("L")
-    # 大圖縮小、小圖放大，牆厚、門寬等像素參數才對得上
-    scale = _WORK_SIDE / max(im.size)
-    if abs(scale - 1) > 0.05:
-        im = im.resize((round(im.width * scale), round(im.height * scale)), Image.LANCZOS)
-    g = np.asarray(im)
+    g = _work_gray(image_path)
     H, W = g.shape
 
     # 屋外 = 所有線條當屏障時最大的白色連通區（尺寸線不封閉，會被併進來）
@@ -265,15 +284,7 @@ def segment_rooms(image_path: str, seeds: list[dict]) -> list[dict[str, Any]] | 
     sizes = ndi.sum(~lines, olab, range(1, n + 1))
     outside = olab == (int(np.argmax(sizes)) + 1)
 
-    wall = ndi.binary_opening(g < _WALL_GRAY, structure=np.ones((_WALL_KERNEL, _WALL_KERNEL)))
-    # 粗字（尺寸數字、房名）也會留下來；它們是孤立小塊，牆和柱子則長或大
-    wl, wn = ndi.label(wall)
-    if wn:
-        boxes = ndi.find_objects(wl)
-        span = np.array([max(b[0].stop - b[0].start, b[1].stop - b[1].start) for b in boxes])
-        keep = np.zeros(wn + 1, bool)
-        keep[1:] = span >= _MIN_WALL_SPAN * max(H, W)
-        wall = keep[wl]
+    wall = _wall_mask(g)
 
     # 貼著屋外、被細線圍起的小區域也算屋外：窗戶旁的圓形標記、門外入口的開門弧線。
     # 它們不是最大那片白色，會被當成室內，再從窗洞被房間淹進去或被誤認成小房間

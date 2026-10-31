@@ -19,10 +19,10 @@ from typing import Any
 from PIL import Image
 
 from designbridge.core.config import Config
-from designbridge.roomplan.constants import PING_TO_M2
+from designbridge.roomplan.constants import DOOR_WIDTH_M, ENTRY_DOOR_WIDTH_M, PING_TO_M2
 from designbridge.roomplan.schemas import DoorOpening, RoomInstance, Rect, WindowOpening
 from designbridge.roomplan.svg_render import render_room_plan_svg
-from designbridge.roomplan.walls import derive_walls_and_openings
+from designbridge.roomplan.walls import _swing_room, derive_walls_and_openings
 
 _SCALE_CACHE_DIR = Path("artifacts/cache/room_seeds")
 _SCALE_PROMPT_VERSION = "v2"
@@ -158,13 +158,62 @@ def _snap_rects(boxes: list[tuple[float, float, float, float]]) -> list[Rect]:
     return [Rect(xs[x0], ys[y0], xs[x1] - xs[x0], ys[y1] - ys[y0]) for x0, y0, x1, y1 in ends]
 
 
+def _pretrim_boxes(rooms: list[dict], res: int = 200) -> list[list[float]]:
+    """正規化外框 [x0, y0, x1, y1]，重疊的先縮開：4 種縮法（哪間房 × 哪個軸）挑「切掉的
+    多邊形像素最少」的。外框大又不規則的房（開放式餐廳）外框常被鄰房的邊角撐進來，
+    只看外框面積會縮錯房間，讓原本相鄰的房間之間裂出縫。"""
+    import numpy as np
+    from PIL import ImageDraw
+
+    masks = []
+    for r in rooms:
+        m = Image.new("L", (res, res), 0)
+        ImageDraw.Draw(m).polygon([(x * res, y * res) for x, y in r["polygon"]], fill=1)
+        masks.append(np.array(m, bool))
+    boxes = [[r["x"], r["y"], r["x"] + r["w"], r["y"] + r["h"]] for r in rooms]
+
+    def lost(i: int, axis: int, new: float, old: float) -> int:
+        """第 i 間的 axis 軸邊界從 old 移到 new，切掉的多邊形像素數。"""
+        lo, hi = (int(round(v * res)) for v in sorted((new, old)))
+        x0, y0, x1, y1 = (int(round(v * res)) for v in boxes[i])
+        return int(masks[i][y0:y1, lo:hi].sum() if axis == 0 else masks[i][lo:hi, x0:x1].sum())
+
+    min_dim = _MIN_DIM_M / 13   # 約 13 m 寬的整戶圖換算成正規化邊長
+    for _ in range(len(rooms) * 4):
+        best = None   # (損失, 房, 要改的邊索引, 新值)
+        for i in range(len(rooms)):
+            for j in range(i + 1, len(rooms)):
+                a, b = boxes[i], boxes[j]
+                if min(min(a[k + 2], b[k + 2]) - max(a[k], b[k]) for k in (0, 1)) <= 1e-6:
+                    continue
+                for k in (0, 1):
+                    for me, other in ((i, j), (j, i)):
+                        m, o = boxes[me], boxes[other]
+                        if m[k] + m[k + 2] < o[k] + o[k + 2]:   # me 在前半：縮它的終點
+                            edge, new = k + 2, o[k]
+                            size = new - m[k]
+                        else:
+                            edge, new = k, o[k + 2]
+                            size = m[k + 2] - new
+                        if size < min_dim:
+                            continue
+                        cost = lost(me, k, new, m[edge])
+                        if best is None or cost < best[0]:
+                            best = (cost, me, edge, new)
+        if best is None:
+            break
+        boxes[best[1]][best[2]] = best[3]
+    return boxes
+
+
 def _trim_overlaps(rects: list[Rect]) -> None:
-    """兩間房的外框重疊（L 型房的外框常撐進隔壁）：把較小的那間沿重疊較淺的軸往後縮，
-    縮到剛好貼著對方的邊。縮完會小於下限就不動，寧可留著重疊也不做出細縫。"""
+    """兩間房的外框重疊（L 型房的外框常撐進隔壁）：把讓出去的那間沿重疊較淺的軸往後縮，
+    縮到剛好貼著對方的邊。縮完會小於下限就不動，寧可留著重疊也不做出細縫。
+    正規化座標已先用 _pretrim_boxes 縮過；這裡只處理吸附後殘留的重疊。"""
     for _ in range(len(rects)):
         changed = False
         for i, a in enumerate(rects):
-            for b in rects[i + 1:]:
+            for j, b in enumerate(rects[i + 1:], i + 1):
                 ox = min(a.right, b.right) - max(a.x, b.x)
                 oy = min(a.bottom, b.bottom) - max(a.y, b.y)
                 if ox <= 1e-6 or oy <= 1e-6:
@@ -187,6 +236,53 @@ def _trim_overlaps(rects: list[Rect]) -> None:
                         continue
                     small.y, small.h = lo, hi - lo
                 changed = True
+        if not changed:
+            return
+
+
+_FILL_MAX_GAP_M = 1.0   # 兩房面對面的空隙在這以內才補
+_FILL_MIN_OVERLAP = 0.6  # 面對面的重疊要佔較小那間邊長的比例
+
+
+def _fill_gaps(rects: list[Rect]) -> None:
+    """兩間房之間留下窄縫（L 型房被壓成矩形、或鄰房吃掉一條凹處）：讓較小的那間延伸到貼齊對方。
+    延伸後會撞到第三間房就不動。縫太寬、或面對面重疊不夠，多半是屋外凹口，不補。"""
+    def hit(a: Rect, b: Rect) -> bool:
+        return min(a.right, b.right) - max(a.x, b.x) > 1e-6 and min(a.bottom, b.bottom) - max(a.y, b.y) > 1e-6
+
+    for _ in range(len(rects)):
+        changed = False
+        for i, a in enumerate(rects):
+            for j, b in enumerate(rects):
+                if i == j or a.area > b.area:
+                    continue
+                # a 較小，往 b 的方向延伸；水平與垂直各試一次
+                for horizontal in (True, False):
+                    if horizontal:
+                        gap = b.x - a.right if b.x >= a.right else a.x - b.right
+                        ov = min(a.bottom, b.bottom) - max(a.y, b.y)
+                        span = a.h
+                    else:
+                        gap = b.y - a.bottom if b.y >= a.bottom else a.y - b.bottom
+                        ov = min(a.right, b.right) - max(a.x, b.x)
+                        span = a.w
+                    if not 1e-6 < gap <= _FILL_MAX_GAP_M or ov < _FILL_MIN_OVERLAP * min(span, b.h if horizontal else b.w):
+                        continue
+                    new = Rect(a.x, a.y, a.w, a.h)
+                    if horizontal:
+                        if b.x >= a.right:
+                            new.w += gap
+                        else:
+                            new.x, new.w = a.x - gap, a.w + gap
+                    else:
+                        if b.y >= a.bottom:
+                            new.h += gap
+                        else:
+                            new.y, new.h = a.y - gap, a.h + gap
+                    if any(hit(new, c) for k, c in enumerate(rects) if k != i):
+                        continue
+                    a.x, a.y, a.w, a.h = new.x, new.y, new.w, new.h
+                    changed = True
         if not changed:
             return
 
@@ -216,7 +312,7 @@ def _detect_openings(image_path: str, rooms: list[dict]) -> list[dict]:
     from designbridge.render.llm import call_llm
 
     key = Path(image_path).read_bytes() + json.dumps([r["polygon"] for r in rooms]).encode()
-    cache = _SCALE_CACHE_DIR / f"{hashlib.sha256(key).hexdigest()[:32]}_openings_v1.json"
+    cache = _SCALE_CACHE_DIR / f"{hashlib.sha256(key).hexdigest()[:32]}_openings_v2.json"
     if cache.is_file():
         try:
             return json.loads(cache.read_text(encoding="utf-8"))
@@ -234,8 +330,10 @@ def _detect_openings(image_path: str, rooms: list[dict]) -> list[dict]:
         "for left/right).\n"
         '- "span": the opening width as a fraction of that side\'s length (0..1).\n'
         '- "width_m": the width in METERS only if a dimension is written for it, else null.\n'
+        '- "swings_into": for a door, the region letter the door leaf swings into (the side the '
+        'quarter-circle arc is drawn on); null for a sliding door or an open doorway.\n'
         'Return STRICT JSON only: {"openings":[{"kind":"window","rooms":["A"],"side":"top",'
-        '"center":0.5,"span":0.4,"width_m":null}]}'
+        '"center":0.5,"span":0.4,"width_m":null,"swings_into":null}]}'
     )
     try:
         text = call_llm(prompt, images=[image_path, _mark_rooms_image(image_path, rooms)],
@@ -252,13 +350,93 @@ def _detect_openings(image_path: str, rooms: list[dict]) -> list[dict]:
     return raw
 
 
+def _shared_wall(a: Rect, b: Rect, tol: float = 0.3) -> tuple[str, float, float, float] | None:
+    """兩間房共用的牆 (方向, 牆線座標, 起點, 終點)；沒有相鄰回 None。"""
+    for orient, (a0, a1, b0, b1), (lo, hi) in (
+        ("vertical", (a.right, a.x, b.x, b.right), (max(a.y, b.y), min(a.bottom, b.bottom))),
+        ("horizontal", (a.bottom, a.y, b.y, b.bottom), (max(a.x, b.x), min(a.right, b.right))),
+    ):
+        if hi - lo < 0.5:
+            continue
+        for e1, e2 in ((a0, b0), (a1, b1)):   # a 的終點貼 b 的起點，或反過來
+            if abs(e1 - e2) < tol:
+                return orient, (e1 + e2) / 2, lo, hi
+    return None
+
+
+def _arc_side_fn(image_path: str, metas: list[dict]):
+    """回傳 f(rooms, orient, x, y, width_m, pair) → 門板弧線掃進哪間房的 id（看不出來回 None）。
+    門弧線只畫在開門那一側：數牆線兩側 1 個門寬內的暗像素，多的那側就是開向。
+    比 Gemini 看圖回答可靠；兩側差不多（拉門、開口、家具干擾）就交回 Gemini 的答案。"""
+    import numpy as np
+
+    with Image.open(image_path) as im:
+        gray = np.array(im.convert("L"))
+    gh, gw = gray.shape
+    bbox = {m["id"]: m["bbox_norm"] for m in metas}
+
+    def side_fn(rooms: list[RoomInstance], orient: str, x: float, y: float, width_m: float, pair: list[str]):
+        by_id = {r.id: r for r in rooms}
+        a = by_id[pair[0]]
+        bn = bbox[a.id]
+        mpp = a.rect.w / (bn["w"] * gw)   # 吸附後的公尺矩形 ↔ 原圖像素，以第一間房為準
+        px, py = bn["x"] * gw + (x - a.rect.x) / mpp, bn["y"] * gh + (y - a.rect.y) / mpp
+        w = width_m / mpp
+        counts = []
+        for sgn in (-1, 1):
+            near, far = sorted((sgn * 6, sgn * (w + 3)))
+            if orient == "vertical":
+                box = (px + near, px + far, py - w / 2 - 3, py + w / 2 + 3)
+            else:
+                box = (px - w / 2 - 3, px + w / 2 + 3, py + near, py + far)
+            x0, x1, y0, y1 = (max(0, int(v)) for v in box)
+            counts.append(int((gray[y0:y1, x0:x1] < 180).sum()))
+        if max(counts) < 100 or max(counts) < 1.25 * min(counts):
+            return None
+        axis = 0 if orient == "vertical" else 1   # 負側 = 左／上，找出在那一側的房間
+        center = lambda r: (r.rect.x + r.rect.w / 2, r.rect.y + r.rect.h / 2)[axis]
+        neg, pos = sorted((by_id[i] for i in pair), key=center)
+        return (neg if counts[0] > counts[1] else pos).id
+
+    return side_fn
+
+
+def _doors_from_geo(geo: list[dict], rooms: list[RoomInstance], metas: list[dict], start: int = 0) -> list[DoorOpening]:
+    """floorplan_openings.detect_doors 量到的門（原圖正規化座標）→ 貼在兩間房共用牆上的門。
+    位置用第一間房的外框↔公尺矩形線性換算，再夾進共用牆的範圍；兩房沒有共用牆的略過。"""
+    doors: list[DoorOpening] = []
+    for d in geo:
+        i, j = d["pair"]
+        a, b = rooms[i], rooms[j]
+        bn = metas[i]["bbox_norm"]
+        wall = _shared_wall(a.rect, b.rect)
+        if wall is None:
+            continue
+        orient, const, lo, hi = wall
+        if orient == "horizontal":
+            along, width = a.rect.x + (d["cx"] - bn["x"]) / bn["w"] * a.rect.w, d["width"] / bn["w"] * a.rect.w
+        else:
+            along, width = a.rect.y + (d["cy"] - bn["y"]) / bn["h"] * a.rect.h, d["width"] / bn["h"] * a.rect.h
+        width = min(max(width, 0.6), 1.2, (hi - lo) * 0.9)
+        along = min(max(along, lo + width / 2), hi - width / 2)
+        x, y = (along, const) if orient == "horizontal" else (const, along)
+        doors.append(DoorOpening(
+            id=f"door_int_{start + len(doors)}", kind="interior", room_ids=[a.id, b.id],
+            orientation=orient, x=x, y=y, width_m=round(width, 2), swing_into_room_id=rooms[d["swing"]].id,
+        ))
+    return doors
+
+
 def _openings_from_spec(
-    spec: list[dict], rooms: list[RoomInstance], letters: dict[str, str]
+    spec: list[dict], rooms: list[RoomInstance], letters: dict[str, str], arc_side=None,
+    geo_doors: list[dict] | None = None, metas: list[dict] | None = None,
 ) -> tuple[list[DoorOpening], list[WindowOpening]]:
-    """spec（字母＋側＋比例）→ 貼在房間矩形邊上的門窗。字母對不上、側或比例不合法的整筆略過。"""
+    """spec（字母＋側＋比例）→ 貼在房間矩形邊上的門窗。字母對不上、側或比例不合法的整筆略過。
+    房間之間的門吸附到兩間房實際共用的牆上；同一對房間只留一扇。"""
     by_id = {r.id: r for r in rooms}
     doors: list[DoorOpening] = []
     windows: list[WindowOpening] = []
+    seen_pairs: set[frozenset] = set()
     for s in spec:
         try:
             ids = [letters[str(L).strip().upper()] for L in (s.get("rooms") or [])]
@@ -273,28 +451,51 @@ def _openings_from_spec(
         horizontal = side in ("top", "bottom")
         length = r.w if horizontal else r.h
         try:
-            width = float(s.get("width_m"))
+            gem_width = float(s.get("width_m"))
         except (TypeError, ValueError):
-            width = span * length
+            gem_width = None
         kind = s.get("kind")
-        lo, hi = (0.4, 3.0) if kind == "window" else (0.7, 1.2)
-        width = round(min(max(width, lo), length * 0.9), 2)
-        if horizontal:
-            x, y = r.x + center * r.w, (r.y if side == "top" else r.bottom)
-        else:
-            x, y = (r.x if side == "left" else r.right), r.y + center * r.h
-        orient = "horizontal" if horizontal else "vertical"
         if kind == "window":
+            width = round(min(max(gem_width if gem_width else span * length, 0.4), 3.0, length * 0.9), 2)
+            x, y = ((r.x + center * r.w, r.y if side == "top" else r.bottom) if horizontal
+                    else (r.x if side == "left" else r.right, r.y + center * r.h))
             windows.append(WindowOpening(id=f"window_{len(windows)}", room_id=room.id,
-                                         orientation=orient, x=x, y=y, width_m=width))
-        elif kind in ("door", "entry"):
-            pair = ids[:2] if kind == "door" else ids[:1]
-            swing = min((by_id[i] for i in pair), key=lambda q: q.rect.area).id
-            doors.append(DoorOpening(
-                id="door_entry" if kind == "entry" else f"door_int_{len(doors)}",
-                kind="entry" if kind == "entry" else "interior", room_ids=pair,
-                orientation=orient, x=x, y=y, width_m=width, swing_into_room_id=swing,
-            ))
+                                         orientation="horizontal" if horizontal else "vertical",
+                                         x=x, y=y, width_m=width))
+            continue
+        if kind not in ("door", "entry"):
+            continue
+        if kind == "door" and geo_doors is not None:   # 房間之間的門改用圖上量到的
+            continue
+        # 門寬不信任 Gemini 回的比例（常常是整面牆的 7、8 成），圖上沒標尺寸就用標準門寬
+        width = min(max(gem_width or (ENTRY_DOOR_WIDTH_M if kind == "entry" else DOOR_WIDTH_M), 0.7), 1.2)
+        if kind == "entry":
+            orient = "horizontal" if horizontal else "vertical"
+            x, y = ((r.x + center * r.w, r.y if side == "top" else r.bottom) if horizontal
+                    else (r.x if side == "left" else r.right, r.y + center * r.h))
+            pair, swing = ids[:1], room.id
+        else:
+            pair = ids[:2]
+            if len(pair) < 2 or frozenset(pair) in seen_pairs:
+                continue
+            wall = _shared_wall(r, by_id[pair[1]].rect)
+            if wall is None:   # 兩間房沒有共用牆，門沒地方放
+                continue
+            orient, const, lo, hi = wall
+            width = min(width, (hi - lo) * 0.9)
+            along = (r.x + center * r.w) if (orient == "horizontal") == horizontal else (lo + hi) / 2
+            along = min(max(along, lo + width / 2), hi - width / 2)
+            x, y = (along, const) if orient == "horizontal" else (const, along)
+            seen_pairs.add(frozenset(pair))
+            named = letters.get(str(s.get("swings_into") or "").strip().upper())
+            swing = (arc_side(rooms, orient, x, y, width, pair) if arc_side else None) or (named if named in pair else _swing_room(by_id[pair[0]], by_id[pair[1]]).id)
+        doors.append(DoorOpening(
+            id="door_entry" if kind == "entry" else f"door_int_{len(doors)}",
+            kind="entry" if kind == "entry" else "interior", room_ids=pair,
+            orientation=orient, x=x, y=y, width_m=round(width, 2), swing_into_room_id=swing,
+        ))
+    if geo_doors is not None:
+        doors += _doors_from_geo(geo_doors, rooms, metas, len(doors))
     return doors, windows
 
 
@@ -410,7 +611,8 @@ def build_upload_plan(image_path: str, rooms: list[dict], total_ping: float | No
     metas: list[dict] = []
     boxes: list[tuple[float, float, float, float]] = []
     unnamed = 0
-    for r in rooms:
+    nboxes = _pretrim_boxes(rooms)
+    for r, nb in zip(rooms, nboxes):
         ptype = _plan_type(r)
         label = r.get("label") or _TYPE_LABELS.get(r.get("room_type")) or _TYPE_LABELS.get(r.get("space_type"))
         if not label:
@@ -422,17 +624,27 @@ def build_upload_plan(image_path: str, rooms: list[dict], total_ping: float | No
             "polygon": r["polygon"], "anchor": r["anchor"],
             "bbox_norm": {"x": r["x"], "y": r["y"], "w": r["w"], "h": r["h"]},
         })
-        boxes.append((r["x"] * img_w * mpp, r["y"] * img_h * mpp, r["w"] * img_w * mpp, r["h"] * img_h * mpp))
+        boxes.append((nb[0] * img_w * mpp, nb[1] * img_h * mpp,
+                      (nb[2] - nb[0]) * img_w * mpp, (nb[3] - nb[1]) * img_h * mpp))
 
     rects = _snap_rects(boxes)
     _trim_overlaps(rects)
+    _fill_gaps(rects)
 
     from designbridge.layout.floorplan_parse import _mark
     letters = {_mark(i): m["id"] for i, m in enumerate(metas, 1)}
     spec = _detect_openings(image_path, rooms)
+    try:
+        from designbridge.layout.floorplan_openings import detect_doors
+        geo = detect_doors(image_path, rooms, mpp)
+    except Exception as e:  # noqa: BLE001
+        print(f"⚠️  door geometry detection failed, fall back to Gemini doors: {e}")
+        geo = None
     plan = _assemble(
         image_path, metas, rects, scale_source,
-        make_openings=lambda rs: _openings_from_spec(spec, rs, letters), openings_source="detected",
+        make_openings=lambda rs: _openings_from_spec(
+            spec, rs, letters, _arc_side_fn(image_path, metas), geo, metas),
+        openings_source="detected",
     )
     if from_boxes:
         plan["warnings"].insert(0, "圖片線條不夠清楚（例如翻拍或歪斜），房間範圍是 AI 框出來的，可能不準；建議上傳正面、清晰的平面圖")

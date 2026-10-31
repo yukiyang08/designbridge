@@ -77,6 +77,14 @@ watch([doorKeepouts, () => props.placements, bounds], () => {
   if (next !== props.placements) emit('update:placements', next)
 }, { immediate: true })
 const editorNotice = ref('')
+// 動作成功的短提示（新增／刪除／旋轉／復原…），1.8 秒後消失
+const flashMsg = ref('')
+let flashTimer = null
+function flash(msg) {
+  flashMsg.value = msg
+  clearTimeout(flashTimer)
+  flashTimer = setTimeout(() => { flashMsg.value = '' }, 1800)
+}
 function collidesWithOthers(rect, excludeId) {
   if (doorKeepouts.value.some((k) => rectsOverlap(rect, k))) return true
   return items.value.some((it) => (
@@ -118,11 +126,13 @@ function undo() {
   const prev = historyStack.value.pop()
   if (selectedId.value && !prev.some((it) => it.id === selectedId.value)) selectedId.value = null
   emit('update:placements', prev)
+  flash('已復原')
 }
 function redo() {
   if (!redoStack.value.length) return
   historyStack.value.push(snapshot())
   emit('update:placements', redoStack.value.pop())
+  flash('已重做')
 }
 
 function boardSize() {
@@ -272,6 +282,7 @@ function rotateNTimes90(item, times) {
 function applyRotation(item, steps) {
   const rotated = rotateNTimes90(item, steps)
   editorNotice.value = ''
+  flash(`已旋轉「${labelOf(item.type)}」`)
   pushHistory()
   commit(items.value.map((it) => (it.id === item.id ? rotated : it)))
 }
@@ -292,6 +303,7 @@ function removeItem(item) {
   if (!item) return
   pushHistory()
   commit(items.value.filter((it) => it.id !== item.id))
+  flash(`已刪除「${labelOf(item.type)}」，可按「復原」找回`)
   if (selectedId.value === item.id) selectedId.value = null
 }
 
@@ -332,6 +344,7 @@ function addItem(type) {
   pushHistory()
   commit([...items.value, item])
   selectedId.value = id
+  flash(`已新增「${labelOf(type)}」`)
 }
 
 function updateSelectedField(key, value) {
@@ -375,7 +388,7 @@ const rotationDeg = computed({
 })
 const lockedModel = computed({
   get: () => !!selectedItem.value?.locked,
-  set: (val) => updateSelectedField('locked', val),
+  set: (val) => { updateSelectedField('locked', val); flash(val ? '已鎖定位置' : '已解除鎖定') },
 })
 
 // ── Furniture palette ─────────────────────────────────────────────
@@ -446,30 +459,30 @@ onBeforeUnmount(() => viewportObserver?.disconnect())
   <div class="editor">
     <div class="toolbar">
       <button class="tool-btn active" @click="selectedId = null" title="取消選取">
-        <Icon icon="mdi:cursor-default-outline" width="16" /><span>選取</span>
+        <Icon icon="mdi:cursor-default-outline" width="22" /><span>選取</span>
       </button>
       <span class="tool-sep" />
       <button v-if="canRotate(selectedItem)" class="tool-btn" @click="rotate90(selectedItem)" title="旋轉 90°">
-        <Icon icon="mdi:rotate-right" width="16" /><span>旋轉</span>
+        <Icon icon="mdi:rotate-right" width="22" /><span>旋轉</span>
       </button>
       <button class="tool-btn" @click="zoomIn" title="放大">
-        <Icon icon="mdi:magnify-plus-outline" width="16" /><span>放大</span>
+        <Icon icon="mdi:magnify-plus-outline" width="22" /><span>放大</span>
       </button>
       <button class="tool-btn" @click="zoomOut" title="縮小">
-        <Icon icon="mdi:magnify-minus-outline" width="16" /><span>縮小</span>
+        <Icon icon="mdi:magnify-minus-outline" width="22" /><span>縮小</span>
       </button>
       <button class="tool-btn" :class="{ active: showDims }" :aria-pressed="showDims" @click="showDims = !showDims" title="顯示／隱藏尺寸標示">
-        <Icon icon="mdi:ruler" width="16" /><span>尺寸</span>
+        <Icon icon="mdi:ruler" width="22" /><span>尺寸</span>
       </button>
       <button class="tool-btn" :disabled="!selectedItem" @click="removeItem(selectedItem)" title="刪除">
-        <Icon icon="mdi:trash-can-outline" width="16" /><span>刪除</span>
+        <Icon icon="mdi:trash-can-outline" width="22" /><span>刪除</span>
       </button>
       <span class="tool-sep" />
       <button class="tool-btn" :disabled="!historyStack.length" @click="undo" title="復原">
-        <Icon icon="mdi:undo" width="16" /><span>復原</span>
+        <Icon icon="mdi:undo" width="22" /><span>復原</span>
       </button>
       <button class="tool-btn" :disabled="!redoStack.length" @click="redo" title="重做">
-        <Icon icon="mdi:redo" width="16" /><span>重做</span>
+        <Icon icon="mdi:redo" width="22" /><span>重做</span>
       </button>
     </div>
 
@@ -487,7 +500,7 @@ onBeforeUnmount(() => viewportObserver?.disconnect())
             <Icon icon="mdi:plus" class="palette-item-add" />
           </button>
         </div>
-        <p class="palette-hint">點擊 + 加入畫布</p>
+        <p class="palette-hint">點擊家具卡片加入畫布</p>
       </aside>
 
       <!-- ── 畫布 ── -->
@@ -582,7 +595,7 @@ onBeforeUnmount(() => viewportObserver?.disconnect())
           </select>
         </label>
         <label class="props-toggle">
-          <span>鎖定位置</span>
+          <span class="lock-label"><Icon :icon="lockedModel ? 'mdi:lock' : 'mdi:lock-open-variant-outline'" width="18" />鎖定位置</span>
           <input type="checkbox" v-model="lockedModel" class="switch-input" />
         </label>
       </aside>
@@ -622,6 +635,7 @@ onBeforeUnmount(() => viewportObserver?.disconnect())
     </div>
 
     <span v-if="editorNotice" class="hint hint-notice" role="status">{{ editorNotice }}</span>
+    <span v-else-if="flashMsg" class="hint hint-ok" role="status">✓ {{ flashMsg }}</span>
     <span v-else class="hint">拖動移動 · 右下角縮放 · ⟳ 旋轉 · 靠牆自動吸附 · 點選外框可調整房間尺寸 · 「尺寸」可顯示標註 · 橘色箭頭＝家具正面朝向</span>
   </div>
 </template>
@@ -637,7 +651,7 @@ onBeforeUnmount(() => viewportObserver?.disconnect())
 .tool-btn {
   display: flex; flex-direction: column; align-items: center; gap: 0.15rem;
   border: none; background: transparent; color: #6b4f30;
-  border-radius: 8px; padding: 0.35rem 0.6rem; font-size: 0.68rem;
+  border-radius: 8px; padding: 0.4rem 0.7rem; font-size: 0.78rem;
   font-family: inherit; font-weight: 600; cursor: pointer; transition: all 0.15s;
 }
 .tool-btn:hover:not(:disabled) { background: #f7efe3; }
@@ -673,9 +687,11 @@ onBeforeUnmount(() => viewportObserver?.disconnect())
 .palette-item-icon { font-size: 1.3rem; }
 .palette-item-label { line-height: 1.15; }
 .palette-item-add {
-  position: absolute; top: 0.2rem; right: 0.2rem;
-  color: #756d66; font-size: 0.8rem;
+  position: absolute; top: 0.25rem; right: 0.25rem;
+  width: 18px; height: 18px; padding: 2px; border-radius: 50%;
+  background: #fff; color: #756d66; transition: background 0.15s, color 0.15s;
 }
+.palette-item:hover .palette-item-add { background: #756d66; color: #fff; }
 .palette-hint { font-size: 0.68rem; color: #a08a6f; margin: 0; text-align: center; }
 
 .board-viewport {
@@ -817,6 +833,8 @@ onBeforeUnmount(() => viewportObserver?.disconnect())
   font-size: 0.78rem; color: #5c4630; font-weight: 600;
 }
 .hint-notice { color: #a33b2b; font-weight: 600; }
+.lock-label { display: inline-flex; align-items: center; gap: 0.3rem; }
+.hint-ok { color: #2f7a4b; font-weight: 600; }
 
 @media (max-width: 900px) {
   .board-viewport { flex-basis: 100%; order: 2; height: min(70vh, 640px); }

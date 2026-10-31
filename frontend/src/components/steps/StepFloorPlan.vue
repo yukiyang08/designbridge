@@ -176,10 +176,15 @@ function goNext() {
 }
 
 .actions {
+  position: sticky;   /* 固定在底部，長頁面也不用捲到最下面才找得到 */
+  bottom: 0;
+  z-index: 5;
   display: flex;
   justify-content: center;
   gap: 1rem;
-  padding-top: 1.5rem;
+  margin-top: 1rem;
+  padding: 0.9rem 0;
+  background: linear-gradient(to top, var(--db-card) 70%, transparent);
 }
 
 .foot-hint {

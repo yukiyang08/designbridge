@@ -16,8 +16,6 @@
 import { ref, reactive, computed, watch, defineAsyncComponent } from 'vue'
 import { useRouter } from 'vue-router'
 import AdvancedPanel from '@/components/shell/AdvancedPanel.vue'
-import FengshuiPicker from '@/components/FengshuiPicker.vue'
-import FengshuiReport from '@/components/FengshuiReport.vue'
 import StyleSuggestions from '@/components/StyleSuggestions.vue'
 import ImageUpload from '@/components/ImageUpload.vue'
 import DesignDetails from '@/components/steps/DesignDetails.vue'
@@ -35,7 +33,6 @@ const PanoramaViewer = defineAsyncComponent(() => import('@/components/PanoramaV
 
 const {
   planSource, extraPrompt, outputAspect, roomTypeForPlan, roomType,
-  editPlacements, fengshuiEnabled, fengshuiReport,
   selectedStyle, noStyleReference, styleRefImage,
   styleOptions, styleLoading, styleError, fetchStyleOptions,
   styleCandidates, candidatesLoading, candidatesError, confirmedStyle, showSuggestions,
@@ -85,16 +82,6 @@ const activeStyleId = computed(() => result.value?.style_params?.style_profile_i
 // 原圖卡是不是目前正顯示的那張：直接比物件參照，restoreOriginal/submit3D 都是把
 // result 設成 styleSwapCache 裡存的同一個物件，參照相等就代表現在看的就是它。
 const isOriginalActive = computed(() => !!result.value && result.value === styleSwapCache.value[ORIGINAL_STYLE_KEY])
-
-/**
- * 整層房屋（cad）與上傳平面圖（upload）這兩條路徑沒有「空間設定」那一步，
- * 風水選單因此在前面的步驟裡沒有落腳處，只能擺在這裡。
- */
-const showFengshui = computed(
-  () => planSource.value === 'cad' || planSource.value === 'upload',
-)
-// 有平面圖的路徑在上一步就算好健檢報告了，生成後附在結果下方
-const showFengshuiReport = computed(() => !!fengshuiReport.value && editPlacements.value.length > 0)
 
 // 排家具路徑在這一頁才打描述，打字時重查風格推薦（debounce 在 scheduleSearch 裡）
 function onPromptInput() { scheduleSearch() }
@@ -265,20 +252,6 @@ function toFavoriteItem(item, c) {
           @similar="fetchStyleCandidates({ anchorSelected: true })"
         />
       </section>
-
-      <!-- ══ 風水禁忌（只有 cad／upload 路徑在這裡出現，見 showFengshui）══ -->
-      <FengshuiPicker
-        v-if="showFengshui"
-        :room-type="roomTypeForPlan"
-      />
-
-      <!-- 風水開啟時，把這張圖對應配置的健檢報告附在結果下方 -->
-      <FengshuiReport
-        v-if="showFengshuiReport && fengshuiEnabled"
-        :report="fengshuiReport"
-        :placements="editPlacements"
-        enabled
-      />
 
       <AdvancedPanel hint="指定風格・參考圖・風格轉移方式・輸出比例">
         <div class="adv-grid">
