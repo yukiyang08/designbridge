@@ -426,13 +426,18 @@ const boardAspect = computed(() => {
   return Math.max(0.5, Math.min(2, ratio))
 })
 const viewportRef = ref(null)
-const viewportSize = ref({ width: 0, height: 0 })
+const viewportSize = ref({ width: 0 })
+// 外框高度跟著畫布走（不寫死成螢幕高度的比例，橫向房間上下會空一大塊），畫布高度上限看視窗
+const winSize = ref({ w: window.innerWidth, h: window.innerHeight })
+const onWinResize = () => { winSize.value = { w: window.innerWidth, h: window.innerHeight } }
 const boardStageStyle = computed(() => {
-  const { width, height } = viewportSize.value
-  if (!width || !height) return { transform: `scale(${zoom.value})`, '--z': zoom.value }
+  const { width } = viewportSize.value
+  if (!width) return { transform: `scale(${zoom.value})`, '--z': zoom.value }
   const padding = showDims.value ? 92 : 0
   const availableWidth = Math.max(0, width - padding)
-  const availableHeight = Math.max(0, height - padding)
+  const { w, h } = winSize.value
+  const maxHeight = w <= 640 ? Math.min(h * 0.6, 480) : Math.min(h * 0.7, 720)
+  const availableHeight = Math.max(0, maxHeight - padding)
   const boardWidth = Math.min(availableWidth, availableHeight * boardAspect.value, 720)
   const boardHeight = boardWidth / boardAspect.value
   return {
@@ -445,14 +450,15 @@ const boardStageStyle = computed(() => {
 let viewportObserver
 onMounted(() => {
   viewportObserver = new ResizeObserver(([entry]) => {
-    viewportSize.value = {
-      width: entry.contentRect.width,
-      height: entry.contentRect.height,
-    }
+    viewportSize.value = { width: entry.contentRect.width }
   })
   if (viewportRef.value) viewportObserver.observe(viewportRef.value)
+  window.addEventListener('resize', onWinResize)
 })
-onBeforeUnmount(() => viewportObserver?.disconnect())
+onBeforeUnmount(() => {
+  viewportObserver?.disconnect()
+  window.removeEventListener('resize', onWinResize)
+})
 </script>
 
 <template>
@@ -695,7 +701,7 @@ onBeforeUnmount(() => viewportObserver?.disconnect())
 .palette-hint { font-size: 0.68rem; color: #a08a6f; margin: 0; text-align: center; }
 
 .board-viewport {
-  flex: 1 1 420px; min-width: 0; height: min(70vh, 720px); overflow: auto;
+  flex: 1 1 420px; min-width: 0; max-height: min(70vh, 720px); overflow: auto;
   display: flex; align-items: center; justify-content: center;
 }
 .board-stage {
@@ -837,7 +843,7 @@ onBeforeUnmount(() => viewportObserver?.disconnect())
 .hint-ok { color: #2f7a4b; font-weight: 600; }
 
 @media (max-width: 900px) {
-  .board-viewport { flex-basis: 100%; order: 2; height: min(70vh, 640px); }
+  .board-viewport { flex-basis: 100%; order: 2; max-height: min(70vh, 640px); }
   .props-panel { order: 3; }
   .palette { order: 1; }
 }
@@ -847,7 +853,7 @@ onBeforeUnmount(() => viewportObserver?.disconnect())
 @media (max-width: 640px) {
   .toolbar { flex-wrap: nowrap; overflow-x: auto; }
   .tool-btn { flex: none; }
-  .board-viewport { order: 1; height: min(60vh, 480px); }
+  .board-viewport { order: 1; max-height: min(60vh, 480px); }
   .palette { order: 2; width: 100%; box-sizing: border-box; }
   .props-panel { order: 3; }
   .palette-list { display: flex; overflow-x: auto; max-height: none; padding-bottom: 0.2rem; }

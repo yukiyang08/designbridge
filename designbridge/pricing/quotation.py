@@ -24,13 +24,18 @@ _IDENTIFY_BBOX_PROMPT = """\
   {
     "name_zh": "三人座沙發",
     "category": "sofa",
+    "quantity": 1,
     "bbox": [0.05, 0.40, 0.55, 0.85]
   }
 ]
 
 bbox 為 [x1, y1, x2, y2]，值為 0~1 的比例座標（左上角到右下角）。
+quantity 是圖中這種家具實際有幾件（4 張一樣的餐椅就是 4、8 顆崁燈就是 8），不確定時填 1；
+同款只列一筆、bbox 框其中一件即可。
 category 必須是：sofa / table / chair / lamp / rug / curtain / storage / bed / shelf / other
 只列出主要且明顯可見的物件（至多 8 件），勿過度細分。
+天花板燈具（崁燈、軌道燈、吸頂燈、吊燈）即使很小也要列出，不佔上述 8 件名額；
+bbox 框住其中最清楚的一盞並略放大，name_zh 用「崁燈」「軌道燈」「吸頂燈」「吊燈」這類名稱。
 """
 
 _ESTIMATE_PROMPT = """\
@@ -88,6 +93,13 @@ _ROOM_DEFAULTS: dict[str, list[tuple[str, str]]] = {
 }
 
 
+def _quantity_of(raw: dict) -> int:
+    try:
+        return max(1, min(int(raw.get("quantity") or 1), 12))   # 上限防 Gemini 亂報
+    except (TypeError, ValueError):
+        return 1
+
+
 def _fallback_furniture(room_type: str) -> list[dict]:
     """Gemini 失敗時的備用清單，不含 bbox（直接用 KB 文字搜尋）。"""
     defaults = _ROOM_DEFAULTS.get(room_type) or _ROOM_DEFAULTS["living_room"]
@@ -136,6 +148,9 @@ def crop_image_by_bbox(img, bbox_ratio: list[float]):
     # 至少 20×20 px
     if px2 - px1 < 20 or py2 - py1 < 20:
         return None
+    # 崁燈這類小物件 bbox 太細，向量比對沒資訊；往外撐到至少 64px
+    px1, px2 = px1 - max(0, 64 - (px2 - px1)) // 2, px2 + max(0, 64 - (px2 - px1)) // 2
+    py1, py2 = py1 - max(0, 64 - (py2 - py1)) // 2, py2 + max(0, 64 - (py2 - py1)) // 2
     px1, py1 = max(0, px1), max(0, py1)
     px2, py2 = min(w, px2), min(h, py2)
     return img.crop((px1, py1, px2, py2))
@@ -160,7 +175,9 @@ def _process_furniture_item(raw: dict, img: Any, style_id: str = "") -> tuple[Fu
     Independent per item (own crop/embedding/DB lookup), so build_quotation runs
     this concurrently across all detected items instead of one at a time.
     """
-    from designbridge.pricing.furniture_kb import recommend_products, search_kb
+    from designbridge.pricing.furniture_kb import (
+        _SMALL_FIXTURE_SUBS, recommend_products, search_kb, subcategories_for,
+    )
 
     name_zh: str = raw.get("name_zh") or raw.get("name_en") or "家具"
     category: str = raw.get("category") or ""
@@ -199,7 +216,8 @@ def _process_furniture_item(raw: dict, img: Any, style_id: str = "") -> tuple[Fu
             print(f"[quotation] CLIP/vector search error for '{name_zh}': {e}")
 
     # ── Fallback：本地 JSON 關鍵字搜尋 ──
-    if not candidates:
+    # 崁燈、軌道燈本地 JSON 沒有，文字搜尋只會比到吊燈、檯燈這些不同種的燈，寧可走 LLM 估價
+    if not candidates and not (subcategories_for(category, name_zh) & _SMALL_FIXTURE_SUBS):
         text_hits = search_kb(name_zh, category=category, top_k=3)
         if text_hits:
             matched_kb = True
@@ -287,7 +305,10 @@ def build_quotation(
         with log_stage("quotation.match_furniture"):
             results = list(executor.map(lambda raw: _process_furniture_item(raw, img, style_id), detected))
 
-    furniture_list: list[FurnitureItem] = [item for item, _ in results]
+    # 同款多件展開成多筆：前端會把候選相同的合併成 ×N，總價逐件相加
+    furniture_list: list[FurnitureItem] = [
+        {**item} for raw, (item, _) in zip(detected, results) for _ in range(_quantity_of(raw))
+    ]
     kb_match_count = sum(1 for _, matched in results if matched)
 
     # ── 使用者手動勾選的家具（家具查詢頁）優先併入，視為已確定候選 ──

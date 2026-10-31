@@ -212,7 +212,8 @@ _SUBCATEGORY_RULES: dict[str, list[tuple[str, set[str]]]] = {
                 (r"層架|置物架|開放式|格櫃", {"open-storage", "bookcase"}),
                 (r"餐櫃|邊櫃|收納櫃|櫥櫃|矮櫃", {"sideboard", "chest-of-drawers"})],
     "lamp": [(r"吊燈", {"pendant-lamp"}),
-             (r"嵌燈|崁燈|筒燈|盒燈", {"recessed-light", "box-downlight"}),
+             (r"嵌燈|崁燈", {"recessed-light"}),
+             (r"筒燈|盒燈", {"box-downlight"}),
              (r"軌道燈|投射燈", {"track-light"}),
              (r"燈管|層板燈|間接照明", {"tube-light"}),
              (r"平板燈", {"panel-light"}),
@@ -226,6 +227,9 @@ _SUBCATEGORY_RULES: dict[str, list[tuple[str, set[str]]]] = {
 }
 STYLE_BONUS = 0.0    # 商品風格跟渲染圖相同時排序分數加多少；風格標籤還不夠準、效果也量不出來，先關閉
 _POOL_SIZE = 40      # 先依大類別取這麼多候選，再篩選、去重
+_SMALL_FIXTURE_SUBS = {"recessed-light", "box-downlight", "track-light"}
+_SMALL_FIXTURE_MIN_SIM = 0.5   # 同子分類商品只有十幾件，分數再低也比推薦別種燈好
+_WIDE_POOL_SIZE = 500  # 前 _POOL_SIZE 名沒有目標細分類時的備援，涵蓋整個大類
 
 
 def subcategories_for(category: str, detected_name: str) -> set[str]:
@@ -254,12 +258,15 @@ def recommend_products(
     search 預設為 find_top_k_by_embedding（評估腳本可傳入本地搜尋）。
     """
     search = search or find_top_k_by_embedding
+    subs = subcategories_for(category, detected_name)
     pool = search(query_embedding, category, _POOL_SIZE, 0.0)
+    # 目標細分類商品少（崁燈、軌道燈只有十幾件）時，前 N 名常一件都沒有；此時擴大候選池再找
+    if subs and not any(h.get("subcategory") in subs for h in pool):
+        pool = search(query_embedding, category, _WIDE_POOL_SIZE, 0.0)
     # Supabase 回傳的欄位不含 style_tags，用網址對回本地資料補上
     local = {item.get("url"): item for item in _load_local_kb()}
     pool = [{**local.get(h.get("url"), {}), **h} for h in pool]
 
-    subs = subcategories_for(category, detected_name)
     if "table-chair-set" not in subs:
         pool = [h for h in pool if h.get("subcategory") != "table-chair-set"]
     if subs:
@@ -271,6 +278,10 @@ def recommend_products(
         bonus = style_bonus if style_id and style_id in (h.get("style_tags") or []) else 0.0
         h["score"] = round(float(h.get("similarity") or 0) + bonus, 4)
     pool.sort(key=lambda h: h["score"], reverse=True)
+
+    # 崁燈、軌道燈在圖上只有一小點，crop 相似度天生偏低（約 0.6~0.68），用全域門檻永遠推薦不到
+    if subs & _SMALL_FIXTURE_SUBS:
+        min_similarity = min(min_similarity, _SMALL_FIXTURE_MIN_SIM)
 
     results, seen = [], set()
     for h in pool:
