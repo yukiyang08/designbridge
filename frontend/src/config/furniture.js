@@ -219,6 +219,25 @@ export function furnitureRealSize(type) {
   return FURNITURE_REAL_SIZE_M[type] || FURNITURE_REAL_SIZE_M.default
 }
 
+// 尺寸合理範圍（標準尺寸的倍率），跟後端 layout_items.fit_real_size 用同一組
+const WIDTH_RATIO = [0.5, 1.6]
+const DEPTH_RATIO = [0.75, 1.4]
+const TYPE_RATIOS = {
+  bed: [WIDTH_RATIO, [0.9, 1.15]],
+  rug: [[0.5, 2.0], [0.5, 2.0]],
+}
+
+// 回傳 { w: [min, max], d: [min, max] }（公尺）；不在表裡的自訂家具不知道合理尺寸，回 null。
+// 靠側牆的床、沙發長短邊會對調，所以跟標準尺寸較接近的那個方向比（同後端）。
+export function furnitureSizeRange(type, wM, dM) {
+  if (!FURNITURE_REAL_SIZE_M[type] || type === 'default') return null
+  let [sw, sd] = FURNITURE_REAL_SIZE_M[type]
+  let [wr, dr] = TYPE_RATIOS[type] || [WIDTH_RATIO, DEPTH_RATIO]
+  const err = (a, b) => Math.abs(Math.log(wM / a)) + Math.abs(Math.log(dM / b))
+  if (wM > 0 && dM > 0 && err(sd, sw) < err(sw, sd)) [sw, sd, wr, dr] = [sd, sw, dr, wr]
+  return { w: [sw * wr[0], sw * wr[1]], d: [sd * dr[0], sd * dr[1]] }
+}
+
 // 新增家具用：真實尺寸換成這間房的歸一化 w/h（夾在 [0.04, 0.9]，太小的房間至少看得到、不會比房間大）。
 export function furnitureDefaultSize(type, roomW = 5, roomD = 4) {
   const [w, d] = furnitureRealSize(type)

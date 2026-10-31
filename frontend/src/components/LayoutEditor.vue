@@ -5,7 +5,7 @@ import RoomWalls from '@/components/RoomWalls.vue'
 import RoomDims from '@/components/RoomDims.vue'
 import { doorKeepouts as doorKeepoutsOf, settlePlacements } from '@/utils/roomGeometry'
 import {
-  furnitureLabel, furnitureIcon, furnitureDefaultSize,
+  furnitureLabel, furnitureIcon, furnitureDefaultSize, furnitureSizeRange,
   ROOM_OPTIONS, FURNITURE_BY_ROOM,
 } from '@/config/furniture'
 
@@ -357,6 +357,17 @@ const depthCm = computed({
   get: () => (selectedItem.value ? Math.round(selectedItem.value.h * roomD.value * 100) : 0),
   set: (cm) => { if (cm > 0) updateSelectedField('h', clamp(cm / 100 / roomD.value, MIN, 1)) },
 })
+// 軟性提示：超出常見尺寸只提醒、不改值，使用者可能就是要特殊尺寸
+const sizeHint = computed(() => {
+  const it = selectedItem.value
+  const range = it && furnitureSizeRange(it.type, widthCm.value / 100, depthCm.value / 100)
+  if (!range) return { w: '', d: '' }
+  const msg = (cm, [lo, hi], dim) => {
+    const [a, b] = [Math.round(lo * 20) * 5, Math.round(hi * 20) * 5]
+    return cm < a || cm > b ? `一般${labelOf(it.type)}${dim}約 ${a}–${b} cm` : ''
+  }
+  return { w: msg(widthCm.value, range.w, '寬'), d: msg(depthCm.value, range.d, '深') }
+})
 
 // ── Room frame selection & resize ─────────────────────────────────
 // 點畫布外框選取「房間」，右側面板改顯示房間長寬（跟選家具時共用同一個面板位置）。
@@ -573,11 +584,13 @@ onBeforeUnmount(() => viewportObserver?.disconnect())
         </div>
         <label class="props-field">
           <span>寬度 (cm)</span>
-          <input type="number" v-model.number="widthCm" min="1" />
+          <input type="number" v-model.number="widthCm" min="1" :class="{ warn: sizeHint.w }" />
+          <small v-if="sizeHint.w" class="size-hint">{{ sizeHint.w }}</small>
         </label>
         <label class="props-field">
           <span>深度 (cm)</span>
-          <input type="number" v-model.number="depthCm" min="1" />
+          <input type="number" v-model.number="depthCm" min="1" :class="{ warn: sizeHint.d }" />
+          <small v-if="sizeHint.d" class="size-hint">{{ sizeHint.d }}</small>
         </label>
         <label v-if="canRotate(selectedItem)" class="props-field">
           <span>旋轉角度 (°)</span>
@@ -816,6 +829,8 @@ onBeforeUnmount(() => viewportObserver?.disconnect())
   border: 1px solid #e2d4bf; border-radius: 6px; padding: 0.35rem 0.5rem;
   font-size: 0.82rem; font-family: inherit; background: #fdfaf5;
 }
+.props-field input.warn { border-color: #d9822b; }
+.size-hint { color: #b4621a; font-size: 0.7rem; line-height: 1.3; }
 .props-toggle {
   display: flex; align-items: center; justify-content: space-between;
   font-size: 0.78rem; color: #5c4630; font-weight: 600;
