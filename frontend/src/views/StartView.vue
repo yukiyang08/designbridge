@@ -56,7 +56,7 @@ function pick(source) {
         @click="pick(e.source)"
       >
         <div class="thumb-wrap">
-          <img :src="e.thumb" :alt="e.title.join('')" class="thumb" />
+          <img :src="e.thumb" :alt="e.title.join('')" :class="['thumb', { 'thumb--contain': e.thumb === thumbPlan }]" />
         </div>
         <h2 class="title">
           <span v-for="line in e.title" :key="line">{{ line }}</span>
@@ -125,10 +125,12 @@ function pick(source) {
   min-height: 190px;
 }
 .thumb {
-  max-width: 100%;
-  max-height: 230px;
-  object-fit: contain;
+  width: 100%;
+  aspect-ratio: 3 / 2;   /* 三張縮圖同尺寸，不看原圖比例 */
+  border-radius: 12px;
+  object-fit: cover;
 }
+.thumb--contain { object-fit: contain; }   /* 平面圖的線條貼邊，裁掉會缺一塊 */
 
 .title {
   display: flex;

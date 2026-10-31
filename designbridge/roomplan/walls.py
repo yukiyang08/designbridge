@@ -54,10 +54,19 @@ def _find_shared_edges(rooms: list[RoomInstance]) -> list[dict]:
     return shared
 
 
+# 門往哪間房開：臥室／浴室優先，廚房次之；餐廳、客廳是要擺家具的公共空間，盡量不讓門掃進去
+_SWING_PRIORITY = {"bedroom_master": 3, "bedroom": 3, "bathroom": 3, "balcony": 2, "kitchen": 1}
+
+
+def _swing_room(a: RoomInstance, b: RoomInstance) -> RoomInstance:
+    key = lambda r: (_SWING_PRIORITY.get(r.room_type, 0), -r.rect.area)   # 同優先時進比較小的那間
+    return max((a, b), key=key)
+
+
 def _make_interior_door(shared_edge: dict, idx: int) -> DoorOpening:
     a, b = shared_edge["a"], shared_edge["b"]
     mid = (shared_edge["lo"] + shared_edge["hi"]) / 2
-    swing_into = a.id if a.rect.area <= b.rect.area else b.id
+    swing_into = _swing_room(a, b).id
     if shared_edge["orientation"] == "vertical":
         return DoorOpening(
             id=f"door_int_{idx}", kind="interior", room_ids=[a.id, b.id],

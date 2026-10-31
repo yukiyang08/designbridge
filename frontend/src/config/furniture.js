@@ -76,7 +76,7 @@ export const ROOM_OPTIONS = [
 
 // 空間類型卡片用的大圖示；自訂房型沒有對應就用 roomIcon() 的預設
 const ROOM_ICONS = {
-  dining: 'mdi:silverware-fork-knife', living_room: 'mdi:sofa', bedroom: 'mdi:bed-king', kitchen: 'mdi:stove', study: 'mdi:desk',
+  dining: 'mdi:silverware-fork-knife', living_room: 'mdi:sofa', bedroom: 'mdi:bed-king', kitchen: 'mdi:stove', study: 'mdi:desk', dining_room: 'mdi:silverware-fork-knife', bathroom: 'mdi:shower', balcony: 'mdi:flower-outline',
 }
 import livingRoomPhoto from '@/assets/rooms/living_room.jpg'
 import bedroomPhoto from '@/assets/rooms/bedroom.jpg'
@@ -90,7 +90,7 @@ import diningPhoto from '@/assets/rooms/dining.jpg'
 // 空間類型卡片的實景照；自訂房型沒有照片，卡片退回圖示
 const ROOM_PHOTOS = {
   living_room: livingRoomPhoto, bedroom: bedroomPhoto, kitchen: kitchenPhoto, study: studyPhoto,
-  living_dining: livingDiningPhoto, bathroom: bathroomPhoto, balcony: balconyPhoto, dining: diningPhoto,
+  living_dining: livingDiningPhoto, bathroom: bathroomPhoto, balcony: balconyPhoto, dining: diningPhoto, dining_room: diningPhoto,
 }
 export const roomPhoto = (value) => ROOM_PHOTOS[value] || ''
 export const roomIcon = (value) => ROOM_ICONS[value] || 'mdi:home-variant-outline'

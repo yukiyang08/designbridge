@@ -222,7 +222,7 @@ def detect_rooms_in_floor_plan(image_path: str) -> list[dict] | None:
 
 # 家具面板認得、但佈局引擎還不支援的空間；只用來預選家具清單，room_type 仍是 other
 _EXTRA_SPACE_TYPES = ("bathroom", "balcony")
-# 動線空間（玄關、走廊、走道）：切割時保留自己的範圍、不讓隔壁房間吃掉，但不輸出成房間
+# 動線空間（玄關、走廊、走道）：切割時保留自己的範圍、不讓隔壁房間吃掉，輸出時 space_type=circulation
 _CIRCULATION = "circulation"
 _CIRCULATION_WORDS = ("玄關", "走廊", "走道", "過道", "通道", "廊道", "門廳", "入口")
 # 不收單獨的 hall：living hall 是客廳
@@ -328,10 +328,11 @@ def _detect_rooms_by_segmentation(image_path: str) -> list[dict] | None:
         return None
     if rooms:
         _relabel_rooms(image_path, rooms)
-        # 動線空間切割時保有自己的範圍（隔壁房間不會吃進來），這裡才拿掉，那一塊就空著
-        rooms = [r for r in rooms if not _is_circulation(r)]
+        # 玄關、走廊也輸出成房間（room_type 仍是 other），標成 circulation 讓前端顯示名稱
         for i, r in enumerate(rooms, 1):
             r["id"] = f"room_{i}"
+            if _is_circulation(r):
+                r["space_type"] = _CIRCULATION
     return rooms or None
 
 

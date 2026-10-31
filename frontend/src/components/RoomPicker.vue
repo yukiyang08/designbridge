@@ -37,7 +37,7 @@ const TYPE_LABELS = {
   dining_room: '餐廳',
 }
 // 佈局引擎不支援、但認得出來的空間（後端 space_type），直接顯示名稱
-const SPACE_LABELS = { bathroom: '浴室', balcony: '陽台' }
+const SPACE_LABELS = { bathroom: '浴室', balcony: '陽台', circulation: '玄關' }
 
 // 名稱優先用圖上寫的房名，其次是房型名、浴室／陽台；都沒有就依序標房間1、房間2…
 const labels = computed(() => {

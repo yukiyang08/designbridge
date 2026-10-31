@@ -39,6 +39,7 @@ _ROOM_TYPE_TO_FURNITURE_KEY = {
     "bedroom_master": "bedroom",
     "bedroom": "bedroom",
     "living_dining": "living_dining",
+    "dining": "dining",
     "kitchen": "kitchen",
     "bathroom": "bathroom",
     "balcony": "balcony",
@@ -63,6 +64,14 @@ _DEFAULT_FURNITURE: dict[str, list[dict]] = {
         {"type": "chair", "x": 0.68, "y": 0.42, "w": 0.08, "h": 0.08, "facing": "down"},
         {"type": "chair", "x": 0.58, "y": 0.72, "w": 0.08, "h": 0.08, "facing": "up"},
         {"type": "chair", "x": 0.68, "y": 0.72, "w": 0.08, "h": 0.08, "facing": "up"},
+    ],
+    # 獨立餐廳：餐桌置中、上下各兩張椅（跟前端 CAD_DEFAULT_LAYOUT.dining_room 一致）
+    "dining": [
+        {"type": "dining_table", "x": 0.30, "y": 0.38, "w": 0.40, "h": 0.24},
+        {"type": "chair", "x": 0.33, "y": 0.24, "w": 0.10, "h": 0.10, "facing": "down"},
+        {"type": "chair", "x": 0.57, "y": 0.24, "w": 0.10, "h": 0.10, "facing": "down"},
+        {"type": "chair", "x": 0.33, "y": 0.66, "w": 0.10, "h": 0.10, "facing": "up"},
+        {"type": "chair", "x": 0.57, "y": 0.66, "w": 0.10, "h": 0.10, "facing": "up"},
     ],
     "kitchen": [
         {"type": "cabinet", "x": 0.05, "y": 0.05, "w": 0.30, "h": 0.08},

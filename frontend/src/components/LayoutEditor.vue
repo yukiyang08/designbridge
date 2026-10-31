@@ -385,7 +385,7 @@ const paletteCatalog = computed(() => FURNITURE_BY_ROOM[paletteRoomType.value] |
 
 // ── 尺寸標示模式 ─────────────────────────────────────────────────
 // 開啟後：畫布外圍顯示總長與門窗尺寸鏈、每件家具標寬×深、選取家具時標出它到四面牆的距離。
-const showDims = ref(false)
+const showDims = ref(true)   // 預設開啟，使用者可用「尺寸」按鈕關閉
 const cmOf = (frac, meters) => Math.round(frac * meters * 100)
 const gaps = computed(() => {
   const it = selectedItem.value
