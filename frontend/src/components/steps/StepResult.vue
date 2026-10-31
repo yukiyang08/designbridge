@@ -141,12 +141,16 @@ function startOver() {
   router.push('/start')
 }
 
+// 有商品圖才算精準導購；預設選第一個有圖的候選，都沒圖才落到預估估價
+const hasImg = (c) => !!c?.product_image_url
+const firstWithImage = (item) => Math.max(0, (item.candidates || []).findIndex(hasImg))
+
 // 每件家具目前選中的候選 index
 const selectedCandidates = reactive({})
 watch(
   () => quotation.value?.furniture_list,
   (list) => {
-    if (list) list.forEach((_, idx) => { selectedCandidates[idx] = quotation.value?.selected_indices?.[idx] ?? 0 })
+    if (list) list.forEach((item, idx) => { selectedCandidates[idx] = quotation.value?.selected_indices?.[idx] ?? firstWithImage(item) })
   },
   { immediate: true },
 )
@@ -186,6 +190,11 @@ const furnitureGroups = computed(() => {
 })
 const groupPick = (g) => selectedCandidates[g.idxs[0]] ?? 0
 function setGroupPick(g, ci) { g.idxs.forEach(i => { selectedCandidates[i] = ci }) }
+const pickedOf = (g) => g.item.candidates?.[groupPick(g)]
+const shopGroups = computed(() => furnitureGroups.value.filter(g => hasImg(pickedOf(g))))
+const estimateGroups = computed(() => furnitureGroups.value.filter(g => pickedOf(g) && !hasImg(pickedOf(g))))
+// 換款只列有圖的商品，保留原本的 index 才能寫回 selectedCandidates
+const imageAlts = (g) => (g.item.candidates || []).map((a, ai) => ({ a, ai })).filter(x => hasImg(x.a))
 
 // 目前展開「換款」的那一組
 const openRow = ref(null)
@@ -479,13 +488,13 @@ function toFavoriteItem(item, c) {
             <span class="total-val">NT$ {{ computedTotal.toLocaleString() }}</span>
           </div>
 
-          <ul class="furn-list">
-            <li v-for="g in furnitureGroups" :key="g.key" class="furn">
-              <template v-for="c in [g.item.candidates?.[groupPick(g)]]" :key="c?.id || g.key">
+          <h3 v-if="shopGroups.length" class="sub-title">精準導購</h3>
+          <ul v-if="shopGroups.length" class="furn-list">
+            <li v-for="g in shopGroups" :key="g.key" class="furn">
+              <template v-for="c in [pickedOf(g)]" :key="c?.id || g.key">
                 <div v-if="c" class="furn-main">
                   <span class="furn-thumb">
-                    <img v-if="c.product_image_url" :src="c.product_image_url" :alt="c.name" />
-                    <span v-else class="furn-thumb-empty">無圖</span>
+                    <img :src="c.product_image_url" :alt="c.name" />
                   </span>
                   <div class="furn-info" :title="g.item.detected_name">
                     <span class="furn-cat">{{ categoryLabel(g.item) }}</span>
@@ -508,7 +517,7 @@ function toFavoriteItem(item, c) {
                           @click="toggleFavorite(toFavoriteItem(g.item, c))"
                         >{{ isFavorited(toFavoriteItem(g.item, c)) ? '★' : '☆' }}</button>
                         <button
-                          v-if="g.item.candidates.length > 1"
+                          v-if="imageAlts(g).length > 1"
                           type="button" class="swap-btn" :class="{ open: openRow === g.key }"
                           title="換一款" aria-label="換一款"
                           :aria-expanded="openRow === g.key"
@@ -528,14 +537,14 @@ function toFavoriteItem(item, c) {
               <!-- 其他候選：點了就換，並自動收合 -->
               <div v-if="openRow === g.key" class="alts">
                 <button
-                  v-for="(a, ai) in g.item.candidates"
+                  v-for="{ a, ai } in imageAlts(g)"
                   :key="ai"
                   type="button"
                   :class="['alt', { selected: groupPick(g) === ai }]"
                   @click="setGroupPick(g, ai); openRow = null"
                 >
                   <span class="alt-img">
-                    <img v-if="a.product_image_url" :src="a.product_image_url" :alt="a.name" />
+                    <img :src="a.product_image_url" :alt="a.name" />
                   </span>
                   <span class="alt-name" :title="a.name">{{ shortName(a.name) }}</span>
                   <span class="alt-price">NT$ {{ a.price.toLocaleString() }}</span>
@@ -543,6 +552,21 @@ function toFavoriteItem(item, c) {
               </div>
             </li>
           </ul>
+
+          <!-- 找不到有圖的商品：只列預估價，不放圖 -->
+          <template v-if="estimateGroups.length">
+            <h3 class="sub-title">預估估價項目</h3>
+            <ul class="est-list">
+              <li v-for="g in estimateGroups" :key="g.key" class="est-row" :title="g.item.detected_name">
+                <span class="est-cat">{{ categoryLabel(g.item) }}</span>
+                <span class="est-name" :title="pickedOf(g).name">{{ shortName(pickedOf(g).name) }}</span>
+                <span class="est-price">
+                  NT$ {{ pickedOf(g).price.toLocaleString() }}
+                  <small v-if="g.idxs.length > 1" class="qty">×{{ g.idxs.length }}</small>
+                </span>
+              </li>
+            </ul>
+          </template>
         </template>
 
         <p v-else-if="quotationLoading" class="hint" role="status">
@@ -986,7 +1010,18 @@ function toFavoriteItem(item, c) {
   overflow: hidden;
 }
 .furn-thumb img { max-width: 100%; max-height: 100%; object-fit: contain; }
-.furn-thumb-empty { color: var(--db-placeholder); font-size: 0.7rem; }
+.sub-title { margin: 0.9rem 0 0.2rem; font-size: 0.8rem; font-weight: 600; color: var(--db-text-soft); letter-spacing: 0.04em; }
+/* 預估估價：沒有商品圖，純文字一行一件 */
+.est-list { margin: 0; padding: 0; list-style: none; }
+.est-row {
+  display: grid; grid-template-columns: auto 1fr auto; align-items: baseline; gap: 0.6rem;
+  padding: 0.45rem 0; border-bottom: 1px solid #f0f0f0; font-size: 0.88rem;
+}
+.est-row:last-child { border-bottom: none; }
+.est-cat { font-size: 0.74rem; color: var(--db-text-soft); }
+.est-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--db-text-soft); }
+.est-price { white-space: nowrap; }
+.est-row .qty { font-size: 0.8rem; padding: 0.05rem 0.45rem; }
 .furn-info { display: flex; flex-direction: column; gap: 0.15rem; flex: 1; min-width: 0; }
 .furn-info .name { font-size: 0.92rem; }
 .furn-cat { font-size: 0.74rem; color: var(--db-text-soft); letter-spacing: 0.04em; }

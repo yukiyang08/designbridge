@@ -74,9 +74,14 @@ const CATEGORY_ZH = {
   curtain: '窗簾', storage: '收納', shelf: '收納', bed: '床',
 }
 const shortName = (name = '') => name.split(/[,，]/)[0].trim()
-const quoteRows = computed(() => (quotation.value?.furniture_list || []).map((item, i) => ({
-  key: i, label: CATEGORY_ZH[item.category] || item.detected_name, c: item.candidates?.[0] || null,
-})))
+// 有商品圖的才當精準導購（優先選有圖的候選），都沒圖的只列預估價
+const quoteRows = computed(() => (quotation.value?.furniture_list || []).map((item, i) => {
+  const cands = item.candidates || []
+  return { key: i, label: CATEGORY_ZH[item.category] || item.detected_name,
+           c: cands.find(c => c?.product_image_url) || cands[0] || null }
+}))
+const shopRows = computed(() => quoteRows.value.filter(r => r.c?.product_image_url))
+const estimateRows = computed(() => quoteRows.value.filter(r => r.c && !r.c.product_image_url))
 const quoteTotal = computed(() => quoteRows.value.reduce((s, r) => s + (r.c?.price || 0), 0))
 </script>
 
@@ -257,19 +262,32 @@ const quoteTotal = computed(() => quoteRows.value.reduce((s, r) => s + (r.c?.pri
               <span>預算 · {{ quoteRows.length }} 件</span>
               <strong>NT$ {{ quoteTotal.toLocaleString() }}</strong>
             </div>
-            <ul class="quote-list">
-              <li v-for="r in quoteRows" :key="r.key" class="quote-item">
+            <h4 v-if="shopRows.length" class="q-sub">精準導購</h4>
+            <ul v-if="shopRows.length" class="quote-list">
+              <li v-for="r in shopRows" :key="r.key" class="quote-item">
                 <span class="q-thumb">
-                  <img v-if="r.c?.product_image_url" :src="r.c.product_image_url" :alt="r.c.name" />
+                  <img :src="r.c.product_image_url" :alt="r.c.name" />
                 </span>
                 <span class="q-info">
                   <small>{{ r.label }}</small>
-                  <a v-if="r.c?.purchase_url" :href="r.c.purchase_url" target="_blank" rel="noopener" :title="r.c.name">{{ shortName(r.c.name) }}</a>
-                  <span v-else>{{ shortName(r.c?.name) || '—' }}</span>
+                  <a v-if="r.c.purchase_url" :href="r.c.purchase_url" target="_blank" rel="noopener" :title="r.c.name">{{ shortName(r.c.name) }}</a>
+                  <span v-else>{{ shortName(r.c.name) }}</span>
                 </span>
-                <span class="q-price">NT$ {{ (r.c?.price || 0).toLocaleString() }}</span>
+                <span class="q-price">NT$ {{ (r.c.price || 0).toLocaleString() }}</span>
               </li>
             </ul>
+            <template v-if="estimateRows.length">
+              <h4 class="q-sub">預估估價項目</h4>
+              <ul class="quote-list">
+                <li v-for="r in estimateRows" :key="r.key" class="quote-item q-est">
+                  <span class="q-info">
+                    <small>{{ r.label }}</small>
+                    <span :title="r.c.name">{{ shortName(r.c.name) || '—' }}</span>
+                  </span>
+                  <span class="q-price">NT$ {{ (r.c.price || 0).toLocaleString() }}</span>
+                </li>
+              </ul>
+            </template>
           </template>
         </template>
       </aside>
@@ -404,6 +422,8 @@ const quoteTotal = computed(() => quoteRows.value.reduce((s, r) => s + (r.c?.pri
 .q-info small { color: var(--db-text-soft); font-size: 0.74rem; }
 .q-info a, .q-info span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--db-text); }
 .q-price { font-size: 0.86rem; font-variant-numeric: tabular-nums; }
+.q-sub { margin: 0.6rem 0 0.1rem; font-size: 0.78rem; font-weight: 600; color: var(--db-text-soft); letter-spacing: 0.04em; }
+.q-est { grid-template-columns: minmax(0, 1fr) auto; }   /* 預估項目沒有縮圖欄 */
 
 /* ── 版本 ── */
 .versions { display: flex; gap: 0.5rem; overflow-x: auto; flex-shrink: 0; padding-bottom: 2px; }
