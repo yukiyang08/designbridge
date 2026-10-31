@@ -7,7 +7,7 @@ import {
   floorPlanUrl, floorPlanPath, sceneGraph, layoutRenderConfig, editPlacements,
   roomW, roomD, roomTypeForPlan,
   floorPlanUpload, uploadedPlanUrl, uploadedPlanPath, detectedRooms, planParseIssue,
-  cadDefaultPlacements,
+  uploadTotalPing, cadDefaultPlacements,
 } from './state'
 import { nextStep, goToStepKey } from './navigation'
 import { scheduleSearch } from './style'
@@ -74,6 +74,10 @@ export async function useUploadedPlan() {
     error.value = '請先上傳平面配置圖'
     return
   }
+  if (!(uploadTotalPing.value >= 1 && uploadTotalPing.value <= 500)) {
+    error.value = '請先輸入總坪數（1–500 坪）'
+    return
+  }
   const requestId = ++requestState.current
   error.value = ''
   planParseIssue.value = null
@@ -101,7 +105,7 @@ async function detectRoomsAndProceed(path, requestId) {
   let rooms = [], plan = null
   let reason = 'empty'
   try {
-    const roomsRes = await jsonFetch('/api/detect-rooms', { image_path: path })
+    const roomsRes = await jsonFetch('/api/detect-rooms', { image_path: path, total_ping: uploadTotalPing.value })
     if (!roomsRes.ok) throw new Error(`${roomsRes.status}`)
     ;({ rooms = [], plan = null } = await roomsRes.json())
   } catch {
@@ -126,6 +130,7 @@ async function detectRoomsAndProceed(path, requestId) {
     nextStep() // → 'roomPick'
     return
   }
+  spaceSizePing.value = uploadTotalPing.value   // 單間圖：總坪數就是這間房的坪數
   await parseFloorPlanAndProceed(path, requestId, rooms[0].room_type)
 }
 
@@ -148,6 +153,7 @@ export async function parseAsSingleRoom() {
   const requestId = ++requestState.current
   error.value = ''
   planParseIssue.value = null
+  spaceSizePing.value = uploadTotalPing.value
   await parseFloorPlanAndProceed(issue.path, requestId)
 }
 
