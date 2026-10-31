@@ -224,7 +224,7 @@ onMounted(() => {
 }
 
 /* 上一步 / 次要動作靠左、下一步 / 主要動作靠右，固定在卡片底部（捲動時黏在視窗底）。
-   ponytail: 沿用各 step 的 .actions，不搬按鈕；只有一顆時靠右。 */
+   ponytail: 沿用各 step 的 .actions，不搬按鈕；只有一顆時維持靠左，避免整層→單間時位置跳動。 */
 .studio-main :deep(.actions) {
   position: sticky;
   bottom: 0;
@@ -240,7 +240,6 @@ onMounted(() => {
   border-top: 1px solid #e8e6e1;
   border-radius: 0 0 var(--db-radius-card) var(--db-radius-card);
 }
-.studio-main :deep(.actions > :only-child) { margin-left: auto; }
 .studio-main :deep(.actions .db-btn) { min-width: 0; }
 /* 有縮圖時卡片內部變兩欄 grid：左邊主內容、右邊縮圖，同一個框框裡面，
    不是另外浮一個獨立的白卡在旁邊。 */
