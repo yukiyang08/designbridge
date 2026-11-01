@@ -57,7 +57,10 @@ async function buildBase() {
     output_aspect: outputAspect.value,
     style_method: styleMethod.value,
     fengshui: { enabled: fengshuiEnabled.value, excluded: [...fengshuiExcluded.value] },
-    style_params: result.value?.style_params || null,
+    // 目前這間沒有（例如舊草稿做過局部修改被清掉）就借已完成房間的，整層仍用同一組
+    style_params: result.value?.style_params
+      || Object.values(cadRoomSnapshots.value).map(s => s?.result?.style_params).find(Boolean)
+      || null,
   }
 }
 
@@ -141,8 +144,10 @@ export async function applyToRooms(roomIds) {
   try {
     const base = await buildBase()
     if (run.cancelled) return
-    // 沒有目前這間的 style_params，每間會各自選風格，整層就不一致了
-    if (!base.style_params) throw new Error('請先完成目前這間房的渲染')
+    // 沒有 style_params 每間會各自選風格，整層就不一致；不用風格參考時本來就沒有，照常生成
+    if (!base.style_params && !base.no_style_reference) {
+      throw new Error('找不到目前這間的風格設定，請重新生成這間後再套用')
+    }
     cadBatch.value = { ...cadBatch.value, ...Object.fromEntries(rooms.map(r => [r.id, { status: 'queued' }])) }
 
     const queue = [...rooms]
