@@ -1,0 +1,229 @@
+{
+ "dc241f47": {
+  "status": "success",
+  "task_id": "3c0a108b-c015-4582-8846-7e77472ca60a",
+  "scene_graph": {
+   "source": "photo",
+   "furniture_placements": [
+    {
+     "id": "bed_1",
+     "type": "bed",
+     "rotation": 0,
+     "x": 0.1594,
+     "y": 0.0,
+     "w": 0.4611,
+     "h": 0.4952,
+     "image_box": [
+      0.264,
+      0.511,
+      0.613,
+      0.817
+     ]
+    },
+    {
+     "id": "desk_2",
+     "type": "desk",
+     "rotation": 0,
+     "x": 0.8111,
+     "y": 0.6681,
+     "w": 0.1889,
+     "h": 0.3238,
+     "image_box": [
+      0.707,
+      0.608,
+      0.998,
+      0.999
+     ]
+    },
+    {
+     "id": "chair_3",
+     "type": "chair",
+     "rotation": 0,
+     "x": 0.5825,
+     "y": 0.7462,
+     "w": 0.175,
+     "h": 0.1476,
+     "image_box": [
+      0.618,
+      0.655,
+      0.793,
+      0.999
+     ]
+    },
+    {
+     "id": "fridge_4",
+     "type": "fridge",
+     "rotation": 0,
+     "x": 0.7825,
+     "y": 0.0,
+     "w": 0.175,
+     "h": 0.1452,
+     "image_box": [
+      0.724,
+      0.543,
+      0.878,
+      0.732
+     ]
+    }
+   ],
+   "room_w": 3.6,
+   "room_d": 4.2,
+   "room_type": "bedroom",
+   "doors": [
+    {
+     "x": 0.375,
+     "y": 0.98,
+     "w": 0.25,
+     "h": 0.02,
+     "wall": "near",
+     "pos": 0.5,
+     "width_m": 0.9,
+     "image_box": null,
+     "assumed": true
+    }
+   ],
+   "windows": [
+    {
+     "x": 0.3756,
+     "y": 0.0,
+     "w": 0.2889,
+     "h": 0.02,
+     "wall": "far",
+     "pos": 0.52,
+     "width_m": 1.04,
+     "image_box": [
+      0.468,
+      0.315,
+      0.643,
+      0.525
+     ],
+     "assumed": false
+    }
+   ]
+  },
+  "vision_features": {
+   "geometry_constraints": {},
+   "depth": "artifacts\\vision\\8c38e4e422d93f15\\depth.png",
+   "segmentation": "artifacts\\vision\\8c38e4e422d93f15\\segmentation.png",
+   "segmentation_preview": "artifacts\\vision\\8c38e4e422d93f15\\segmentation_preview.png",
+   "segmentation_meta": "artifacts\\vision\\8c38e4e422d93f15\\segmentation_meta.json"
+  },
+  "confidence": "high"
+ },
+ "f16c296a": {
+  "status": "success",
+  "task_id": "3b8d2212-9cf9-49fe-89b4-6e904a3ab021",
+  "scene_graph": {
+   "source": "photo",
+   "furniture_placements": [
+    {
+     "id": "bed_1",
+     "type": "bed",
+     "rotation": 0,
+     "x": 0.0,
+     "y": 0.3626,
+     "w": 0.3952,
+     "h": 0.4348,
+     "image_box": [
+      0.0,
+      0.441,
+      0.495,
+      0.88
+     ]
+    },
+    {
+     "id": "chair_2",
+     "type": "chair",
+     "rotation": 0,
+     "x": 0.7438,
+     "y": 0.5504,
+     "w": 0.1524,
+     "h": 0.1391,
+     "image_box": [
+      0.757,
+      0.478,
+      0.892,
+      0.83
+     ]
+    },
+    {
+     "id": "desk_3",
+     "type": "desk",
+     "rotation": 0,
+     "x": 0.8571,
+     "y": 0.5983,
+     "w": 0.1429,
+     "h": 0.2435,
+     "image_box": [
+      0.86,
+      0.512,
+      1.0,
+      0.916
+     ]
+    },
+    {
+     "id": "fridge_4",
+     "type": "fridge",
+     "rotation": 0,
+     "x": 0.8619,
+     "y": 0.8691,
+     "w": 0.1381,
+     "h": 0.1217,
+     "image_box": [
+      0.87,
+      0.667,
+      1.0,
+      1.0
+     ]
+    }
+   ],
+   "room_w": 4.2,
+   "room_d": 4.6,
+   "room_type": "bedroom",
+   "doors": [
+    {
+     "x": 0.5152,
+     "y": 0.0,
+     "w": 0.2095,
+     "h": 0.02,
+     "wall": "far",
+     "pos": 0.62,
+     "width_m": 0.88,
+     "image_box": [
+      0.596,
+      0.137,
+      0.678,
+      0.671
+     ],
+     "assumed": false
+    }
+   ],
+   "windows": [
+    {
+     "x": 0.6643,
+     "y": 0.0,
+     "w": 0.3357,
+     "h": 0.02,
+     "wall": "far",
+     "pos": 0.88,
+     "width_m": 1.41,
+     "image_box": [
+      0.776,
+      0.068,
+      1.0,
+      0.421
+     ],
+     "assumed": false
+    }
+   ]
+  },
+  "vision_features": {
+   "geometry_constraints": {},
+   "depth": "artifacts\\vision\\9fe8fad2be517d96\\depth.png",
+   "segmentation": "artifacts\\vision\\9fe8fad2be517d96\\segmentation.png",
+   "segmentation_preview": "artifacts\\vision\\9fe8fad2be517d96\\segmentation_preview.png",
+   "segmentation_meta": "artifacts\\vision\\9fe8fad2be517d96\\segmentation_meta.json"
+  },
+  "confidence": "high"
+ }
+}
