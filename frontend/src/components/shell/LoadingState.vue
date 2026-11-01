@@ -3,27 +3,11 @@
  * 設計稿沒有畫載入狀態，但每個生成步驟都要等 10–60 秒，沒有它畫面會像當掉。
  *
  * 畫面是一張自己畫自己的平面圖草稿（純裝飾，不代表實際進度——後端目前沒有回報階段）。
- * 真實資訊只有兩個：已等待秒數，以及超過 SLOW_AFTER 秒後的久候說明
- * （實測 fal 閒置後的第一次呼叫會冷啟動，可能要數分鐘）。
  */
-import { ref, computed, onMounted, onBeforeUnmount } from 'vue'
-
 defineProps({
   title: { type: String, default: 'AI 生成中' },
   sub:   { type: String, default: '' },
 })
-
-const SLOW_AFTER = 40
-const sec = ref(0)
-let timer
-onMounted(() => { timer = setInterval(() => { sec.value++ }, 1000) })
-onBeforeUnmount(() => clearInterval(timer))
-
-const elapsed = computed(() => {
-  const m = Math.floor(sec.value / 60)
-  return m ? `${m} 分 ${sec.value % 60} 秒` : `${sec.value} 秒`
-})
-const slow = computed(() => sec.value >= SLOW_AFTER)
 </script>
 
 <template>
@@ -61,7 +45,6 @@ const slow = computed(() => sec.value >= SLOW_AFTER)
 
     <p class="title">{{ title }}</p>
     <p v-if="sub" class="sub">{{ sub }}</p>
-    <p class="elapsed" aria-hidden="true">已等待 {{ elapsed }}</p>
 
   </div>
 </template>
@@ -162,25 +145,6 @@ const slow = computed(() => sec.value >= SLOW_AFTER)
   color: var(--db-text-soft);
   font-size: 0.95rem;
 }
-.elapsed {
-  margin: 0.35rem 0 0;
-  color: var(--db-text-soft);   /* 不用 placeholder 色：白底對比度不足 */
-  font-family: var(--db-font-num);
-  font-size: 0.82rem;
-  letter-spacing: 0.04em;
-  font-variant-numeric: tabular-nums;
-}
-.slow {
-  max-width: 28rem;
-  margin: 0.6rem 0 0;
-  padding: 0.6rem 0.9rem;
-  border-radius: var(--db-radius-chip);
-  background: var(--db-paper);
-  color: var(--db-text-soft);
-  font-size: 0.86rem;
-  line-height: 1.7;
-}
-
 /* 減少動態：直接顯示畫好的平面圖，不跑動畫 */
 @media (prefers-reduced-motion: reduce) {
   .wall, .dim path, .dim text, .rug, .furn {
