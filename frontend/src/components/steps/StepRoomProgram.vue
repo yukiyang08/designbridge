@@ -22,6 +22,7 @@ import { useDesignFlow } from '@/composables/useDesignFlow'
 import { Icon } from '@iconify/vue'
 import { roomPhoto, roomIcon } from '@/config/furniture'
 import RoomPickerCad from '@/components/RoomPickerCad.vue'
+import ModeBackButton from '@/components/shell/ModeBackButton.vue'
 
 const {
   cadCounts, cadTotalPing, cadRoomW, cadRoomD, cadExtraRooms, loading, submitRoomProgram, fetchRoomPlan, startFlow,
@@ -177,6 +178,12 @@ watch(sig, () => {
 
 // 已有進度時改設定：要明確確認才套用（會清掉已設計的房間）
 const confirmingApply = ref(false)
+
+// 房型表單的值不會被 resetFlow 清掉，會丟的只有已設計的房間，所以只在有進度時確認
+function toSingleRoom() {
+  if (hasProgress.value && !window.confirm('切換成單間會清除已設計的房間，確定嗎？')) return
+  startFlow('generate')
+}
 function onApplyChanges() {
   if (!confirmingApply.value) { confirmingApply.value = true; return }
   confirmingApply.value = false
@@ -217,7 +224,10 @@ function chipState(r) {
 const STATE_TEXT = { done: '已完成', active: '設計中', rendering: '渲染中…' }
 // 還沒開始任何一間時，客廳是最適合先做的（它的風格會被其他房間沿用）
 const suggestedId = computed(() =>
-  !doneCount.value && !cadActiveRoomId.value ? rooms.value.find(r => r.room_type === 'living_room')?.id : null)
+  !doneCount.value && !cadActiveRoomId.value ? rooms.value.find(r => ['living_room', 'living_dining'].includes(r.room_type))?.id : null)
+// 底部按鈕、圖上閃爍、清單標籤都指向同一間；有做到一半的那間時讓 pending-bar 處理，不另外推薦
+const nextRoom = computed(() => pendingRoom.value ? null :
+  rooms.value.find(r => r.id === suggestedId.value) || rooms.value.find(r => chipState(r) === 'todo') || null)
 </script>
 
 <template>
@@ -230,7 +240,7 @@ const suggestedId = computed(() =>
         <!-- 這一步預設是「整層房屋」（CAD 房型切割）；點「單間」直接切到原本單房間
              2D 平面圖流程（StepSpaceSetup），不用先填整層房型再回頭選。 -->
         <div class="mode-toggle" role="group" aria-label="生成範圍">
-          <button type="button" :disabled="loading" @click="startFlow('generate')">單間</button>
+          <button type="button" :disabled="loading" @click="toSingleRoom">單間</button>
           <button type="button" class="active" aria-pressed="true">整層房屋</button>
         </div>
       </div>
@@ -333,19 +343,14 @@ const suggestedId = computed(() =>
         <p class="empty-title">{{ planError ? '還沒辦法產生平面圖' : '產生平面圖中…' }}</p>
         <p v-if="planError" class="empty-error">{{ planError }}</p>
         <p v-else class="empty-sub">依左邊的設定切割空間，約一秒。</p>
-        <button type="button" class="upload-btn" :disabled="loading" title="已有設計師的平面圖？AI 幫你辨識房間與家具" @click="startFlow('upload')">
-            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 16V4M7 9l5-5 5 5M4 16v3a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-3"/></svg>
-            上傳自己的 CAD 平面圖
-          </button>
       </div>
 
       <template v-else>
         <header class="plan-head">
           <div class="plan-head-text">
           <h3 class="plan-title">點一間房，開始設計</h3>
-          <p class="plan-sub">
-            <template v-if="doneCount">已完成 {{ doneCount }} / {{ rooms.length }} 間。</template>
-          </p>
+          <p v-if="doneCount" class="plan-sub">已完成 {{ doneCount }} / {{ rooms.length }} 間。</p>
+          <p v-else-if="suggestedId" class="plan-sub">建議從客廳開始，它的風格會沿用到其他房間。</p>
           <p v-for="w in (isUploaded && cadPlanResult.warnings) || []" :key="w" class="plan-sub plan-warn">{{ w }}</p>
           <form v-if="isUploaded" class="ping-fix" @submit.prevent="onRescale">
             <label for="upload-ping">總坪數</label>
@@ -394,9 +399,10 @@ const suggestedId = computed(() =>
             </table>
           </details>
           </div>
-          <button type="button" class="upload-btn" :disabled="loading" title="已有設計師的平面圖？AI 幫你辨識房間與家具" @click="startFlow('upload')">
+          <!-- 自動生成格局不放上傳入口（入口頁已分開）；上傳的整層圖才給重新上傳 -->
+          <button v-if="isUploaded" type="button" class="upload-btn" :disabled="loading" @click="startFlow('upload')">
             <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 16V4M7 9l5-5 5 5M4 16v3a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-3"/></svg>
-            {{ isUploaded ? '重新上傳平面圖' : '上傳自己的 CAD 平面圖' }}
+            重新上傳平面圖
           </button>
         </header>
 
@@ -419,6 +425,7 @@ const suggestedId = computed(() =>
         <div class="plan-body" :class="{ 'is-refreshing': refreshing }" :inert="dirty">
           <RoomPickerCad
             :show-hint="false"
+            :suggested-id="nextRoom?.id"
             :svg-markup="cadPlanResult.svg_markup || ''"
             :rooms="rooms"
             @select-room="handleCadRoomSelected"
@@ -432,13 +439,24 @@ const suggestedId = computed(() =>
                 <span class="chip-name">{{ r.label_zh }}</span>
                 <span class="chip-area">{{ Math.round(r.actual_area_m2 || 0) }} m²</span>
                 <span v-if="STATE_TEXT[chipState(r)]" class="chip-state">{{ chipState(r) === 'done' ? '✓ ' : '' }}{{ STATE_TEXT[chipState(r)] }}</span>
-                <span v-else-if="r.id === suggestedId" class="chip-state chip-state--hint">建議先做</span>
+                <span v-else-if="r.id === nextRoom?.id" class="chip-state chip-state--hint">{{ doneCount ? '下一間' : '建議先做' }}</span>
               </button>
             </li>
           </ul>
         </div>
       </template>
     </section>
+
+    <!-- 平面圖可以直接點，但第一次用的人不一定發現；底部給一顆明確的下一步（鍵盤、手機也用得到） -->
+    <div class="actions">
+      <ModeBackButton />
+      <div v-if="nextRoom" class="next-cta">
+        <button type="button" class="db-btn" :disabled="loading || dirty" @click="handleCadRoomSelected(nextRoom)">
+          從{{ nextRoom.label_zh }}開始設計 →
+        </button>
+        <small class="next-hint">也可以直接點平面圖上的任何一間</small>
+      </div>
+    </div>
   </div>
 </template>
 
@@ -450,6 +468,14 @@ const suggestedId = computed(() =>
   align-items: start;
 }
 .room-program-step.is-uploaded { grid-template-columns: minmax(0, 1fr); }
+.actions { grid-column: 1 / -1; }   /* 版面與黏底樣式在 StudioView 的 :deep(.actions) */
+.next-cta { display: flex; flex-direction: column; align-items: flex-end; gap: 0.3rem; text-align: right; }
+/* StudioView 窄螢幕會給 .actions .db-btn 設 flex-basis，在直向 flex 裡會變成高度，這裡蓋掉 */
+.room-program-step .actions .next-cta .db-btn { flex: none; }
+.next-hint { font-size: 0.8rem; color: var(--db-text-soft); }
+@media (max-width: 640px) {
+  .next-cta { flex: 1 1 100%; align-items: stretch; text-align: center; }
+}
 .plan-warn { color: var(--db-danger, #b3261e); }
 .ping-fix { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; margin-top: 0.5rem; }
 .ping-fix .db-input { width: 6rem; }
@@ -513,7 +539,7 @@ const suggestedId = computed(() =>
 .size-unit { font-size: 0.88rem; color: var(--db-text-soft); }
 .dim-x { color: var(--db-placeholder); }
 .ping-suffix { font-size: 0.82rem; color: var(--db-placeholder); white-space: nowrap; }
-.size-hint, .size-error { margin: 0; font-size: 0.76rem; line-height: 1.5; color: var(--db-placeholder); }
+.size-hint, .size-error { margin: 0; font-size: 0.82rem; line-height: 1.5; color: var(--db-text-soft); }
 .size-error { color: var(--db-danger); }
 
 /* 房間數量：一列一種，小縮圖＋名稱＋步進器。0 間的整列變淡 */

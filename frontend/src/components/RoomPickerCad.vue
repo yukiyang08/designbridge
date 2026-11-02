@@ -11,6 +11,7 @@ const props = defineProps({
   svgMarkup: { type: String, required: true },
   rooms:     { type: Array,  required: true }, // RoomInstance.to_dict() 陣列
   showHint:  { type: Boolean, default: true },     // 外層已經有標題與說明時可以關掉
+  suggestedId: { type: String, default: null },    // 建議下一間：在圖上閃幾下引導第一次點擊
 })
 const emit = defineEmits(['select-room'])
 
@@ -28,6 +29,7 @@ function attachHandlers() {
   if (!svg) return
   svg.querySelectorAll('.room-rect').forEach((el) => {
     const roomId = el.getAttribute('data-room-id')
+    el.classList.toggle('is-suggested', roomId === props.suggestedId)
     const room = props.rooms.find(r => r.id === roomId)
     if (!room) return
     const onClick = () => emit('select-room', room)
@@ -36,7 +38,7 @@ function attachHandlers() {
   })
 }
 
-watch(() => props.svgMarkup, () => nextTick(attachHandlers), { immediate: true })
+watch(() => [props.svgMarkup, props.suggestedId], () => nextTick(attachHandlers), { immediate: true })
 onBeforeUnmount(clearHandlers)
 </script>
 
@@ -74,4 +76,14 @@ onBeforeUnmount(clearHandlers)
    an unscoped selector would recolor those too on hover instead of just the floor. */
 .board :deep(.room-rect .room-floor) { transition: fill 0.15s, stroke 0.15s; }
 .board :deep(.room-rect:hover .room-floor) { fill: var(--db-accent-soft, #e6e3dd); stroke: var(--db-accent-deep, #a39b94); }
+/* 建議的房間：閃三下後停在淡色高亮，不會一直動 */
+.board :deep(.room-rect.is-suggested .room-floor) {
+  fill: var(--db-accent-soft, #e6e3dd);
+  stroke: var(--db-accent-deep, #a39b94);
+  animation: suggest 1.4s ease-in-out 3;
+}
+@keyframes suggest { 50% { fill: var(--db-accent, #c9c4bb); } }
+@media (prefers-reduced-motion: reduce) {
+  .board :deep(.room-rect.is-suggested .room-floor) { animation: none; }
+}
 </style>

@@ -7,6 +7,7 @@
  */
 import { computed, watch } from 'vue'
 import AdvancedPanel from '@/components/shell/AdvancedPanel.vue'
+import ModeBackButton from '@/components/shell/ModeBackButton.vue'
 import PlanParseIssue from '@/components/steps/PlanParseIssue.vue'
 import { useDesignFlow, ASPECT_OPTIONS } from '@/composables/useDesignFlow'
 
@@ -68,6 +69,7 @@ watch(() => floorPlanUpload.preview, () => { planParseIssue.value = null })
     </AdvancedPanel>
 
     <div class="actions">
+      <ModeBackButton />
       <button v-if="!planParseIssue" class="db-btn" :disabled="loading || !floorPlanUpload.preview || !pingValid" @click="useUploadedPlan">
         解析平面圖
       </button>

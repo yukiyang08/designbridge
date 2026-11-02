@@ -14,6 +14,7 @@
 import { ref, computed, watch } from 'vue'
 import { Icon } from '@iconify/vue'
 import AdvancedPanel from '@/components/shell/AdvancedPanel.vue'
+import ModeBackButton from '@/components/shell/ModeBackButton.vue'
 import FengshuiPicker from '@/components/FengshuiPicker.vue'
 import SpaceSizeFields from '@/components/steps/SpaceSizeFields.vue'
 import StyleSuggestions from '@/components/StyleSuggestions.vue'
@@ -322,6 +323,7 @@ function submit() {
     </AdvancedPanel>
 
     <div class="actions">
+      <ModeBackButton />
       <button class="db-btn" :disabled="loading || !!blockReason" @click="submit">
         {{ isSkip ? '生成渲染圖' : '生成平面圖' }}
       </button>

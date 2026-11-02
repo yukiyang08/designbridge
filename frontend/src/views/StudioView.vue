@@ -4,9 +4,9 @@
  * 滿版背景 → 導覽列 → 流程列 → 置中白卡，白卡內容由當前步驟決定。
  */
 import { computed, onMounted, watch } from 'vue'
-import { useRouter } from 'vue-router'
 import { jsonFetch } from '@/config/api'
 import AppNav from '@/components/shell/AppNav.vue'
+import ModeBackButton from '@/components/shell/ModeBackButton.vue'
 import StepBar from '@/components/shell/StepBar.vue'
 import LoadingState from '@/components/shell/LoadingState.vue'
 import StepSpaceSetup from '@/components/steps/StepSpaceSetup.vue'
@@ -20,9 +20,7 @@ import StepResult from '@/components/steps/StepResult.vue'
 import CadRoomMiniMap from '@/components/CadRoomMiniMap.vue'
 import CadOverview from '@/components/CadOverview.vue'
 import { useDesignFlow, ASPECT_OPTIONS } from '@/composables/useDesignFlow'
-import sceneBg from '@/assets/figma/room-bg.png'
 
-const router = useRouter()
 const flow = useDesignFlow()
 const {
   steps, stepIndex, currentStep, goStep,
@@ -32,7 +30,7 @@ const {
   cadBatch, cadBatchRunning, applyToRooms, cancelCadBatch,
   cadRoomSnapshots, cadRendering, planSource: flowPlanSource, confirmedStyle, result, outputAspect, extraPrompt,
   fengshuiRules, cadOverview,
-  fetchStyleOptions, fetchStyleDemoImages, resetFlow,
+  fetchStyleOptions, fetchStyleDemoImages,
 } = flow
 
 // 右上角縮圖只在 CAD 多房間流程、且已經進到逐一設計房間（plan 之後）的步驟才顯示——
@@ -74,13 +72,6 @@ const minimapCompact = computed(() => currentStep.value === 'result' && !!result
 const showCadMiniMap = computed(
   () => planSource.value === 'cad' && !!cadPlanResult.value && MINIMAP_STEPS.has(currentStep.value),
 )
-
-// 三個入口模式選錯了想換一個，只有在第一步才需要——後面幾步已經有資料，
-// 「上一步」在流程列裡點就好，不用再提供這顆。
-function backToModeSelect() {
-  resetFlow()
-  router.push('/start')
-}
 
 const STEP_COMPONENTS = {
   space:       StepSpaceSetup,
@@ -142,7 +133,7 @@ onMounted(() => {
 </script>
 
 <template>
-  <div class="db-scene studio" :style="{ '--db-scene-image': `url(${sceneBg})` }">
+  <div class="db-scene studio">
     <AppNav />
 
     <!-- 只有一步（照片工作台）就不用流程列，把高度留給工作區 -->
@@ -159,21 +150,11 @@ onMounted(() => {
          那樣看起來像兩個框、主框框還會被擠到左邊。見 .studio-card.has-minimap 的 grid。 -->
     <div
       class="db-card studio-card"
-      :class="{ 'has-minimap': showCadMiniMap && !minimapCompact, 'minimap-top': showCadMiniMap && minimapCompact }"
+      :class="[`stack-${Math.min(stepIndex, 2)}`, { 'has-minimap': showCadMiniMap && !minimapCompact, 'minimap-top': showCadMiniMap && minimapCompact }]"
     >
       <div class="studio-main">
-        <button
-          v-if="stepIndex === 0 && !loading"
-          type="button"
-          class="mode-back-btn"
-          @click="backToModeSelect"
-        >
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-            stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-            <polyline points="15 18 9 12 15 6" />
-          </svg>
-          重新選擇模式
-        </button>
+        <!-- 其他第一步把這顆放在底部操作列左邊；照片工作台沒有操作列，留在上方 -->
+        <ModeBackButton v-if="currentStep === 'photoStudio' && !loading" class="mode-back-top" />
 
         <LoadingState v-if="loading || activeRendering" :title="loadingMsg.title" :sub="loadingMsg.sub" />
         <CadOverview v-else-if="showOverview" />
@@ -211,6 +192,15 @@ onMounted(() => {
   display: flex;
   flex-direction: column;
   padding-bottom: 3rem;
+  background: var(--db-paper);
+}
+/* 製圖桌：頂部一條墨色（導覽列、流程列白字用），白卡像一張圖紙壓在米色桌面上 */
+.studio::before {
+  position: absolute;
+  bottom: auto;
+  height: 15rem;
+  opacity: 1;
+  background: var(--db-ink);
 }
 
 .studio { --studio-w: min(1760px, calc(100vw - 2rem)); }   /* 白框與步驟列共用，左緣對齊 */
@@ -218,9 +208,35 @@ onMounted(() => {
 
 .studio-card {
   --pad: clamp(1.5rem, 3vw, 2.5rem);
+  --edge: rgba(49, 49, 49, 0.12);
   width: var(--studio-w);   /* 比預設 1192 寬 */
   padding: var(--pad) var(--pad) 0;
   position: relative;
+  /* 立體感靠真實的分層陰影（貼地＋環境光），不用發光或漸層 */
+  box-shadow:
+    0 1px 2px rgba(49, 49, 49, 0.10),
+    0 12px 24px -8px rgba(49, 49, 49, 0.18),
+    0 40px 80px -24px rgba(49, 49, 49, 0.30);
+  transition: box-shadow 0.45s ease;
+}
+/* 每完成一步，卡片底下多一張圖紙（box-shadow 疊紙，第一層在最上面） */
+.studio-card.stack-1 {
+  box-shadow:
+    0 1px 2px rgba(49, 49, 49, 0.10),
+    0 7px 0 -4px #f7f6f3, 0 8px 0 -4px var(--edge),
+    0 18px 30px -10px rgba(49, 49, 49, 0.22),
+    0 44px 80px -24px rgba(49, 49, 49, 0.30);
+}
+.studio-card.stack-2 {
+  box-shadow:
+    0 1px 2px rgba(49, 49, 49, 0.10),
+    0 7px 0 -4px #f7f6f3, 0 8px 0 -4px var(--edge),
+    0 14px 0 -8px var(--db-accent-soft), 0 15px 0 -8px var(--edge),
+    0 24px 34px -12px rgba(49, 49, 49, 0.24),
+    0 48px 84px -24px rgba(49, 49, 49, 0.32);
+}
+@media (prefers-reduced-motion: reduce) {
+  .studio-card { transition: none; }
 }
 
 /* 上一步 / 次要動作靠左、下一步 / 主要動作靠右，固定在卡片底部（捲動時黏在視窗底）。
@@ -253,35 +269,9 @@ onMounted(() => {
 .studio-card.minimap-top { display: flex; flex-direction: column; }
 .studio-card.minimap-top > .cad-minimap { order: -1; }
 
-/* 原本是一行小灰字，太不顯眼，容易被當成裝飾文字而不是按鈕。
-   改成有外框的實體按鈕，字級跟其他次要動作（例如「上一步」）看齊。 */
-.mode-back-btn {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.4rem;
-  margin-bottom: 1.5rem;
-  padding: 0.5rem 1.1rem;
-  border: 2px solid #dcdcdc;
-  border-radius: var(--db-radius-pill);
-  background: #fff;
-  color: var(--db-text);
-  font-family: var(--db-font-display);
-  font-style: italic;
-  font-weight: 500;
-  font-size: 1rem;
-  cursor: pointer;
-  transition: border-color 0.16s, background 0.16s, transform 0.12s;
-}
-.mode-back-btn:hover {
-  border-color: var(--db-accent);
-  background: #f7f6f3;
-  transform: translateX(-2px);
-}
-.mode-back-btn svg { flex-shrink: 0; }
-
-@media (prefers-reduced-motion: reduce) {
-  .mode-back-btn:hover { transform: none; }
-}
+.mode-back-top { margin-bottom: 1.5rem; }
+/* 操作列裡的「重新選擇模式」吃掉左邊空間，其餘按鈕一起靠右 */
+.studio-main :deep(.actions > .mode-back-btn) { margin-right: auto; }
 
 .studio-error {
   margin: 1.25rem clamp(1.5rem, 3vw, 2.5rem) 0;
