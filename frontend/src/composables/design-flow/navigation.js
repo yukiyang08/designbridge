@@ -2,7 +2,7 @@ import { cancelCadBatch } from './cadBatch'
 import {
   steps, stepIndex, error, planSource,
   floorPlanUrl, floorPlanPath, sceneGraph, editPlacements, layoutViewMode, layoutRenderConfig,
-  floorPlanUpload, uploadedPlanUrl, uploadedPlanPath, detectedRooms, planParseIssue,
+  floorPlanUpload, uploadedPlanUrl, uploadedPlanPath, uploadTotalPing, detectedRooms, planParseIssue,
   cadPlanResult, cadActiveRoomId, cadRoomStatus, cadRoomSnapshots, openingEdits, cadOverview,
   spacePhoto, spacePhotoPath, spaceImage, styleRefImage, photoDetection, photoLayoutError,
   photoVersions, photoCurrent, photoBusy, photoStyleId, photoStylePrompt,
@@ -48,6 +48,7 @@ export function resetFlow() {
   floorPlanUpload.remove()
   uploadedPlanUrl.value = ''
   uploadedPlanPath.value = ''
+  uploadTotalPing.value = null   // 坪數決定比例尺，沿用上一張圖（例如單間浴室）的值會把整層縮成幾坪
   detectedRooms.value = []
   planParseIssue.value = null
   cadPlanResult.value = null

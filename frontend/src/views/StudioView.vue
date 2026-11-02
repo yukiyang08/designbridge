@@ -20,6 +20,7 @@ import StepResult from '@/components/steps/StepResult.vue'
 import CadRoomMiniMap from '@/components/CadRoomMiniMap.vue'
 import CadOverview from '@/components/CadOverview.vue'
 import { useDesignFlow, ASPECT_OPTIONS } from '@/composables/useDesignFlow'
+import sceneBg from '@/assets/figma/room-bg.png'
 
 const flow = useDesignFlow()
 const {
@@ -133,7 +134,7 @@ onMounted(() => {
 </script>
 
 <template>
-  <div class="db-scene studio">
+  <div class="db-scene studio" :style="{ '--db-scene-image': `url(${sceneBg})` }">
     <AppNav />
 
     <!-- 只有一步（照片工作台）就不用流程列，把高度留給工作區 -->
@@ -150,7 +151,7 @@ onMounted(() => {
          那樣看起來像兩個框、主框框還會被擠到左邊。見 .studio-card.has-minimap 的 grid。 -->
     <div
       class="db-card studio-card"
-      :class="[`stack-${Math.min(stepIndex, 2)}`, { 'has-minimap': showCadMiniMap && !minimapCompact, 'minimap-top': showCadMiniMap && minimapCompact }]"
+      :class="{ 'has-minimap': showCadMiniMap && !minimapCompact, 'minimap-top': showCadMiniMap && minimapCompact }"
     >
       <div class="studio-main">
         <!-- 其他第一步把這顆放在底部操作列左邊；照片工作台沒有操作列，留在上方 -->
@@ -192,15 +193,6 @@ onMounted(() => {
   display: flex;
   flex-direction: column;
   padding-bottom: 3rem;
-  background: var(--db-paper);
-}
-/* 製圖桌：頂部一條墨色（導覽列、流程列白字用），白卡像一張圖紙壓在米色桌面上 */
-.studio::before {
-  position: absolute;
-  bottom: auto;
-  height: 15rem;
-  opacity: 1;
-  background: var(--db-ink);
 }
 
 .studio { --studio-w: min(1760px, calc(100vw - 2rem)); }   /* 白框與步驟列共用，左緣對齊 */
@@ -208,35 +200,9 @@ onMounted(() => {
 
 .studio-card {
   --pad: clamp(1.5rem, 3vw, 2.5rem);
-  --edge: rgba(49, 49, 49, 0.12);
   width: var(--studio-w);   /* 比預設 1192 寬 */
   padding: var(--pad) var(--pad) 0;
   position: relative;
-  /* 立體感靠真實的分層陰影（貼地＋環境光），不用發光或漸層 */
-  box-shadow:
-    0 1px 2px rgba(49, 49, 49, 0.10),
-    0 12px 24px -8px rgba(49, 49, 49, 0.18),
-    0 40px 80px -24px rgba(49, 49, 49, 0.30);
-  transition: box-shadow 0.45s ease;
-}
-/* 每完成一步，卡片底下多一張圖紙（box-shadow 疊紙，第一層在最上面） */
-.studio-card.stack-1 {
-  box-shadow:
-    0 1px 2px rgba(49, 49, 49, 0.10),
-    0 7px 0 -4px #f7f6f3, 0 8px 0 -4px var(--edge),
-    0 18px 30px -10px rgba(49, 49, 49, 0.22),
-    0 44px 80px -24px rgba(49, 49, 49, 0.30);
-}
-.studio-card.stack-2 {
-  box-shadow:
-    0 1px 2px rgba(49, 49, 49, 0.10),
-    0 7px 0 -4px #f7f6f3, 0 8px 0 -4px var(--edge),
-    0 14px 0 -8px var(--db-accent-soft), 0 15px 0 -8px var(--edge),
-    0 24px 34px -12px rgba(49, 49, 49, 0.24),
-    0 48px 84px -24px rgba(49, 49, 49, 0.32);
-}
-@media (prefers-reduced-motion: reduce) {
-  .studio-card { transition: none; }
 }
 
 /* 上一步 / 次要動作靠左、下一步 / 主要動作靠右，固定在卡片底部（捲動時黏在視窗底）。

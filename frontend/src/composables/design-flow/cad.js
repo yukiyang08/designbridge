@@ -53,7 +53,7 @@ export function enterUploadedWholeFloor(plan) {
 }
 
 // 使用者校正上傳平面圖的總坪數：整張圖等比例重算尺寸並重畫（不重跑房間辨識）。
-// 呼叫端要先確認還沒開始設計任何房間——房間尺寸會變。
+// 呼叫端要先確認沒有完成／渲染中的房間；設計到一半的房間尺寸會變，這裡一併清掉。
 export async function rescaleUploadedPlan(totalPing) {
   const { svg_markup, svg_url, ...plan } = cadPlanResult.value
   error.value = ''
@@ -63,6 +63,7 @@ export async function rescaleUploadedPlan(totalPing) {
     const res = await jsonFetch('/api/rescale-upload-plan', { plan, total_ping: totalPing })
     const data = await res.json()
     if (!res.ok) throw new Error(data.detail || `${res.status}`)
+    resetCadProgress()
     cadPlanResult.value = data
   } catch (e) {
     error.value = `重算坪數失敗：${e.message}`

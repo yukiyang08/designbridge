@@ -38,11 +38,20 @@ const isUploaded = computed(() => cadPlanResult.value?.source === 'upload')
 // 已經開始設計房間後不開放，房間尺寸變了會對不上進度。
 const uploadPing = ref(cadPlanResult.value?.total_ping || '')
 watch(() => cadPlanResult.value?.total_ping, v => { uploadPing.value = v || '' })
-const canRescale = computed(() => !cadActiveRoomId.value && !Object.keys(cadRoomStatus.value).length)
+// 只有完成或渲染中的房間會擋；設計到一半的確認後清掉（房間尺寸變了，舊的家具位置對不上）
+const canRescale = computed(() =>
+  !Object.values(cadRoomStatus.value).includes('done') && !Object.keys(cadRendering.value).length && !cadBatchRunning.value)
+// 每間平均不到 1 坪幾乎一定是坪數填錯（比例尺跟著縮，標籤會全疊在一起）
+const pingLooksWrong = computed(() => {
+  const n = cadPlanResult.value?.rooms?.length || 0
+  return isUploaded.value && n > 1 && Number(cadPlanResult.value?.total_ping) / n < 1
+})
 const SCALE_SOURCE_TEXT = { dimension: '依圖上尺寸標註換算', user: '依你輸入的坪數換算', assumed: '圖上沒有尺寸標註，暫以一般住宅面積估算' }
 function onRescale() {
   const v = Number(uploadPing.value)
-  if (v >= 1 && v <= 500) rescaleUploadedPlan(v)
+  if (!(v >= 1 && v <= 500)) return
+  if (Object.keys(cadRoomStatus.value).length && !window.confirm('重新換算尺寸會清掉設計到一半的房間，確定嗎？')) return
+  rescaleUploadedPlan(v)
 }
 
 const pendingRoom = computed(() => {
@@ -352,11 +361,14 @@ const nextRoom = computed(() => pendingRoom.value ? null :
           <p v-if="doneCount" class="plan-sub">已完成 {{ doneCount }} / {{ rooms.length }} 間。</p>
           <p v-else-if="suggestedId" class="plan-sub">建議從客廳開始，它的風格會沿用到其他房間。</p>
           <p v-for="w in (isUploaded && cadPlanResult.warnings) || []" :key="w" class="plan-sub plan-warn">{{ w }}</p>
+          <p v-if="pingLooksWrong" class="plan-sub plan-warn" role="alert">
+            {{ rooms.length }} 間房總共只有 {{ cadPlanResult.total_ping }} 坪，平均每間不到 1 坪，總坪數可能填錯了，請在下面改成整戶的實際坪數。
+          </p>
           <form v-if="isUploaded" class="ping-fix" @submit.prevent="onRescale">
             <label for="upload-ping">總坪數</label>
             <input id="upload-ping" v-model.number="uploadPing" type="number" min="1" max="500" step="0.1" class="db-input" :disabled="!canRescale || loading" />
             <button type="submit" class="db-btn db-btn--ghost db-btn--sm" :disabled="!canRescale || loading || !uploadPing">套用並重畫尺寸</button>
-            <small class="plan-sub">{{ SCALE_SOURCE_TEXT[cadPlanResult.scale_source] }}{{ canRescale ? '' : '；已開始設計房間，無法再改坪數' }}</small>
+            <small class="plan-sub">{{ SCALE_SOURCE_TEXT[cadPlanResult.scale_source] }}{{ canRescale ? '' : '；已有完成或渲染中的房間，無法再改坪數' }}</small>
           </form>
           <p v-if="isUploaded" class="plan-sub">辨識結果：{{ cadPlanResult.plan_kind === 'single_room' ? '單一房間' : `整層平面圖，共 ${rooms.length} 間` }}</p>
           <details v-if="isUploaded && cadPlanResult.specs" class="specs">

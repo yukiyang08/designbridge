@@ -275,6 +275,22 @@ def _furniture_svg(room: RoomInstance, fx1: float, fy1: float, fx2: float, fy2: 
     return lines
 
 
+def _text_w(text: str, size: float) -> float:
+    # ponytail: 估字寬（中文 1em、英數 0.6em），不量實際字型；標籤偶爾略寬再加 pad 即可
+    return sum(size if ord(c) > 0x2E80 else size * 0.6 for c in text)
+
+
+def _fit_labels(box_w: float, box_h: float, name: str, details: list[tuple[str, float]]) -> tuple[float, bool]:
+    """房間標籤的縮放倍率；三行放不下時只留房名。字級寫死的話小房間的字會溢出、互相疊住。"""
+    pad = 8
+    full_w = max([_text_w(name, 13)] + [_text_w(t, sz) for t, sz in details])
+    k = min(1.0, (box_w - pad) / full_w, (box_h - pad) / 46)
+    if k >= 0.75:
+        return k, True
+    k = min(1.0, (box_w - pad) / _text_w(name, 13), (box_h - pad) / 16)
+    return max(k, 0.45), False
+
+
 def render_room_plan_svg(
     rooms: list[RoomInstance],
     walls: list[WallSegment],
@@ -354,19 +370,24 @@ def render_room_plan_svg(
         # fill) so the room name/area stay legible over whatever furniture line happens
         # to cross behind them, without having to estimate each string's pixel width.
         cx, cy = (fx1r + fx2r) / 2, (fy1r + fy2r) / 2
-        halo = ' paint-order="stroke" stroke="white" stroke-width="3" stroke-linejoin="round"'
+        area_txt = f'{room.actual_area_m2:.1f} m²'
+        dim_txt = f'{room.rect.w:.2f} × {room.rect.h:.2f} m'
+        k, show_detail = _fit_labels(fx2r - fx1r, fy2r - fy1r, room.label_zh, [(area_txt, 11), (dim_txt, 10)])
+        halo = f' paint-order="stroke" stroke="white" stroke-width="{max(1.5, 3 * k):.1f}" stroke-linejoin="round"'
+        name_y = cy - 6 * k if show_detail else cy + 4.5 * k   # 只剩房名時垂直置中
         lines.append(
-            f'<text class="plan-name" x="{cx:.1f}" y="{cy-6:.1f}" font-size="13" font-weight="bold"{halo} '
+            f'<text class="plan-name" x="{cx:.1f}" y="{name_y:.1f}" font-size="{13 * k:.1f}" font-weight="bold"{halo} '
             f'text-anchor="middle" fill="{_TEXT_FILL}">{escape(room.label_zh)}</text>'
         )
-        lines.append(
-            f'<text class="plan-detail" x="{cx:.1f}" y="{cy+11:.1f}" font-size="11"{halo} '
-            f'text-anchor="middle" fill="{_TEXT_FILL}">{room.actual_area_m2:.1f} m²</text>'
-        )
-        lines.append(
-            f'<text class="plan-detail" x="{cx:.1f}" y="{cy+25:.1f}" font-size="10"{halo} '
-            f'text-anchor="middle" fill="{_DIM_STROKE}">{room.rect.w:.2f} × {room.rect.h:.2f} m</text>'
-        )
+        if show_detail:
+            lines.append(
+                f'<text class="plan-detail" x="{cx:.1f}" y="{cy + 11 * k:.1f}" font-size="{11 * k:.1f}"{halo} '
+                f'text-anchor="middle" fill="{_TEXT_FILL}">{area_txt}</text>'
+            )
+            lines.append(
+                f'<text class="plan-detail" x="{cx:.1f}" y="{cy + 25 * k:.1f}" font-size="{10 * k:.1f}"{halo} '
+                f'text-anchor="middle" fill="{_DIM_STROKE}">{dim_txt}</text>'
+            )
         lines.append('</g>')
 
     for door in doors:
