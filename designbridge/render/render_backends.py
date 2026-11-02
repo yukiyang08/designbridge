@@ -777,7 +777,8 @@ def _fal_flux_general(endpoint: str, arguments: dict) -> bytes:
     import fal_client
     import requests
 
-    result = fal_client.subscribe(endpoint, arguments=arguments, with_logs=False)
+    result = fal_client.subscribe(endpoint, arguments=arguments, with_logs=False,
+                                  client_timeout=Config.FAL_TIMEOUT_S)
     resp = requests.get(result["images"][0]["url"], timeout=60)
     resp.raise_for_status()
     return resp.content

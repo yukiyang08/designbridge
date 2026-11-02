@@ -87,6 +87,9 @@ def fal_subscribe(label: str, application: str, arguments: dict, **kwargs):
 
     result = None
     try:
+        from designbridge.core.config import Config
+
+        kwargs.setdefault("client_timeout", Config.FAL_TIMEOUT_S)
         result = fal_client.subscribe(application, arguments=arguments, on_queue_update=_on_update, **kwargs)
         return result
     finally:

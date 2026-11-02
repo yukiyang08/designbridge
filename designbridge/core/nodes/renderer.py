@@ -486,8 +486,9 @@ def renderer(state: DesignBridgeState) -> dict[str, Any]:
     # 深度條件強度：1.0 完全保留結構、0.0 忽略深度圖（Kontext LoRA 的 scale 與它相同）。
     # LLM 沒給值（含呼叫失敗）時預設 0.6：0.85 太僵，目標風格差異大時模型無法重繪材質，
     # 只會在原幾何上貼一層雕刻/浮雕感。
-    depth_conditioning_scale = float(req.get("depth_conditioning_scale") or 0.6)
-    depth_conditioning_scale = max(0.0, min(1.0, depth_conditioning_scale))
+    # LLM 給 0.0（全新設計）時夾到 0.2：低於門檻會整個丟掉深度、掉進純文字出圖，連照片視角都不留
+    _raw_scale = req.get("depth_conditioning_scale")
+    depth_conditioning_scale = 0.6 if _raw_scale is None else max(0.20, min(1.0, float(_raw_scale)))
     # 投影深度是軸對齊的方塊，條件過強會讓家具變成漂浮方塊，故壓低上限
     if using_projected_depth:
         depth_conditioning_scale = min(depth_conditioning_scale, Config.PROJECTED_DEPTH_MAX_CONDITIONING_SCALE)
@@ -732,8 +733,11 @@ def renderer(state: DesignBridgeState) -> dict[str, Any]:
             generation_params["kontext_strength"] = _kontext_strength
             generation_params["kontext_control_source"] = "floor_plan"
 
+    # 純文字出圖完全不看結構；照片流程退到這裡會產出跟照片無關的房間，寧可報錯讓使用者重試
+    allow_text_only = not user_input.get("initial_image")
+
     # HF Inference（純文字出圖）
-    if backend == "placeholder" and Config.ENABLE_HF_INFERENCE and Config.HF_TOKEN:
+    if backend == "placeholder" and allow_text_only and Config.ENABLE_HF_INFERENCE and Config.HF_TOKEN:
         if timed_call(
             "renderer.hf_inference", task_id,
             _render_hf_inference,
@@ -744,7 +748,7 @@ def renderer(state: DesignBridgeState) -> dict[str, Any]:
             generation_params["provider"] = Config.HF_INFERENCE_PROVIDER
 
     # fal.ai FLUX 純文字出圖（雲端備援）
-    if backend == "placeholder" and Config.FAL_KEY:
+    if backend == "placeholder" and allow_text_only and Config.FAL_KEY:
         if timed_call(
             "renderer.flux_fal", task_id,
             _render_flux_fal,

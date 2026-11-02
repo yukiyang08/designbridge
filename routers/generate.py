@@ -208,6 +208,9 @@ def generate_design(request: DesignRequest, user_id: str = Depends(get_user_id))
             result = _get_graph().invoke(initial_state)
         elapsed = time.perf_counter() - t0
         generated_image_path = result.get("generated_image")
+        render_error = ((result.get("render_result") or {}).get("generation_params") or {}).get("render_error")
+        if render_error:
+            raise HTTPException(status_code=502, detail=f"生成失敗：{render_error}，請稍後再試")
 
         # 每輪一筆，串上這張圖之前的流程，前端與歷史紀錄都能看到完整耗時
         if result.get("routing_decision") == "design_adjuster":
@@ -307,6 +310,8 @@ def generate_design(request: DesignRequest, user_id: str = Depends(get_user_id))
 
         return response
 
+    except HTTPException:
+        raise
     except Exception as e:
         import traceback
         traceback.print_exc()

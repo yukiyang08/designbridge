@@ -41,6 +41,8 @@ class Config:
 
     # ── 出圖後端：fal.ai / Hugging Face ──────────────────────────────────
     FAL_KEY: str | None = os.getenv("FAL_KEY")
+    # fal 排隊卡住時不要無限等（含排隊；FLUX 一般 20~60 秒）
+    FAL_TIMEOUT_S: float = float(os.getenv("DESIGNBRIDGE_FAL_TIMEOUT_S", "180"))
     # 預設 Fill dev（公開權重，可自架）；要用閉源的 Fill Pro 設成 fal-ai/flux-pro/v1/fill
     FAL_INPAINT_MODEL: str = os.getenv("DESIGNBRIDGE_FAL_INPAINT_MODEL", "fal-ai/flux-lora-fill")
     # 局部修改改用可下載的 Fill dev（fal-ai/flux-lora-fill）時的 guidance

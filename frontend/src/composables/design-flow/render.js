@@ -135,7 +135,7 @@ export async function submit3D() {
       project_id:         projectId.value,
       ...spaceInfo(),
     })
-    if (!res.ok) throw new Error(`${res.status}`)
+    if (!res.ok) throw new Error((await res.json().catch(() => ({}))).detail || `${res.status}`)
     const data = await res.json()
     if (!isLatest()) return
     saveProjectSettings()   // 把這次用的設定存雲端，「繼續編輯」時還原
@@ -226,7 +226,7 @@ export async function swapStyle(styleId) {
       project_id:         projectId.value,
       ...spaceInfo(),
     })
-    if (!res.ok) throw new Error(`${res.status}`)
+    if (!res.ok) throw new Error((await res.json().catch(() => ({}))).detail || `${res.status}`)
     const data = await res.json()
     if (requestId === requestState.current) {
       result.value = data
