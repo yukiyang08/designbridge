@@ -61,24 +61,16 @@ class Config:
     OUTPAINT_GUIDANCE: float = float(os.getenv("DESIGNBRIDGE_OUTPAINT_GUIDANCE", "2.2"))
     OUTPAINT_STEPS: int = int(os.getenv("DESIGNBRIDGE_OUTPAINT_STEPS", "28"))
     OUTPAINT_NAG_SCALE: float = float(os.getenv("DESIGNBRIDGE_OUTPAINT_NAG_SCALE", "5.0"))  # 越高越遠離 negative
-    # negative 兩組：文字浮水印、會被重複生成的家具
-    OUTPAINT_NEGATIVE_TEXT: str = os.getenv(
-        "DESIGNBRIDGE_OUTPAINT_NEGATIVE_TEXT",
+    # negative：文字浮水印 + 會被重複生成的家具
+    OUTPAINT_NEGATIVE: str = (
         "text, letters, words, lettering, typography, font, caption, subtitle, "
         "watermark, logo, brand mark, signature, copyright notice, stamp, "
         "sign, signage, banner, poster, label, nameplate, writing, "
-        "collage, photo grid, contact sheet, catalogue page",
-    )
-    OUTPAINT_NEGATIVE_DUPES: str = os.getenv(
-        "DESIGNBRIDGE_OUTPAINT_NEGATIVE_DUPES",
+        "collage, photo grid, contact sheet, catalogue page, "
         "television, tv screen, monitor, fireplace, media cabinet, sideboard, "
         "sofa, potted plant, duplicated furniture, repeated furniture, "
-        "mirrored room, cluttered",
+        "mirrored room, cluttered"
     )
-
-    @classmethod
-    def outpaint_negative_prompt(cls) -> str:
-        return f"{cls.OUTPAINT_NEGATIVE_TEXT}, {cls.OUTPAINT_NEGATIVE_DUPES}"
 
     # ── ControlNet（文字生成流程）：家具輪廓 canny + 房間外殼 depth ───────────
     ENABLE_LAYOUT_CONTROLNET: bool = _flag("DESIGNBRIDGE_ENABLE_LAYOUT_CONTROLNET", "true")
@@ -132,9 +124,6 @@ class Config:
     # 局部修改／擴圖走自架 Fill dev（另一個部署 designbridge-edit，見 scripts/modal_flux/edit_app.py）；失敗退回 fal
     USE_MODAL_EDIT: bool = USE_MODAL_GPU and _flag("DESIGNBRIDGE_MODAL_EDIT", "false")
     MODAL_EDIT_APP_NAME: str = os.getenv("DESIGNBRIDGE_MODAL_EDIT_APP_NAME", "designbridge-edit")
-    # 暖機：先叫起容器，使用者按生圖時就不用等冷啟動；只暖 Union 路徑（CAD／平面圖流程）
-    MODAL_WARMUP: str = "studio" if MODAL_MODE == "demo" else "off"
-    MODAL_WARMUP_MODES: str = "union"
     # 投影深度是軸對齊方塊，條件過強會讓家具漂浮成方塊，故設上限
     PROJECTED_DEPTH_MAX_CONDITIONING_SCALE: float = float(
         os.getenv("DESIGNBRIDGE_PROJECTED_DEPTH_MAX_CONDITIONING_SCALE", "0.3")

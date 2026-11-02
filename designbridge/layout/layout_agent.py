@@ -12,7 +12,7 @@ from designbridge.layout.layout_items import FURNITURE_SIZES, FurnitureItem, _no
 from designbridge.layout.layout_enforce import _LAYOUT_ENFORCERS, _apply_hard_constraints, _bind_companions, _build_semantic_gap_map, _clip_to_room, _enforce_immutable, _enforce_move_ops, _inject_bunk_bed_ladder, _is_underlay_type, _movable_indices, _optimize_positions, _overlaps, _push_apart, _reattach_companions, _same_group, _score_soft_constraints, _snap_companions, _touched_types, _weighted_score
 from designbridge.layout.floorplan_render import _generate_floor_plan
 from designbridge.layout.projected_depth import _generate_projected_depth
-from designbridge.layout.layout_constraints import get_layout_constraint_registry
+from designbridge.layout.layout_constraints import load_layout_constraints
 
 
 # ─────────────────────────── LLM Interface ───────────────────────────
@@ -303,7 +303,6 @@ def run_layout_agent(
     from designbridge.core.prompts import LAYOUT_AGENT_PROMPT, LAYOUT_REVIEW_PROMPT
     from designbridge.core.timing import log_stage
 
-    layout_registry = get_layout_constraint_registry()
     meta = structured_requirement.get("meta") or {}
     space_info = structured_requirement.get("space_info") or {}
     constraints = structured_requirement.get("layout_constraints") or {}
@@ -373,7 +372,7 @@ def run_layout_agent(
         seq = _clip_to_room(seq)
         seq = _inject_bunk_bed_ladder(seq)
         seq = _push_apart(seq)
-        for card in layout_registry.load():
+        for card in load_layout_constraints():
             fn = _LAYOUT_ENFORCERS.get(card.enforce)
             if fn:
                 seq = fn(seq, space_info, card.parameters)
@@ -508,7 +507,7 @@ def run_layout_agent(
     must_remove_set = {s.lower().replace(" ", "_") for s in (constraints.get("must_remove") or [])}
     existing = {item.type for item in best_items}
 
-    _lc_params = {c.enforce: c.parameters for c in layout_registry.load()}
+    _lc_params = {c.enforce: c.parameters for c in load_layout_constraints()}
     _wa_params = _lc_params.get("wall_anchor", {})
     _wall_anchored = set(_wa_params.get("wall_anchored", []))
     _snap_threshold = float(_wa_params.get("snap_threshold", 0.12))

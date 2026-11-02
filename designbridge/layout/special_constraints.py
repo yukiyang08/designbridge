@@ -3,10 +3,11 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from functools import lru_cache
 from pathlib import Path
 from typing import Any, Callable
 
-from designbridge.layout._skill_frontmatter import parse_skill_frontmatter
+from designbridge.layout._skill_frontmatter import iter_skill_frontmatter
 
 
 # ── Skill Card ────────────────────────────────────────────────────────────────
@@ -35,66 +36,37 @@ class ConstraintSkillCard:
 
 # ── Registry ──────────────────────────────────────────────────────────────────
 
-class ConstraintRegistry:
-
-    def __init__(self, constraints_root: Path | None = None) -> None:
-        if constraints_root is None:
-            _root = Path(__file__).resolve().parent.parent.parent
-            constraints_root = _root / "skills" / "constraints"
-        self._root = constraints_root
-        self._cache: dict[str, ConstraintSkillCard] | None = None
-
-    def _parse_skill_md(self, skill_id: str) -> ConstraintSkillCard | None:
-        fm = parse_skill_frontmatter(self._root / skill_id / "SKILL.md")
-        if fm is None:
-            return None
-
-        enforce = fm.get("enforce") or []
-        if isinstance(enforce, str):
-            enforce = [enforce]
-
-        return ConstraintSkillCard(
-            trigger=str(fm.get("trigger", skill_id)),
-            name=str(fm.get("name", skill_id)),
-            description=str(fm.get("description", "")),
-            constraint_type=str(fm.get("type", "fengshui")),
-            enforce=enforce,
-            prompt_addition=str(fm.get("prompt_addition", "")),
-            order=int(fm.get("order", 99)),
-            parameters=fm.get("parameters") or {},
-            label=str(fm.get("label", "")),
-            category=str(fm.get("category", "")),
-            severity=int(fm.get("severity", 1)),
-            rooms=list(fm.get("rooms") or []),
-            requires=[list(g) for g in (fm.get("requires") or [])],
-            needs=list(fm.get("needs") or []),
-            reason=str(fm.get("reason", "")),
-            remedy=str(fm.get("remedy", "")),
-        )
-
-    def load(self) -> dict[str, ConstraintSkillCard]:
-        if self._cache is not None:
-            return self._cache
-        result: dict[str, ConstraintSkillCard] = {}
-        if not self._root.is_dir():
-            return result
-        for child in sorted(self._root.iterdir()):
-            if child.is_dir():
-                card = self._parse_skill_md(child.name)
-                if card:
-                    result[card.trigger] = card
-        self._cache = result
-        return result
+_ROOT = Path(__file__).resolve().parent.parent.parent / "skills" / "constraints"
 
 
-_registry: ConstraintRegistry | None = None
+def _card_from_frontmatter(skill_id: str, fm: dict) -> ConstraintSkillCard:
+    enforce = fm.get("enforce") or []
+    if isinstance(enforce, str):
+        enforce = [enforce]
+    return ConstraintSkillCard(
+        trigger=str(fm.get("trigger", skill_id)),
+        name=str(fm.get("name", skill_id)),
+        description=str(fm.get("description", "")),
+        constraint_type=str(fm.get("type", "fengshui")),
+        enforce=enforce,
+        prompt_addition=str(fm.get("prompt_addition", "")),
+        order=int(fm.get("order", 99)),
+        parameters=fm.get("parameters") or {},
+        label=str(fm.get("label", "")),
+        category=str(fm.get("category", "")),
+        severity=int(fm.get("severity", 1)),
+        rooms=list(fm.get("rooms") or []),
+        requires=[list(g) for g in (fm.get("requires") or [])],
+        needs=list(fm.get("needs") or []),
+        reason=str(fm.get("reason", "")),
+        remedy=str(fm.get("remedy", "")),
+    )
 
 
-def get_constraint_registry() -> ConstraintRegistry:
-    global _registry
-    if _registry is None:
-        _registry = ConstraintRegistry()
-    return _registry
+@lru_cache(maxsize=None)
+def load_constraint_cards() -> dict[str, ConstraintSkillCard]:
+    cards = (_card_from_frontmatter(sid, fm) for sid, fm in iter_skill_frontmatter(_ROOT))
+    return {c.trigger: c for c in cards}
 
 
 # ── Geometry helper ───────────────────────────────────────────────────────────
@@ -703,7 +675,7 @@ def enrich_requirement(
     if not fengshui_rules:
         return structured_requirement
 
-    cards = get_constraint_registry().load()
+    cards = load_constraint_cards()
     active_triggers: set[str] = set(fengshui_rules)
 
     prompt_parts: list[str] = []
@@ -740,7 +712,7 @@ def apply_special_layout_constraints(
     doors = space_info.get("doors") or []
     windows = space_info.get("windows") or []
 
-    cards = get_constraint_registry().load()
+    cards = load_constraint_cards()
     for card in sorted(cards.values(), key=lambda c: c.order):
         if not special.get(card.trigger):
             continue
@@ -766,7 +738,7 @@ def verify_special_constraints(
     doors = space_info.get("doors") or []
     windows = space_info.get("windows") or []
 
-    cards = get_constraint_registry().load()
+    cards = load_constraint_cards()
     result: dict[str, bool] = {}
     for card in sorted(cards.values(), key=lambda c: c.order):
         if not special.get(card.trigger):

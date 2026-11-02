@@ -1,7 +1,5 @@
 # DesignBridge dependencies
 langgraph>=1.0.0
-langchain-core>=0.1.0
-typing-extensions>=4.0.0
 
 # Gemini API (text/vision)
 # Imagen image generation (optional; uses same GEMINI_API_KEY)
@@ -16,9 +14,6 @@ scipy>=1.11.0
 transformers>=4.45.0  # 4.45+ for Depth-Anything-V2
 torch>=2.2.0
 torchvision>=0.17.0
-
-# transformers 載入模型輔助
-accelerate>=0.30.0
 
 # fal.ai cloud inference (FLUX text-to-image, Redux, ControlNet, IP-Adapter)
 fal-client>=1.0.0

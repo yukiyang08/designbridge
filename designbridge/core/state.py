@@ -1,8 +1,7 @@
 # designbridge/state.py
 """DesignBridge LangGraph state schema per DesignBridge.md."""
 
-from typing import Any, Literal
-from typing_extensions import NotRequired, TypedDict
+from typing import Any, Literal, NotRequired, TypedDict
 
 from designbridge.core.schemas import (
     EvalFeedbackJSON,

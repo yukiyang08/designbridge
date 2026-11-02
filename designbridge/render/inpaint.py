@@ -870,7 +870,7 @@ def run_fal_outpainting(
         else:
             arguments = {
                 "prompt": prompt,
-                "negative_prompt": Config.outpaint_negative_prompt(),
+                "negative_prompt": Config.OUTPAINT_NEGATIVE,
                 "image_url": _b64(canvas),
                 "mask_url": _b64(mask),
                 "image_size": {"width": W, "height": H},

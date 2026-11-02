@@ -1,8 +1,7 @@
 # designbridge/schemas.py
 """Complete JSON schema definitions for DesignBridge agents per specification."""
 
-from typing import Any, Literal
-from typing_extensions import NotRequired, TypedDict
+from typing import Any, Literal, NotRequired, TypedDict
 
 
 # ========== Requirement JSON ==========

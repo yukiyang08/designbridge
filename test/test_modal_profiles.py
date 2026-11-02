@@ -28,7 +28,7 @@ def _config(mode=None):
         e["DESIGNBRIDGE_MODAL_MODE"] = mode
     code = (
         "import dotenv; dotenv.load_dotenv = lambda *a, **k: False; "  # 不讀專案 .env，測試才不受本機設定影響
-        "from designbridge.core.config import Config as C; print(C.USE_MODAL_GPU, C.MODAL_WARMUP)"
+        "from designbridge.core.config import Config as C; print(C.USE_MODAL_GPU, C.MODAL_MODE)"
     )
     out = subprocess.run([sys.executable, "-c", code], cwd=ROOT, env=e, capture_output=True, text=True).stdout.split()
     return tuple(out[-2:])
@@ -37,8 +37,8 @@ def _config(mode=None):
 def test_config_follows_mode():
     assert _config() == ("False", "off")  # 沒設任何變數 = 全走 fal
     assert _config("off") == ("False", "off")
-    assert _config("dev") == ("True", "off")
-    assert _config("demo") == ("True", "studio")
+    assert _config("dev") == ("True", "dev")
+    assert _config("demo") == ("True", "demo")
 
 
 def test_warmup_follows_config(monkeypatch):
@@ -52,13 +52,12 @@ def test_warmup_follows_config(monkeypatch):
             self.info = type("I", (), {"spawn": staticmethod(lambda: spawned.append(mode))})
 
     monkeypatch.setattr(rb, "_modal_renderer", lambda app, mode: _Fake(mode))
-    monkeypatch.setattr(Config, "MODAL_WARMUP_MODES", "union")
 
     monkeypatch.setattr(Config, "USE_MODAL_GPU", False)
     assert rb.warmup_modal_gpu("studio") == []                     # 沒開 Modal
     monkeypatch.setattr(Config, "USE_MODAL_GPU", True)
-    monkeypatch.setattr(Config, "MODAL_WARMUP", "off")
+    monkeypatch.setattr(Config, "MODAL_MODE", "dev")
     assert rb.warmup_modal_gpu("studio") == []                     # dev：不暖機
-    monkeypatch.setattr(Config, "MODAL_WARMUP", "studio")
+    monkeypatch.setattr(Config, "MODAL_MODE", "demo")
     assert rb.warmup_modal_gpu("startup") == []                    # 時機不對
     assert rb.warmup_modal_gpu("studio") == ["union"] and spawned == ["union"]

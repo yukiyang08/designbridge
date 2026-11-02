@@ -17,7 +17,7 @@ from designbridge.layout.special_constraints import (
     _VERIFIERS,
     _opening_span,
     _opening_wall,
-    get_constraint_registry,
+    load_constraint_cards,
 )
 
 # 跟 /api/generate-layout 的預設門窗一致：門在近牆中央、窗在遠牆中央
@@ -62,7 +62,7 @@ def items_from_placements(placements: list[dict]) -> list[FurnitureItem]:
 
 def rules_for_room(room_type: str | None) -> list[str]:
     """房型相關的規則；自訂房型對不上任何一條時全部視為相關（與前端選單同邏輯）。"""
-    cards = get_constraint_registry().load()
+    cards = load_constraint_cards()
     fengshui = [c for c in cards.values() if c.constraint_type == "fengshui"]
     hit = [c.trigger for c in fengshui if room_type and room_type in c.rooms]
     return hit or [c.trigger for c in fengshui]
@@ -87,7 +87,7 @@ def audit_fengshui(
     rules: list[str] | None = None,
     room_type: str | None = None,
 ) -> dict[str, Any]:
-    cards = get_constraint_registry().load()
+    cards = load_constraint_cards()
     triggers = rules if rules is not None else rules_for_room(room_type)
     types = {it.type for it in items}
 
@@ -381,14 +381,14 @@ def _carry_companions(items: list[FurnitureItem], owner: dict[str, str], start: 
 
 def _settle(items: list[FurnitureItem], space_info: dict, owner: dict[str, str], group_of, moved: set[str]) -> None:
     """排版常理：解開重疊，再套 skills/layout-constraints（靠牆、語意間距、床邊留空），再解一次。"""
-    from designbridge.layout.layout_constraints import get_layout_constraint_registry
+    from designbridge.layout.layout_constraints import load_layout_constraints
     from designbridge.layout.layout_enforce import _LAYOUT_ENFORCERS
 
     _separate(items, group_of, moved)
     start = {it.id: (it.x, it.y) for it in items}
     # 跟班不直接交給常理規則：床頭櫃會被「床邊要留通道」當成擋路推走，它應該跟著床
     anchors = [it for it in items if it.id not in owner]
-    for card in get_layout_constraint_registry().load():
+    for card in load_layout_constraints():
         fn = _LAYOUT_ENFORCERS.get(card.enforce)
         if fn:
             fn(anchors, space_info, card.parameters)   # 原地修改；回傳值（例：補上下鋪梯子）不採用
@@ -413,7 +413,7 @@ def fix_layout(
     （不重疊、靠牆、間距）。收尾可能把家具推回禁忌位置，所以反覆到風水也滿足為止。
     最後仍撞在一起的那一組退回原位，由報告給化解建議，不製造疊在一起的假合規。
     """
-    cards = get_constraint_registry().load()
+    cards = load_constraint_cards()
     active = sorted((cards[t] for t in rules if t in cards), key=lambda c: c.order)
     items = items_from_placements(placements)
     by_id = {it.id: it for it in items}

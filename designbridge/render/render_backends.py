@@ -453,12 +453,10 @@ def warmup_modal_gpu(trigger: str) -> list[str]:
 
     trigger：startup（後端啟動）| studio（前端進入 /studio）。容器之後能活多久由部署時的閒置等待決定。
     """
-    if not Config.USE_MODAL_GPU:
+    # 只有 demo 模式、進 /studio 時暖機，且只暖 Union 路徑（CAD／平面圖流程）
+    if not Config.USE_MODAL_GPU or Config.MODAL_MODE != "demo" or trigger != "studio":
         return []
-    setting = Config.MODAL_WARMUP.strip().lower()
-    if setting not in (trigger, "both"):
-        return []
-    modes = {"two": ["two"], "both": ["two", "union"]}.get(Config.MODAL_WARMUP_MODES.strip().lower(), ["union"])
+    modes = ["union"]
     done: list[str] = []
     for m in modes:
         try:

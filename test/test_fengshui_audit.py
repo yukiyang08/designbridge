@@ -90,12 +90,12 @@ def test_frontend_groups_and_rooms_match_skill_cards():
     """前端選單的分組／適用房型要跟 SKILL.md 一致，否則開關自動挑的規則跟報告對不上。"""
     import re
     from pathlib import Path
-    from designbridge.layout.special_constraints import get_constraint_registry
+    from designbridge.layout.special_constraints import load_constraint_cards
 
     src = (Path(__file__).resolve().parent.parent / "frontend" / "src" / "composables"
            / "design-flow" / "state.js").read_text(encoding="utf-8")
     block = re.search(r"FENGSHUI_OPTIONS\s*=\s*\[(.*?)\n\]", src, re.DOTALL).group(1)
-    cards = get_constraint_registry().load()
+    cards = load_constraint_cards()
     for entry in re.findall(r"\{(.*?)\n  \}", block, re.DOTALL):
         value = re.search(r"value:\s*'([a-z_]+)'", entry).group(1)
         group = re.search(r"group:\s*'([a-z]+)'", entry).group(1)

@@ -19,7 +19,7 @@ from designbridge.layout.special_constraints import (
     _opening_wall,
     apply_special_layout_constraints,
     enrich_requirement,
-    get_constraint_registry,
+    load_constraint_cards,
     verify_special_constraints,
 )
 
@@ -58,7 +58,7 @@ def _xy(items: list) -> list[tuple[float, float]]:
 
 def test_new_cards_are_registered():
     """新增的卡片要被 registry 讀到，否則勾了也不會有任何作用。"""
-    cards = get_constraint_registry().load()
+    cards = load_constraint_cards()
     for trigger in (
         "desk_not_facing_window",
         "desk_not_back_to_door", "door_not_facing_stove", "door_not_facing_toilet",

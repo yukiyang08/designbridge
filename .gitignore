@@ -144,3 +144,5 @@ docs/images/mobile/
 /yolov8n.pt
 # test_models.py 每次跑都會產生的比較圖
 /test/test_picture/run_*/
+# Vite 依賴快取
+.vite/

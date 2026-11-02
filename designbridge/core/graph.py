@@ -58,10 +58,10 @@ def build_graph() -> StateGraph:
     局部編輯（inpaint）改的是既有照片的一小塊區域，prompt 本來就該貼著那個物件講，
     沒有「design_description 跟風格參考互相矛盾」這個問題要協調。
 
-    注意：quotation_agent（家具估價/報價推薦）不在這個自動流程裡執行。
+    注意：家具報價（build_quotation）不在這個自動流程裡執行。
     它耗時較長（觀測約 30-40 秒），且不影響生成圖片本身，因此改成
     使用者按下「取得家具報價」按鈕才呼叫獨立的 /api/quotation
-    endpoint（見 api.py），而不是每次 /api/generate 都自動跑一次。
+    endpoint（見 routers/generate.py），而不是每次 /api/generate 都自動跑一次。
     """
     graph: StateGraph[DesignBridgeState] = StateGraph(DesignBridgeState)
 
