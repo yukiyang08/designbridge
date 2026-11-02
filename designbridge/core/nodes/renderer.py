@@ -179,7 +179,63 @@ _FURNITURE_DESC: dict[str, str] = {
     "lamp": "a floor lamp",
     "floor_lamp": "a floor lamp",
     "rug": "a soft area rug on the floor",
+    "bathtub": "a built-in bathtub",
+    "shower": "a glass walk-in shower",
+    "towel_rack": "a wall-mounted towel rack",
+    "washer": "a front-loading washing machine",
+    "drying_rack": "a clothes drying rack",
+    "shoe_cabinet": "a built-in shoe cabinet",
+    "bench": "a small bench for putting on shoes",
 }
+
+# 房型靠 LLM 從描述推，不一定準；有這些設備就認定房型
+_ROOM_FIXTURES = {
+    "bathroom": frozenset({"toilet", "bathtub", "shower"}),
+    "balcony": frozenset({"washer", "drying_rack"}),
+    "kitchen": frozenset({"stove"}),   # 水槽、冰箱客餐廳也會有，不能拿來判斷
+    "entrance": frozenset({"shoe_cabinet"}),
+}
+# LLM 給的房型字彙不固定，玄關常見這幾種講法
+_ROOM_TYPE_ALIASES = {"circulation": "entrance", "foyer": "entrance", "entryway": "entrance", "hallway": "entrance"}
+# 生圖 prompt 的頭尾；客廳那套 sofa/legs/天花板字眼會讓浴室長出家具、陽台被封成室內
+_ROOM_PROMPT = {
+    "bathroom": (
+        "Natural eye-level wide-angle photorealistic bathroom view, solid tiled walls and ceiling. ",
+        " Clean tidy bathroom, tiled walls and floor, realistic white sanitary ware, "
+        "professional interior design photography, high detail.",
+    ),
+    "balcony": (
+        "Natural eye-level wide-angle photorealistic view of a semi-outdoor apartment balcony, "
+        "with a railing and an open side to the outside. ",
+        " Clean tidy balcony, natural daylight, outdoor floor tiles, "
+        "professional architectural photography, high detail.",
+    ),
+    "kitchen": (
+        "Natural eye-level wide-angle photorealistic kitchen view, solid walls and ceiling. ",
+        " Clean tidy kitchen, continuous countertop with built-in base cabinets, upper wall "
+        "cabinets, backsplash, professional interior design photography, high detail.",
+    ),
+    "entrance": (
+        "Natural eye-level photorealistic view of an apartment entrance foyer, solid walls and ceiling. ",
+        " Clean tidy entryway, front door, built-in shoe storage, "
+        "professional interior design photography, high detail.",
+    ),
+    None: (
+        "Natural eye-level wide-angle photorealistic interior view, the whole room "
+        "visible with solid walls and ceiling. ",
+        " Clean tidy space, well-proportioned realistic furniture with proper legs, "
+        "nothing draped on the sofa, professional interior design photography, high detail.",
+    ),
+}
+
+
+def _room_kind(req: dict, placements: list[dict]) -> str | None:
+    room_type = (req.get("meta") or {}).get("room_type")
+    room_type = _ROOM_TYPE_ALIASES.get(room_type, room_type)
+    if room_type in _ROOM_FIXTURES:
+        return room_type
+    types = {p.get("type") for p in placements}
+    return next((room for room, fixtures in _ROOM_FIXTURES.items() if types & fixtures), None)
 
 
 def _projection_meta(depth_path: str) -> dict:
@@ -665,12 +721,8 @@ def renderer(state: DesignBridgeState) -> dict[str, Any]:
             if layout_edge_path:
                 controlnet_inputs["layout_footprint_edges"] = layout_edge_path
             # 加整潔/品質提示（不能用 negative prompt，會弄壞 fal 上的 ControlNet-Union）
-            layout_prompt = (
-                "Natural eye-level wide-angle photorealistic interior view, the whole room "
-                "visible with solid walls and ceiling. " + prompt +
-                " Clean tidy space, well-proportioned realistic furniture with proper legs, "
-                "nothing draped on the sofa, professional interior design photography, high detail."
-            )
+            _head, _tail = _ROOM_PROMPT[_room_kind(req, furniture_placements)]
+            layout_prompt = _head + prompt + _tail
             _union_kwargs = dict(
                 edge_path=layout_edge_path,
                 edge_conditioning_scale=Config.FAL_EDGE_CONDITIONING_SCALE,

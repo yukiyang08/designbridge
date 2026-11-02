@@ -58,7 +58,7 @@ export const STEP_FLOWS = {
 export const STYLE_PAGE_SIZE = 10
 export const ROOM_TYPE_LABEL = {
   living_room: '客廳', bedroom: '臥室', kitchen: '廚房', study: '書房', dining_room: '餐廳',
-  living_dining: '客餐廳', bathroom: '衛浴', balcony: '陽台',
+  living_dining: '客餐廳', bathroom: '衛浴', balcony: '陽台', circulation: '玄關',
 }
 
 // roomplan 的房型字彙（見 designbridge/roomplan/constants.py ROOM_TYPE_SPECS）→
