@@ -70,7 +70,12 @@ export async function submitRefine() {
     if (data.backend === 'placeholder') throw new Error('AI 修圖服務沒有產生新圖，請查看後端訊息（例如 fal.ai 額度用完）')
     if (requestId === requestState.current) {
       const before = lastGeneratedImage.value
-      result.value = { ...(result.value || {}), ...data, quotation_result: null }   // 圖變了，舊報價作廢
+      result.value = {
+        ...(result.value || {}), ...data,
+        // 局部修改不跑風格搜尋、回傳 null；保留原本的，整層套用風格才拿得到
+        style_params: data.style_params || result.value?.style_params || null,
+        quotation_result: null,   // 圖變了，舊報價作廢
+      }
       if (data.generated_image_path) {
         if (before?.path) refineHistory.value.push({ from: before, to: data.generated_image_path })
         lastGeneratedImage.value = { path: data.generated_image_path, url: data.generated_image_url || null }

@@ -8,6 +8,7 @@ import { DEMO_PROMPTS } from './demoPrompts'
 export const DEMO_MODE = import.meta.env.VITE_DEMO_MODE !== '0'   // demo branch 預設開，要關設 VITE_DEMO_MODE=0
 export const demoPhoto = ref(false)   // 目前上傳的是範例照片
 export const DEMO_PHOTO_PATH = 'demo/living_room.jpg'
+const DEMO_RESTYLE_URL = '/demo/photo/restyle.png'
 
 // DEMO 模式下不管上傳哪張平面圖，都直接用預先解析好的結果（不上傳、不辨識）
 export const DEMO_PLAN_PATH = new URL('/demo/floorplan.png', location.origin).href   // 放在前端 public，別台電腦也有
@@ -50,6 +51,22 @@ export async function demoIntercept(path, data) {
       await sleep(5000)
       return json(hit)
     }
+  }
+  // 照片工作台換風格：上傳自己的照片時，不管選哪個風格都回同一張錄好的圖（範例照片走下面那組）
+  if (path === '/api/generate' && data.restyle && !demoPhoto.value) {
+    await sleep(5000)
+    const url = new URL(DEMO_RESTYLE_URL, location.origin).href
+    return json({
+      status: 'success',
+      task_id: 'demo-restyle',
+      generated_image_path: url,
+      generated_image_url: url,
+      style_params: { style_profile_id: data.style_profile_id || '' },
+      render_result: { generation_params: { seed: 42, backend: 'demo' } },
+      elapsed_time: '5.00s',
+      timings: {},
+      timing_runs: [],
+    })
   }
   if (!demoPhoto.value || path !== '/api/generate') return null
   const id = data.style_profile_id
