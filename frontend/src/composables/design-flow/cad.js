@@ -1,4 +1,5 @@
 import { jsonFetch, mediaUrl } from '@/config/api'
+import { demoPlan } from '@/config/demo'
 import {
   requestState, cadDefaultPlacements, CAD_ROOM_TYPE_TO_EDITOR,
   error, loading, loadingMsg, result,
@@ -234,7 +235,7 @@ async function prepareUploadedRoom(room, requestId) {
   uploadedPlanUrl.value = mediaUrl(croppedPath)   // 「對照原始上傳平面圖」顯示這間的裁切圖
 
   const type = roomTypeForPlan.value
-  if (DETECTABLE.has(type)) {
+  if (DETECTABLE.has(type) || (demoPlan.value && type === 'room')) {   // DEMO：玄關也有預先辨識的家具
     const res = await jsonFetch('/api/parse-floor-plan', {
       image_path: croppedPath, room_type: type, room_w: roomW.value, room_d: roomD.value,
     })

@@ -10,7 +10,7 @@ export const demoPhoto = ref(false)   // 目前上傳的是範例照片
 export const DEMO_PHOTO_PATH = 'demo/living_room.jpg'
 
 // DEMO 模式下不管上傳哪張平面圖，都直接用預先解析好的結果（不上傳、不辨識）
-export const DEMO_PLAN_PATH = 'artifacts/uploads/demo_floorplan.png'
+export const DEMO_PLAN_PATH = new URL('/demo/floorplan.png', location.origin).href   // 放在前端 public，別台電腦也有
 export const isDemoPlan = () => DEMO_MODE
 export const demoPlan = ref(false)
 
@@ -21,7 +21,9 @@ const IMAGES = Object.fromEntries(
 )
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
-const json = (body) => new Response(JSON.stringify(body), { status: 200, headers: { 'Content-Type': 'application/json' } })
+// fixture 裡的 /demo/... 是前端自己的靜態檔，補成目前網站的完整網址（不依賴任何人的後端或 artifacts/）
+const json = (body) => new Response(JSON.stringify(body).replaceAll('"/demo/', `"${location.origin}/demo/`),
+  { status: 200, headers: { 'Content-Type': 'application/json' } })
 
 // 沒命中回 null，呼叫端照常打後端
 export async function demoIntercept(path, data) {
@@ -29,6 +31,8 @@ export async function demoIntercept(path, data) {
     await sleep(3000)
     return json(detectRooms)
   }
+  // 點進房間先裁切原圖：原圖不在後端（artifacts/ 不進 git），直接回前端的平面圖，只用來「對照原圖」
+  if (demoPlan.value && path === '/api/crop-floor-plan') return json({ path: DEMO_PLAN_PATH })
   // 點進房間的家具辨識：房型與尺寸對得上錄好的那間就直接回
   if (demoPlan.value && path === '/api/parse-floor-plan') {
     const hit = Object.values(parseRooms).find((r) => r.room_type === data.room_type
@@ -44,7 +48,7 @@ export async function demoIntercept(path, data) {
     const hit = p && gens[`${data.space_id}|${p.id}`]
     if (hit) {
       await sleep(5000)
-      return json({ ...hit, generated_image_url: new URL(hit.generated_image_url, location.origin).href })
+      return json(hit)
     }
   }
   if (!demoPhoto.value || path !== '/api/generate') return null
