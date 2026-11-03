@@ -482,6 +482,8 @@ export const panoError   = ref('')
 // ── 家具估價（原本在 ResultPanel）──
 export const quotationLoading = ref(false)
 export const quotationError   = ref('')
+// 結果圖上滑到的家具（quotation_result.furniture_list 的 index）：圖上的框和右邊清單互相標示
+export const furnitureHover   = ref(null)
 
 /* ══ 衍生值 ══════════════════════════════════════════════ */
 

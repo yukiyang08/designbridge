@@ -4,7 +4,7 @@ import { reactive, computed, ref, watch } from 'vue'
 import { useDesignFlow } from '@/composables/useDesignFlow'
 import { useFurnitureSelection } from '@/composables/useFurnitureSelection'
 
-const { result, quotationLoading, quotationError, fetchQuotation } = useDesignFlow()
+const { result, quotationLoading, quotationError, fetchQuotation, furnitureHover } = useDesignFlow()
 const { toggle: toggleFavorite, isSelected: isFavorited } = useFurnitureSelection()
 
 const quotation = computed(() => result.value?.quotation_result || null)
@@ -64,6 +64,18 @@ const estimateGroups = computed(() => furnitureGroups.value.filter(g => pickedOf
 // 換款只列有圖的商品，保留原本的 index 才能寫回 selectedCandidates
 const imageAlts = (g) => (g.item.candidates || []).map((a, ai) => ({ a, ai })).filter(x => hasImg(x.a))
 
+// 跟結果圖上的家具熱區互相標示：滑到圖上的家具 → 這裡標出那一行並捲過去；
+// 滑過這裡的一行 → 圖上框出那件家具（這時不捲，免得清單跟著滑鼠跳）
+const isHovered = (g) => furnitureHover.value != null && g.idxs.includes(furnitureHover.value)
+const rowEls = {}
+let hoverFromList = false
+function hoverRow(g) { hoverFromList = true; furnitureHover.value = g ? g.idxs[0] : null }
+watch(furnitureHover, (idx) => {
+  if (hoverFromList) { hoverFromList = false; return }
+  const g = furnitureGroups.value.find(x => x.idxs.includes(idx))
+  rowEls[g?.key]?.scrollIntoView({ block: 'nearest', behavior: 'smooth' })
+})
+
 // 目前展開「換款」的那一組
 const openRow = ref(null)
 watch(quotation, () => { openRow.value = null })
@@ -119,7 +131,10 @@ function toFavoriteItem(item, c) {
       </div>
 
       <ul v-if="shopGroups.length" class="furn-list">
-        <li v-for="g in shopGroups" :key="g.key" class="furn">
+        <li
+          v-for="g in shopGroups" :key="g.key" class="furn" :class="{ 'is-hovered': isHovered(g) }"
+          :ref="el => { rowEls[g.key] = el }" @mouseenter="hoverRow(g)" @mouseleave="hoverRow(null)"
+        >
           <template v-for="c in [pickedOf(g)]" :key="c?.id || g.key">
             <div v-if="c" class="furn-main">
               <span class="furn-thumb">
@@ -186,7 +201,11 @@ function toFavoriteItem(item, c) {
       <template v-if="estimateGroups.length">
         <h3 class="sub-title">預估估價項目</h3>
         <ul class="est-list">
-          <li v-for="g in estimateGroups" :key="g.key" class="est-row" :title="g.item.detected_name">
+          <li
+            v-for="g in estimateGroups" :key="g.key" class="est-row" :class="{ 'is-hovered': isHovered(g) }"
+            :title="g.item.detected_name"
+            :ref="el => { rowEls[g.key] = el }" @mouseenter="hoverRow(g)" @mouseleave="hoverRow(null)"
+          >
             <span class="est-cat">{{ categoryLabel(g.item) }}</span>
             <span class="est-name" :title="pickedOf(g).name">{{ shortName(pickedOf(g).name) }}</span>
             <span class="est-price">
@@ -246,6 +265,13 @@ function toFavoriteItem(item, c) {
 .furn-list { margin: 0; padding: 0; list-style: none; }
 .furn { padding: 0.4rem 0; border-bottom: 1px solid #f0f0f0; }
 .furn:last-child { border-bottom: none; }
+/* 跟結果圖上滑到的家具對應的那一行：左側一條灰褐線＋淡底，往內縮一點不會貼邊 */
+.furn, .est-row { transition: background 0.14s, box-shadow 0.14s; }
+.furn.is-hovered, .est-row.is-hovered {
+  margin: 0 -0.5rem; padding-left: 0.5rem; padding-right: 0.5rem;
+  border-radius: 8px; background: var(--db-accent-soft);
+  box-shadow: inset 3px 0 0 var(--db-accent-ink);
+}
 .furn-main { display: flex; align-items: center; gap: 0.75rem; }
 .furn-thumb {
   display: grid;

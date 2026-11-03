@@ -43,7 +43,7 @@ import {
   spaceImage, lastGeneratedImage, manualMaskPath, brushSize, eraserSize, drawMode,
   textPrompt, refineCanvasRef, baseImagePreview,
   panoLoading, panoUrl, panoError,
-  quotationLoading, quotationError,
+  quotationLoading, quotationError, furnitureHover,
 } from './design-flow/state'
 
 import { goStep, nextStep, prevStep, startFlow, resetFlow } from './design-flow/navigation'
@@ -64,7 +64,7 @@ import {
   currentVersion, editableFurniture, styleVersionIndex, uploadPhoto, restylePhoto, renderPhotoLayout, refinePhoto, quotePhoto,
 } from './design-flow/photoLayout'
 import { handleMaskReady, submitRefine, undoRefine, canUndoRefine, refining } from './design-flow/refine'
-import { fetchQuotation, quoteRooms } from './design-flow/quotation'
+import { fetchQuotation, fetchOutlines, quoteRooms } from './design-flow/quotation'
 import { restoreProject } from './design-flow/projectSync'
 import {
   fengshuiRulesFor, scheduleFengshuiAudit, applyFengshuiFix, undoFengshuiFix,
@@ -115,7 +115,7 @@ export function useDesignFlow() {
     // 環景
     panoLoading, panoUrl, panoError, generatePanorama,
     // 估價
-    quotationLoading, quotationError, fetchQuotation,
+    quotationLoading, quotationError, furnitureHover, fetchQuotation, fetchOutlines,
     // 動作
     uploadFile, submitLayout, useUploadedPlan, submitPhoto, submit3D, submitRefine, undoRefine, canUndoRefine, refining,
   }

@@ -55,6 +55,28 @@ export async function fetchQuotation() {
   }
 }
 
+// 結果圖的家具描邊：報價只有方框，另外跟後端要沿著家具的輪廓（第一次要跑分割，可能數十秒）。
+// 回來時已經換了圖或重新估價（quotation_result 不是同一份）就丟掉；失敗就維持方框。
+export async function fetchOutlines() {
+  const q = result.value?.quotation_result
+  const list = q?.furniture_list || []
+  const imagePath = lastGeneratedImage.value?.path || result.value?.generated_image_path
+  if (!imagePath || !list.some(it => it.bbox?.length === 4)) return
+  try {
+    const res = await jsonFetch('/api/furniture-outlines', {
+      image_path: imagePath,
+      boxes: list.map(it => it.bbox || []),
+    })
+    if (!res.ok) return
+    const { outlines } = await res.json()
+    if (result.value?.quotation_result !== q || !outlines?.some(Boolean)) return
+    result.value = {
+      ...result.value,
+      quotation_result: { ...q, furniture_list: list.map((it, i) => (outlines[i] ? { ...it, outline: outlines[i] } : it)) },
+    }
+  } catch { /* 描邊是加分項，失敗就沿用方框 */ }
+}
+
 // 整層總覽：幫「不是目前這間」的房間估價，結果寫回它自己的快照。
 // 目前這間走原本的 fetchQuotation（寫進全域 result）。
 async function quoteRoom(roomId) {
