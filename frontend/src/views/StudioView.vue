@@ -1,9 +1,9 @@
 <script setup>
 /**
  * 線性精靈外殼（Figma frame 10/11/13/15/18/19/20 共用的版面）：
- * 滿版背景 → 導覽列 → 流程列 → 置中白卡，白卡內容由當前步驟決定。
+ * 滿版工具版面：導覽列 → 章節（流程）列 → 工作區（＋整層縮圖欄），工作區內容由當前步驟決定。
  */
-import { computed, onMounted, watch } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { jsonFetch } from '@/config/api'
 import AppNav from '@/components/shell/AppNav.vue'
@@ -19,8 +19,8 @@ import StepFloorPlan from '@/components/steps/StepFloorPlan.vue'
 import StepResult from '@/components/steps/StepResult.vue'
 import CadRoomMiniMap from '@/components/CadRoomMiniMap.vue'
 import CadOverview from '@/components/CadOverview.vue'
+import FengshuiReport from '@/components/FengshuiReport.vue'
 import { useDesignFlow, ASPECT_OPTIONS } from '@/composables/useDesignFlow'
-import sceneBg from '@/assets/figma/room-bg.png'
 
 const router = useRouter()
 const flow = useDesignFlow()
@@ -32,6 +32,8 @@ const {
   cadBatch, cadBatchRunning, applyToRooms, cancelCadBatch,
   cadRoomSnapshots, cadRendering, planSource: flowPlanSource, confirmedStyle, result, outputAspect, extraPrompt,
   fengshuiRules, cadOverview,
+  fengshuiEnabled, fengshuiReport, fengshuiReportLoading, fengshuiLastFix, fengshuiHighlight, applyFengshuiFix, undoFengshuiFix,
+  roomW, roomD, layoutViewMode,
   fetchStyleOptions, fetchStyleDemoImages, resetFlow,
 } = flow
 
@@ -73,6 +75,38 @@ watch(cadBatchRunning, (running, was) => {
 const minimapCompact = computed(() => currentStep.value === 'result' && !!result.value)
 const showCadMiniMap = computed(
   () => planSource.value === 'cad' && !!cadPlanResult.value && MINIMAP_STEPS.has(currentStep.value),
+)
+// 風水＋動線健檢放右欄（健檢排程在 StepFloorPlan）。有家具就先佔住右欄，
+// 報告晚一點回來時畫布寬度不會突然縮一下。
+const showFengshui = computed(
+  () => currentStep.value === 'plan' && editPlacements.value.length > 0 && !loading.value && !activeRendering.value,
+)
+const showAside = computed(() => showCadMiniMap.value || showFengshui.value)
+
+// 打開時順便把現有的違規家具推開；關掉只是不再套用，已經調整的位置不動
+function onFengshuiToggle(on) {
+  if (on) applyFengshuiFix()
+  else fengshuiEnabled.value = false
+}
+
+// 健檢卡片的「定位」：切回 2D、在編輯器上圈出那件家具。家具一動就會重新健檢，圈圈跟著清掉
+function locateFurniture(ids) {
+  layoutViewMode.value = '2d'
+  fengshuiHighlight.value = ids
+}
+watch([fengshuiReport, currentStep], () => { fengshuiHighlight.value = [] })
+
+// 平面步驟右欄同時有整層縮圖和風水健檢：縮圖預設展開，想把空間讓給健檢可以收成一行（v-show，不卸載）
+const minimapOpen = ref(true)
+const minimapSummary = computed(() => {
+  const rooms = cadPlanResult.value?.rooms || []
+  const done = rooms.filter(r => cadRoomStatus.value[r.id] === 'done').length
+  return `${done} / ${rooms.length} 間完成`
+})
+const minimapCollapsible = computed(() => showCadMiniMap.value && showFengshui.value)
+// 縮圖下方標出正在編輯哪一間，縮圖和中間畫布的關係才看得出來
+const activeRoomLabel = computed(
+  () => (cadPlanResult.value?.rooms || []).find(r => r.id === cadActiveRoomId.value)?.label_zh || '',
 )
 
 // 三個入口模式選錯了想換一個，只有在第一步才需要——後面幾步已經有資料，
@@ -142,24 +176,25 @@ onMounted(() => {
 </script>
 
 <template>
-  <div class="db-scene studio" :style="{ '--db-scene-image': `url(${sceneBg})` }">
-    <AppNav />
+  <div class="studio">
+    <!-- 流程步驟放在導覽列中間，不另佔一排；只有一步（照片工作台）就不用流程列 -->
+    <AppNav tone="paper" class="studio-nav">
+      <StepBar
+        v-if="steps.length > 1"
+        class="studio-steps"
+        :steps="steps"
+        :current="stepIndex"
+        :max-reached="maxReached"
+        @go="goStep"
+      />
+    </AppNav>
 
-    <!-- 只有一步（照片工作台）就不用流程列，把高度留給工作區 -->
-    <StepBar
-      v-if="steps.length > 1"
-      class="studio-steps"
-      :steps="steps"
-      :current="stepIndex"
-      :max-reached="maxReached"
-      @go="goStep"
-    />
-
-    <!-- 縮圖是卡片內部的第二欄（同一個白色框框），不是另外浮在旁邊的獨立卡片——
-         那樣看起來像兩個框、主框框還會被擠到左邊。見 .studio-card.has-minimap 的 grid。 -->
+    <!-- 滿版工作區：左邊主內容、右欄放全局資訊（整層縮圖、風水健檢），中間只有一條細線。
+         右欄的米色底是 .has-aside::after 畫的。縮圖固定包在 .studio-aside 裡（頂部細列模式只是
+         把整個右欄移到上方），父層不變，切換時不會被重新掛載。 -->
     <div
-      class="db-card studio-card"
-      :class="{ 'has-minimap': showCadMiniMap && !minimapCompact, 'minimap-top': showCadMiniMap && minimapCompact }"
+      class="studio-card"
+      :class="{ 'has-aside': showAside && !(showCadMiniMap && minimapCompact), 'minimap-top': showCadMiniMap && minimapCompact }"
     >
       <div class="studio-main">
         <button
@@ -182,8 +217,18 @@ onMounted(() => {
         <p v-if="error && !loading" class="db-error studio-error">{{ error }}</p>
       </div>
 
+      <aside v-if="showAside" class="studio-aside" :class="{ 'has-toggle': minimapCollapsible }">
+      <button
+        v-if="minimapCollapsible" type="button" class="minimap-toggle"
+        :aria-expanded="minimapOpen" @click="minimapOpen = !minimapOpen"
+      >
+        <span class="minimap-toggle-title">整層進度</span>
+        <span class="minimap-toggle-count">{{ minimapSummary }}</span>
+        <span class="minimap-toggle-action">{{ minimapOpen ? '收合' : '展開' }}</span>
+      </button>
       <CadRoomMiniMap
         v-if="showCadMiniMap"
+        v-show="!minimapCollapsible || minimapOpen"
         :compact="minimapCompact"
         :overview-active="showOverview"
         @overview="openOverview"
@@ -202,56 +247,159 @@ onMounted(() => {
         @apply="applyToRooms"
         @cancel="cancelCadBatch"
       />
+      <p
+        v-if="showCadMiniMap && !minimapCompact && activeRoomLabel"
+        v-show="!minimapCollapsible || minimapOpen" class="minimap-current"
+      >目前編輯：<strong>{{ activeRoomLabel }}</strong></p>
+      <FengshuiReport
+        v-if="showFengshui"
+        :report="fengshuiReport"
+        :placements="editPlacements"
+        :room-w="roomW"
+        :room-d="roomD"
+        :enabled="fengshuiEnabled"
+        :loading="fengshuiReportLoading"
+        :last-fix="fengshuiLastFix"
+        fixable
+        toggleable
+        locatable
+        @locate="locateFurniture"
+        @toggle="onFengshuiToggle"
+        @enable="applyFengshuiFix"
+        @fix="applyFengshuiFix"
+        @undo="undoFengshuiFix"
+      />
+      </aside>
     </div>
   </div>
 </template>
 
 <style scoped>
+/* 工作區是滿版工具版面（白色導覽列 → 米色章節列 → 白色工作區＋米色縮圖欄），
+   各區只用 --db-line 細線分隔。不鋪室內照，也就沒有「白卡外面要墊什麼底」的問題；
+   其他頁面仍是 db-scene 照片底 + 置中白卡。 */
 .studio {
+  --aside-w: clamp(300px, 26vw, 460px);   /* 整層進度縮圖：窄螢幕 300、寬螢幕最大 460 */
   display: flex;
   flex-direction: column;
-  padding-bottom: 3rem;
+  min-height: 100vh;
+  background: var(--db-card);
+  color: var(--db-text);
 }
 
-.studio { --studio-w: min(1760px, calc(100vw - 2rem)); }   /* 白框與步驟列共用，左緣對齊 */
-.studio-steps { width: var(--studio-w); margin: 0 auto; padding-left: 0.35rem; padding-right: 0.35rem; box-sizing: border-box; }
+.studio-nav { border-bottom: 1px solid var(--db-line); }
+/* 步驟在導覽列中間：不換行、不另外留上下內距（前面多一層 .studio-nav 才穩定蓋過 StepBar 自己的樣式） */
+.studio-nav .studio-steps { flex-wrap: nowrap; padding: 0; }
 
 .studio-card {
   --pad: clamp(1.5rem, 3vw, 2.5rem);
-  width: var(--studio-w);   /* 比預設 1192 寬 */
-  padding: var(--pad) var(--pad) 0;
+  flex: 1;
   position: relative;
+  padding: var(--pad) var(--pad) 0;
+  background: var(--db-card);
 }
 
-/* 上一步 / 次要動作靠左、下一步 / 主要動作靠右，固定在卡片底部（捲動時黏在視窗底）。
-   ponytail: 沿用各 step 的 .actions，不搬按鈕；只有一顆時維持靠左，避免整層→單間時位置跳動。 */
-.studio-main :deep(.actions) {
-  position: sticky;
+/* 上一步 / 次要動作靠左、下一步 / 主要動作靠右：整條固定在視窗最底部、橫跨整個畫面，
+   「下一步」永遠在右下角。sticky 不行——主內容比右欄短時，操作列會停在主內容結尾、從右欄中間切過去。
+   沿用各 step 的 .actions，不搬按鈕。前面多一個 .studio：各 step 自己的 .actions 也寫了置中，
+   權重相同時誰贏看載入順序，這裡要穩定蓋過。 */
+.studio { --actions-h: 5rem; }   /* 操作列的高度，內容底部要留這麼多空間 */
+.studio .studio-main :deep(.actions) {
+  position: fixed;
+  left: 0;
+  right: 0;
   bottom: 0;
-  z-index: 5;
+  z-index: 50;
   display: flex;
   flex-direction: row;
   align-items: center;
   justify-content: space-between;
   gap: 1rem;
-  margin: 1.5rem calc(-1 * var(--pad)) 0;
-  padding: 1rem var(--pad);
-  background: #fff;
-  border-top: 1px solid #e8e6e1;
-  border-radius: 0 0 var(--db-radius-card) var(--db-radius-card);
+  margin: 0;
+  padding: 0.9rem var(--pad);
+  background: var(--db-card);
+  border-top: 1px solid var(--db-line);
 }
+.studio-card { padding-bottom: var(--actions-h); }
 .studio-main :deep(.actions .db-btn) { min-width: 0; }
-/* 有縮圖時卡片內部變兩欄 grid：左邊主內容、右邊縮圖，同一個框框裡面，
-   不是另外浮一個獨立的白卡在旁邊。 */
-.studio-card.has-minimap {
+/* 主要動作（下一步）永遠在最右邊，只有它一顆時也一樣 */
+.studio-main :deep(.actions > .db-btn:not(.db-btn--ghost):last-child) { margin-left: auto; }
+/* 操作列在 .studio-main 裡；右欄（同樣 z-index 1、DOM 在後）不能蓋到它 */
+.studio .has-aside > .studio-main { z-index: 2; }
+/* 有右欄時變兩欄 grid：右欄貼齊視窗右緣、整欄米色底（::after 畫到工作區底部），
+   右欄內容 sticky，捲動時一直看得到；內容比視窗高就在欄內捲動。 */
+.studio-card.has-aside {
   display: grid;
-  grid-template-columns: 1fr clamp(300px, 26vw, 460px);   /* 整層進度縮圖：窄螢幕 300、寬螢幕最大 460 */
+  grid-template-columns: 1fr var(--aside-w);
   align-items: start;
-  gap: clamp(1.25rem, 2.5vw, 2rem);
+  column-gap: calc(2 * var(--pad));
+  padding-right: 0;
 }
+.studio-card.has-aside::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: calc(var(--aside-w) + var(--pad));
+  background: var(--db-paper);
+  border-left: 1px solid var(--db-line);
+}
+.studio-card.has-aside > * { position: relative; z-index: 1; }
+.studio-card.has-aside > .studio-aside {
+  position: sticky;
+  top: 0;
+  max-height: calc(100vh - var(--actions-h));   /* 底部讓給固定的操作列 */
+  overflow-y: auto;
+  margin-top: calc(-1 * var(--pad));
+  padding: var(--pad) var(--pad) var(--pad) 0;
+}
+/* 右欄本身就是米色面板，裡面的縮圖／報告不再各自包一層框 */
+.has-aside .studio-aside > .cad-minimap:not(.is-compact-open) {
+  position: static;
+  padding: 0;
+  border-radius: 0;
+  background: none;
+}
+.studio-aside > .fs-report {
+  margin: 0;
+  padding: 0;
+  border: none;
+  background: none;
+}
+.minimap-current { margin: 0.6rem 0 0; color: var(--db-text-soft); font-size: 0.85rem; }
+.minimap-current strong { color: var(--db-text); font-weight: 600; }
+.studio-aside > .cad-minimap + .fs-report,
+.studio-aside > .minimap-current + .fs-report {
+  margin-top: 1.5rem;
+  padding-top: 1.5rem;
+  border-top: 1px solid var(--db-line);
+}
+
+/* 收合的整層縮圖：一行標題＋進度，點了展開 */
+.minimap-toggle {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  width: 100%;
+  margin-bottom: 1rem;
+  padding: 0.6rem 0.85rem;
+  border: 1px solid var(--db-line);
+  border-radius: var(--db-radius-chip);
+  background: var(--db-card);
+  color: var(--db-text);
+  font: inherit;
+  cursor: pointer;
+}
+.minimap-toggle:hover { border-color: var(--db-accent-deep); }
+.minimap-toggle-title { font-family: var(--db-font-display); font-style: italic; font-weight: 600; }
+.minimap-toggle-count { color: var(--db-text-soft); font-size: 0.85rem; }
+/* 收合列已經寫了「整層進度 N/M」，縮圖自己的標題列就不重複 */
+.has-toggle :deep(.minimap-head) { display: none; }
+.minimap-toggle-action { margin-left: auto; color: var(--db-accent-ink); font-size: 0.82rem; text-decoration: underline; text-underline-offset: 3px; }
 .studio-main { min-width: 0; }
 .studio-card.minimap-top { display: flex; flex-direction: column; }
-.studio-card.minimap-top > .cad-minimap { order: -1; }
+.studio-card.minimap-top > .studio-aside { order: -1; }
 
 /* 原本是一行小灰字，太不顯眼，容易被當成裝飾文字而不是按鈕。
    改成有外框的實體按鈕，字級跟其他次要動作（例如「上一步」）看齊。 */
@@ -287,16 +435,31 @@ onMounted(() => {
   margin: 1.25rem clamp(1.5rem, 3vw, 2.5rem) 0;
 }
 
+/* 窄螢幕：右欄疊到主內容下方，變成一塊米色小框 */
 @media (max-width: 1100px) {
-  .studio-card.has-minimap { grid-template-columns: 1fr; }
+  .studio-card.has-aside { grid-template-columns: 1fr; padding-right: var(--pad); }
+  .studio-card.has-aside::after { display: none; }
+  .studio-card.has-aside > .studio-aside {
+    position: static;
+    max-height: none;
+    overflow: visible;
+    margin: 1.5rem 0 var(--pad);
+    padding: 1.1rem;
+    border-radius: var(--db-radius-chip);
+    background: var(--db-paper);
+  }
 }
 @media (max-width: 720px) {
-  .studio-main :deep(.actions) { flex-direction: row; }
+  .studio .studio-main :deep(.actions) { flex-direction: row; }
   .studio-main :deep(.actions .db-btn) { flex: 1; width: auto; }
 }
-/* 手機：底部操作列不再黏住（3 個子項疊起來會吃掉半個畫面），改成自然換行、按鈕滿寬 */
+/* 手機：底部操作列不再固定（3 個子項疊起來會吃掉半個畫面），改成接在內容後面、自然換行、按鈕滿寬 */
 @media (max-width: 640px) {
-  .studio-main :deep(.actions) { position: static; flex-wrap: wrap; gap: 0.6rem; }
+  .studio { --actions-h: 0px; }
+  .studio .studio-main :deep(.actions) {
+    position: static; flex-wrap: wrap; gap: 0.6rem;
+    margin: 1.5rem calc(-1 * var(--pad)) 0;
+  }
   .studio-main :deep(.actions .db-btn) { flex: 1 1 140px; }
   .studio-main :deep(.actions p),
   .studio-main :deep(.actions .skip-btn) { flex: 1 1 100%; text-align: center; }

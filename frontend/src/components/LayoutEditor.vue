@@ -20,7 +20,8 @@ const props = defineProps({
   geometry: { type: Object, default: null },            // 這間房的牆厚／門／窗（CAD 路徑才有，見 utils/roomGeometry）
   // 家具 id → 正面朝向（up/down/left/right），由後端 facing.py 推算，生圖時家具也照這個方向擺
   facing: { type: Object, default: () => ({}) },
-  hideEmptyPanel: { type: Boolean, default: false },   // 沒選取時不顯示右側提示欄
+  // 風水健檢「定位」的家具 id：朱紅虛線圈起來（紅筆批註），第一件順便選取，尺寸面板直接可改
+  highlight: { type: Array, default: () => [] },
 })
 
 const FACING_TEXT = { up: '上', down: '下', left: '左', right: '右' }
@@ -74,7 +75,8 @@ watch([doorKeepouts, () => props.placements, bounds], () => {
   const bounded = props.placements.map(inBounds)
   const fitted = bounded.some((it, i) => it !== props.placements[i]) ? bounded : props.placements
   const next = settlePlacements(fitted, doorKeepouts.value, bounds.value)
-  if (next !== props.placements) emit('update:placements', next)
+  // auto：編輯器自己校正的，不是使用者動手（父層靠它分辨要不要清掉風水一鍵調整的紀錄）
+  if (next !== props.placements) emit('update:placements', next, { auto: true })
 }, { immediate: true })
 const editorNotice = ref('')
 // 動作成功的短提示（新增／刪除／旋轉／復原…），1.8 秒後消失
@@ -98,6 +100,10 @@ const MIN = 0.04            // min box size
 
 const boardRef = ref(null)
 const selectedId = ref(null)
+watch(() => props.highlight, (ids) => {
+  const first = ids.find(id => props.placements.some(p => p.id === id))
+  if (first) selectedId.value = first
+})
 let drag = null             // active drag/resize state
 
 // Local editable copy that syncs up on every change.
@@ -394,7 +400,28 @@ const lockedModel = computed({
 // ── Furniture palette ─────────────────────────────────────────────
 // 上傳平面圖的未命名空間房型是 room，沒有對應家具清單，先給客廳清單，使用者可再切換
 const paletteRoomType = ref(FURNITURE_BY_ROOM[props.roomType] ? props.roomType : 'living_room')
-const paletteCatalog = computed(() => FURNITURE_BY_ROOM[paletteRoomType.value] || [])
+// ROOM_OPTIONS 只有空間設定頁那四種；整層 CAD 的房間還有客餐廳、衛浴…，不補的話選單會是空白的
+const EXTRA_ROOM_LABELS = {
+  living_dining: '客餐廳', dining_room: '餐廳', bathroom: '衛浴', balcony: '陽台', kids_room: '兒童房',
+}
+const paletteRoomOptions = [
+  ...ROOM_OPTIONS,
+  ...Object.entries(EXTRA_ROOM_LABELS)
+    .filter(([value]) => FURNITURE_BY_ROOM[value] && !ROOM_OPTIONS.some(o => o.value === value))
+    .map(([value, label]) => ({ value, label })),
+]
+// 有輸入關鍵字就跨房型搜尋（找「書桌」不用先猜它在哪個分類），同一件家具只列一次
+const paletteQuery = ref('')
+const paletteCatalog = computed(() => {
+  const q = paletteQuery.value.trim()
+  if (!q) return FURNITURE_BY_ROOM[paletteRoomType.value] || []
+  const seen = new Set()
+  return Object.values(FURNITURE_BY_ROOM).flat().filter(c => {
+    if (seen.has(c.value) || !c.label.includes(q)) return false
+    seen.add(c.value)
+    return true
+  })
+})
 
 // ── 尺寸標示模式 ─────────────────────────────────────────────────
 // 開啟後：畫布外圍顯示總長與門窗尺寸鏈、每件家具標寬×深、選取家具時標出它到四面牆的距離。
@@ -463,42 +490,17 @@ onBeforeUnmount(() => {
 
 <template>
   <div class="editor">
-    <div class="toolbar">
-      <button class="tool-btn active" @click="selectedId = null" title="取消選取">
-        <Icon icon="mdi:cursor-default-outline" width="22" /><span>選取</span>
-      </button>
-      <span class="tool-sep" />
-      <button v-if="canRotate(selectedItem)" class="tool-btn" @click="rotate90(selectedItem)" title="旋轉 90°">
-        <Icon icon="mdi:rotate-right" width="22" /><span>旋轉</span>
-      </button>
-      <button class="tool-btn" @click="zoomIn" title="放大">
-        <Icon icon="mdi:magnify-plus-outline" width="22" /><span>放大</span>
-      </button>
-      <button class="tool-btn" @click="zoomOut" title="縮小">
-        <Icon icon="mdi:magnify-minus-outline" width="22" /><span>縮小</span>
-      </button>
-      <button class="tool-btn" :class="{ active: showDims }" :aria-pressed="showDims" @click="showDims = !showDims" title="顯示／隱藏尺寸標示">
-        <Icon icon="mdi:ruler" width="22" /><span>尺寸</span>
-      </button>
-      <button class="tool-btn" :disabled="!selectedItem" @click="removeItem(selectedItem)" title="刪除">
-        <Icon icon="mdi:trash-can-outline" width="22" /><span>刪除</span>
-      </button>
-      <span class="tool-sep" />
-      <button class="tool-btn" :disabled="!historyStack.length" @click="undo" title="復原">
-        <Icon icon="mdi:undo" width="22" /><span>復原</span>
-      </button>
-      <button class="tool-btn" :disabled="!redoStack.length" @click="redo" title="重做">
-        <Icon icon="mdi:redo" width="22" /><span>重做</span>
-      </button>
-    </div>
-
     <div class="workspace">
-      <!-- ── 家具面板 ── -->
+      <!-- ── 左欄：家具面板（固定在左上）＋ 選取物件的設定（下）──
+           「這一件東西」的操作都在左邊；右側留給外層的整層進度／風水健檢（全局資訊）。 -->
+      <div class="side">
       <aside class="palette">
         <div class="palette-title">家具</div>
-        <select v-model="paletteRoomType" class="palette-room-select">
-          <option v-for="r in ROOM_OPTIONS" :key="r.value" :value="r.value">{{ r.label }}</option>
+        <input v-model="paletteQuery" type="search" class="palette-search" placeholder="搜尋家具…" aria-label="搜尋家具" />
+        <select v-show="!paletteQuery.trim()" v-model="paletteRoomType" class="palette-room-select">
+          <option v-for="r in paletteRoomOptions" :key="r.value" :value="r.value">{{ r.label }}</option>
         </select>
+        <p v-if="paletteQuery.trim() && !paletteCatalog.length" class="palette-empty">找不到「{{ paletteQuery.trim() }}」</p>
         <div class="palette-list">
           <button v-for="c in paletteCatalog" :key="c.value" class="palette-item" @click="addItem(c.value)">
             <Icon :icon="iconOf(c.value)" class="palette-item-icon" />
@@ -506,81 +508,10 @@ onBeforeUnmount(() => {
             <Icon icon="mdi:plus" class="palette-item-add" />
           </button>
         </div>
-        <p class="palette-hint">點擊家具卡片加入畫布</p>
+        <p class="palette-hint">點擊家具卡片加入畫布・點選畫布上的家具或外框可調整尺寸</p>
       </aside>
 
-      <!-- ── 畫布 ── -->
-      <div ref="viewportRef" class="board-viewport">
-        <div class="board-stage" :class="{ dims: showDims }" :style="boardStageStyle">
-        <RoomDims v-if="showDims" :room-w="roomW" :room-d="roomD" :geometry="geometry" />
-        <div ref="boardRef" class="board" :class="{ 'has-walls': !!geometry }"
-             :style="{ aspectRatio: boardAspect }"
-             @pointerdown="selectedId = null">
-          <div class="grid"></div>
-          <RoomWalls
-            v-if="geometry" :room-w="roomW" :room-d="roomD" :geometry="geometry"
-            :selected-id="selectedOpening?.id || ''" @pick="onOpeningDown"
-          />
-
-          <!-- 點外框可選取「房間」，調整整體長寬（見下方家具設定面板的房間分支） -->
-          <div class="frame-hit frame-top"    title="調整房間尺寸" @pointerdown.stop="selectRoom"></div>
-          <div class="frame-hit frame-bottom" title="調整房間尺寸" @pointerdown.stop="selectRoom"></div>
-          <div class="frame-hit frame-left"   title="調整房間尺寸" @pointerdown.stop="selectRoom"></div>
-          <div class="frame-hit frame-right"  title="調整房間尺寸" @pointerdown.stop="selectRoom"></div>
-
-          <div
-            v-for="(k, i) in doorKeepouts" :key="`k${i}`" class="keepout"
-            :style="{ left: pct(k.x), top: pct(k.y), width: pct(k.w), height: pct(k.h) }"
-          ></div>
-
-          <div
-            v-for="item in items"
-            :key="item.id"
-            class="node"
-            :class="{ floor: isFloor(item.type), selected: selectedId === item.id, locked: item.locked }"
-            :style="{ left: pct(item.x), top: pct(item.y), width: pct(item.w), height: pct(item.h) }"
-            @pointerdown="onDown($event, item, 'move')"
-          >
-            <Icon :icon="iconOf(item.type)" class="node-icon" />
-            <span class="node-label">{{ labelOf(item.type) }}</span>
-            <span v-if="showDims" class="node-size">{{ cmOf(item.w, roomW) }}×{{ cmOf(item.h, roomD) }}</span>
-            <Icon v-if="item.locked" icon="mdi:lock-outline" class="node-lock" />
-            <template v-if="faceOf(item)">
-              <span class="node-front" :class="`to-${faceOf(item)}`"></span>
-              <span
-                class="node-facing" :class="`to-${faceOf(item)}`"
-                :title="`正面朝${FACING_TEXT[faceOf(item)]}`"
-              ><Icon icon="mdi:arrow-up-bold" width="13" /></span>
-            </template>
-
-            <template v-if="selectedId === item.id && !item.locked">
-              <!-- 按鈕在家具外的右上角（貼上牆時改放下方，不然被畫布裁掉點不到）；旋轉每按一次轉 90° -->
-              <div class="node-btns" :class="{ below: item.y < 0.08 }">
-                <button v-if="canRotate(item)" class="node-btn rot" :title="`旋轉 90°（目前 ${item.rotation || 0}°）`"
-                        @pointerdown.stop @click.stop="rotate90(item)">
-                  <Icon icon="mdi:rotate-right" width="12" />
-                </button>
-                <button class="node-btn del" title="刪除"
-                        @pointerdown.stop @click.stop="removeItem(item)">
-                  <Icon icon="mdi:close" width="12" />
-                </button>
-              </div>
-              <!-- 貼右牆／下牆時把手收進家具內，不然被畫布裁掉一半抓不到 -->
-              <div class="handle"
-                   :class="{ 'in-x': item.x + item.w > bounds.x1 - 0.02, 'in-y': item.y + item.h > bounds.y1 - 0.02 }"
-                   @pointerdown="onDown($event, item, 'resize')"></div>
-            </template>
-          </div>
-
-          <!-- 選取家具 → 到四面牆的距離 -->
-          <div v-for="g in gaps" :key="g.k" class="gap" :class="g.cls" :style="g.style">
-            <span class="gap-lab">{{ g.cm }}</span>
-          </div>
-        </div>
-        </div>
-      </div>
-
-      <!-- ── 家具設定 ── -->
+      <!-- 家具設定 -->
       <aside class="props-panel" v-if="selectedItem">
         <div class="props-header">
           <Icon :icon="iconOf(selectedItem.type)" width="20" />
@@ -634,15 +565,117 @@ onBeforeUnmount(() => {
           <input type="number" v-model.number="roomDepthCm" min="100" />
         </label>
       </aside>
-      <aside class="props-panel props-empty" v-else-if="!hideEmptyPanel">
-        <Icon icon="mdi:cursor-default-click-outline" width="24" />
-        <p>點選畫布上的家具或外框以編輯</p>
-      </aside>
-    </div>
+      </div>
 
-    <span v-if="editorNotice" class="hint hint-notice" role="status">{{ editorNotice }}</span>
-    <span v-else-if="flashMsg" class="hint hint-ok" role="status">✓ {{ flashMsg }}</span>
-    <span v-else class="hint">拖動移動 · 右下角縮放 · ⟳ 旋轉 · 靠牆自動吸附 · 點選外框可調整房間尺寸 · 「尺寸」可顯示標註 · 橘色箭頭＝家具正面朝向</span>
+      <!-- ── 編輯區：工具列＋畫布＋提示，自成一塊（跟左邊家具欄分開），畫布在裡面置中 ── -->
+      <div class="canvas-col">
+      <div class="toolbar">
+        <button class="tool-btn active" @click="selectedId = null" title="取消選取">
+          <Icon icon="mdi:cursor-default-outline" width="22" /><span>選取</span>
+        </button>
+        <span class="tool-sep" />
+        <button v-if="canRotate(selectedItem)" class="tool-btn" @click="rotate90(selectedItem)" title="旋轉 90°">
+          <Icon icon="mdi:rotate-right" width="22" /><span>旋轉</span>
+        </button>
+        <button class="tool-btn" @click="zoomIn" title="放大">
+          <Icon icon="mdi:magnify-plus-outline" width="22" /><span>放大</span>
+        </button>
+        <button class="tool-btn" @click="zoomOut" title="縮小">
+          <Icon icon="mdi:magnify-minus-outline" width="22" /><span>縮小</span>
+        </button>
+        <button class="tool-btn" :class="{ active: showDims }" :aria-pressed="showDims" @click="showDims = !showDims" title="顯示／隱藏尺寸標示">
+          <Icon icon="mdi:ruler" width="22" /><span>尺寸</span>
+        </button>
+        <button class="tool-btn" :disabled="!selectedItem" @click="removeItem(selectedItem)" title="刪除">
+          <Icon icon="mdi:trash-can-outline" width="22" /><span>刪除</span>
+        </button>
+        <span class="tool-sep" />
+        <button class="tool-btn" :disabled="!historyStack.length" @click="undo" title="復原">
+          <Icon icon="mdi:undo" width="22" /><span>復原</span>
+        </button>
+        <button class="tool-btn" :disabled="!redoStack.length" @click="redo" title="重做">
+          <Icon icon="mdi:redo" width="22" /><span>重做</span>
+        </button>
+        <!-- 父層放在工具列最右邊的東西（平面圖步驟的 2D／3D 切換），省掉另外一整排 -->
+        <div v-if="$slots['toolbar-end']" class="toolbar-end"><slot name="toolbar-end" /></div>
+      </div>
+
+      <!-- 操作說明／動作回饋放在平面圖上面：一開始就看得到，不用捲到畫布底下 -->
+      <span v-if="editorNotice" class="hint hint-notice" role="status">{{ editorNotice }}</span>
+      <span v-else-if="flashMsg" class="hint hint-ok" role="status">✓ {{ flashMsg }}</span>
+      <span v-else class="hint">拖動移動 · 右下角縮放 · ⟳ 旋轉 · 靠牆自動吸附 · 點選外框可調整房間尺寸 · 「尺寸」可顯示標註 · 橘色箭頭＝家具正面朝向</span>
+
+      <div ref="viewportRef" class="board-viewport">
+        <div class="board-stage" :class="{ dims: showDims }" :style="boardStageStyle">
+        <RoomDims v-if="showDims" :room-w="roomW" :room-d="roomD" :geometry="geometry" />
+        <div ref="boardRef" class="board" :class="{ 'has-walls': !!geometry }"
+             :style="{ aspectRatio: boardAspect }"
+             @pointerdown="selectedId = null">
+          <div class="grid"></div>
+          <RoomWalls
+            v-if="geometry" :room-w="roomW" :room-d="roomD" :geometry="geometry"
+            :selected-id="selectedOpening?.id || ''" @pick="onOpeningDown"
+          />
+
+          <!-- 點外框可選取「房間」，調整整體長寬（見下方家具設定面板的房間分支） -->
+          <div class="frame-hit frame-top"    title="調整房間尺寸" @pointerdown.stop="selectRoom"></div>
+          <div class="frame-hit frame-bottom" title="調整房間尺寸" @pointerdown.stop="selectRoom"></div>
+          <div class="frame-hit frame-left"   title="調整房間尺寸" @pointerdown.stop="selectRoom"></div>
+          <div class="frame-hit frame-right"  title="調整房間尺寸" @pointerdown.stop="selectRoom"></div>
+
+          <div
+            v-for="(k, i) in doorKeepouts" :key="`k${i}`" class="keepout"
+            :style="{ left: pct(k.x), top: pct(k.y), width: pct(k.w), height: pct(k.h) }"
+          ></div>
+
+          <div
+            v-for="item in items"
+            :key="item.id"
+            class="node"
+            :class="{ floor: isFloor(item.type), selected: selectedId === item.id, locked: item.locked, flagged: highlight.includes(item.id) }"
+            :style="{ left: pct(item.x), top: pct(item.y), width: pct(item.w), height: pct(item.h) }"
+            @pointerdown="onDown($event, item, 'move')"
+          >
+            <Icon :icon="iconOf(item.type)" class="node-icon" />
+            <span class="node-label">{{ labelOf(item.type) }}</span>
+            <span v-if="showDims" class="node-size">{{ cmOf(item.w, roomW) }}×{{ cmOf(item.h, roomD) }}</span>
+            <Icon v-if="item.locked" icon="mdi:lock-outline" class="node-lock" />
+            <template v-if="faceOf(item)">
+              <span class="node-front" :class="`to-${faceOf(item)}`"></span>
+              <span
+                class="node-facing" :class="`to-${faceOf(item)}`"
+                :title="`正面朝${FACING_TEXT[faceOf(item)]}`"
+              ><Icon icon="mdi:arrow-up-bold" width="13" /></span>
+            </template>
+
+            <template v-if="selectedId === item.id && !item.locked">
+              <!-- 按鈕在家具外的右上角（貼上牆時改放下方，不然被畫布裁掉點不到）；旋轉每按一次轉 90° -->
+              <div class="node-btns" :class="{ below: item.y < 0.08 }">
+                <button v-if="canRotate(item)" class="node-btn rot" :title="`旋轉 90°（目前 ${item.rotation || 0}°）`"
+                        @pointerdown.stop @click.stop="rotate90(item)">
+                  <Icon icon="mdi:rotate-right" width="12" />
+                </button>
+                <button class="node-btn del" title="刪除"
+                        @pointerdown.stop @click.stop="removeItem(item)">
+                  <Icon icon="mdi:close" width="12" />
+                </button>
+              </div>
+              <!-- 貼右牆／下牆時把手收進家具內，不然被畫布裁掉一半抓不到 -->
+              <div class="handle"
+                   :class="{ 'in-x': item.x + item.w > bounds.x1 - 0.02, 'in-y': item.y + item.h > bounds.y1 - 0.02 }"
+                   @pointerdown="onDown($event, item, 'resize')"></div>
+            </template>
+          </div>
+
+          <!-- 選取家具 → 到四面牆的距離 -->
+          <div v-for="g in gaps" :key="g.k" class="gap" :class="g.cls" :style="g.style">
+            <span class="gap-lab">{{ g.cm }}</span>
+          </div>
+        </div>
+        </div>
+      </div>
+      </div>
+    </div>
   </div>
 </template>
 
@@ -664,33 +697,48 @@ onBeforeUnmount(() => {
 .tool-btn.active { background: #756d66; color: #fff; }
 .tool-btn:disabled { opacity: 0.35; cursor: default; }
 .tool-sep { width: 1px; height: 24px; background: #e7dcc9; margin: 0 0.2rem; }
+.toolbar-end { margin-left: auto; }
 .hint { font-size: 0.74rem; color: #a08a6f; text-align: center; }
 
-/* ── Workspace (palette | board | properties) ── */
-.workspace { display: flex; gap: 0.75rem; align-items: flex-start; flex-wrap: wrap; }
+/* ── Workspace（左：家具欄＋選取設定 | 右：編輯區＝工具列＋畫布＋提示）── */
+.workspace { display: flex; gap: 1.25rem; align-items: flex-start; flex-wrap: wrap; }
+/* 編輯區自成一塊：淡底＋細框，跟左邊家具欄分開；畫布在裡面置中 */
+.canvas-col {
+  flex: 1 1 420px; min-width: 0;
+  display: flex; flex-direction: column; gap: 0.6rem;
+  padding: 0.6rem;
+  border: 1px solid var(--db-line); border-radius: 12px;
+  background: #faf9f6;
+}
+
+.side { width: 255px; flex-shrink: 0; display: flex; flex-direction: column; gap: 0.75rem; }
 
 .palette {
-  width: 225px; flex-shrink: 0; background: #fff; border: 1px solid #e7dcc9;
+  background: #fff; border: 1px solid #e7dcc9;
   border-radius: 10px; padding: 0.6rem; display: flex; flex-direction: column; gap: 0.4rem;
 }
 .palette-title { font-size: 0.8rem; font-weight: 700; color: #5c4630; }
-.palette-room-select {
+.palette-room-select,
+.palette-search {
   width: 100%; border: 1px solid #e2d4bf; border-radius: 6px; padding: 0.3rem 0.4rem;
   font-size: 0.76rem; font-family: inherit; background: #fdfaf5;
 }
+.palette-search { padding-left: 0.55rem; }
+.palette-search:focus { outline: none; border-color: #756d66; background: #fff; }
+.palette-empty { margin: 0.2rem 0; font-size: 0.74rem; color: #a08a6f; text-align: center; }
 .palette-list {
-  display: grid; grid-template-columns: repeat(auto-fill, minmax(68px, 1fr));
-  gap: 0.4rem; max-height: 500px; overflow-y: auto;
+  display: grid; grid-template-columns: repeat(2, minmax(0, 1fr));   /* 一行兩個，卡片夠大好點 */
+  gap: 0.4rem; max-height: min(500px, 40vh); overflow-y: auto;   /* 選取設定接在下面，矮螢幕也要看得到 */
 }
 .palette-item {
   position: relative;
   display: flex; flex-direction: column; align-items: center; justify-content: center;
-  gap: 0.3rem; border: none; background: #f7efe3;
-  border-radius: 10px; padding: 0.55rem 0.35rem; font-size: 0.7rem; font-family: inherit;
+  gap: 0.35rem; border: none; background: #f7efe3;
+  border-radius: 10px; padding: 0.85rem 0.4rem; font-size: 0.85rem; font-family: inherit;
   color: #5c4630; cursor: pointer; text-align: center;
 }
 .palette-item:hover { background: #ecdcc4; }
-.palette-item-icon { font-size: 1.3rem; }
+.palette-item-icon { font-size: 1.7rem; }
 .palette-item-label { line-height: 1.15; }
 .palette-item-add {
   position: absolute; top: 0.25rem; right: 0.25rem;
@@ -701,7 +749,7 @@ onBeforeUnmount(() => {
 .palette-hint { font-size: 0.68rem; color: #a08a6f; margin: 0; text-align: center; }
 
 .board-viewport {
-  flex: 1 1 420px; min-width: 0; max-height: min(70vh, 720px); overflow: auto;
+  min-width: 0; max-height: min(70vh, 720px); overflow: auto;
   display: flex; align-items: center; justify-content: center;
 }
 .board-stage {
@@ -769,6 +817,10 @@ onBeforeUnmount(() => {
 .node.floor { background: rgba(160,160,160,0.20); border: 1.5px dashed #999; z-index: 0; }
 .node.selected { box-shadow: 0 0 0 2px #756d66, 0 3px 12px rgba(0,0,0,0.2); z-index: 5; }
 .node.locked { cursor: default; opacity: 0.85; }
+/* 風水健檢「定位」：朱紅虛線外框（像設計師的紅筆圈注），一開始閃兩下引導視線 */
+.node.flagged { outline: 2px dashed var(--db-danger); outline-offset: 4px; z-index: 6; animation: flag-pulse 0.5s ease-in-out 2; }
+@keyframes flag-pulse { 50% { outline-offset: 9px; } }
+@media (prefers-reduced-motion: reduce) { .node.flagged { animation: none; } }
 .node-icon { font-size: 1rem; line-height: 1; pointer-events: none; }
 .node-label {
   font-size: 0.62rem; font-weight: 700; color: #4a3620; pointer-events: none;
@@ -817,14 +869,9 @@ onBeforeUnmount(() => {
 
 /* ── Properties panel ── */
 .props-panel {
-  width: 255px; flex-shrink: 0; background: #fff; border: 1px solid #e7dcc9;
+  background: #fff; border: 1px solid #e7dcc9;
   border-radius: 10px; padding: 0.75rem; display: flex; flex-direction: column; gap: 0.6rem;
 }
-.props-panel.props-empty {
-  align-items: center; justify-content: center; text-align: center; gap: 0.4rem;
-  color: #a08a6f; min-height: 180px;
-}
-.props-panel.props-empty p { font-size: 0.76rem; margin: 0; }
 .props-header {
   display: flex; align-items: center; gap: 0.4rem; font-size: 0.85rem;
   font-weight: 700; color: #5c4630; padding-bottom: 0.4rem; border-bottom: 1px solid #f0e6d6;
@@ -843,9 +890,9 @@ onBeforeUnmount(() => {
 .hint-ok { color: #2f7a4b; font-weight: 600; }
 
 @media (max-width: 900px) {
-  .board-viewport { flex-basis: 100%; order: 2; max-height: min(70vh, 640px); }
-  .props-panel { order: 3; }
-  .palette { order: 1; }
+  .canvas-col { flex-basis: 100%; order: 2; }
+  .board-viewport { max-height: min(70vh, 640px); }
+  .side { order: 1; }
 }
 .switch-input { width: 36px; height: 20px; accent-color: #756d66; cursor: pointer; }
 
@@ -853,9 +900,9 @@ onBeforeUnmount(() => {
 @media (max-width: 640px) {
   .toolbar { flex-wrap: nowrap; overflow-x: auto; }
   .tool-btn { flex: none; }
-  .board-viewport { order: 1; max-height: min(60vh, 480px); }
-  .palette { order: 2; width: 100%; box-sizing: border-box; }
-  .props-panel { order: 3; }
+  .canvas-col { order: 1; }
+  .board-viewport { max-height: min(60vh, 480px); }
+  .side { order: 2; width: 100%; }
   .palette-list { display: flex; overflow-x: auto; max-height: none; padding-bottom: 0.2rem; }
   .palette-item { flex: none; min-width: 72px; }
   .palette-hint { display: none; }

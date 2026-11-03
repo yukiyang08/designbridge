@@ -413,6 +413,7 @@ export const spacePhotoPath = ref('')
 export const fengshuiReport        = ref(null)    // /api/fengshui/audit 的回應（平面圖步驟即時更新）
 export const fengshuiReportLoading = ref(false)
 export const fengshuiLastFix       = ref(null)    // { moved, previous }：一鍵調整後可以復原
+export const fengshuiHighlight     = ref([])      // 健檢卡片按「定位」時，編輯器要圈出來的家具 id
 export const photoAudit            = ref(null)    // /api/fengshui/photo-audit 的回應 { plan, report }
 export const photoAuditLoading     = ref(false)
 export const photoAuditError       = ref('')

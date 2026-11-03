@@ -24,8 +24,12 @@ const props = defineProps({
   /** 給了房間尺寸才畫小平面圖（編輯器上沒畫門窗時，靠它看出規則在對什麼） */
   roomW: { type: Number, default: 0 },
   roomD: { type: Number, default: 0 },
+  /** 問題旁邊放「定位」：在編輯器上圈出違規家具（平面圖步驟才有編輯器） */
+  locatable: { type: Boolean, default: false },
 })
-defineEmits(['fix', 'undo', 'enable', 'toggle'])
+defineEmits(['fix', 'undo', 'enable', 'toggle', 'locate'])
+// 違規對象也可能是門（「門不對窗」），門不在家具清單裡，定位不到
+const furnitureIds = ids => ids.filter(id => id !== 'door')
 
 const fs = computed(() => props.report?.fengshui || null)
 const circ = computed(() => props.report?.circulation || null)
@@ -133,6 +137,10 @@ const scoreTone = s => s == null ? '' : s >= 85 ? 'is-good' : s >= 60 ? 'is-mid'
             <span class="rp-mark" aria-hidden="true">⚠</span>
             <strong>{{ r.label }}</strong>
             <span v-if="r.offenders.length" class="rp-who">{{ names(r.offenders) }}</span>
+            <button
+              v-if="locatable && furnitureIds(r.offenders).length"
+              type="button" class="rp-locate" @click="$emit('locate', furnitureIds(r.offenders))"
+            >定位</button>
           </p>
           <p class="rp-reason">{{ r.reason }}</p>
           <p class="rp-remedy">
@@ -155,6 +163,10 @@ const scoreTone = s => s == null ? '' : s >= 85 ? 'is-good' : s >= 60 ? 'is-mid'
           <span class="rp-mark" aria-hidden="true">↯</span>
           <strong>{{ i.kind === 'door_blocked' ? '門口被擋住' : '有家具走不到' }}</strong>
           <span class="rp-who">{{ names(i.offenders) }}</span>
+          <button
+            v-if="locatable && furnitureIds(i.offenders).length"
+            type="button" class="rp-locate" @click="$emit('locate', furnitureIds(i.offenders))"
+          >定位</button>
         </p>
         <p class="rp-reason">{{ i.message }}</p>
         <p class="rp-remedy"><span>建議：</span>{{ i.remedy }}</p>
@@ -231,6 +243,20 @@ const scoreTone = s => s == null ? '' : s >= 85 ? 'is-good' : s >= 60 ? 'is-mid'
 .rp-mark { color: var(--db-danger); }
 .is-circ .rp-mark { color: var(--db-text-soft); }
 .rp-who { color: var(--db-text-soft); font-size: 0.82rem; }
+.rp-locate {
+  margin-left: auto;
+  padding: 0.15rem 0.7rem;
+  border: 1px solid currentColor;
+  border-radius: var(--db-radius-pill);
+  background: #fff;
+  color: var(--db-danger);
+  font: inherit;
+  font-size: 0.78rem;
+  cursor: pointer;
+}
+.is-circ .rp-locate { color: var(--db-text); }
+.rp-locate:hover { background: var(--db-danger); color: #fff; }
+.is-circ .rp-locate:hover { background: var(--db-ink); }
 .rp-reason { margin-top: 0.25rem !important; color: var(--db-text-soft); font-size: 0.83rem; line-height: 1.55; }
 .rp-remedy { margin-top: 0.25rem !important; font-size: 0.83rem; line-height: 1.55; }
 .rp-remedy span { font-weight: 600; }
