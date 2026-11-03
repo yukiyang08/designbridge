@@ -238,7 +238,9 @@ def segment_furniture(image_path: str, size: tuple[int, int] | None = None, *, r
         idmap = np.asarray(Image.open(map_path)).astype(np.int32)
         if idmap.shape == size[::-1]:
             meta = json.loads(meta_path.read_text(encoding="utf-8"))
-            return [{**m, "mask": idmap == m["index"] + 1} for m in meta]
+            # 分數全是 0 = 當時沒有 SAM 2、只有語意輪廓；現在裝好了就重算，不然永遠讀到粗的那份
+            if not (meta and all(not m.get("score") for m in meta) and _get_sam2_predictor() is not None):
+                return [{**m, "mask": idmap == m["index"] + 1} for m in meta]
 
     seg, labels = segment_image(image_path, size)
     if seg is None:
@@ -247,10 +249,13 @@ def segment_furniture(image_path: str, size: tuple[int, int] | None = None, *, r
     rgb = np.asarray(image)
     seeds = _seeds(seg, labels, depth)
     raw_path = out / f"sam_raw_{len(seeds)}.npz"
+    raw = None
     if raw_path.is_file():   # SAM 是最慢的一步（每件約 2 秒），後處理規則改了只重跑後處理；種子數變了才重算
         z = np.load(raw_path, allow_pickle=False)
         raw = list(zip(z["names"].tolist(), list(z["masks"]), z["scores"].tolist()))
-    else:
+        if raw and all(not r[2] for r in raw) and _get_sam2_predictor() is not None:
+            raw = None   # 沒有 SAM 2 時存下的語意種子，現在有 SAM 2 了重切
+    if raw is None:
         predictor = _get_sam2_predictor()
         raw = _sam_masks(predictor, rgb, seeds) if predictor is not None and seeds else [(n, m, 0.0) for n, m in seeds]
         if raw:

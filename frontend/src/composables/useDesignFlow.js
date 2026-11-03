@@ -30,7 +30,7 @@ import {
   roomType, spaceSizePing, customRoomW, customRoomD,
   furnitureItems, furnitureQty, extraPrompt, fengshuiEnabled, fengshuiExcluded, fengshuiRules, outputAspect,
   spacePhoto, spacePhotoPath,
-  fengshuiReport, fengshuiReportLoading, fengshuiLastFix, photoAudit, photoAuditLoading, photoAuditError,
+  fengshuiReport, fengshuiReportLoading, fengshuiLastFix, fengshuiHighlight, photoAudit, photoAuditLoading, photoAuditError,
   photoDetection, photoLayoutLoading, photoLayoutError,
   photoVersions, photoCurrent, photoBusy, photoStyleId, photoStylePrompt, photoQuoting,
   selectedStyle, noStyleReference, styleMethod, styleRefImage,
@@ -43,7 +43,7 @@ import {
   spaceImage, lastGeneratedImage, manualMaskPath, brushSize, eraserSize, drawMode,
   textPrompt, refineCanvasRef, baseImagePreview,
   panoLoading, panoUrl, panoError,
-  quotationLoading, quotationError,
+  quotationLoading, quotationError, furnitureHover,
 } from './design-flow/state'
 
 import { goStep, nextStep, prevStep, startFlow, resetFlow } from './design-flow/navigation'
@@ -64,7 +64,7 @@ import {
   currentVersion, editableFurniture, styleVersionIndex, uploadPhoto, restylePhoto, renderPhotoLayout, refinePhoto, quotePhoto,
 } from './design-flow/photoLayout'
 import { handleMaskReady, submitRefine, undoRefine, canUndoRefine, refining } from './design-flow/refine'
-import { fetchQuotation, quoteRooms } from './design-flow/quotation'
+import { fetchQuotation, fetchOutlines, quoteRooms } from './design-flow/quotation'
 import { restoreProject } from './design-flow/projectSync'
 import {
   fengshuiRulesFor, scheduleFengshuiAudit, applyFengshuiFix, undoFengshuiFix,
@@ -98,7 +98,7 @@ export function useDesignFlow() {
     currentVersion, editableFurniture, styleVersionIndex, uploadPhoto, restylePhoto, renderPhotoLayout, refinePhoto, quotePhoto,
     // 風水＋動線健檢
     fengshuiEnabled, fengshuiExcluded, fengshuiRules, fengshuiRulesFor,
-    fengshuiReport, fengshuiReportLoading, fengshuiLastFix, scheduleFengshuiAudit, applyFengshuiFix, undoFengshuiFix,
+    fengshuiReport, fengshuiReportLoading, fengshuiLastFix, fengshuiHighlight, scheduleFengshuiAudit, applyFengshuiFix, undoFengshuiFix,
     photoAudit, photoAuditLoading, photoAuditError, runPhotoAudit, movePhotoDoor, adoptPhotoAudit,
     // 風格
     selectedStyle, noStyleReference, styleMethod, styleRefImage,
@@ -115,7 +115,7 @@ export function useDesignFlow() {
     // 環景
     panoLoading, panoUrl, panoError, generatePanorama,
     // 估價
-    quotationLoading, quotationError, fetchQuotation,
+    quotationLoading, quotationError, furnitureHover, fetchQuotation, fetchOutlines,
     // 動作
     uploadFile, submitLayout, useUploadedPlan, submitPhoto, submit3D, submitRefine, undoRefine, canUndoRefine, refining,
   }

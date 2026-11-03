@@ -15,8 +15,11 @@ from designbridge.layout.layout_items import FurnitureItem, _normalize_ftype
 from designbridge.layout.special_constraints import (
     _ENFORCERS,
     _VERIFIERS,
+    _WALL_OPPOSITE,
+    _nearest_wall,
     _opening_span,
     _opening_wall,
+    _wall_distance,
     load_constraint_cards,
 )
 
@@ -399,6 +402,86 @@ def _settle(items: list[FurnitureItem], space_info: dict, owner: dict[str, str],
         it.y = max(0.0, min(1.0 - it.h, it.y))
 
 
+_SEARCH_STEP = 0.025     # 整組搬家時試的格距（歸一化）
+_SEARCH_SHORTLIST = 12   # 風水先篩過的候選，最多拿幾個去跑比較貴的動線檢查
+_HUG_WALL = 0.03         # 離牆這麼近（歸一化）才算貼牆
+
+
+def _relocate_groups(
+    items: list[FurnitureItem], groups: list[tuple[str, list[str]]], solid: list[FurnitureItem],
+    health, fengshui_bad,
+) -> None:
+    """enforcer 只會沿原本那面牆滑動；房間不夠寬就解不掉（例：床對門，左右都滑不出門的視線）。
+    這時把違規的家具搬到房內其他位置試試——等於人會做的「床換一面牆」。
+
+    `groups` 是 (主家具, [跟班…])。先試整組一起搬；床＋兩個床頭櫃常常寬到兩側都放不下，
+    就退一步只帶一個跟班、最後只搬主家具（留下的跟班原地不動，照樣要避開它）。
+
+    每種組合先只用風水判定篩出「違規變少、不撞其他家具」的位置，取離原位最近的幾個
+    再檢查動線，動線不能變差。一組一組來，前一組搬好之後的狀態就是下一組的起點。
+
+    原本貼牆的主家具搬完仍要貼牆，而且只能是原本那面或對面那面：不然把床拉到房間中間
+    就「躲過」床頭靠窗的判定（那條只看貼牆的床），床頭反而懸空；換到側牆則會變成
+    長邊靠牆（編輯器旋轉不改長寬，見 LayoutEditor rotateNTimes90）。
+    """
+    by_id = {it.id: it for it in items}
+
+    def try_move(ids: list[str]) -> bool:
+        grp = [by_id[i] for i in ids]
+        root = grp[0]
+        wall0 = _nearest_wall(root)
+        hugging = _wall_distance(root, wall0) <= _HUG_WALL
+        walls_ok = {wall0, _WALL_OPPOSITE[wall0]}
+        others = [it for it in solid if it.id not in ids]
+        gx0, gy0 = min(it.x for it in grp), min(it.y for it in grp)
+        gw = max(it.x + it.w for it in grp) - gx0
+        gh = max(it.y + it.h for it in grp) - gy0
+        if gw > 1.0 or gh > 1.0:
+            return False
+        start = {it.id: (it.x, it.y) for it in grp}
+        base_bad, base_circ, _ = health()
+
+        def place(nx: float, ny: float) -> None:
+            for it in grp:
+                it.x = start[it.id][0] + nx - gx0
+                it.y = start[it.id][1] + ny - gy0
+
+        xs = [i * _SEARCH_STEP for i in range(int((1.0 - gw) / _SEARCH_STEP) + 1)] + [1.0 - gw]
+        ys = [i * _SEARCH_STEP for i in range(int((1.0 - gh) / _SEARCH_STEP) + 1)] + [1.0 - gh]
+        shortlist = []
+        for nx in xs:
+            for ny in ys:
+                place(nx, ny)
+                if hugging:
+                    wall = _nearest_wall(root)
+                    if wall not in walls_ok or _wall_distance(root, wall) > _HUG_WALL:
+                        continue
+                if any(_collide(g, o, eps=-_SEP_MARGIN + 1e-6) for g in grp if g.type not in _FLOOR for o in others):
+                    continue
+                bad = fengshui_bad()
+                if bad < base_bad:
+                    shortlist.append((bad, math.hypot(nx - gx0, ny - gy0), nx, ny))
+
+        for _, _, nx, ny in sorted(shortlist)[:_SEARCH_SHORTLIST]:
+            place(nx, ny)
+            bad, circ, _ = health()
+            if bad < base_bad and circ >= base_circ:
+                return True
+        for it in grp:
+            it.x, it.y = start[it.id]
+        return False
+
+    for root, companions in groups:
+        variants = [[root, *companions]]
+        if len(companions) > 1:
+            variants += [[root, c] for c in companions]
+        if companions:
+            variants.append([root])
+        for ids in variants:
+            if try_move(ids):
+                break
+
+
 def fix_layout(
     placements: list[dict],
     doors: list[dict],
@@ -428,6 +511,28 @@ def fix_layout(
     def group_of(iid: str) -> set[str]:
         root = owner.get(iid, iid)
         return {root} | {c for c, a in owner.items() if a == root}
+
+    rule_ids = [c.trigger for c in active]
+
+    def fengshui_bad() -> int:
+        return sum(r["severity"] for r in audit_fengshui(items, doors, windows, rules=rule_ids)["rules"] if r["status"] == "fail")
+
+    def health() -> tuple[int, int, dict]:
+        """(勾選規則的違規嚴重度總和, 動線分數, 風水報告)；沒有門時動線不計分，當作滿分。"""
+        fs = audit_fengshui(items, doors, windows, rules=rule_ids)
+        bad = sum(r["severity"] for r in fs["rules"] if r["status"] == "fail")
+        circ = audit_circulation(items, doors, room_w, room_d)["score"]
+        return bad, 100 if circ is None else circ, fs
+
+    bad0, circ0, fs0 = health()
+    offenders0 = {iid for r in fs0["rules"] for iid in r["offenders"]}
+    # 原本貼牆的家具 → 調整後允許貼的牆（原本那面＋對面）；排版常理的「床不靠窗」會把床推離牆，
+    # 那種床頭懸空的結果不算修好
+    hug0 = {
+        it.id: {_nearest_wall(it), _WALL_OPPOSITE[_nearest_wall(it)]}
+        for it in items
+        if it.type not in _FLOOR and _wall_distance(it, _nearest_wall(it)) <= _HUG_WALL
+    }
 
     def fengshui_ok() -> bool:
         return not any(
@@ -462,8 +567,54 @@ def fix_layout(
         for iid in group_of(a.id if a.id in moved else b.id):
             by_id[iid].x, by_id[iid].y = original[iid]
 
+    # 只接受確實變好的結果：勾選規則的違規要減少，動線分數不能變差。排版常理規則
+    # （例：床不靠窗）可能把家具推開卻沒解掉任何違規，或把衣櫃擠到門口——那種「動了
+    # 但沒變好」的結果不交給使用者。整組不合格時退一步，只保留原本違規那幾組的移動
+    # （被連帶推走的放回原位）再檢查一次；還是不行就全部還原，由報告給化解建議。
+    def clashes() -> bool:
+        moved = {it.id for it in items if (it.x, it.y) != original[it.id]}
+        return any(
+            (a.id in moved or b.id in moved) and group_of(a.id) != group_of(b.id) and _collide(a, b)
+            for i, a in enumerate(solid) for b in solid[i + 1:]
+        )
+
+    def left_wall() -> bool:
+        """原本貼牆、被移動過的家具，現在沒貼在原本那面或對面那面牆上（見 _relocate_groups）。"""
+        for it in items:
+            if it.id not in hug0 or (it.x, it.y) == original[it.id]:
+                continue
+            wall = _nearest_wall(it)
+            if wall not in hug0[it.id] or _wall_distance(it, wall) > _HUG_WALL:
+                return True
+        return False
+
+    def improved() -> bool:
+        bad, circ, _ = health()
+        return bad < bad0 and circ >= circ0 and not clashes() and not left_wall()
+
+    full = {it.id: (it.x, it.y) for it in items}
+    keep = set().union(*(group_of(i) for i in offenders0))
+    trimmed = {iid: full[iid] if iid in keep else original[iid] for iid in full}
+    for candidate in (full, trimmed, original):
+        for it in items:
+            it.x, it.y = candidate[it.id]
+        if candidate is original or improved():
+            break
+
+    # 局部推移之後還有違規（沒解掉、或只解掉其中幾條），從目前狀態再試整組搬家
+    bad_now, _, fs_now = health()
+    if bad_now:
+        # offenders 也可能是門（「門不對窗」），門搬不動，只搬家具
+        offenders_now = {iid for r in fs_now["rules"] if r["status"] == "fail" for iid in r["offenders"]}
+        roots = dict.fromkeys(owner.get(i, i) for i in offenders_now if i in by_id)
+        groups = [(r, sorted(c for c, a in owner.items() if a == r)) for r in roots]
+        _relocate_groups(items, groups, solid, health, fengshui_bad)
+
+    # 只改寫真的被移動的家具；沒動的原樣回傳。若全部都 round，編輯器拖出來的多位小數
+    # 座標會變，/api/fengshui/fix 比對位置時就把沒動的家具也算成「已調整」。
     out: list[dict] = []
     for i, p in enumerate(placements):
         it = by_id.get(str(p.get("id") or f"item_{i}"))
-        out.append({**p, "x": round(it.x, 4), "y": round(it.y, 4)} if it else p)
+        moved = it is not None and (it.x, it.y) != original[it.id]
+        out.append({**p, "x": round(it.x, 4), "y": round(it.y, 4)} if moved else p)
     return out

@@ -42,7 +42,7 @@ const {
   swappingStyle, swapStyle, restoreOriginal, styleSwapCache, styleDemoImages,
   panoLoading, panoUrl, panoError, generatePanorama,
   fetchQuotation, resetFlow,
-  cadActiveRoomId,
+  cadActiveRoomId, furnitureHover, fetchOutlines,
 } = useDesignFlow()
 
 const router = useRouter()
@@ -60,6 +60,34 @@ const editing = ref(false)      // 在結果圖上直接編輯（塗抹重繪）
 const editFull = ref(false)     // 編輯時是否全螢幕
 
 const imageUrl = computed(() => result.value?.generated_image_url || '')
+
+// 報價辨識到的家具在圖上的位置：滑過去就在右邊清單標出對應的市售商品（反過來也一樣）。
+// 大的排前面、小的排後面，小家具（檯燈、邊桌）疊在上層才點得到。舊報價沒有 bbox 就不顯示。
+// 有輪廓（item.outline，見 fetchOutlines）的沿著家具描邊，沒有的（地毯、軌道燈…）用方框。
+const hotspots = computed(() => (result.value?.quotation_result?.furniture_list || [])
+  .map((item, idx) => ({ idx, name: item.detected_name, b: item.bbox, outline: item.outline }))
+  .filter(h => h.b?.length === 4)
+  .sort((p, q) => (q.b[2] - q.b[0]) * (q.b[3] - q.b[1]) - (p.b[2] - p.b[0]) * (p.b[3] - p.b[1]))
+  .map(({ idx, name, b, outline }) => ({
+    idx, name,
+    points: outline ? outline.map(([x, y]) => `${x},${y}`).join(' ') : '',
+    style: { left: `${b[0] * 100}%`, top: `${b[1] * 100}%`, width: `${(b[2] - b[0]) * 100}%`, height: `${(b[3] - b[1]) * 100}%` },
+  })))
+const boxHotspots = computed(() => hotspots.value.filter(h => !h.points))
+const outlineHotspots = computed(() => hotspots.value.filter(h => h.points))
+// 滑到的那件的名稱標籤，放在它方框的左上角
+const hoverLabel = computed(() => {
+  const h = hotspots.value.find(x => x.idx === furnitureHover.value)
+  return h ? { name: h.name, style: { left: h.style.left, top: h.style.top } } : null
+})
+// 同款家具（候選商品相同，右邊清單合併成一行 ×N）一起亮：滑過清單那一行，每一件都框出來
+const candKey = (item) => (item?.candidates || []).map(c => c.id || c.name).join('|')
+const hoveredIdxs = computed(() => {
+  const list = result.value?.quotation_result?.furniture_list || []
+  const key = furnitureHover.value == null ? null : candKey(list[furnitureHover.value])
+  if (!key) return new Set(furnitureHover.value == null ? [] : [furnitureHover.value])
+  return new Set(list.map((it, i) => (candKey(it) === key ? i : -1)).filter(i => i >= 0))
+})
 const isSkipPath = computed(() => planSource.value === 'skip')
 
 // 這一步一律在最上面寫出「現在是哪個房間」：整層是房間名稱，其他路徑是房型
@@ -117,8 +145,25 @@ watch(cadActiveRoomId, () => { stopEdit(); moving.value = false })
 // 「result 換了一個沒有報價的新物件」，因為現在已經不會因為換頁而重新掛載。
 // fetchQuotation 自己會讓舊的估價作廢，所以這裡不能再用「正在估價就跳過」擋掉：
 // 微調或換風格的新圖常常在上一張還在估價時就出來，擋掉的話新圖就永遠不會估價。
+// 舊版報價沒有家具在圖上的位置（bbox），圖上的家具熱區出不來：重新估一次補上。
+// 每張圖只補一次——Gemini 辨識失敗時的備用清單本來就沒有 bbox，不擋的話會一直重估。
+// 有方框之後再跟後端要沿著家具的輪廓（描邊）；每份報價只要一次，失敗就維持方框
+const bboxUpgraded = new Set()
+const outlineTried = new WeakSet()
 watch(result, (r) => {
-  if (r && !r.quotation_result) fetchQuotation()
+  if (!r) return
+  if (!r.quotation_result) { fetchQuotation(); return }
+  const q = r.quotation_result
+  const list = q.furniture_list || []
+  const path = r.generated_image_path
+  const hasBox = list.some(it => it.bbox?.length === 4)
+  if (path && list.length && !hasBox && !bboxUpgraded.has(path)) {
+    bboxUpgraded.add(path)
+    fetchQuotation()
+  } else if (hasBox && !list.some(it => it.outline) && !outlineTried.has(q)) {
+    outlineTried.add(q)
+    fetchOutlines()
+  }
 }, { immediate: true })
 
 const confirmingReset = ref(false)
@@ -258,6 +303,30 @@ function startOver() {
           <div v-else class="stage-img-wrap">
             <img v-if="imageUrl" :src="imageUrl" alt="生成的 3D 渲染圖" class="result-img" />
             <p v-else class="no-img">生成完成，但沒有取得圖片 URL。</p>
+
+            <!-- 家具熱區：滑到（觸控是點）家具就在右邊清單標出對應商品。
+                 有輪廓的沿著家具描邊（SVG，疊在上層，重疊時優先），沒有的用方框 -->
+            <div v-if="imageUrl && hotspots.length && !swappingStyle" class="furn-hotspots">
+              <button
+                v-for="h in boxHotspots" :key="h.idx" type="button" class="furn-hot"
+                :class="{ on: hoveredIdxs.has(h.idx) }" :style="h.style"
+                :aria-label="`${h.name}：在右邊清單查看市售商品`"
+                @mouseenter="furnitureHover = h.idx" @mouseleave="furnitureHover = null"
+                @focus="furnitureHover = h.idx" @blur="furnitureHover = null"
+                @click="furnitureHover = h.idx"
+              ></button>
+              <svg v-if="outlineHotspots.length" class="furn-outlines" viewBox="0 0 1 1" preserveAspectRatio="none">
+                <polygon
+                  v-for="h in outlineHotspots" :key="h.idx" :points="h.points" class="furn-shape"
+                  :class="{ on: hoveredIdxs.has(h.idx) }" vector-effect="non-scaling-stroke"
+                  tabindex="0" role="button" :aria-label="`${h.name}：在右邊清單查看市售商品`"
+                  @mouseenter="furnitureHover = h.idx" @mouseleave="furnitureHover = null"
+                  @focus="furnitureHover = h.idx" @blur="furnitureHover = null"
+                  @click="furnitureHover = h.idx"
+                />
+              </svg>
+              <span v-if="hoverLabel" class="furn-hot-label" :style="hoverLabel.style">{{ hoverLabel.name }}</span>
+            </div>
 
             <div v-if="swappingStyle" class="swap-overlay" role="status">
               <div class="pano-spinner"></div>
@@ -563,6 +632,36 @@ function startOver() {
 
 .result-stage > .stage-pano { width: 100%; }
 .stage-img-wrap { position: relative; display: inline-block; max-width: 100%; line-height: 0; }
+
+/* 家具熱區：平常隱形，只有滑鼠底下那一件（重疊時是最小、最上層的那件）出現白框＋名稱 */
+.furn-hotspots { position: absolute; inset: 0; pointer-events: none; }
+.furn-hot {
+  position: absolute; padding: 0; border: none; border-radius: 6px;
+  background: transparent; cursor: pointer; pointer-events: auto;
+  transition: box-shadow 0.14s, background 0.14s;
+}
+.furn-hot.on {
+  background: rgba(255, 255, 255, 0.12);
+  box-shadow: inset 0 0 0 2px #fff, 0 0 0 1px rgba(0, 0, 0, 0.25);
+}
+.furn-hot:focus-visible { outline: 2px solid var(--db-accent-deep); outline-offset: 2px; }
+/* 沿著家具的輪廓：平常透明（但接得到滑鼠），滑到的那件白色描邊＋深色外暈，淺色背景上也看得到 */
+.furn-outlines { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; pointer-events: none; }
+.furn-shape {
+  fill: transparent; stroke: transparent; stroke-width: 2.5; stroke-linejoin: round;
+  pointer-events: visibleFill; cursor: pointer; outline: none;
+  transition: stroke 0.14s, fill 0.14s;
+}
+.furn-shape.on {
+  fill: rgba(255, 255, 255, 0.12); stroke: #fff;
+  filter: drop-shadow(0 0 1.5px rgba(0, 0, 0, 0.7));
+}
+.furn-hot-label {
+  position: absolute; margin: 6px 0 0 6px;
+  padding: 0.2rem 0.55rem; border-radius: var(--db-radius-pill);
+  background: rgba(20, 18, 14, 0.75); color: #fff;
+  font-size: 0.78rem; line-height: 1.3; white-space: nowrap; pointer-events: none;
+}
 
 /* 圖右上角的編輯入口：跟 360° 按鈕一樣 hover 才出現，觸控裝置常駐 */
 .img-tools {

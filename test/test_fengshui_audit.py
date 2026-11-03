@@ -40,6 +40,40 @@ def test_fix_moves_bed_and_clears_the_violation():
     assert _by_trigger(report)["door_not_facing_bed"]["status"] == "pass"
 
 
+def test_fix_leaves_unmoved_furniture_untouched():
+    # 編輯器拖曳出來的座標有很多位小數；沒被移動的家具不能因為 round 而變成「已調整」
+    bed = {"id": "bed_1", "type": "bed", "x": 0.39, "y": 0.05, "w": 0.22, "h": 0.40}
+    desk = {"id": "desk_1", "type": "desk", "x": 0.0123456789, "y": 0.6123456789, "w": 0.25, "h": 0.12}
+    fixed = {p["id"]: p for p in fix_layout([bed, desk], DOOR_NEAR, WINDOW_FAR, ["door_not_facing_bed"], 4.0, 3.2)}
+    assert fixed["bed_1"]["x"] != bed["x"]
+    assert fixed["desk_1"] == desk
+
+
+W_34, D_38 = 3.4, 3.8
+BED_UNDER_WINDOW = {"id": "bed_1", "type": "bed", "x": 0.95 / W_34, "y": 0.1 / D_38, "w": 1.5 / W_34, "h": 2.0 / D_38}
+WINDOW_FAR_CENTRE = {"x": 0.5 - 0.6 / W_34, "y": 0.0, "w": 1.2 / W_34, "h": 0.02, "wall": "far"}
+DOOR_NEAR_RIGHT = [{"x": 0.7, "y": 0.98, "w": 0.9 / W_34, "h": 0.02, "wall": "near"}]
+
+
+def test_fix_that_resolves_nothing_leaves_layout_unchanged():
+    # 上下兩面牆中央都是 1.2m 的窗，3.4m 寬的房間裡 1.5m 的床沿牆滑到哪都躲不開。
+    # 排版常理（床不靠窗）會把床推離牆、床頭懸空，違規卻照舊——這種「動了沒變好」不能交出去。
+    windows = [WINDOW_FAR_CENTRE, {**WINDOW_FAR_CENTRE, "y": 0.98, "wall": "near"}]
+    door = [{"x": 0.0, "y": 0.4, "w": 0.02, "h": 0.9 / D_38, "wall": "left"}]
+    fixed = fix_layout([BED_UNDER_WINDOW], door, windows, ["bed_head_not_under_window"], W_34, D_38)
+    assert fixed == [BED_UNDER_WINDOW]
+
+
+def test_fix_moves_bed_to_the_opposite_wall_when_sliding_cannot_help():
+    # 床沿上牆滑不出窗的範圍時，整張搬到對面的實牆，床頭仍然貼牆（不是拉到房間中央躲判定）
+    fixed = fix_layout([BED_UNDER_WINDOW], DOOR_NEAR_RIGHT, [WINDOW_FAR_CENTRE], ["bed_head_not_under_window"], W_34, D_38)
+    bed = fixed[0]
+    assert bed["y"] + bed["h"] >= 0.97, "床頭要貼著對面（下方）的牆"
+    report = audit_layout(fixed, W_34, D_38, "bedroom", DOOR_NEAR_RIGHT, [WINDOW_FAR_CENTRE], ["bed_head_not_under_window"])
+    assert _by_trigger(report)["bed_head_not_under_window"]["status"] == "pass"
+    assert report["circulation"]["score"] == 100
+
+
 def test_missing_openings_are_flagged_as_assumed():
     report = audit_layout([], 4.0, 3.2, "bedroom", rules=["door_not_facing_bed", "mirror_not_facing_bed"])
     assert report["assumed_openings"] is True

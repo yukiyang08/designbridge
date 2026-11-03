@@ -9,11 +9,11 @@
  *  · 沒有「更新平面圖」按鈕：拖曳/加/刪/轉家具都會在鬆手 0.5 秒後自動重繪
  *    （debounce 在 useDesignFlow 的 onEditorChange 裡），不需要使用者自己按。
  *    submit3D 送出前也會補跑一次，確保用的是最新的平面圖。
- *  · 風水＋動線健檢跟著家具即時更新：家具座標在這一步定案，報告放在這裡才對得上。
+ *  · 風水＋動線健檢跟著家具即時更新：家具座標在這一步定案，健檢在這裡排程；
+ *    報告本身顯示在 StudioView 的右欄（全局資訊），不佔畫布下方的空間。
  */
 import { computed, defineAsyncComponent, watch } from 'vue'
 import LayoutEditor from '@/components/LayoutEditor.vue'
-import FengshuiReport from '@/components/FengshuiReport.vue'
 import { useDesignFlow } from '@/composables/useDesignFlow'
 
 // three.js 約 700KB，只有切到 3D 才下載
@@ -23,19 +23,13 @@ const {
   editPlacements, roomW, roomD, roomTypeForPlan, roomGeometry, setOpeningEdit, layoutViewMode, layoutRenderConfig,
   floorPlanUrl, uploadedPlanUrl, onEditorChange,
   nextStep, prevStep, scheduleSearch, loading, planSource,
-  fengshuiEnabled, fengshuiExcluded, fengshuiReport, fengshuiReportLoading, fengshuiLastFix,
-  scheduleFengshuiAudit, applyFengshuiFix, undoFengshuiFix,
+  fengshuiEnabled, fengshuiExcluded, fengshuiReport, fengshuiLastFix, fengshuiHighlight, scheduleFengshuiAudit,
 } = useDesignFlow()
 
-// 打開時順便把現有的違規家具推開；關掉只是不再套用，已經調整的位置不動
-function onFengshuiToggle(on) {
-  if (on) applyFengshuiFix()
-  else fengshuiEnabled.value = false
-}
-
-// 使用者自己動了家具，一鍵調整的「復原」就不該再蓋掉這些修改
-function onUserEdit(next) {
-  fengshuiLastFix.value = null
+// 使用者自己動了家具，一鍵調整的「復原」就不該再蓋掉這些修改。
+// 編輯器自動校正（把一鍵調整的結果推出門口範圍、拉回牆內緣）不算，否則調整完紀錄立刻消失。
+function onUserEdit(next, meta) {
+  if (!meta?.auto) fengshuiLastFix.value = null
   onEditorChange(next)
 }
 
@@ -58,17 +52,13 @@ function goNext() {
 
 <template>
   <div class="floor-plan-step">
-    <div class="panel-head">
-      <div class="head-actions">
-        <!-- 設計稿沒有這個切換，但 3D 佈局預覽是既有功能 -->
-        <div v-if="editPlacements.length" class="view-toggle" role="group" aria-label="檢視模式">
-          <button :class="{ active: layoutViewMode === '2d' }" @click="layoutViewMode = '2d'">2D模式</button>
-          <button :class="{ active: layoutViewMode === '3d' }" @click="layoutViewMode = '3d'">3D模式</button>
-        </div>
-      </div>
-    </div>
-
     <div class="stage">
+      <!-- 2D／3D 切換固定浮在畫布區右上角：2D 時剛好落在編輯器工具列的右端（省一整排），
+           3D 時在預覽的右上角——切換前後按鈕位置不變。2D 工具列右側留了同寬的空位，不會蓋到工具。 -->
+      <div v-if="editPlacements.length" class="view-toggle" role="group" aria-label="檢視模式">
+        <button :class="{ active: layoutViewMode === '2d' }" @click="layoutViewMode = '2d'">2D模式</button>
+        <button :class="{ active: layoutViewMode === '3d' }" @click="layoutViewMode = '3d'">3D模式</button>
+      </div>
       <LayoutEditor
         v-if="layoutViewMode === '2d'"
         :placements="editPlacements"
@@ -77,10 +67,15 @@ function goNext() {
         :room-type="roomTypeForPlan"
         :geometry="roomGeometry"
         :facing="fengshuiReport?.facing || {}"
+        :highlight="fengshuiHighlight"
         @opening-change="setOpeningEdit"
         @update:placements="onUserEdit"
         @room-size-changed="onUserEdit(editPlacements)"
-      />
+      >
+        <template v-if="editPlacements.length" #toolbar-end>
+          <span class="toggle-room" aria-hidden="true"></span>
+        </template>
+      </LayoutEditor>
       <LayoutPreview3D
         v-else
         :scene-graph="editSceneGraph"
@@ -93,22 +88,6 @@ function goNext() {
       />
     </div>
 
-    <FengshuiReport
-      :report="editPlacements.length ? fengshuiReport : null"
-      :placements="editPlacements"
-      :room-w="roomW"
-      :room-d="roomD"
-      :enabled="fengshuiEnabled"
-      :loading="fengshuiReportLoading"
-      :last-fix="fengshuiLastFix"
-      fixable
-      toggleable
-      @toggle="onFengshuiToggle"
-      @enable="applyFengshuiFix"
-      @fix="applyFengshuiFix"
-      @undo="undoFengshuiFix"
-    />
-
     <p v-if="!editPlacements.length" class="empty-hint">
       未辨識到家具座標，將以整張平面圖作為結構參考生成 3D 渲染圖。
     </p>
@@ -120,34 +99,24 @@ function goNext() {
       </button>
     </div>
 
-    <p class="foot-hint">拖動調整家具位置，鬆手後平面圖會自動更新。</p>
   </div>
 </template>
 
 <style scoped>
 .floor-plan-step { display: flex; flex-direction: column; }
 
-.panel-head {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 1rem;
-  margin-bottom: 1rem;
-}
-
-.head-actions {
-  display: flex;
-  align-items: center;
-  gap: 0.75rem;
-  margin-left: 0;
-}
-
 .view-toggle {
+  position: absolute;
+  top: 1.3rem;      /* 落在編輯區工具列裡、上下置中（編輯區內距＋框線＋工具列內距） */
+  right: 1.05rem;
+  z-index: 10;
   display: inline-flex;
   padding: 4px;
   border-radius: var(--db-radius-pill);
   background: var(--db-chip-soft);
 }
+/* 工具列右端給浮在上面的 2D／3D 切換留位子（寬度 ≈ 兩顆按鈕＋內距） */
+.toggle-room { display: block; width: 13.5rem; }
 .view-toggle button {
   min-width: 76px;
   min-height: 44px;
@@ -167,7 +136,7 @@ function goNext() {
   color: var(--db-on-accent);
 }
 
-.stage { min-height: 430px; }
+.stage { position: relative; min-height: 430px; }
 
 .empty-hint {
   margin: 0.75rem 0 0;
@@ -175,17 +144,7 @@ function goNext() {
   font-size: 0.9rem;
 }
 
-.actions {
-  position: sticky;   /* 固定在底部，長頁面也不用捲到最下面才找得到 */
-  bottom: 0;
-  z-index: 5;
-  display: flex;
-  justify-content: center;
-  gap: 1rem;
-  margin-top: 1rem;
-  padding: 0.9rem 0;
-  background: linear-gradient(to top, var(--db-card) 70%, transparent);
-}
+/* .actions（上一步靠左、下一步靠右、黏在視窗底）由 StudioView 統一排版，這裡不另外定義 */
 
 .foot-hint {
   margin: 0.85rem 0 0;
@@ -210,11 +169,4 @@ function goNext() {
 .stage :deep(.palette-item:hover) { background: var(--db-accent-soft); }
 .stage :deep(.tool-btn.active),
 .stage :deep(.node.selected) { border-color: var(--db-accent); }
-
-@media (max-width: 900px) {
-  .panel-head { flex-direction: column; align-items: stretch; }
-  .head-actions { margin-left: 0; justify-content: space-between; }
-  .actions { flex-direction: column; }
-  .actions .db-btn { width: 100%; }
-}
 </style>

@@ -22,20 +22,23 @@ _IDENTIFY_BBOX_PROMPT = """\
 請以純 JSON 陣列回傳（不要加任何說明文字），格式如下：
 [
   {
-    "name_zh": "三人座沙發",
-    "category": "sofa",
-    "quantity": 1,
-    "bbox": [0.05, 0.40, 0.55, 0.85]
+    "name_zh": "餐椅",
+    "category": "chair",
+    "quantity": 2,
+    "box_2d": [520, 610, 900, 720],
+    "boxes_2d": [[520, 610, 900, 720], [530, 760, 890, 850]]
   }
 ]
 
-bbox 為 [x1, y1, x2, y2]，值為 0~1 的比例座標（左上角到右下角）。
-quantity 是圖中這種家具實際有幾件（4 張一樣的餐椅就是 4、8 顆崁燈就是 8），不確定時填 1；
-同款只列一筆、bbox 框其中一件即可。
+box_2d 為 [ymin, xmin, ymax, xmax]，0–1000 的整數（圖片左上角是 0,0、右下角是 1000,1000）。
+框要緊貼物件看得到的輪廓：上下左右都不要留白，也不要把旁邊的家具或地板框進來；
+被遮住一部分的家具只框看得到的部分。
+同款只列一筆：boxes_2d 列出圖中這款每一件的 box_2d（4 張一樣的餐椅就列 4 個框），
+box_2d 填其中最完整、最清楚的那一件；quantity 是實際件數（不確定時填 boxes_2d 的數量）。
 category 必須是：sofa / table / chair / lamp / rug / curtain / storage / bed / shelf / other
-只列出主要且明顯可見的物件（至多 8 件），勿過度細分。
-天花板燈具（崁燈、軌道燈、吸頂燈、吊燈）即使很小也要列出，不佔上述 8 件名額；
-bbox 框住其中最清楚的一盞並略放大，name_zh 用「崁燈」「軌道燈」「吸頂燈」「吊燈」這類名稱。
+列出主要且明顯可見的家具與軟裝（至多 10 款），植物、單椅、邊桌、層架也要列，勿過度細分成零件。
+天花板燈具（崁燈、軌道燈、吸頂燈、吊燈）即使很小也要列出，不佔上述 10 款名額；
+name_zh 用「崁燈」「軌道燈」「吸頂燈」「吊燈」這類名稱。
 """
 
 _ESTIMATE_PROMPT = """\
@@ -95,9 +98,29 @@ _ROOM_DEFAULTS: dict[str, list[tuple[str, str]]] = {
 
 def _quantity_of(raw: dict) -> int:
     try:
-        return max(1, min(int(raw.get("quantity") or 1), 12))   # 上限防 Gemini 亂報
+        n = int(raw.get("quantity") or 1)
     except (TypeError, ValueError):
-        return 1
+        n = 1
+    return max(1, min(max(n, len(_boxes_of(raw))), 12))   # 框比件數多就以框為準；上限防 Gemini 亂報
+
+
+def _box_ratio(box) -> list[float]:
+    """Gemini 的 box_2d [ymin, xmin, ymax, xmax]（0–1000）→ [x1, y1, x2, y2]（0~1）；格式不對回傳 []。"""
+    try:
+        y0, x0, y1, x1 = (max(0.0, min(1000.0, float(v))) / 1000 for v in box)
+    except (TypeError, ValueError):
+        return []
+    if x1 <= x0 or y1 <= y0:
+        return []
+    return [round(x0, 4), round(y0, 4), round(x1, 4), round(y1, 4)]
+
+
+def _boxes_of(raw: dict) -> list[list[float]]:
+    """這款家具每一件的框（0~1 的 [x1, y1, x2, y2]），第一個是拿去比對商品的那件。
+    box_2d 用 Gemini 原生格式（比要它回 0~1 小數準）；舊格式 bbox 也接受。"""
+    main = _box_ratio(raw["box_2d"]) if raw.get("box_2d") else list(raw.get("bbox") or [])
+    rest = [b for b in (_box_ratio(x) for x in raw.get("boxes_2d") or []) if b and b != main]
+    return ([main] if len(main) == 4 else []) + rest
 
 
 def _fallback_furniture(room_type: str) -> list[dict]:
@@ -181,7 +204,7 @@ def _process_furniture_item(raw: dict, img: Any, style_id: str = "") -> tuple[Fu
 
     name_zh: str = raw.get("name_zh") or raw.get("name_en") or "家具"
     category: str = raw.get("category") or ""
-    bbox_ratio: list[float] = raw.get("bbox") or []
+    bbox_ratio: list[float] = (_boxes_of(raw) or [[]])[0]
 
     candidates: list[FurnitureCandidate] = []
     matched_kb = False
@@ -249,6 +272,9 @@ def _process_furniture_item(raw: dict, img: Any, style_id: str = "") -> tuple[Fu
         "candidates": candidates,
         "selected_index": 0,
     }
+    # 結果圖上滑到這件家具就標出對應商品（前端 StepResult 的熱區）
+    if len(bbox_ratio) == 4:
+        item["bbox"] = [round(float(v), 4) for v in bbox_ratio]
     return item, matched_kb
 
 
@@ -305,10 +331,16 @@ def build_quotation(
         with log_stage("quotation.match_furniture"):
             results = list(executor.map(lambda raw: _process_furniture_item(raw, img, style_id), detected))
 
-    # 同款多件展開成多筆：前端會把候選相同的合併成 ×N，總價逐件相加
-    furniture_list: list[FurnitureItem] = [
-        {**item} for raw, (item, _) in zip(detected, results) for _ in range(_quantity_of(raw))
-    ]
+    # 同款多件展開成多筆：前端會把候選相同的合併成 ×N，總價逐件相加。
+    # 每一件換上自己的框，結果圖上每張餐椅都能滑到；框不夠的沿用比對商品那件的框
+    furniture_list: list[FurnitureItem] = []
+    for raw, (item, _) in zip(detected, results):
+        boxes = _boxes_of(raw)
+        for k in range(_quantity_of(raw)):
+            copy = {**item}
+            if k < len(boxes):
+                copy["bbox"] = boxes[k]
+            furniture_list.append(copy)
     kb_match_count = sum(1 for _, matched in results if matched)
 
     # ── 使用者手動勾選的家具（家具查詢頁）優先併入，視為已確定候選 ──

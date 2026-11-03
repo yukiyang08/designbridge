@@ -7,7 +7,8 @@ import logo from '../../../asset/designbridge_logo.png'
 const { user, signInWithGoogle, signOut } = useAuth()
 
 defineProps({
-  // 深色底（首頁 hero）用白字，淺色底（流程頁）維持白字但加陰影才看得清楚
+  // 深色底（首頁 hero）用白字，照片底（流程頁）維持白字但加陰影才看得清楚；
+  // 'paper' = 白色導覽列上的深字（/studio 滿版工作區）
   tone: { type: String, default: 'light' },  // 'light' = 白字
 })
 
@@ -46,6 +47,9 @@ onBeforeUnmount(() => {
       <RouterLink to="/">首頁</RouterLink>
       <RouterLink to="/furniture">家具查詢</RouterLink>
     </nav>
+
+    <!-- 導覽列中間：/studio 放流程步驟（省掉另外一整排，高度留給畫布） -->
+    <div v-if="$slots.default" class="nav-center"><slot /></div>
 
     <nav class="links right">
       <RouterLink to="/designs">我的設計</RouterLink>
@@ -121,6 +125,7 @@ onBeforeUnmount(() => {
   gap: 1.75rem;
 }
 .links.right { margin-left: auto; }
+.nav-center { flex: 1; min-width: 0; display: flex; justify-content: center; }
 
 .links > a {
   font-family: var(--db-font-display);
@@ -192,8 +197,18 @@ onBeforeUnmount(() => {
 .dropdown a:hover,
 .dropdown button:hover { background: var(--db-chip-soft); }
 
+/* paper：底色是白的，不需要文字陰影，改深字 + 灰褐底線 */
+.tone-paper .links > a { color: var(--db-text-soft); text-shadow: none; }
+.tone-paper .links > a:hover,
+.tone-paper .links > a.router-link-exact-active { color: var(--db-text); border-bottom-color: var(--db-accent-ink); }
+.tone-paper .login-btn { border-color: var(--db-ink); background: none; color: var(--db-text); backdrop-filter: none; }
+.tone-paper .login-btn:hover { background: var(--db-ink); color: #fff; }
+.tone-paper .avatar { border-color: var(--db-line); }
+
 .burger { display: none; }
 .drawer-wrap { display: none; }
+.tone-paper .burger { background: none; }
+.tone-paper .burger span { background: var(--db-ink); }
 
 @media (max-width: 720px) {
   .app-nav { gap: 0.75rem; padding: 0.5rem 0.75rem; justify-content: space-between; }
