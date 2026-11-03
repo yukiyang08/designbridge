@@ -457,6 +457,30 @@ def get_quotation(req: QuotationRequest, user_id: str = Depends(get_user_id)):
         raise HTTPException(status_code=500, detail=str(e))
 
 
+class OutlineRequest(BaseModel):
+    image_path: str
+    boxes: List[List[float]]   # 報價家具的 [x1, y1, x2, y2]（0~1），跟 furniture_list 同順序
+
+
+@router.post("/api/furniture-outlines")
+def get_furniture_outlines(req: OutlineRequest, user_id: str = Depends(get_user_id)):
+    """結果圖家具描邊：報價的方框 → 家具輪廓多邊形，配不到的回 null（前端沿用方框）。
+
+    跟估價分開：分割第一次要數十秒（之後讀快取，也跟「移動家具」共用），
+    不拖慢報價本身——前端先顯示方框，輪廓算好再換上去。
+    """
+    from designbridge.pricing.outlines import furniture_outlines
+    if not _inside_artifacts(req.image_path):
+        raise HTTPException(status_code=400, detail=f"路徑不合法：{req.image_path}")
+    try:
+        ensure_artifact(req.image_path, user_id)
+        return {"outlines": furniture_outlines(req.image_path, req.boxes[:40])}
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 # ── 獨立的全景生成端點 ──────────────────────────────────────────────────────────
 
 class PanoramaRequest(BaseModel):
