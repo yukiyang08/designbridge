@@ -3,7 +3,7 @@ import {
   steps, stepIndex, error, planSource,
   floorPlanUrl, floorPlanPath, sceneGraph, editPlacements, layoutViewMode, layoutRenderConfig,
   floorPlanUpload, uploadedPlanUrl, uploadedPlanPath, uploadTotalPing, detectedRooms, planParseIssue,
-  cadPlanResult, cadActiveRoomId, cadRoomStatus, cadRoomSnapshots, openingEdits, cadOverview,
+  cadPlanResult, cadActiveRoomId, cadRoomStatus, cadRoomSnapshots, openingEdits, cadOverview, cadDetectedPlacements,
   spacePhoto, spacePhotoPath, spaceImage, styleRefImage, photoDetection, photoLayoutError,
   photoVersions, photoCurrent, photoBusy, photoStyleId, photoStylePrompt,
   result, loading, extraPrompt,
@@ -60,6 +60,7 @@ export function resetFlow() {
   cadActiveRoomId.value = null
   cadRoomStatus.value = {}
   cadRoomSnapshots.value = {}
+  cadDetectedPlacements.value = {}
   cadOverview.value = false
   openingEdits.value = {}
   cancelCadBatch()

@@ -16,10 +16,12 @@
 import { ref, computed, watch, nextTick, onBeforeUnmount, onMounted } from 'vue'
 import { CONCURRENCY } from '@/composables/design-flow/cadBatch'
 import FengshuiChecklist from '@/components/FengshuiChecklist.vue'
+import { drawRoomFurniture } from '@/utils/planFurniture'
 import { CAD_ROOM_TYPE_TO_EDITOR, FENGSHUI_OPTIONS } from '@/composables/design-flow/state'
 
 const props = defineProps({
   plan:             { type: Object, required: true },   // cadPlanResult：{ rooms, svg_markup, ... }
+  svgMarkup:        { type: String, default: '' },      // 畫上已知家具的整層圖（state 的 cadPlanSvg）
   roomStatus:       { type: Object, default: () => ({}) }, // { [roomId]: 'active' | 'done' }
   activeRoomId:     { type: String, default: null },
   activePlacements: { type: Array, default: () => [] },    // 目前這間房的 editPlacements，即時反映在縮圖上
@@ -281,10 +283,7 @@ function setSelectMark(g, room, state) {
   g.append(mark)
 }
 
-// 把目前這間房的預設家具（靜態 SVG 裡的 .room-furniture）換成使用者實際編輯的
-// editPlacements，選了哪些家具、擺在哪就照樣畫在縮圖上——不用等後端重繪整層 SVG，
-// LayoutEditor 一有變動這裡就同步更新。只用純色 rect（不是完整的家具符號），
-// 縮圖這麼小，細節符號看不出差異，沒必要在前端重做一份 Python 那邊的家具繪製邏輯。
+// 目前這間房改畫使用者正在編輯的 editPlacements，LayoutEditor 一有變動縮圖就同步，不用等後端重繪
 const SVG_NS = 'http://www.w3.org/2000/svg'
 
 function paintLiveFurniture() {
@@ -292,49 +291,14 @@ function paintLiveFurniture() {
 }
 
 function paintFurnitureOn(board) {
-  const svg = board.querySelector('svg')
-  if (!svg) return
-  const g = [...svg.querySelectorAll('.room-rect')].find(
+  const g = [...board.querySelectorAll('svg .room-rect')].find(
     (el) => el.getAttribute('data-room-id') === props.activeRoomId,
   )
-  const floor = g?.querySelector('.room-floor')
-  if (!g || !floor) return
-
-  const fx = parseFloat(floor.getAttribute('x'))
-  const fy = parseFloat(floor.getAttribute('y'))
-  const fw = parseFloat(floor.getAttribute('width'))
-  const fh = parseFloat(floor.getAttribute('height'))
-  if (!Number.isFinite(fx) || !Number.isFinite(fw)) return
-
-  g.querySelector('.room-furniture')?.remove()
-
-  const group = document.createElementNS(SVG_NS, 'g')
-  group.setAttribute('class', 'room-furniture')
-  for (const p of props.activePlacements) {
-    const x = fx + (p.x || 0) * fw
-    const y = fy + (p.y || 0) * fh
-    const w = Math.max(1, (p.w || 0) * fw)
-    const h = Math.max(1, (p.h || 0) * fh)
-    const rect = document.createElementNS(SVG_NS, 'rect')
-    rect.setAttribute('x', x.toFixed(1))
-    rect.setAttribute('y', y.toFixed(1))
-    rect.setAttribute('width', w.toFixed(1))
-    rect.setAttribute('height', h.toFixed(1))
-    rect.setAttribute('rx', '1')
-    rect.setAttribute('fill', 'white')
-    rect.setAttribute('stroke', '#2a2a2a')
-    rect.setAttribute('stroke-width', '0.8')
-    if (p.rotation) {
-      const cx = x + w / 2, cy = y + h / 2
-      rect.setAttribute('transform', `rotate(${p.rotation} ${cx.toFixed(1)} ${cy.toFixed(1)})`)
-    }
-    group.appendChild(rect)
-  }
-  floor.insertAdjacentElement('afterend', group)
+  if (g) drawRoomFurniture(g, props.activePlacements)
 }
 
 watch(
-  () => [props.plan?.svg_markup, props.roomStatus, props.activeRoomId, expanded.value, stage.value, skipped.value, props.batch],
+  () => [props.svgMarkup, props.roomStatus, props.activeRoomId, expanded.value, stage.value, skipped.value, props.batch],
   () => nextTick(paint),
   { immediate: true, deep: true },
 )
@@ -364,7 +328,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey))
           type="button" class="minimap-close" aria-label="關閉" @click="cancelConfirm"
         >✕</button>
       </div>
-      <div ref="boardRef" class="minimap-board" v-html="plan?.svg_markup || ''"></div>
+      <div ref="boardRef" class="minimap-board" v-html="svgMarkup"></div>
       <!-- 結果頁頂部：房間標籤列取代「整層進度 N/M」。✓ 已完成、深色 = 目前這間，點標籤直接切房 -->
       <ul v-if="compact && !selecting" class="room-tabs" aria-label="房間">
         <li>
@@ -518,7 +482,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey))
             class="minimap-abandon modal-abandon"
             @click="onAbandon" @blur="confirmingAbandon = false"
           >{{ confirmingAbandon ? '確定放棄？進度會清除' : '放棄這間房，改選其他' }}</button>
-          <div ref="modalBoardRef" class="minimap-board modal-board" v-html="plan?.svg_markup || ''"></div>
+          <div ref="modalBoardRef" class="minimap-board modal-board" v-html="svgMarkup"></div>
         </div>
       </div>
     </Teleport>

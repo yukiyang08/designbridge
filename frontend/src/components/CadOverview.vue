@@ -9,7 +9,7 @@ import { useDesignFlow } from '@/composables/useDesignFlow'
 import { quotationTotal } from '@/composables/design-flow/quotation'
 
 const {
-  cadPlanResult, cadRoomStatus, cadActiveRoomId, cadRoomSnapshots, cadQuoting, cadBatch,
+  cadPlanResult, cadPlanSvg, cadRoomStatus, cadActiveRoomId, cadRoomSnapshots, cadQuoting, cadBatch,
   result, lastGeneratedImage, quotationLoading, handleCadRoomSelected, quoteRooms,
 } = useDesignFlow()
 
@@ -60,7 +60,7 @@ function paint() {
   })
 }
 watch(
-  () => [cadPlanResult.value?.svg_markup, cadRoomStatus.value, hoverId.value],
+  () => [cadPlanSvg.value, cadRoomStatus.value, hoverId.value],
   () => nextTick(paint),
   { deep: true },
 )
@@ -90,7 +90,7 @@ onMounted(paint)
 
     <div class="ov-body">
       <div
-        ref="boardRef" class="ov-plan" v-html="cadPlanResult?.svg_markup || ''"
+        ref="boardRef" class="ov-plan" v-html="cadPlanSvg"
         @click="onBoardClick" @mouseover="hoverId = roomIdOf($event)" @mouseleave="hoverId = null"
       ></div>
 

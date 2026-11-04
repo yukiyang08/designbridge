@@ -26,7 +26,7 @@ import ModeBackButton from '@/components/shell/ModeBackButton.vue'
 
 const {
   cadCounts, cadTotalPing, cadRoomW, cadRoomD, cadExtraRooms, loading, submitRoomProgram, fetchRoomPlan, startFlow,
-  cadPlanResult, cadActiveRoomId, cadRoomStatus, cadRendering, cadBatchRunning, handleCadRoomSelected, abandonCadRoom,
+  cadPlanResult, cadPlanSvg, cadActiveRoomId, cadRoomStatus, cadRendering, cadBatchRunning, handleCadRoomSelected, abandonCadRoom,
   rescaleUploadedPlan,
 } = useDesignFlow()
 
@@ -438,7 +438,7 @@ const nextRoom = computed(() => pendingRoom.value ? null :
           <RoomPickerCad
             :show-hint="false"
             :suggested-id="nextRoom?.id"
-            :svg-markup="cadPlanResult.svg_markup || ''"
+            :svg-markup="cadPlanSvg"
             :rooms="rooms"
             @select-room="handleCadRoomSelected"
           />

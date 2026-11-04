@@ -27,7 +27,7 @@ const {
   steps, stepIndex, currentStep, goStep,
   loading, loadingMsg, error,
   editPlacements, floorPlanUrl, spacePhotoPath, planSource,
-  detectedRooms, cadPlanResult, cadRoomStatus, cadActiveRoomId, jumpToCadRoom, abandonCadRoom,
+  detectedRooms, cadPlanResult, cadPlanSvg, cadRoomStatus, cadActiveRoomId, jumpToCadRoom, abandonCadRoom,
   cadBatch, cadBatchRunning, applyToRooms, cancelCadBatch,
   cadRoomSnapshots, cadRendering, planSource: flowPlanSource, confirmedStyle, result, outputAspect, extraPrompt,
   fengshuiRules, cadOverview,
@@ -215,6 +215,7 @@ onMounted(() => {
         :overview-active="showOverview"
         @overview="openOverview"
         :plan="cadPlanResult"
+        :svg-markup="cadPlanSvg"
         :room-status="cadRoomStatus"
         :active-room-id="cadActiveRoomId"
         :active-placements="editPlacements"

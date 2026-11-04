@@ -2,6 +2,7 @@ import { ref, computed, watch } from 'vue'
 import { useImageField } from '@/composables/useImageField'
 import { buildRoomGeometry, doorKeepouts, settlePlacements } from '@/utils/roomGeometry'
 import { furnitureRealSize } from '@/config/furniture'
+import { withRoomFurniture } from '@/utils/planFurniture'
 
 /**
  * 整條設計流程共用的模組層級狀態。
@@ -363,6 +364,17 @@ export const cadBatchRunning = ref(false)
 export const cadOverview = ref(false)          // 整層總覽（結果頁的「總覽」分頁）；不存草稿，切到任一房間就關掉
 export const cadQuoting = ref({})              // 總覽裡正在估價的房間：{ [roomId]: true }
 export const cadRoomSnapshots = ref({})            // { [roomId]: { roomW, roomD, roomTypeForPlan, editPlacements, floorPlanPath, floorPlanUrl, sceneGraph, layoutRenderConfig, result, lastGeneratedImage } }
+export const cadDetectedPlacements = ref({})       // 上傳整層圖：背景先辨識好的家具 { [roomId]: placements }
+// 整層平面圖畫上已知的家具（背景辨識結果、切走房間的快照）。正在編輯的那間由縮圖自己即時畫，
+// 不放進來，免得拖一下家具就重組整份 SVG
+export const cadPlanSvg = computed(() => {
+  const markup = cadPlanResult.value?.svg_markup || ''
+  const byRoom = { ...cadDetectedPlacements.value }
+  for (const [id, snap] of Object.entries(cadRoomSnapshots.value)) {
+    if (snap?.editPlacements?.length) byRoom[id] = snap.editPlacements
+  }
+  return withRoomFurniture(markup, byRoom)
+})
 
 // ── 佈局編輯 ──
 export const editPlacements     = ref([])
