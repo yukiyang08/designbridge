@@ -42,7 +42,7 @@ requirement_analyzer → visual_preprocessing ─┬─ design   → layout_and_
 
 - Routing (new design vs. local edit) is decided entirely inside `requirement_analyzer`.
 - `composer` only follows the layout path; inpaint edits (`adjuster_agent`) skip it.
-- Quotation is deliberately **not** in the graph (30–40 s, doesn't affect the image); it is a separate `POST /api/quotation` the user triggers.
+- Quotation is deliberately **not** in the graph (doesn't affect the image); it is a separate `POST /api/quotation` that the frontend fires automatically whenever a new render arrives (`StepResult.vue` watch on `result`), and again when the user asks to re-quote.
 
 **Layout system** (`designbridge/layout/`) is the largest subsystem:
 - `layout_agent.py` — `run_layout_agent`: LLM proposes placements → hard constraints, geometric optimizer, soft-constraint scoring, then an optional LLM review pass (`LAYOUT_REVIEW_AGENT`) → projects the result to a ControlNet depth map. Falls back to `_default_layout` if the LLM fails.
