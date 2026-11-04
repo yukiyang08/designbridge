@@ -126,6 +126,10 @@ onBeforeUnmount(() => {
 }
 .links.right { margin-left: auto; }
 .nav-center { flex: 1; min-width: 0; display: flex; justify-content: center; }
+/* 左右兩側寬度不同，flex 置中會偏；寬螢幕放得下時改成以整條導覽列為準置中 */
+@media (min-width: 1200px) {
+  .nav-center { position: absolute; left: 50%; transform: translateX(-50%); }
+}
 
 .links > a {
   font-family: var(--db-font-display);

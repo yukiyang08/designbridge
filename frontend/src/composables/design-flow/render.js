@@ -85,7 +85,7 @@ export async function submit3D() {
   } else {
     loading.value = true
   }
-  loadingMsg.value = { title: '生成 3D 渲染圖中', sub: 'AI 將平面配置轉為立體室內透視，通常約 30–60 秒' }
+  loadingMsg.value = { title: '生成渲染圖中', sub: 'AI 將平面配置轉為立體室內透視，通常約 30–60 秒' }
   panoUrl.value = null
   panoError.value = ''
   try {

@@ -62,6 +62,9 @@ const slow = computed(() => sec.value >= SLOW_AFTER)
     <p class="title">{{ title }}</p>
     <p v-if="sub" class="sub">{{ sub }}</p>
     <p class="elapsed" aria-hidden="true">已等待 {{ elapsed }}</p>
+    <p v-if="slow" class="slow">
+      比平常久一些：雲端運算閒置一陣子後，第一次生成要先暖機，可能再等幾分鐘。請先不要關閉頁面，完成後會自動顯示。
+    </p>
 
   </div>
 </template>

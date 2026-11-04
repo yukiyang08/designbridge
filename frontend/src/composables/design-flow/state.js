@@ -26,8 +26,8 @@ export const STEP_FLOWS = {
   // 從繪製平面設計圖開始
   generate: [
     { key: 'space',  label: '空間設定' },
-    { key: 'plan',   label: '繪製平面圖' },
-    { key: 'result', label: '生成設計' },
+    { key: 'plan',   label: '平面圖' },
+    { key: 'result', label: '渲染圖' },
   ],
   // 上傳現有空間照片（租屋族）：上傳、換風格、移家具、換／刪家具都在同一頁
   photo: [
@@ -36,23 +36,23 @@ export const STEP_FLOWS = {
   // 從零開始，直接描述理想空間
   skip: [
     { key: 'space',  label: '空間設定' },
-    { key: 'result', label: '生成設計' },
+    { key: 'result', label: '渲染圖' },
   ],
   // 上傳 2D 平面配置圖。整戶圖會先用 Gemini 視覺分割房間，偵測到多間才會經過
   // 「選擇房間」這一步；只有一間就直接跳過，行為等同單純上傳一張房間圖。
   upload: [
     { key: 'planUpload', label: '上傳平面圖' },
     { key: 'roomPick',   label: '選擇房間' },
-    { key: 'plan',       label: '繪製平面圖' },
-    { key: 'result',     label: '生成設計' },
+    { key: 'plan',       label: '平面圖' },
+    { key: 'result',     label: '渲染圖' },
   ],
   // CAD 房型生成（designbridge/roomplan）：輸入幾房幾廳＋總坪數，直接切割出整層樓
   // 的房間配置（牆／門／窗）。一定是多房間，但「填房型」跟「選房間」合併成同一頁
   // （見 StepRoomProgram）：生成配置後房間選擇器直接在表單下方展開，不用再跳頁。
   cad: [
     { key: 'roomProgram', label: '房型設定' },
-    { key: 'plan',        label: '繪製平面圖' },
-    { key: 'result',      label: '生成設計' },
+    { key: 'plan',        label: '平面圖' },
+    { key: 'result',      label: '渲染圖' },
   ],
 }
 
@@ -393,7 +393,7 @@ export const furnitureItems = ref([])
 export const furnitureQty   = ref({})
 export const extraPrompt    = ref('')
 // 風水只問「要不要套用」：開啟後依房型自動挑規則，細調時取消勾選的記在 excluded
-export const fengshuiEnabled  = ref(false)
+export const fengshuiEnabled  = ref(true)
 export const fengshuiExcluded = ref([])
 // 目前空間實際套用的規則清單（由上面兩個推出來）。可寫入：結果頁的勾選、專案還原會直接
 // 設定清單，這裡換算回開關＋排除項，兩種 UI 才不會各存一份互相打架

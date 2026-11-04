@@ -22,9 +22,9 @@
   --db-line:          #e2ded6;   /* 滿版工作區（/studio）各區之間的分隔細線，取代卡片陰影 */
 
   /* 互動元件 */
-  --db-chip:          #d9d9d9;   /* 空間類型 chip */
-  --db-chip-soft:     #efefef;   /* 家具 chip */
-  --db-secondary:     #757575;   /* 次要按鈕（更新平面圖） */
+  --db-chip:          #e6e3dd;   /* 空間類型 chip；暖灰，避免冷灰在紙色底上發悶 */
+  --db-chip-soft:     #f7f5f1;   /* 家具 chip */
+  --db-secondary:     #756d66;   /* 次要按鈕（更新平面圖） */
   --db-secondary-2:   #878181;   /* 面板標題列 */
 
   /* 文字 */
@@ -136,7 +136,7 @@
   font-size: 1rem;
 }
 
-/* chip：空間類型（大、#d9d9d9）與家具（小、#efefef） */
+/* chip：空間類型（大、--db-chip）與家具（小、--db-chip-soft） */
 .db-chip {
   display: inline-flex;
   align-items: center;

@@ -196,7 +196,7 @@ onMounted(() => {
         <CadOverview v-else-if="showOverview" />
         <component :is="STEP_COMPONENTS[currentStep]" v-else />
 
-        <p v-if="error && !loading" class="db-error studio-error">{{ error }}</p>
+        <p v-if="error && !loading" class="db-error studio-error" role="alert">{{ error }}</p>
       </div>
 
       <aside v-if="showAside" class="studio-aside" :class="{ 'has-toggle': minimapCollapsible }">
@@ -388,7 +388,11 @@ onMounted(() => {
 /* 操作列裡的「重新選擇模式」吃掉左邊空間，其餘按鈕一起靠右 */
 .studio-main :deep(.actions > .mode-back-btn) { margin-right: auto; }
 
+/* 內容很長時錯誤訊息會掉到畫面外；黏在操作列正上方，讓它出現在剛按下的按鈕旁 */
 .studio-error {
+  position: sticky;
+  bottom: calc(var(--actions-h) + 0.75rem);
+  z-index: 40;
   margin: 1.25rem clamp(1.5rem, 3vw, 2.5rem) 0;
 }
 

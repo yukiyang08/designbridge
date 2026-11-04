@@ -169,7 +169,7 @@ function submit() {
     <!-- 這一步一定是「單間」（AI 排單一房間家具，或不排家具直接生成）；
          點「整層房屋」切去 cad 流程的房型設定步驟（StepRoomProgram.vue）。 -->
     <div class="setup-head">
-      <h2 class="setup-title">房型設定</h2>
+      <h2 class="setup-title">空間設定</h2>
       <div class="mode-toggle" role="group" aria-label="生成範圍">
         <button type="button" class="active" aria-pressed="true">單間</button>
         <button type="button" :disabled="loading" @click="confirmDiscard() && startFlow('cad')">整層房屋</button>

@@ -89,13 +89,13 @@ function goNext() {
     </div>
 
     <p v-if="!editPlacements.length" class="empty-hint">
-      未辨識到家具座標，將以整張平面圖作為結構參考生成 3D 渲染圖。
+      未辨識到家具座標，將以整張平面圖作為結構參考生成渲染圖。
     </p>
 
     <div class="actions">
       <button class="db-btn db-btn--ghost db-btn--sm" @click="prevStep">← 上一步</button>
       <button class="db-btn" :disabled="loading" @click="goNext">
-        下一步：繼續生成 3D 渲染圖
+        下一步：生成渲染圖
       </button>
     </div>
 
