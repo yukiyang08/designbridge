@@ -5,7 +5,7 @@ Controlled by ``DESIGNBRIDGE_STARTUP_WARMUP``:
 
 - ``off`` / ``0`` / ``false``: skip warmup
 - ``min`` (default): pipeline CLIP (transformers), the text-to-text style embedder
-  (e.g. bge-m3), SAM 2, and the depth + segmentation models
+  (e.g. bge-m3), the quotation CLIP + furniture KB, SAM 2, and the depth + segmentation models
 
 Each step is isolated: a failure in one step does not block the others.
 """
@@ -40,6 +40,12 @@ def run_startup_warmup() -> None:
 
         _encode_query_text("warmup")   # 載入模型 + 吃掉第一次 encode 的初始化成本
 
+    def _warm_quotation() -> None:
+        # 報價用的 CLIP 跟上面評分用的不是同一個；沒預載時第一次報價要多等十幾秒
+        from designbridge.pricing.quotation import preload_quotation_resources
+
+        preload_quotation_resources()
+
     def _warm_sam2() -> None:
         from designbridge.render.inpaint import _get_sam2_predictor
 
@@ -63,6 +69,7 @@ def run_startup_warmup() -> None:
 
     _step("Text-to-text style embedder (sentence-transformers)", _warm_text_embedder)
     _step("Pipeline CLIP evaluator (transformers)", _warm_clip_eval)
+    _step("Quotation CLIP + furniture KB", _warm_quotation)
     _step("SAM 2 instance segmentation predictor", _warm_sam2)
     _step("Depth + segmentation models (transformers)", _warm_vision)
 

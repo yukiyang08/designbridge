@@ -13,6 +13,12 @@ from typing import Any
 from designbridge.render.llm import call_llm
 from designbridge.core.schemas import FurnitureCandidate, FurnitureItem, QuotationResultJSON
 
+# 名稱 → 商品庫的大類（覆蓋 Gemini 給的 category）
+_CATEGORY_BY_NAME = [
+    (r"床頭櫃|床邊櫃|電視櫃|視聽櫃", "storage"),
+    (r"單人沙發|沙發椅|主人椅|長凳|長椅", "chair"),
+]
+
 
 # ── Prompts ────────────────────────────────────────────────────────────────────
 
@@ -168,10 +174,9 @@ def crop_image_by_bbox(img, bbox_ratio: list[float]):
     x1, y1, x2, y2 = bbox_ratio
     px1, py1 = int(x1 * w), int(y1 * h)
     px2, py2 = int(x2 * w), int(y2 * h)
-    # 至少 20×20 px
-    if px2 - px1 < 20 or py2 - py1 < 20:
+    if px2 <= px1 or py2 <= py1:
         return None
-    # 崁燈這類小物件 bbox 太細，向量比對沒資訊；往外撐到至少 64px
+    # 崁燈這類小物件 bbox 太細（1024 寬的圖上常不到 20px），向量比對沒資訊；往外撐到至少 64px
     px1, px2 = px1 - max(0, 64 - (px2 - px1)) // 2, px2 + max(0, 64 - (px2 - px1)) // 2
     py1, py2 = py1 - max(0, 64 - (py2 - py1)) // 2, py2 + max(0, 64 - (py2 - py1)) // 2
     px1, py1 = max(0, px1), max(0, py1)
@@ -191,6 +196,16 @@ def _estimate_price_llm(name_zh: str) -> int:
 
 
 # ── Main build function ────────────────────────────────────────────────────────
+
+def preload_quotation_resources() -> None:
+    """先載入 lazy singleton（CLIP / Supabase / 本地 KB），免得多執行緒同時第一次初始化。"""
+    from designbridge.pricing.furniture_kb import _get_supabase_client, _load_embeddings, _load_local_kb
+
+    _get_clip_model()
+    _get_supabase_client()
+    _load_local_kb()
+    _load_embeddings()
+
 
 def _process_furniture_item(raw: dict, img: Any, style_id: str = "") -> tuple[FurnitureItem, bool]:
     """Resolve one detected furniture item to KB candidates. Returns (item, matched_kb).
@@ -212,6 +227,14 @@ def _process_furniture_item(raw: dict, img: Any, style_id: str = "") -> tuple[Fu
     # shelf → storage（爬蟲分類統一用 storage）
     if category == "shelf":
         category = "storage"
+    # 盆栽、抱枕、鏡子、掛畫：Gemini 歸在 other，商品庫放在 decor
+    if category == "other" and subcategories_for("decor", name_zh):
+        category = "decor"
+    # Gemini 的大類偶爾跟商品庫不同（床頭櫃給 table、單人沙發給 sofa），向量搜尋先依大類篩選就撈不到
+    for pattern, cat in _CATEGORY_BY_NAME:
+        if re.search(pattern, name_zh):
+            category = cat
+            break
 
     # ── 嘗試 CLIP + Supabase pgvector ──
     if img is not None and len(bbox_ratio) == 4:
@@ -239,8 +262,9 @@ def _process_furniture_item(raw: dict, img: Any, style_id: str = "") -> tuple[Fu
             print(f"[quotation] CLIP/vector search error for '{name_zh}': {e}")
 
     # ── Fallback：本地 JSON 關鍵字搜尋 ──
-    # 崁燈、軌道燈本地 JSON 沒有，文字搜尋只會比到吊燈、檯燈這些不同種的燈，寧可走 LLM 估價
-    if not candidates and not (subcategories_for(category, name_zh) & _SMALL_FIXTURE_SUBS):
+    # 崁燈、軌道燈本地 JSON 沒有，文字搜尋只會比到吊燈、檯燈這些不同種的燈，寧可走 LLM 估價；
+    # other 在商品庫沒有商品，文字搜尋只會撈到名稱相近的別種東西（電視 → 電視櫃）
+    if not candidates and category != "other" and not (subcategories_for(category, name_zh) & _SMALL_FIXTURE_SUBS):
         text_hits = search_kb(name_zh, category=category, top_k=3)
         if text_hits:
             matched_kb = True
@@ -298,7 +322,6 @@ def build_quotation(
     """
     from PIL import Image
     from designbridge.core.timing import log_stage, timed_call
-    from designbridge.pricing.furniture_kb import _get_supabase_client, _load_local_kb, _load_embeddings
 
     # 取風格提示
     style_hint = ""
@@ -306,7 +329,10 @@ def build_quotation(
     if isinstance(style_pref, dict):
         style_hint = style_pref.get("primary_style") or ""
 
-    detected = timed_call("quotation.detect_furniture", None, detect_furniture_gemini, image_path, style_hint)
+    with ThreadPoolExecutor(max_workers=1) as pre:
+        preloading = pre.submit(preload_quotation_resources)
+        detected = timed_call("quotation.detect_furniture", None, detect_furniture_gemini, image_path, style_hint)
+        preloading.result()
 
     # Gemini 失敗（或圖片無法辨識）→ 用房間類型備用清單
     if not detected:
@@ -319,13 +345,6 @@ def build_quotation(
     except Exception as e:
         print(f"[quotation] cannot open image: {e}")
         img = None
-
-    # 預先載入 lazy singleton（CLIP model / Supabase client / 本地 KB 快取），
-    # 避免多執行緒同時第一次觸發初始化造成 race condition。
-    _get_clip_model()
-    _get_supabase_client()
-    _load_local_kb()
-    _load_embeddings()
 
     with ThreadPoolExecutor(max_workers=min(8, max(1, len(detected)))) as executor:
         with log_stage("quotation.match_furniture"):

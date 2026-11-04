@@ -224,6 +224,13 @@ _SUBCATEGORY_RULES: dict[str, list[tuple[str, set[str]]]] = {
              (r"桌燈|檯燈|台燈", {"table-lamp", "desk-lamp"}),
              (r"壁燈", {"wall-lamp"})],
     "rug": [(r"走道|長條", {"runner"})],
+    "curtain": [(r"羅馬簾|捲簾|百葉|調光簾|蜂巢簾|遮光簾", {"blind"}),
+                (r"窗簾|紗簾|布簾", {"curtain"})],
+    # Gemini 把這些歸在 other；對得上的才轉到 decor 找（電視、馬桶等不轉，維持 LLM 估價）
+    "decor": [(r"盆栽|植物|綠植|盆景", {"plant"}),
+              (r"抱枕|靠枕|靠墊", {"cushion"}),
+              (r"鏡", {"mirror"}),
+              (r"畫|藝術|海報", {"wall-art"})],
 }
 STYLE_BONUS = 0.0    # 商品風格跟渲染圖相同時排序分數加多少；風格標籤還不夠準、效果也量不出來，先關閉
 _POOL_SIZE = 40      # 先依大類別取這麼多候選，再篩選、去重

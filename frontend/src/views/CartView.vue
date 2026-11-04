@@ -14,6 +14,8 @@ const categoryLabels = {
   rug: '地毯',
   storage: '收納',
   bed: '床',
+  curtain: '窗簾',
+  decor: '軟裝',
 }
 
 function itemKey(item) {
