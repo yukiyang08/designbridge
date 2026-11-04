@@ -15,7 +15,7 @@ const {
   spacePhoto, spacePhotoPath, photoDetection, photoLayoutError, photoBusy, photoLayoutLoading,
   photoVersions, photoCurrent, photoStylePrompt, photoQuoting, currentVersion, editableFurniture, styleVersionIndex,
   styleOptions, styleDemoImages,
-  uploadPhoto, restylePhoto, refinePhoto, quotePhoto,
+  uploadPhoto, restylePhoto, refinePhoto, quotePhoto, confirmDiscard,
 } = useDesignFlow()
 
 const TOOLS = [
@@ -117,7 +117,11 @@ const quoteTotal = computed(() => quoteRows.value.reduce((s, r) => s + (r.c?.pri
         </button>
       </nav>
       <label class="change-photo" :class="{ disabled: busy }" title="換一張照片會重新開始">
-        <input type="file" accept="image/*" hidden :disabled="busy" @change="onFile" />
+        <!-- 確認放在 input 上：label 的 click 會再轉發一次給 input 並冒泡回 label，放 label 會跳兩次確認 -->
+        <input
+          type="file" accept="image/*" hidden :disabled="busy" @change="onFile"
+          @click="e => confirmDiscard('換照片會清除目前所有版本，確定嗎？') || e.preventDefault()"
+        />
         <Icon icon="mdi:camera-retake-outline" width="18" />換照片
       </label>
     </div>

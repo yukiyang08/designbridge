@@ -26,6 +26,11 @@ export function goToStepKey(key) {
   goStep(steps.value.findIndex(s => s.key === key))
 }
 
+export function confirmDiscard(msg = '目前生成的設計會被清除，確定重新開始嗎？') {
+  const hasWork = !!result.value || photoVersions.value.length > 1 || Object.keys(cadRoomStatus.value || {}).length > 0
+  return !hasWork || window.confirm(msg)
+}
+
 export function startFlow(source) {
   resetFlow()
   planSource.value = source

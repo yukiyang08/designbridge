@@ -46,7 +46,7 @@ import {
   quotationLoading, quotationError, furnitureHover,
 } from './design-flow/state'
 
-import { goStep, nextStep, prevStep, startFlow, resetFlow } from './design-flow/navigation'
+import { goStep, nextStep, prevStep, startFlow, resetFlow, confirmDiscard } from './design-flow/navigation'
 import { uploadFile } from './design-flow/common'
 import {
   fetchStyleOptions, fetchStyleCandidates, showNextRound, scheduleSearch,
@@ -75,7 +75,7 @@ export function useDesignFlow() {
   return {
     // 路徑 / 步驟
     planSource, stepIndex, steps, currentStep, isLastStep,
-    goStep, nextStep, prevStep, startFlow, resetFlow,
+    goStep, nextStep, prevStep, startFlow, resetFlow, confirmDiscard,
     // 平面圖
     floorPlanUrl, floorPlanPath, sceneGraph, floorPlanUpload, uploadedPlanUrl,
     detectedRooms, handleRoomSelected,

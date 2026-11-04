@@ -25,7 +25,7 @@ import { API_BASE } from '@/config/api'
 const {
   planSource, roomType, roomTypeForPlan, spaceSizePing, customRoomW, customRoomD, outputAspect,
   furnitureItems, furnitureQty, extraPrompt,
-  loading, submitLayout, nextStep, scheduleSearch, startFlow, submit3D,
+  loading, submitLayout, nextStep, scheduleSearch, startFlow, confirmDiscard, submit3D,
   showSuggestions, styleCandidates, candidatesLoading, candidatesError, confirmedStyle,
   confirmStyle, clearConfirmedStyle, fetchStyleCandidates, showNextRound,
 } = useDesignFlow()
@@ -172,7 +172,7 @@ function submit() {
       <h2 class="setup-title">房型設定</h2>
       <div class="mode-toggle" role="group" aria-label="生成範圍">
         <button type="button" class="active" aria-pressed="true">單間</button>
-        <button type="button" :disabled="loading" @click="startFlow('cad')">整層房屋</button>
+        <button type="button" :disabled="loading" @click="confirmDiscard() && startFlow('cad')">整層房屋</button>
       </div>
     </div>
 

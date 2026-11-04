@@ -4,9 +4,10 @@ import { useRouter } from 'vue-router'
 import { useDesignFlow } from '@/composables/useDesignFlow'
 
 const router = useRouter()
-const { resetFlow, loading } = useDesignFlow()
+const { resetFlow, confirmDiscard, loading } = useDesignFlow()
 
 function back() {
+  if (!confirmDiscard()) return
   resetFlow()
   router.push('/start')
 }
