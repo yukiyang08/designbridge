@@ -30,12 +30,25 @@ const styleReferenceImageUrl = computed(() => {
   if (typeof fromStyleParams === 'string' && fromStyleParams.trim()) return fromStyleParams
 
   const fromControlNet = r.render_result?.controlnet_inputs?.style_reference_image
-  if (typeof fromControlNet !== 'string' || !fromControlNet.trim()) return ''
+  return artifactUrl(fromControlNet)
+})
 
-  const normalized = fromControlNet.replace(/\\/g, '/')
-  if (normalized.startsWith('http://') || normalized.startsWith('https://')) return normalized
-  if (normalized.startsWith('artifacts/')) return `${API_BASE}/${normalized}`
-  return ''
+// 後端可能給絕對路徑，從 artifacts/ 那段開始接到 API_BASE
+function artifactUrl(p) {
+  const s = typeof p === 'string' ? p.replace(/\\/g, '/') : ''
+  if (/^https?:\/\//.test(s)) return s
+  const i = s.indexOf('artifacts/')
+  return i >= 0 ? `${API_BASE}/${s.slice(i)}` : ''
+}
+
+// 生成時實際送進 ControlNet 的深度圖；換風格沿用的則在 vision_features
+const depthMaps = computed(() => {
+  const r = props.result
+  const ci = r?.render_result?.controlnet_inputs || {}
+  return [
+    { label: '深度圖', url: artifactUrl(ci.depth || r?.vision_features?.depth || r?.scene_graph?.projected_depth_path) },
+    { label: '佈局深度圖', url: artifactUrl(ci.layout_depth) },
+  ].filter((m, i, all) => m.url && all.findIndex(o => o.url === m.url) === i)
 })
 </script>
 
@@ -46,6 +59,16 @@ const styleReferenceImageUrl = computed(() => {
     <section v-if="styleReferenceImageUrl" class="card">
       <h3 class="card-title">風格參考圖</h3>
       <img :src="styleReferenceImageUrl" alt="風格參考圖" class="ref-img" />
+    </section>
+
+    <section v-if="depthMaps.length" class="card">
+      <h3 class="card-title">深度圖</h3>
+      <div class="depth-grid">
+        <figure v-for="m in depthMaps" :key="m.url" class="depth-item">
+          <a :href="m.url" target="_blank" rel="noopener"><img :src="m.url" :alt="m.label" class="ref-img" /></a>
+          <figcaption>{{ m.label }}</figcaption>
+        </figure>
+      </div>
     </section>
 
     <!-- 結構化需求 -->
@@ -163,6 +186,10 @@ const styleReferenceImageUrl = computed(() => {
   max-width: min(360px, 100%);
   border-radius: 8px;
 }
+
+.depth-grid { display: flex; flex-wrap: wrap; gap: 1rem; }
+.depth-item { margin: 0; }
+.depth-item figcaption { margin-top: 0.35rem; font-size: 0.8rem; color: var(--db-text-soft); }
 
 .req-grid {
   display: grid;
