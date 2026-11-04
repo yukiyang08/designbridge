@@ -66,6 +66,14 @@ export async function fetchStyleDemoImages() {
 // 也不能把「搜尋中」狀態提早關掉。
 let searchSeq = 0
 
+// 沒打描述也沒選風格時，每個風格各一張；池子每風格 3 張，換一批就輪到下一張
+let diversePage = false
+function pageOf(pool) {
+  if (!diversePage) return pool.slice(0, STYLE_PAGE_SIZE)
+  const seen = new Set()
+  return pool.filter(c => !seen.has(c.style_id) && seen.add(c.style_id))
+}
+
 // 後端 style_images.space 的字彙（跟 ROOM_TYPE_LABEL 不完全一樣）
 const DB_SPACE = { bathroom: '浴室', living_dining: '客廳' }
 
@@ -103,7 +111,8 @@ export async function fetchStyleCandidates({ anchorSelected = false } = {}) {
         .slice().sort((a, b) => Number(b?.similarity ?? 0) - Number(a?.similarity ?? 0))
       if (anchor) pool = [anchor, ...pool.filter(c => c.image_url !== anchor.image_url)]
       styleCandidatePool.value = pool
-      const sorted = pool.slice(0, STYLE_PAGE_SIZE)
+      diversePage = diverse
+      const sorted = pageOf(pool)
       styleCandidates.value = sorted
       matchedStylePreview.value = sorted[0]
         ? { image_url: sorted[0].image_url, style_name: sorted[0].style_name, similarity: sorted[0].similarity }
@@ -120,10 +129,11 @@ export async function fetchStyleCandidates({ anchorSelected = false } = {}) {
 
 export function showNextRound() {
   const pool = styleCandidatePool.value
-  if (pool.length <= STYLE_PAGE_SIZE) return
-  const rotated = [...pool.slice(STYLE_PAGE_SIZE), ...pool.slice(0, STYLE_PAGE_SIZE)]
+  const shown = new Set(styleCandidates.value)
+  if (pool.length <= shown.size) return
+  const rotated = [...pool.filter(c => !shown.has(c)), ...pool.filter(c => shown.has(c))]
   styleCandidatePool.value = rotated
-  styleCandidates.value = rotated.slice(0, STYLE_PAGE_SIZE)
+  styleCandidates.value = pageOf(rotated)
 }
 
 export function scheduleSearch() {

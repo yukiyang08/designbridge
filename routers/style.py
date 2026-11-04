@@ -1,7 +1,7 @@
 """Style KB search/preview, furniture catalog and style profile endpoints."""
 from typing import Optional
 
-from fastapi import APIRouter
+from fastapi import APIRouter, HTTPException
 
 from designbridge.style.style_apply import list_available_style_profiles
 from style_kb.styles import STYLES
@@ -117,8 +117,9 @@ def search_styles(
             })
         return candidates
     except Exception as e:
+        # 回空陣列前端會誤報成「找不到相符風格」；改回錯誤讓前端顯示重試
         print(f"⚠️ style-search error: {e}")
-        return []
+        raise HTTPException(status_code=502, detail="風格搜尋暫時失敗") from e
 
 
 @router.get("/api/style-preview")
