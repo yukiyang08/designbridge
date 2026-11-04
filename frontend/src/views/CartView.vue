@@ -84,6 +84,8 @@ function goHome() {
       </div>
     </header>
 
+    <p class="local-note">登入後收藏會同步到你的帳號；未登入時只存在這台裝置的瀏覽器。</p>
+
     <div v-if="selectedCount === 0" class="empty-state">
       <p>收藏清單是空的</p>
       <button class="browse-btn" @click="goFurniture">前往家具查詢挑選</button>
@@ -146,6 +148,7 @@ function goHome() {
 
 .cart-header { display: flex; align-items: center; gap: 1rem; margin-bottom: 1.25rem; }
 .cart-header h1 { font-size: 1.3rem; margin: 0; }
+.local-note { margin: 0 0 1rem; font-size: 0.85rem; color: var(--db-text-soft); }
 .back-btn { background: none; border: 1px solid #999; border-radius: 6px; padding: 0.3rem 0.8rem; cursor: pointer; font-size: 0.88rem; color: #333; font-weight: 600; }
 .back-btn:hover { background: #eee; border-color: #666; }
 
