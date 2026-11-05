@@ -1,7 +1,7 @@
 import { hasDraft } from '../composables/design-flow/state'
 import { useAuth, authEnabled } from '../composables/useAuth'
 import { createRouter, createWebHistory } from 'vue-router'
-import { authFetch } from '../config/api'
+import { useMe } from '../composables/useMe'
 import HeroView from '../views/HeroView.vue'
 import StartView from '../views/StartView.vue'
 import StudioView from '../views/StudioView.vue'
@@ -58,7 +58,7 @@ router.beforeEach(async to => {
   }
   if (to.name === 'account') return true
   // 只擋畫面；真正的權限在後端 get_user_id / require_admin。未開通的帳號一律留在個人專區看提示
-  const me = await authFetch('/api/me').then(r => r.json()).catch(() => ({}))
+  const me = (await useMe().meReady()) || {}
   if (me.role === 'pending') return { name: 'account' }
   return to.name !== 'admin' || me.role === 'admin' || { name: 'account' }
 })

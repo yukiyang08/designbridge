@@ -159,32 +159,32 @@ onMounted(() => { load(1); loadAllow() })
           <tbody>
             <template v-for="u in visible()" :key="u.id">
             <tr>
-              <td>
+              <td data-label="帳號">
                 <div class="email">{{ u.email }}</div>
                 <div v-if="u.name" class="name">{{ u.name }}</div>
               </td>
-              <td>
+              <td data-label="角色">
                 <select v-model="u.draftRole" class="db-input" :aria-label="`${u.email} 的角色`">
                   <option value="pending">未開通</option>
                   <option value="user">一般</option>
                   <option value="admin">管理員</option>
                 </select>
               </td>
-              <td>
+              <td data-label="點數">
                 <input v-model="u.draftCredits" class="db-input credits" type="number" min="0"
                   :aria-label="`${u.email} 的點數`">
                 <div v-if="u.draftRole === 'admin'" class="name">管理員不扣點</div>
               </td>
-              <td>
+              <td data-label="用量">
                 <button v-if="u.usage" class="usage-btn" :aria-expanded="openId === u.id" @click="toggleUsage(u)">
                   <span class="cost">{{ usd(u.usage.cost_usd) }}</span>
                   <span class="name">{{ num(u.usage.tokens) }} tokens · {{ u.usage.images }} 張圖 · {{ secs(u.usage.duration_s) }}</span>
                 </button>
                 <span v-else class="name">—</span>
               </td>
-              <td class="time">{{ fmt(u.created_at) }}</td>
-              <td class="time">{{ fmt(u.last_sign_in_at) }}</td>
-              <td>
+              <td data-label="註冊" class="time">{{ fmt(u.created_at) }}</td>
+              <td data-label="最後登入" class="time">{{ fmt(u.last_sign_in_at) }}</td>
+              <td class="row-action">
                 <button class="db-btn db-btn--sm" :disabled="!dirty(u) || savingId === u.id" @click="save(u)">
                   {{ savingId === u.id ? '儲存中…' : '儲存' }}
                 </button>
@@ -198,13 +198,13 @@ onMounted(() => { load(1); loadAllow() })
                   </thead>
                   <tbody>
                     <tr v-for="(e, i) in events" :key="i">
-                      <td class="time">{{ fmt(e.created_at) }}</td>
-                      <td>{{ e.route }}</td>
-                      <td class="name">{{ e.model }}</td>
-                      <td>{{ e.kind === 'llm' ? `${num(e.prompt_tokens)} / ${num(e.completion_tokens)}` : '—' }}</td>
-                      <td>{{ e.images ?? '—' }}</td>
-                      <td>{{ secs(e.duration_s) }}<span v-if="e.queue_s != null" class="name">（{{ secs(e.queue_s) }}）</span></td>
-                      <td class="cost">{{ usd(e.cost_usd) }}</td>
+                      <td data-label="時間" class="time">{{ fmt(e.created_at) }}</td>
+                      <td data-label="功能">{{ e.route }}</td>
+                      <td data-label="模型" class="name">{{ e.model }}</td>
+                      <td data-label="token">{{ e.kind === 'llm' ? `${num(e.prompt_tokens)} / ${num(e.completion_tokens)}` : '—' }}</td>
+                      <td data-label="圖">{{ e.images ?? '—' }}</td>
+                      <td data-label="耗時">{{ secs(e.duration_s) }}<span v-if="e.queue_s != null" class="name">（{{ secs(e.queue_s) }}）</span></td>
+                      <td data-label="花費" class="cost">{{ usd(e.cost_usd) }}</td>
                     </tr>
                     <tr v-if="!events.length"><td colspan="7" class="empty">載入中…</td></tr>
                   </tbody>
@@ -273,4 +273,23 @@ th { color: var(--db-text-soft); font-weight: 500; white-space: nowrap; }
 .events th, .events td { padding: 0.45rem 0.6rem; }
 
 .pager { display: flex; gap: 0.75rem; align-items: center; justify-content: flex-end; margin-top: 1rem; color: var(--db-text-soft); }
+
+/* 手機：表格改成每個帳號一張卡，欄名用 data-label 標在值上方 */
+@media (max-width: 640px) {
+  .admin-card { padding: 1.5rem 1rem; }
+  .toolbar .db-btn { flex: none; white-space: nowrap; }
+  table, tbody, tr, td { display: block; }
+  thead { display: none; }
+  tbody > tr:not(.detail) {
+    display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.6rem 0.75rem;
+    padding: 0.9rem 0; border-bottom: 1px solid var(--db-line);
+  }
+  td { padding: 0; border: 0; }
+  td[data-label]::before { content: attr(data-label); display: block; margin-bottom: 0.15rem; font-size: 0.72rem; color: var(--db-text-soft); }
+  td[data-label="帳號"]::before { display: none; }
+  td[data-label="帳號"], td[data-label="用量"], .row-action, .empty { grid-column: 1 / -1; }
+  .row-action .db-btn { width: 100%; }
+  .detail > td { padding: 0 0 0.75rem; }
+  .events tbody > tr:not(.detail) { padding: 0.6rem 0.5rem; }
+}
 </style>

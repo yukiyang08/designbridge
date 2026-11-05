@@ -6,10 +6,10 @@
  * 「家具查詢」：那是既有的 /furniture 頁，舊版靠工作台的浮動按鈕進入，新版工作台
  * 沒有浮動按鈕了，不給它一個入口就會變成沒人找得到的孤兒頁。
  */
-import { onMounted, ref } from 'vue'
+import { onMounted } from 'vue'
 import { RouterLink } from 'vue-router'
-import { authFetch } from '@/config/api'
 import { useAuth } from '@/composables/useAuth'
+import { useMe } from '@/composables/useMe'
 import AppNav from '@/components/shell/AppNav.vue'
 import { useFurnitureSelection } from '@/composables/useFurnitureSelection'
 import sceneBg from '@/assets/figma/room-bg.png'
@@ -17,11 +17,8 @@ import sceneBg from '@/assets/figma/room-bg.png'
 const { selectedCount } = useFurnitureSelection()
 const { user, signOut } = useAuth()
 
-const me = ref(null)
-onMounted(async () => {
-  const res = await authFetch('/api/me').catch(() => null)
-  if (res?.ok) me.value = await res.json()
-})
+const { me, refreshMe } = useMe()
+onMounted(refreshMe)   // 點數會變，進個人專區時拿最新的
 
 const SECTIONS = [
   {

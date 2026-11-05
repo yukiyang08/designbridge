@@ -33,8 +33,8 @@ def _usage_since(sb, days: int) -> dict:
 
 @router.get("/api/me")
 def me(user_id: str = Depends(get_login_id)):
-    if not user_id:
-        return {"role": "user", "credits": None}
+    if not user_id:   # 只有 DEV_NO_AUTH 的本機請求會沒有 user_id：當成開發者，看得到除錯面板
+        return {"role": "admin", "credits": None}
     sb = _get_supabase()
     user = sb.auth.admin.get_user_by_id(user_id).user
     role = user_role(user)

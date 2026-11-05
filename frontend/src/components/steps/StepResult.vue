@@ -29,6 +29,7 @@ import { canMoveFurniture, canUndoMove, undoMove, applyingMove } from '@/composa
 import { useDesignFlow, ASPECT_OPTIONS, ORIGINAL_STYLE_KEY } from '@/composables/useDesignFlow'
 import { spaceInfo, ROOM_TYPE_LABEL } from '@/composables/design-flow/state'
 import { API_BASE } from '@/config/api'
+import { useMe } from '@/composables/useMe'
 
 // PanoramaViewer 吃 three.js（約 700KB）：只有真的要看環景時才下載。
 const PanoramaViewer = defineAsyncComponent(() => import('@/components/PanoramaViewer.vue'))
@@ -49,6 +50,8 @@ const {
 const router = useRouter()
 
 const viewMode = ref('image')   // 'image' | 'pano'
+// 設計詳情與各環節耗時是除錯用，只給管理員看
+const { isAdmin } = useMe()
 const showDetails = ref(false)
 const showTimings = ref(false)
 const timingRuns = computed(() => {
@@ -311,7 +314,7 @@ function startOver() {
               <button
                 v-for="h in boxHotspots" :key="h.idx" type="button" class="furn-hot"
                 :class="{ on: hoveredIdxs.has(h.idx) }" :style="h.style"
-                :aria-label="`${h.name}：在右邊清單查看市售商品`"
+                :aria-label="`${h.name}：在報價清單查看市售商品`"
                 @mouseenter="furnitureHover = h.idx" @mouseleave="furnitureHover = null"
                 @focus="furnitureHover = h.idx" @blur="furnitureHover = null"
                 @click="furnitureHover = h.idx"
@@ -320,7 +323,7 @@ function startOver() {
                 <polygon
                   v-for="h in outlineHotspots" :key="h.idx" :points="h.points" class="furn-shape"
                   :class="{ on: hoveredIdxs.has(h.idx) }" vector-effect="non-scaling-stroke"
-                  tabindex="0" role="button" :aria-label="`${h.name}：在右邊清單查看市售商品`"
+                  tabindex="0" role="button" :aria-label="`${h.name}：在報價清單查看市售商品`"
                   @mouseenter="furnitureHover = h.idx" @mouseleave="furnitureHover = null"
                   @focus="furnitureHover = h.idx" @blur="furnitureHover = null"
                   @click="furnitureHover = h.idx"
@@ -338,13 +341,13 @@ function startOver() {
             <div v-if="imageUrl && result.task_id" class="img-tools">
               <button
                 v-if="canMoveFurniture" type="button" :disabled="swappingStyle"
-                title="在圖上直接拖曳家具" @click="startMove"
-              ><Icon icon="mdi:cursor-move" aria-hidden="true" /> 移動家具</button>
+                title="在圖上直接拖曳家具" aria-label="移動家具" @click="startMove"
+              ><Icon icon="mdi:cursor-move" aria-hidden="true" /><span class="tool-label"> 移動家具</span></button>
               <button
                 v-if="canUndoMove" type="button" :disabled="swappingStyle || applyingMove"
-                title="回到移動家具之前的圖" @click="undoMove"
-              ><Icon icon="mdi:undo" aria-hidden="true" /> 復原移動</button>
-              <button type="button" :disabled="swappingStyle" @click="startEdit(false)"><Icon icon="mdi:pencil-outline" aria-hidden="true" /> 編輯</button>
+                title="回到移動家具之前的圖" aria-label="復原移動" @click="undoMove"
+              ><Icon icon="mdi:undo" aria-hidden="true" /><span class="tool-label"> 復原移動</span></button>
+              <button type="button" :disabled="swappingStyle" aria-label="編輯" @click="startEdit(false)"><Icon icon="mdi:pencil-outline" aria-hidden="true" /><span class="tool-label"> 編輯</span></button>
               <button type="button" :disabled="swappingStyle" title="全螢幕編輯" aria-label="全螢幕編輯" @click="startEdit(true)"><Icon icon="mdi:fullscreen" aria-hidden="true" /></button>
             </div>
 
@@ -364,7 +367,7 @@ function startOver() {
 
             <!-- 右下角：查看這次請求各環節耗時 -->
             <button
-              v-if="imageUrl && timingRuns.length"
+              v-if="isAdmin && imageUrl && timingRuns.length"
               type="button" class="timing-btn" title="各環節耗時" aria-label="查看各環節耗時"
               @click="showTimings = true"
             >
@@ -424,12 +427,12 @@ function startOver() {
         </section>
 
         <!-- 設計詳情（結構化需求 / 風格參數 / 點雲 / raw JSON） -->
-        <div class="details-toggle-wrap">
+        <div v-if="isAdmin" class="details-toggle-wrap">
           <button type="button" class="details-toggle" @click="showDetails = !showDetails">
             {{ showDetails ? '▾' : '▸' }} 設計詳情
           </button>
         </div>
-        <DesignDetails v-if="showDetails" :result="result" />
+        <DesignDetails v-if="isAdmin && showDetails" :result="result" />
         <TimingPanel
           v-if="showTimings && timingRuns.length"
           :runs="timingRuns"
@@ -729,6 +732,19 @@ function startOver() {
 .timing-btn:hover { background: rgba(20, 18, 14, 0.9); }
 .cta-sub { font-size: 0.72rem; opacity: 0.75; }
 @media (hover: none) { .pano-cta { opacity: 1; transform: translate(-50%, 0); } }
+/* 手機：圖上工具只留圖示、環景鈕縮小，別蓋住圖；換風格改橫滑，每張固定寬才點得到 */
+@media (max-width: 560px) {
+  .img-tools { top: 0.5rem; right: 0.5rem; }
+  .img-tools button { display: inline-flex; align-items: center; justify-content: center; width: 2.5rem; height: 2.5rem; padding: 0; font-size: 1.1rem; }
+  .tool-label { display: none; }
+  .pano-cta { bottom: 0.6rem; padding: 0.45rem 0.9rem; }
+  .pano-cta .cta-title { font-size: 0.82rem; }
+  .pano-cta .cta-sub { display: none; }
+  .timing-btn { right: 0.5rem; bottom: 0.5rem; }
+  .swap-row { overflow-x: auto; margin: 0 -1rem; padding: 0.25rem 1rem 0.4rem; scrollbar-width: none; }
+  .swap-row::-webkit-scrollbar { display: none; }
+  .swap-card { flex: 0 0 72px; }
+}
 
 .pano-overlay {
   position: absolute;

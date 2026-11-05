@@ -4,7 +4,7 @@ import { ref, computed, watch, onMounted, onBeforeUnmount } from 'vue'
 import { RouterLink, useRoute } from 'vue-router'
 import { useAuth } from '@/composables/useAuth'
 import { useFurnitureSelection } from '@/composables/useFurnitureSelection'
-import { authFetch } from '@/config/api'
+import { useMe } from '@/composables/useMe'
 import logo from '../../../asset/designbridge_logo.png'
 
 const { user, signInWithGoogle, signOut } = useAuth()
@@ -24,14 +24,7 @@ const menuEl = ref(null)
 const displayName = computed(() => user.value?.user_metadata?.name || user.value?.email || '')
 const initial = computed(() => (displayName.value[0] || '?').toUpperCase())
 
-// 只決定要不要顯示入口；真正的權限在後端 require_admin
-const isAdmin = ref(false)
-watch(user, async u => {
-  isAdmin.value = false
-  if (!u) return
-  const me = await authFetch('/api/me').then(r => r.json()).catch(() => ({}))
-  isAdmin.value = me.role === 'admin'
-}, { immediate: true })
+const { isAdmin } = useMe()
 
 function onDocClick(e) {
   navOpen.value = false   // 漢堡鈕與選單本身都有 @click.stop，走到這裡一定是點在外面

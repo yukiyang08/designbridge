@@ -9,6 +9,8 @@ import FurnitureMover from '@/components/FurnitureMover.vue'
 import RefineCanvas from '@/components/RefineCanvas.vue'
 import QuotationPanel from '@/components/QuotationPanel.vue'
 import TimingPanel from '@/components/TimingPanel.vue'
+import DesignDetails from '@/components/steps/DesignDetails.vue'
+import { useMe } from '@/composables/useMe'
 import { canMoveFurniture, canUndoMove, undoMove, applyingMove } from '@/composables/design-flow/move'
 import { useDesignFlow, ORIGINAL_STYLE_KEY } from '@/composables/useDesignFlow'
 
@@ -51,7 +53,10 @@ async function onRefine() {
 watch(tool, () => { error.value = '' })
 
 // ── 耗時 ──
+// 設計詳情與各環節耗時是除錯用，只給管理員看
+const { isAdmin } = useMe()
 const showTimings = ref(false)
+const showDetails = ref(false)
 const timingRuns = computed(() => {
   const r = result.value
   if (r?.timing_runs?.length) return r.timing_runs
@@ -91,7 +96,7 @@ const timingRuns = computed(() => {
           <p v-else class="side-note">生成完成，但沒有取得圖片 URL。</p>
 
           <button
-            v-if="tool !== 'layout' && timingRuns.length" type="button" class="timing-btn"
+            v-if="isAdmin && tool !== 'layout' && timingRuns.length" type="button" class="timing-btn"
             title="各環節耗時" aria-label="查看各環節耗時" @click="showTimings = true"
           >
             <Icon icon="mdi:clock-outline" width="18" />
@@ -139,7 +144,7 @@ const timingRuns = computed(() => {
         <template v-else-if="tool === 'layout'">
           <h3 class="side-title"><Icon icon="mdi:cursor-move" aria-hidden="true" /> 移動家具</h3>
           <template v-if="canMoveFurniture">
-            <p class="side-note">在左邊圖上直接拖曳家具到新位置，可以一次搬好幾件，按「套用」後 AI 會補上原位置並融合光影。</p>
+            <p class="side-note">在圖上直接拖曳家具到新位置，可以一次搬好幾件，按「套用」後 AI 會補上原位置並融合光影。</p>
             <p class="side-note">第一次會先辨識圖上的家具，約需 40 秒。</p>
             <button v-if="canUndoMove" type="button" class="re-link" :disabled="busy" @click="undoMove"><Icon icon="mdi:undo" aria-hidden="true" /> 復原上一次移動</button>
           </template>
@@ -163,7 +168,7 @@ const timingRuns = computed(() => {
           <label class="field-label" for="refine-text">要怎麼改？</label>
           <textarea
             id="refine-text" v-model="textPrompt" class="db-textarea" rows="2"
-            :placeholder="hasMask ? '例如：刪除、換成淺灰布沙發' : '先在左邊圖上圈出要改的家具'"
+            :placeholder="hasMask ? '例如：刪除、換成淺灰布沙發' : '先在圖上圈出要改的家具'"
           />
           <button type="button" class="db-btn" :disabled="busy || !hasMask || !textPrompt.trim()" @click="onRefine">執行細節調整</button>
         </template>
@@ -174,6 +179,13 @@ const timingRuns = computed(() => {
     </div>
 
     <TimingPanel v-if="showTimings && timingRuns.length" :runs="timingRuns" @close="showTimings = false" />
+  </div>
+  <!-- 放在 .ps 外：.ps 在桌機是固定高度，展開會溢出 -->
+  <div v-if="isAdmin" class="details-wrap">
+    <button type="button" class="details-toggle" :aria-expanded="showDetails" @click="showDetails = !showDetails">
+      {{ showDetails ? '▾' : '▸' }} 設計詳情
+    </button>
+    <DesignDetails v-if="showDetails" :result="result" />
   </div>
 </template>
 
@@ -212,6 +224,9 @@ const timingRuns = computed(() => {
   background: rgba(20, 18, 14, 0.62); color: #fff; cursor: pointer; transition: background 0.16s;
 }
 .timing-btn:hover { background: rgba(20, 18, 14, 0.9); }
+.details-wrap { margin-top: 1rem; }
+.details-toggle { padding: 0; border: none; background: none; color: var(--db-text-soft); font-family: var(--db-font-body); font-size: 0.92rem; cursor: pointer; }
+.details-toggle:hover { color: var(--db-text); }
 
 /* ── 右側控制欄 ── */
 .ps-side { min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 0.7rem; padding-right: 2px; }
@@ -269,9 +284,13 @@ const timingRuns = computed(() => {
 
 @media (max-width: 760px) {
   .ps { height: auto; }
-  .ps-tabs { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .ps-work { grid-template-columns: 1fr; }
-  .stage { min-height: 360px; }
+  /* 手機：分頁一列四格（圖示在上），看圖時不留灰邊，只有畫筆／移動需要畫布高度 */
+  .ps-tabs { grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 0.35rem; }
+  .ps-tab { flex-direction: column; gap: 0.15rem; padding: 0.5rem 0.25rem; border-radius: 12px; font-size: 0.75rem; }
+  .stage { min-height: 0; }
+  .stage--canvas, .stage--mover { min-height: 360px; }
+  .swap-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); }
   .ps-side { overflow: visible; }
 }
 </style>
