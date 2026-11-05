@@ -114,6 +114,14 @@ def parse_floor_plan_image(
         '{"has_furniture": false, "furniture": []}. Never invent furniture that is not drawn.\n'
         "Otherwise identify every piece of furniture drawn and return each one's footprint "
         "as a bounding box.\n"
+        "Taiwanese interior plans use these symbols: a box with ONE diagonal line is a low "
+        "cabinet under 120 cm (tv_unit when it faces the sofa, otherwise cabinet); a box with "
+        "an X is a tall cabinet over 120 cm (wardrobe in a bedroom, otherwise cabinet or "
+        "bookshelf); two concentric circles with an X, or a circle with S, is a floor lamp, and "
+        "two circles with a line, or a circle with R, is a table lamp (both = lamp); REF is a "
+        "fridge. A/C is a wall-mounted air conditioner, not furniture. Text such as DW/DH "
+        "(door size), WW/WH (window size), LH/TH (wall height under/over a window) labels "
+        "doors and windows, not furniture.\n"
         "Use `box_2d` = [ymin, xmin, ymax, xmax], integers normalized to 0-1000, "
         "measured relative to the room interior: x = 0 is the left wall, 1000 is the "
         "right wall; y = 0 is the back/top wall, 1000 is the front/bottom wall.\n"
@@ -282,11 +290,9 @@ def _room_seeds(image_path: str) -> list[dict] | None:
         except (OSError, ValueError):
             pass
 
-    try:
-        text = call_llm(_room_seed_prompt(), images=[image_path], json_mode=True, max_tokens=4000)
-    except Exception as e:  # noqa: BLE001
-        print(f"⚠️  Gemini room points failed: {e}")
-        return None
+    # 呼叫失敗（例如配額 429 重試後仍失敗）往上拋：只靠自動補種子切出來的房間全是 other，
+    # 看起來像成功其實是錯的，寧可讓前端顯示「辨識失敗，請重試」
+    text = call_llm(_room_seed_prompt(), images=[image_path], json_mode=True, max_tokens=4000)
     data = _parse_llm_layout(text) or {}
     if data.get("is_floor_plan") is False:
         from designbridge.layout.floorplan_quality import FloorPlanRejected
@@ -469,6 +475,7 @@ def _relabel_unwritten(image_path: str, rooms: list[dict]) -> None:
 def _vote_regions(prompt: str, images: list) -> list[dict]:
     """同一題平行問 _LABEL_VOTES 次，每個字母的類型、房名、same_room_as 各取多數。
     沒寫房名的區域（凸窗臥室像不像陽台）單次回答會搖擺。"""
+    import contextvars
     from collections import Counter
     from concurrent.futures import ThreadPoolExecutor
 
@@ -483,7 +490,8 @@ def _vote_regions(prompt: str, images: list) -> list[dict]:
         return ((_parse_llm_layout(text) or {}).get("regions")) or []
 
     with ThreadPoolExecutor(max_workers=_LABEL_VOTES) as pool:
-        runs = list(pool.map(ask, range(_LABEL_VOTES)))
+        # copy_context：讓用量記錄對得到是哪個帳號
+        runs = list(pool.map(lambda i: contextvars.copy_context().run(ask, i), range(_LABEL_VOTES)))
     votes: dict[str, dict[str, Counter]] = {}
     for run in runs:
         for a in run:

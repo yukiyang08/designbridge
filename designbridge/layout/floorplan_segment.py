@@ -18,6 +18,12 @@ _WORK_SIDE = 1240
 _WALL_GRAY = 160
 _LINE_GRAY = 200
 _WALL_KERNEL = 5
+# 判斷屋外用的屏障：淺灰的窗線、外牆細線比 _LINE_GRAY 淡，屏障有缺口屋外會從窗戶淹進室內。
+# 用較寬的灰階門檻、把線加粗 _OUT_CLOSE 格補缺口再淹，淹完往外擴回原位
+_OUT_LINE_GRAY = 230
+_OUT_CLOSE = 4
+# 補缺口後，尺寸線之間的長條也會被封起來；長邊超過短邊此倍數的區塊不自動補種子
+_STRIP_RATIO = 8
 # 兩端接牆、長度超過此比例的平行雙線（窗、落地窗）在認領階段視為隔間
 _LONG_LINE = 0.068
 # 雙線判定：兩條平行細線間距在此像素內會併成一條粗帶；單線（尺寸線）併不起來
@@ -265,38 +271,46 @@ def _wall_mask(g: np.ndarray) -> np.ndarray:
     return wall
 
 
-def segment_rooms(image_path: str, seeds: list[dict]) -> list[dict[str, Any]] | None:
+def segment_rooms(image_path: str, seeds: list[dict], wall_mask: np.ndarray | None = None,
+                  outside_mask: np.ndarray | None = None) -> list[dict[str, Any]] | None:
     """依種子點把平面圖切成房間。
 
     ``seeds``：``[{room_type, label, point: [y, x]}]``，point 為整張圖 0–1000 座標。
+    ``wall_mask`` / ``outside_mask``：外部模型（如 CubiCasa）預測的牆、屋外，_WORK_SIDE 解析度的
+    布林陣列；給了就取代規則偵測，其餘流程（淹水、凸窗合併、自動補種子）不變。
     回傳 ``[{id, room_type, label, x, y, w, h, polygon, anchor}]``，座標皆為 0–1 正規化，
     polygon 為 ``[[x, y], ...]`` 且含外圍牆厚（裁切時才不會把牆塗掉）。
     切不出任何房間時回傳 ``None``。
     """
     g = _work_gray(image_path)
     H, W = g.shape
-
-    # 屋外 = 所有線條當屏障時最大的白色連通區（尺寸線不封閉，會被併進來）
     lines = ndi.binary_dilation(g < _LINE_GRAY, iterations=1)
-    olab, n = ndi.label(~lines)
-    if n == 0:
-        return None
-    sizes = ndi.sum(~lines, olab, range(1, n + 1))
-    outside = olab == (int(np.argmax(sizes)) + 1)
+    wall = _wall_mask(g) if wall_mask is None else wall_mask
 
-    wall = _wall_mask(g)
+    if outside_mask is not None:
+        outside = outside_mask.copy()
+    else:
+        # 屋外 = 所有線條當屏障時最大的白色連通區（尺寸線不封閉，會被併進來）
+        barrier = ndi.binary_dilation(g < _OUT_LINE_GRAY, iterations=1 + _OUT_CLOSE)
+        olab, n = ndi.label(~barrier)
+        if n == 0:
+            return None
+        sizes = ndi.sum(~barrier, olab, range(1, n + 1))
+        outside = olab == (int(np.argmax(sizes)) + 1)
+        if _OUT_CLOSE:
+            outside = ndi.binary_dilation(outside, iterations=_OUT_CLOSE, mask=~lines)
 
-    # 貼著屋外、被細線圍起的小區域也算屋外：窗戶旁的圓形標記、門外入口的開門弧線。
-    # 它們不是最大那片白色，會被當成室內，再從窗洞被房間淹進去或被誤認成小房間
-    out_id = int(np.argmax(sizes)) + 1
-    near_out = ndi.binary_dilation(outside, iterations=_OUT_REACH)
-    small = sizes < _OUT_POCKET_FRAC * (~outside).sum()
-    pocket_ids = np.unique(olab[near_out & ~outside & ~lines])
-    pocket = np.zeros(n + 1, bool)
-    pocket[[i for i in pocket_ids if i and i != out_id and small[i - 1]]] = True
-    outside |= pocket[olab]
-    # 圍住這些區域的細線（圓圈外框、窗線）同樣歸屋外，否則房間會沿著線長出去
-    outside |= lines & ~wall & ndi.binary_dilation(outside, iterations=_OUT_REACH // 2)
+        # 貼著屋外、被細線圍起的小區域也算屋外：窗戶旁的圓形標記、門外入口的開門弧線。
+        # 它們不是最大那片白色，會被當成室內，再從窗洞被房間淹進去或被誤認成小房間
+        out_id = int(np.argmax(sizes)) + 1
+        near_out = ndi.binary_dilation(outside, iterations=_OUT_REACH)
+        small = sizes < _OUT_POCKET_FRAC * (~outside).sum()
+        pocket_ids = np.unique(olab[near_out & ~outside & ~lines])
+        pocket = np.zeros(n + 1, bool)
+        pocket[[i for i in pocket_ids if i and i != out_id and small[i - 1]]] = True
+        outside |= pocket[olab]
+        # 圍住這些區域的細線（圓圈外框、窗線）同樣歸屋外，否則房間會沿著線長出去
+        outside |= lines & ~wall & ndi.binary_dilation(outside, iterations=_OUT_REACH // 2)
     free = ~wall & ~outside
     if not free.any():
         return None
@@ -439,6 +453,11 @@ def segment_rooms(image_path: str, seeds: list[dict]) -> list[dict[str, Any]] | 
         if not reg.any():
             continue
         reg = _largest(reg)
+        if seeds[i - 1].get("auto"):
+            ry, rx = np.nonzero(reg)
+            rh, rw = ry.max() + 1 - ry.min(), rx.max() + 1 - rx.min()
+            if max(rh, rw) > _STRIP_RATIO * min(rh, rw):
+                continue
         # 外擴一層牆厚，裁切時保留牆線讓後續家具解析有房間邊界可對照
         shell = ndi.binary_fill_holes(reg | (ndi.binary_dilation(reg, iterations=wall_px) & wall))
         # 外擴的牆可能帶進不相連的碎片；輪廓追蹤從第一個像素起跑，會只追到碎片

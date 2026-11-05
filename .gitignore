@@ -149,3 +149,9 @@ docs/images/mobile/
 
 # CubiCasa 評估集（CC BY-NC-SA，只限非商業用途）
 test/data/
+# CubiCasa5K 評估子集（CC BY-NC-SA，只限非商業用途，不進 repo）
+test/data/cubicasa/
+# 台灣平面圖評估集：版權屬各設計公司，只供內部評估，不進 repo
+test/data/floorplans_tw/
+# 設計工具（impeccable）的設定與快取
+.impeccable/
