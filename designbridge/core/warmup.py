@@ -67,6 +67,14 @@ def run_startup_warmup() -> None:
         if Config.ENABLE_SEGMENTATION:
             _load_upernet(Config.SEGMENTATION_MODEL)
 
+    def _warm_furniture_browse() -> None:
+        # 家具查詢頁：建 Supabase client 要好幾秒，篩選選項要掃整張表；放最前面，不用等模型載完
+        from designbridge.pricing.furniture_kb import list_categories, list_filters
+
+        list_categories()
+        list_filters()
+
+    _step("Furniture browse (Supabase client + filters)", _warm_furniture_browse)
     _step("Text-to-text style embedder (sentence-transformers)", _warm_text_embedder)
     _step("Pipeline CLIP evaluator (transformers)", _warm_clip_eval)
     _step("Quotation CLIP + furniture KB", _warm_quotation)

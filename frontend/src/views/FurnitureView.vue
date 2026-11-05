@@ -1,15 +1,21 @@
 <script setup>
 import { Icon } from '@iconify/vue'
 import { ref, computed, onMounted, watch } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import { apiUrl } from '@/config/api'
 import { useFurnitureSelection } from '@/composables/useFurnitureSelection'
 import AppNav from '@/components/shell/AppNav.vue'
 import sceneBg from '@/assets/figma/room-bg.png'
 
-const { selectedCount, isSelected, toggle, clear } = useFurnitureSelection()
+const { selectedCount, isSelected, toggle } = useFurnitureSelection()
+
+// 篩選條件記在網址：從商品頁按上一頁回來、或分享連結時條件還在
+const route = useRoute()
+const router = useRouter()
+const init = route.query
 
 const categories = ref([])
-const activeCategory = ref('')
+const activeCategory = ref(init.cat || '')
 const furniture = ref([])
 const loading = ref(true)
 const error = ref('')
@@ -21,15 +27,16 @@ const priceRanges = [
   { label: '15,000–30,000', min: 15000, max: 30000 },
   { label: '30,000 以上', min: 30000, max: null },
 ]
-const priceIndex = ref(0)   // 下拉選單用 index，物件當 value 不好比對
+const priceIndex = ref(priceRanges[+init.price] ? +init.price : 0)   // 下拉選單用 index，物件當 value 不好比對
 const activePriceRange = computed(() => priceRanges[priceIndex.value])
-const searchQuery = ref('')
+const searchQuery = ref(init.q || '')
+const sortBy = ref(init.sort || '')
 
 // 品牌、風格選項（含件數）由後端依家具資料庫算出，風格名稱沿用生成流程的風格清單
 const brands = ref([])
 const styles = ref([])
-const activeBrand = ref('')
-const activeStyle = ref('')
+const activeBrand = ref(init.brand || '')
+const activeStyle = ref(init.style || '')
 
 const categoryLabels = {
   sofa: '沙發',
@@ -57,28 +64,37 @@ async function fetchFilters() {
   } catch {}
 }
 
-async function fetchFurniture() {
-  loading.value = true
+const PAGE_SIZE = 60
+const total = ref(0)
+const loadingMore = ref(false)
+let fetchSeq = 0   // 只採用最後一次查詢的回應，打字很快時舊回應會晚到
+
+// more = true：接在目前清單後面載下一頁；否則重新查詢
+async function fetchFurniture(more = false) {
+  const seq = ++fetchSeq
+  if (more) loadingMore.value = true
+  else loading.value = true
   error.value = ''
   try {
-    const params = new URLSearchParams()
+    const params = new URLSearchParams({ limit: PAGE_SIZE, offset: more ? furniture.value.length : 0 })
+    const kw = searchQuery.value.trim()
+    if (kw) params.set('q', kw)
     if (activeCategory.value) params.set('category', activeCategory.value)
     if (activePriceRange.value.min != null) params.set('min_price', activePriceRange.value.min)
     if (activePriceRange.value.max != null) params.set('max_price', activePriceRange.value.max)
     if (activeBrand.value) params.set('brand', activeBrand.value)
     if (activeStyle.value) params.set('style', activeStyle.value)
-    const qs = params.toString()
-    const res = await fetch(apiUrl(`/api/furniture${qs ? `?${qs}` : ''}`))
+    if (sortBy.value) params.set('sort', sortBy.value)
+    const res = await fetch(apiUrl(`/api/furniture?${params}`))
     if (!res.ok) throw new Error(String(res.status))
     const data = await res.json()
-    const kw = searchQuery.value.trim().toLowerCase()
-    furniture.value = kw
-      ? data.filter(item => (item.name || '').toLowerCase().includes(kw))
-      : data
+    if (seq !== fetchSeq) return
+    furniture.value = more ? [...furniture.value, ...data.items] : data.items
+    total.value = data.total
   } catch (e) {
-    error.value = '無法載入家具清單'
+    if (seq === fetchSeq) error.value = '無法載入家具清單'
   } finally {
-    loading.value = false
+    if (seq === fetchSeq) { loading.value = false; loadingMore.value = false }
   }
 }
 
@@ -93,17 +109,24 @@ function clearExtraFilters() {
   activeStyle.value = ''
 }
 
-watch([activeCategory, activePriceRange, activeBrand, activeStyle], fetchFurniture)
+watch([activeCategory, activePriceRange, activeBrand, activeStyle, sortBy], () => fetchFurniture())
+
+watch([activeCategory, priceIndex, activeBrand, activeStyle, searchQuery, sortBy], ([cat, price, brand, style, q, sort]) => {
+  const query = Object.fromEntries(Object.entries({ cat, price: price || '', brand, style, q: q.trim(), sort }).filter(([, v]) => v))
+  router.replace({ query })
+})
 
 let searchTimer = null
 watch(searchQuery, () => {
   clearTimeout(searchTimer)
-  searchTimer = setTimeout(fetchFurniture, 300)
+  searchTimer = setTimeout(() => fetchFurniture(), 300)
 })
 
-onMounted(async () => {
-  await Promise.all([fetchCategories(), fetchFilters()])
-  await fetchFurniture()
+// 篩選選項跟家具清單互不相依，同時發出，不用等選項回來才查家具
+onMounted(() => {
+  fetchCategories()
+  fetchFilters()
+  fetchFurniture()
 })
 </script>
 
@@ -114,7 +137,6 @@ onMounted(async () => {
     <header class="furniture-header">
       <h1>家具查詢</h1>
       <div class="selected-summary">
-        <button v-if="selectedCount" class="clear-btn" @click="clear">清除</button>
         <RouterLink to="/cart" class="db-btn db-btn--sm cart-link">
           <Icon icon="mdi:heart-outline" aria-hidden="true" /> 我的收藏（{{ selectedCount }}）
         </RouterLink>
@@ -149,6 +171,11 @@ onMounted(async () => {
           <option value="">風格</option>
           <option v-for="st in styles" :key="st.value" :value="st.value">{{ st.label }}</option>
         </select>
+        <select v-model="sortBy" :class="['filter-select', { active: sortBy }]" aria-label="排序">
+          <option value="">預設排序</option>
+          <option value="price_asc">價格低到高</option>
+          <option value="price_desc">價格高到低</option>
+        </select>
         <button v-if="hasExtraFilters" type="button" class="clear-filters" @click="clearExtraFilters">清除篩選</button>
       </div>
     </div>
@@ -170,17 +197,16 @@ onMounted(async () => {
       </button>
     </div>
 
-    <div v-if="loading" class="state-msg">載入中…</div>
+    <div v-if="loading && !furniture.length" class="state-msg">載入中…</div>
     <div v-else-if="error" class="state-msg error">{{ error }}</div>
-    <div v-else-if="furniture.length === 0" class="state-msg">沒有符合條件的家具</div>
-    <p v-else class="result-count">共 {{ furniture.length.toLocaleString() }} 件</p>
+    <div v-else-if="!loading && furniture.length === 0" class="state-msg">沒有符合條件的家具</div>
+    <p v-else class="result-count">共 {{ total.toLocaleString() }} 件</p>
 
-    <div v-if="!loading && !error && furniture.length" class="grid">
-      <div
+    <div v-if="!error && furniture.length" :class="['grid', { stale: loading }]" :aria-busy="loading">
+      <article
         v-for="item in furniture"
         :key="item.id || item.url"
         :class="['card', { checked: isSelected(item) }]"
-        @click="toggle(item)"
       >
         <div class="card-img-wrap">
           <img
@@ -192,9 +218,6 @@ onMounted(async () => {
             @error="$event.target.style.display='none'"
           />
           <div v-else class="card-no-img">無圖</div>
-          <span :class="['check-icon', { checked: isSelected(item) }]">
-            <Icon v-if="isSelected(item)" icon="mdi:check" aria-hidden="true" />
-          </span>
         </div>
         <div class="card-body">
           <span v-if="item.brand" class="card-brand">{{ item.brand }}</span>
@@ -207,18 +230,22 @@ onMounted(async () => {
               target="_blank"
               rel="noopener"
               class="detail-link"
-              @click.stop
             >查看詳情</a>
             <button
               :class="['favorite-btn', { favorited: isSelected(item) }]"
-              :title="isSelected(item) ? '取消收藏' : '加入收藏'"
-              @click.stop="toggle(item)"
+              type="button"
+              @click="toggle(item)"
             >
               <template v-if="isSelected(item)"><Icon icon="mdi:check" aria-hidden="true" /> 已收藏</template><template v-else>加入收藏</template>
             </button>
           </div>
         </div>
-      </div>
+      </article>
+    </div>
+    <div v-if="!loading && !error && furniture.length < total" class="load-more">
+      <button type="button" class="db-btn db-btn--ghost db-btn--sm" :disabled="loadingMore" @click="fetchFurniture(true)">
+        {{ loadingMore ? '載入中…' : `載入更多（還有 ${(total - furniture.length).toLocaleString()} 件）` }}
+      </button>
     </div>
     </div>
   </div>
@@ -234,8 +261,6 @@ onMounted(async () => {
 }
 .selected-summary { display: flex; align-items: center; gap: 0.6rem; }
 .cart-link { text-decoration: none; }
-.clear-btn { border: 0; background: none; padding: 0 0.4rem; font-size: 0.82rem; color: var(--db-text-soft); cursor: pointer; text-decoration: underline; }
-.clear-btn:hover { color: var(--db-danger); }
 
 .toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 0.6rem 0.75rem; margin-bottom: 1rem; }
 .search-bar { position: relative; flex: 1 1 260px; max-width: 420px; }
@@ -249,9 +274,9 @@ onMounted(async () => {
 .filter-select.active { border-color: var(--db-accent-deep); background-color: var(--db-accent-soft); }
 .clear-filters { border: 0; background: none; padding: 0 0.25rem; font-size: 0.8rem; color: var(--db-text-soft); text-decoration: underline; cursor: pointer; }
 .clear-filters:hover { color: var(--db-danger); }
-/* 窄螢幕：三個下拉平分同一行，不要各佔一層 */
+/* 窄螢幕：四個下拉排成兩欄，不要各佔一層 */
 @media (max-width: 560px) {
-  .filter-selects { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); width: 100%; }
+  .filter-selects { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); width: 100%; }
   .filter-select { width: 100%; min-width: 0; padding: 0.42rem 1.5rem 0.42rem 0.7rem; background-position: right 0.55rem center; font-size: 0.8rem; text-overflow: ellipsis; }
   .clear-filters { grid-column: 1 / -1; justify-self: start; }
 }
@@ -286,23 +311,20 @@ onMounted(async () => {
 
 .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(220px, 100%), 1fr)); gap: 1.25rem; margin-top: 1.25rem; }
 
+.load-more { display: flex; justify-content: center; margin-top: 1.5rem; }
+
 .card {
   background: #fff; border: 1px solid var(--db-line); border-radius: var(--db-radius-chip);
-  overflow: hidden; cursor: pointer; transition: transform 0.16s, box-shadow 0.16s, border-color 0.16s;
+  overflow: hidden; transition: border-color 0.16s;
 }
-.card:hover { transform: translateY(-3px); box-shadow: var(--db-shadow-soft); border-color: var(--db-accent); }
+.grid.stale { opacity: 0.55; transition: opacity 0.15s; }
+.card:hover { border-color: var(--db-accent); }
 .card.checked { border-color: var(--db-accent-ink); }
 
 .card-img-wrap { position: relative; aspect-ratio: 1 / 1; background: var(--db-chip-soft); overflow: hidden; }
 .card-img { width: 100%; height: 100%; object-fit: cover; display: block; }
 .card-no-img { display: grid; place-items: center; width: 100%; height: 100%; color: var(--db-placeholder); font-size: 0.8rem; }
 
-.check-icon {
-  position: absolute; top: 10px; right: 10px; display: grid; place-items: center; width: 24px; height: 24px;
-  border-radius: 50%; border: 2px solid #fff; background: rgba(255, 255, 255, 0.7);
-  font-size: 0.78rem; font-weight: 700; color: #fff; box-shadow: 0 1px 4px rgba(0, 0, 0, 0.2);
-}
-.check-icon.checked { background: var(--db-accent-ink); border-color: var(--db-accent-ink); }
 
 .card-body { padding: 0.8rem 1rem 1rem; display: flex; flex-direction: column; gap: 0.3rem; }
 .card-name {

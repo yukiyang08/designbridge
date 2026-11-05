@@ -175,10 +175,15 @@ def get_furniture(
     max_price: Optional[float] = None,
     brand: str = "",
     style: str = "",
+    q: str = "",
+    sort: str = "",
+    limit: int = 60,
+    offset: int = 0,
 ):
-    """瀏覽 / 篩選家具清單（分類 + 價位區間 + 品牌 + 風格）。"""
+    """瀏覽 / 篩選家具清單（分類 + 價位區間 + 品牌 + 風格 + 關鍵字），分頁回傳。"""
     from designbridge.pricing.furniture_kb import list_furniture
-    return list_furniture(category=category, min_price=min_price, max_price=max_price, brand=brand, style=style)
+    return list_furniture(category=category, min_price=min_price, max_price=max_price, brand=brand, style=style,
+                          q=q, sort=sort, limit=limit, offset=max(0, offset))
 
 
 @router.get("/api/style-profiles")

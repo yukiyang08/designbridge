@@ -84,6 +84,7 @@ function toggle(item) {
       {
         id: item.id,
         name: item.name,
+        brand: item.brand,
         category: item.category,
         price: item.price,
         currency: item.currency,
