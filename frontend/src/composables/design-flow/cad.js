@@ -1,4 +1,5 @@
 import { jsonFetch, mediaUrl } from '@/config/api'
+import { demoPlan } from '@/config/demo'
 import {
   requestState, cadDefaultPlacements, CAD_ROOM_TYPE_TO_EDITOR,
   error, loading, loadingMsg, result,
@@ -211,37 +212,49 @@ export async function handleCadRoomSelected(room, requestId = ++requestState.cur
     floorPlanUrl.value = data.floor_plan_url || ''
     goToStepKey('plan')
   } catch (e) {
-    if (requestId === requestState.current) error.value = `準備房間底圖失敗：${e.message}`
+    if (requestId === requestState.current) {
+      error.value = `準備房間底圖失敗：${e.message}`
+      // 沒準備好就不算進入這間，否則再點一次會直接進空白的編輯頁而不重試
+      cadActiveRoomId.value = null
+      const { [room.id]: _s, ...status } = cadRoomStatus.value
+      cadRoomStatus.value = status
+    }
   } finally {
     if (requestId === requestState.current) loading.value = false
   }
 }
 
-// 佈局引擎支援的房型才跑家具辨識；浴室、陽台、未知空間交給使用者自己擺
+// 佈局引擎支援的房型才跑家具辨識；浴室、陽台、未知空間直接套預設擺法
 const DETECTABLE = new Set(['living_room', 'bedroom', 'kitchen', 'dining_room', 'study'])
 
 // 上傳平面圖的房間第一次點進來：從原圖裁出這間（房外塗白），支援的房型用 Gemini 辨識圖上的家具；
-// 辨識不到時套該房型的預設擺法（沒有預設的房型才空白）。房間尺寸用整層資料換算好的公尺。
+// 辨識不到或裁切失敗時套該房型的預設擺法。房間尺寸用整層資料換算好的公尺。
 async function prepareUploadedRoom(room, requestId) {
   const plan = cadPlanResult.value
   loadingMsg.value = { title: '準備房間中', sub: '裁出這間房並辨識家具' }
-  const crop = await jsonFetch('/api/crop-floor-plan', {
-    image_path: plan.image_path, ...room.bbox_norm, polygon: room.polygon,
-  })
-  if (!crop.ok) throw new Error(`裁切 ${crop.status}`)
-  const { path: croppedPath } = await crop.json()
+  // 裁切或辨識失敗都不擋：退回預設擺法，不讓使用者面對空房間
+  let croppedPath = ''
+  try {
+    const crop = await jsonFetch('/api/crop-floor-plan', {
+      image_path: plan.image_path, ...room.bbox_norm, polygon: room.polygon,
+    })
+    if (crop.ok) croppedPath = (await crop.json()).path || ''
+  } catch { /* 退回預設擺法 */ }
   if (requestId !== requestState.current) return
-  uploadedPlanUrl.value = mediaUrl(croppedPath)   // 「對照原始上傳平面圖」顯示這間的裁切圖
+  if (croppedPath) uploadedPlanUrl.value = mediaUrl(croppedPath)   // 「對照原始上傳平面圖」顯示這間的裁切圖
 
   const type = roomTypeForPlan.value
-  if (DETECTABLE.has(type)) {
-    const res = await jsonFetch('/api/parse-floor-plan', {
-      image_path: croppedPath, room_type: type, room_w: roomW.value, room_d: roomD.value,
-    })
-    if (!res.ok) throw new Error(`家具辨識 ${res.status}`)
-    const data = await res.json()
+  // demo 模式的家具辨識只比對房型與尺寸，沒有裁切圖也能命中預錄結果
+  if (DETECTABLE.has(type) && (croppedPath || demoPlan.value)) {
+    let data = null
+    try {
+      const res = await jsonFetch('/api/parse-floor-plan', {
+        image_path: croppedPath || plan.image_path, room_type: type, room_w: roomW.value, room_d: roomD.value,
+      })
+      if (res.ok) data = await res.json()
+    } catch { /* 退回預設擺法 */ }
     if (requestId !== requestState.current) return
-    const placements = (data.furniture_placements || []).map((p, i) => ({
+    const placements = (data?.furniture_placements || []).map((p, i) => ({
       id: p.id || `item_${i}`, type: p.type, x: p.x, y: p.y, w: p.w, h: p.h, rotation: p.rotation || 0,
     }))
     if (placements.length) {
@@ -269,7 +282,7 @@ async function prepareUploadedRoom(room, requestId) {
     floorPlanUrl.value = data.floor_plan_url || mediaUrl(croppedPath)
   } else {
     floorPlanPath.value = croppedPath
-    floorPlanUrl.value = mediaUrl(croppedPath)
+    floorPlanUrl.value = croppedPath ? mediaUrl(croppedPath) : ''
   }
   goToStepKey('plan')
 }

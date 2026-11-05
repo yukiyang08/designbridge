@@ -201,8 +201,8 @@ export async function handleRoomSelected(room) {
   }
 }
 
-// 佈局引擎不支援的房型（浴室、陽台、未命名空間）：不跑家具辨識，直接進空白的家具配置，
-// 讓使用者自己擺。房間尺寸和 /api/parse-floor-plan 用同一套坪數換算。
+// 佈局引擎不支援的房型（浴室、陽台、未命名空間）：不跑家具辨識，直接套該房型的預設擺法。
+// 房間尺寸和 /api/parse-floor-plan 用同一套坪數換算。
 function openEmptyRoom(croppedPath, room) {
   let w = customRoomW.value, d = customRoomD.value
   if (!(w && d)) {
@@ -214,13 +214,14 @@ function openEmptyRoom(croppedPath, room) {
   floorPlanUrl.value = mediaUrl(croppedPath)
   sceneGraph.value = null
   layoutRenderConfig.value = null
-  editPlacements.value = []
   roomW.value = w
   roomD.value = d
   // 浴室／陽台有對應的家具清單；其他未知空間用中性的 room，家具面板會退回預設清單
   roomTypeForPlan.value = FURNITURE_BY_ROOM[room.space_type] ? room.space_type : 'room'
+  editPlacements.value = cadDefaultPlacements(roomTypeForPlan.value, w, d)
   loading.value = false
   goToStepKey('plan')
+  if (editPlacements.value.length) updateFloorPlan()   // 依預設家具重畫 2D 平面圖
   if (extraPrompt.value.trim()) scheduleSearch()
 }
 

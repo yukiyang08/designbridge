@@ -158,6 +158,11 @@ const CAD_DEFAULT_LAYOUT = {
     put('washer', 0.05, 0.05)
     put('drying_rack', Math.max(0.05, (W - 1.2) / 2), Math.min(2.0, D - 0.5))
   },
+  // 認不出的空間（玄關、走道等）：只擺靠牆收納櫃＋盆栽，不佔走道
+  room: (W, D, put) => {
+    put('cabinet', 0.05, 0.05)
+    put('plant', W - 0.5, D - 0.5)
+  },
 }
 
 export function cadDefaultPlacements(editorRoomType, roomW = 5, roomD = 4, geometry = null) {

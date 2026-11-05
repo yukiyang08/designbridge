@@ -1,0 +1,342 @@
+[
+ {
+  "scene": "living",
+  "seed": 100,
+  "user_prompt": "客廳，約 5 公尺寬、4 公尺深。沙發靠左側牆面，面向右牆；電視櫃靠右側牆，位在沙發正對面；茶几放在沙發與電視櫃之間的中央；沙發右側放一張邊几，電視櫃旁邊放一盆盆栽。窗戶在正對面的牆上，保持窗前和中央走道淨空。",
+  "style": "modern",
+  "system_backend": "flux_controlnet_depth_fal",
+  "system_params": {
+   "prompt_preview": "A well-lit, spacious modern living room in an off-white, gray, and greige palette, filled with bright natural sunlight from a window. In the center foreground sits a cozy upholstered fabric sofa facing a low-profile coffee table behind it. On the left wall, a wall-mounted flat TV is positioned above a sleek TV media console, with a small matching side table further back. Opposite on the right wall, a refined storage cabinet stands near a lush potted green plant tucked into the back corner. Clean lines, subtle material contrasts, natural wood accents, and textured wall finishes enhance the serene, functional aesthetic.",
+   "negative_prompt_preview": "people, person, human, man, woman, child, hands, face, animal, pet, cat, dog, bird, text, watermark, signature, logo, embossed texture, relief carving, engraved pattern, corrugated surface, bumpy wall texture, mosaic screen, pixelated glitch, Cluttered, ornate details, dark colors, saturated hues, traditional patterns, heavy furniture, poor lighting, messy, old-fashioned.",
+   "output_aspect": "16:9",
+   "composer_used": true,
+   "composer_includes_furniture": true,
+   "seed": 100,
+   "style_profile_id": "modern",
+   "style_profile_name": "現代簡約",
+   "style_strength": 0.85,
+   "style_lora": "https://huggingface.co/MovingForward/designbridge-flux-lora/resolve/main/flux1dev/designbridge_v5_flux1dev_modern.safetensors",
+   "layout_prompt_source": "composer",
+   "model": "fal-ai/flux-general + Shakker-Labs/FLUX.1-dev-ControlNet-Depth",
+   "depth_conditioning_scale": 0.3,
+   "controlnet_control_end": 0.7,
+   "controlnet_steps": 20,
+   "controlnet_guidance": 3.5,
+   "edge_controlnet_model": "InstantX/FLUX.1-dev-Controlnet-Canny",
+   "edge_conditioning_scale": 0.3,
+   "backend": "flux_controlnet_depth_fal"
+  },
+  "placements": [
+   {
+    "id": "tv_unit_1",
+    "type": "tv_unit",
+    "x": 0.02,
+    "y": 0.4277,
+    "w": 0.4,
+    "h": 0.1,
+    "rotation": 0.0
+   },
+   {
+    "id": "sofa_1",
+    "type": "sofa",
+    "x": 0.2479,
+    "y": 0.6167,
+    "w": 0.5,
+    "h": 0.2,
+    "rotation": 0.0
+   },
+   {
+    "id": "coffee_table_1",
+    "type": "coffee_table",
+    "x": 0.4432,
+    "y": 0.1544,
+    "w": 0.3,
+    "h": 0.15,
+    "rotation": 0.0
+   },
+   {
+    "id": "side_table_1",
+    "type": "side_table",
+    "x": 0.1023,
+    "y": 0.1517,
+    "w": 0.1,
+    "h": 0.12,
+    "rotation": 0.0
+   },
+   {
+    "id": "plant_1",
+    "type": "plant",
+    "x": 0.86,
+    "y": 0.1534,
+    "w": 0.12,
+    "h": 0.15,
+    "rotation": 0.0
+   },
+   {
+    "id": "cabinet_6",
+    "type": "cabinet",
+    "x": 0.84,
+    "y": 0.4631,
+    "w": 0.14,
+    "h": 0.07,
+    "rotation": 0.0
+   }
+  ],
+  "baseline_prompt": "A well-lit modern living room with a sofa, a tv cabinet, a coffee table, a side table, and a potted plant. Bright natural light pouring through a window, clean aesthetic, comfortable interior, spacious atmosphere."
+ },
+ {
+  "scene": "living",
+  "seed": 101,
+  "user_prompt": "客廳，約 5 公尺寬、4 公尺深。沙發靠左側牆面，面向右牆；電視櫃靠右側牆，位在沙發正對面；茶几放在沙發與電視櫃之間的中央；沙發右側放一張邊几，電視櫃旁邊放一盆盆栽。窗戶在正對面的牆上，保持窗前和中央走道淨空。",
+  "style": "modern",
+  "system_backend": "flux_controlnet_depth_fal",
+  "system_params": {
+   "prompt_preview": "A spacious modern living room with clean lines and warm natural light filtering from a far window. In the center against the back wall, a sleek wood TV media console features a wall-mounted flat TV above it, accompanied by a low coffee table placed nearby. A lush potted green plant sits on the left side against the back wall. In the center foreground, a comfortable fabric upholstered sofa creates a cozy atmosphere. On the right side, a small side table rests against the wall, while a low-profile storage cabinet anchors the front corner. The room features a light neutral palette of off-white, gray, and greige with subtle textured walls and natural wood accents.",
+   "negative_prompt_preview": "people, person, human, man, woman, child, hands, face, animal, pet, cat, dog, bird, text, watermark, signature, logo, embossed texture, relief carving, engraved pattern, corrugated surface, bumpy wall texture, mosaic screen, pixelated glitch, Cluttered, ornate details, dark colors, saturated hues, traditional patterns, heavy furniture, poor lighting, messy, old-fashioned.",
+   "output_aspect": "16:9",
+   "composer_used": true,
+   "composer_includes_furniture": true,
+   "seed": 101,
+   "style_profile_id": "modern",
+   "style_profile_name": "現代簡約",
+   "style_strength": 0.85,
+   "style_lora": "https://huggingface.co/MovingForward/designbridge-flux-lora/resolve/main/flux1dev/designbridge_v5_flux1dev_modern.safetensors",
+   "layout_prompt_source": "composer",
+   "model": "fal-ai/flux-general + Shakker-Labs/FLUX.1-dev-ControlNet-Depth",
+   "depth_conditioning_scale": 0.3,
+   "controlnet_control_end": 0.7,
+   "controlnet_steps": 20,
+   "controlnet_guidance": 3.5,
+   "edge_controlnet_model": "InstantX/FLUX.1-dev-Controlnet-Canny",
+   "edge_conditioning_scale": 0.3,
+   "backend": "flux_controlnet_depth_fal"
+  },
+  "placements": [
+   {
+    "id": "tv_unit_1",
+    "type": "tv_unit",
+    "x": 0.3258,
+    "y": 0.02,
+    "w": 0.4,
+    "h": 0.1,
+    "rotation": 0.0
+   },
+   {
+    "id": "sofa_1",
+    "type": "sofa",
+    "x": 0.2484,
+    "y": 0.5985,
+    "w": 0.5,
+    "h": 0.18,
+    "rotation": 0.0
+   },
+   {
+    "id": "coffee_table_1",
+    "type": "coffee_table",
+    "x": 0.3119,
+    "y": 0.2992,
+    "w": 0.3,
+    "h": 0.13,
+    "rotation": 0.0
+   },
+   {
+    "id": "side_table_1",
+    "type": "side_table",
+    "x": 0.88,
+    "y": 0.4633,
+    "w": 0.1,
+    "h": 0.1,
+    "rotation": 0.0
+   },
+   {
+    "id": "plant_1",
+    "type": "plant",
+    "x": 0.0374,
+    "y": 0.1628,
+    "w": 0.12,
+    "h": 0.15,
+    "rotation": 0.0
+   },
+   {
+    "id": "cabinet_6",
+    "type": "cabinet",
+    "x": 0.7873,
+    "y": 0.9014,
+    "w": 0.14,
+    "h": 0.07,
+    "rotation": 0.0
+   }
+  ],
+  "baseline_prompt": "A spacious modern living room with bright natural lighting from a far window. The space includes a comfortable sofa, a TV cabinet, a coffee table, a side table, and a potted plant. Neutral color palette with wood accents, warm ambiance, cozy atmosphere, clean aesthetic."
+ },
+ {
+  "scene": "bedroom",
+  "seed": 100,
+  "user_prompt": "臥室，約 3.5 公尺寬、4 公尺深。雙人床床頭靠左側牆，床的兩側各放一個床頭櫃；衣櫃靠右側牆；書桌和椅子放在窗戶旁邊；窗戶在正對面的牆上，保持床尾走道淨空。",
+  "style": "nordic",
+  "system_backend": "flux_controlnet_depth_fal",
+  "system_params": {
+   "prompt_preview": "A serene nordic-style cozy modern bedroom with off-white textured wall coverings and light wood flooring. In the center against the front wall sits a low-profile comfortable double bed with a subtle curved headboard, flanked by a right-side nightstand against the right wall. Another matching nightstand rests in the back center. To the back right corner stands a tall off-white wardrobe, while a sleek desk is positioned against the back left wall with a silver-accented chair on the left side. Warm inviting ambient lighting blends with abundant natural light, highlighting silver and black accents for a neat, tranquil atmosphere with clear pathways.",
+   "negative_prompt_preview": "people, person, human, man, woman, child, hands, face, animal, pet, cat, dog, bird, text, watermark, signature, logo, embossed texture, relief carving, engraved pattern, corrugated surface, bumpy wall texture, mosaic screen, pixelated glitch, Cluttered space, heavy furniture, overly ornate details, bright saturated colors, dark and gloomy atmosphere, harsh lighting, rough textures.",
+   "output_aspect": "16:9",
+   "composer_used": true,
+   "composer_includes_furniture": true,
+   "seed": 100,
+   "style_profile_id": "nordic",
+   "style_profile_name": "北歐自然",
+   "style_strength": 0.85,
+   "style_lora": "https://huggingface.co/MovingForward/designbridge-flux-lora/resolve/main/flux1dev/designbridge_v5_flux1dev_nordic.safetensors",
+   "layout_prompt_source": "composer",
+   "model": "fal-ai/flux-general + Shakker-Labs/FLUX.1-dev-ControlNet-Depth",
+   "depth_conditioning_scale": 0.3,
+   "controlnet_control_end": 0.7,
+   "controlnet_steps": 20,
+   "controlnet_guidance": 3.5,
+   "edge_controlnet_model": "InstantX/FLUX.1-dev-Controlnet-Canny",
+   "edge_conditioning_scale": 0.3,
+   "backend": "flux_controlnet_depth_fal"
+  },
+  "placements": [
+   {
+    "id": "bed_1",
+    "type": "bed",
+    "x": 0.2672,
+    "y": 0.48,
+    "w": 0.42,
+    "h": 0.5,
+    "rotation": 0.0
+   },
+   {
+    "id": "nightstand_1",
+    "type": "nightstand",
+    "x": 0.3626,
+    "y": 0.2659,
+    "w": 0.13,
+    "h": 0.12,
+    "rotation": 0.0
+   },
+   {
+    "id": "nightstand_2",
+    "type": "nightstand",
+    "x": 0.85,
+    "y": 0.6162,
+    "w": 0.13,
+    "h": 0.12,
+    "rotation": 0.0
+   },
+   {
+    "id": "wardrobe_1",
+    "type": "wardrobe",
+    "x": 0.6992,
+    "y": 0.02,
+    "w": 0.28,
+    "h": 0.35,
+    "rotation": 0.0
+   },
+   {
+    "id": "desk_1",
+    "type": "desk",
+    "x": 0.02,
+    "y": 0.0256,
+    "w": 0.26,
+    "h": 0.18,
+    "rotation": 0.0
+   },
+   {
+    "id": "chair_1",
+    "type": "chair",
+    "x": 0.02,
+    "y": 0.3983,
+    "w": 0.14,
+    "h": 0.14,
+    "rotation": 0.0
+   }
+  ],
+  "baseline_prompt": "A cozy modern bedroom featuring a comfortable double bed, nightstands, a spacious wardrobe, a desk, and a chair. Soft cozy lighting, warm inviting atmosphere, clean and neat layout with clear pathways."
+ },
+ {
+  "scene": "bedroom",
+  "seed": 101,
+  "user_prompt": "臥室，約 3.5 公尺寬、4 公尺深。雙人床床頭靠左側牆，床的兩側各放一個床頭櫃；衣櫃靠右側牆；書桌和椅子放在窗戶旁邊；窗戶在正對面的牆上，保持床尾走道淨空。",
+  "style": "nordic",
+  "system_backend": "flux_controlnet_depth_fal",
+  "system_params": {
+   "prompt_preview": "A well-lit Nordic bedroom featuring soft natural light flowing through, bathed in off-white (#EAEAEA) and silver (#B0C4DE) tones with subtle black (#1A1A1A) accents, anchored by light wood flooring. At the back center, a double bed with a low-profile curved headboard rests against the wall, flanked by a left nightstand and a right nightstand. In the front left, a tall minimalist wardrobe stands against the wall, while opposite in the front right, a sleek desk sits against the right and front walls, paired with a cozy chair at the front center. The atmosphere is serene, functional, and tranquil with soft textures and clean aesthetic details.",
+   "negative_prompt_preview": "people, person, human, man, woman, child, hands, face, animal, pet, cat, dog, bird, text, watermark, signature, logo, embossed texture, relief carving, engraved pattern, corrugated surface, bumpy wall texture, mosaic screen, pixelated glitch, Cluttered space, heavy furniture, overly ornate details, bright saturated colors, dark and gloomy atmosphere, harsh lighting, rough textures.",
+   "output_aspect": "16:9",
+   "composer_used": true,
+   "composer_includes_furniture": true,
+   "seed": 101,
+   "style_profile_id": "nordic",
+   "style_profile_name": "北歐自然",
+   "style_strength": 0.85,
+   "style_lora": "https://huggingface.co/MovingForward/designbridge-flux-lora/resolve/main/flux1dev/designbridge_v5_flux1dev_nordic.safetensors",
+   "layout_prompt_source": "composer",
+   "model": "fal-ai/flux-general + Shakker-Labs/FLUX.1-dev-ControlNet-Depth",
+   "depth_conditioning_scale": 0.3,
+   "controlnet_control_end": 0.7,
+   "controlnet_steps": 20,
+   "controlnet_guidance": 3.5,
+   "edge_controlnet_model": "InstantX/FLUX.1-dev-Controlnet-Canny",
+   "edge_conditioning_scale": 0.3,
+   "backend": "flux_controlnet_depth_fal"
+  },
+  "placements": [
+   {
+    "id": "double_bed_1",
+    "type": "bed",
+    "x": 0.3543,
+    "y": 0.1,
+    "w": 0.44,
+    "h": 0.48,
+    "rotation": 0.0
+   },
+   {
+    "id": "nightstand_1",
+    "type": "nightstand",
+    "x": 0.0394,
+    "y": 0.1568,
+    "w": 0.12,
+    "h": 0.11,
+    "rotation": 0.0
+   },
+   {
+    "id": "nightstand_2",
+    "type": "nightstand",
+    "x": 0.86,
+    "y": 0.1563,
+    "w": 0.12,
+    "h": 0.11,
+    "rotation": 0.0
+   },
+   {
+    "id": "wardrobe_1",
+    "type": "wardrobe",
+    "x": 0.02,
+    "y": 0.4229,
+    "w": 0.17,
+    "h": 0.45,
+    "rotation": 90.0
+   },
+   {
+    "id": "desk_1",
+    "type": "desk",
+    "x": 0.68,
+    "y": 0.8079,
+    "w": 0.3,
+    "h": 0.15,
+    "rotation": 0.0
+   },
+   {
+    "id": "chair_1",
+    "type": "chair",
+    "x": 0.3832,
+    "y": 0.8131,
+    "w": 0.14,
+    "h": 0.13,
+    "rotation": 0.0
+   }
+  ],
+  "baseline_prompt": "A well-lit bedroom featuring a double bed, two nightstands, a wardrobe, a desk, and a chair. Soft natural light flows into the space, creating a cozy, functional, and harmonious atmosphere with clean aesthetic details."
+ }
+]
