@@ -6,7 +6,7 @@
   "generated_image_path": "artifacts\\render\\2b266817-d80d-4cb2-94a0-21d042b9c616_f15d4008.png",
   "generated_image_url": "/demo/gen/room_9_kids-warm.png",
   "floor_plan_path": "artifacts\\layout\\2b266817-d80d-4cb2-94a0-21d042b9c616_floor_plan.png",
-  "floor_plan_url": "http://localhost:8000/artifacts/layout/2b266817-d80d-4cb2-94a0-21d042b9c616_floor_plan.png",
+  "floor_plan_url": "/demo/floor/2b266817-d80d-4cb2-94a0-21d042b9c616_floor_plan.png",
   "structured_requirement": {
    "user_description_raw": "客廳。家裡有小孩和老人，想要可愛溫暖的感覺",
    "design_description": "A cozy, warm, and cute child-friendly and elderly-friendly living room. Features soft rounded furniture with zero sharp edges, comfortable plush seating, non-slip flooring, and low-height storage accessible for kids and seniors. Gentle warm lighting creates a inviting atmosphere, decorated with pastel color tones, soft textiles, playful cushions, and subtle natural wood accents.",
@@ -483,7 +483,7 @@
   "generated_image_path": "artifacts\\render\\fcfb995e-ad0b-4b3e-8982-88d9c9b8bc69_946af284.png",
   "generated_image_url": "/demo/gen/room_2_kids-warm.png",
   "floor_plan_path": "artifacts\\layout\\fcfb995e-ad0b-4b3e-8982-88d9c9b8bc69_floor_plan.png",
-  "floor_plan_url": "http://localhost:8000/artifacts/layout/fcfb995e-ad0b-4b3e-8982-88d9c9b8bc69_floor_plan.png",
+  "floor_plan_url": "/demo/floor/fcfb995e-ad0b-4b3e-8982-88d9c9b8bc69_floor_plan.png",
   "structured_requirement": {
    "user_description_raw": "臥室。家裡有小孩和老人，想要可愛溫暖的感覺",
    "design_description": "A cozy, warm, and cute master bedroom designed for a multi-generational family, suitable for children and the elderly. The space features safe, rounded-corner furniture, soft textures, natural warm wood tones, pastel accent colors like muted blush and soft cream, inviting plush rugs, gentle indirect lighting, and a cheerful, comforting atmosphere.",
@@ -923,7 +923,7 @@
   "generated_image_path": "artifacts\\render\\10571b40-6eff-4462-b5a9-61436557bdbc_fa1afa55.png",
   "generated_image_url": "/demo/gen/room_7_cafe.png",
   "floor_plan_path": "artifacts\\layout\\10571b40-6eff-4462-b5a9-61436557bdbc_floor_plan.png",
-  "floor_plan_url": "http://localhost:8000/artifacts/layout/10571b40-6eff-4462-b5a9-61436557bdbc_floor_plan.png",
+  "floor_plan_url": "/demo/floor/10571b40-6eff-4462-b5a9-61436557bdbc_floor_plan.png",
   "structured_requirement": {
    "user_description_raw": "餐廳。喜歡咖啡廳的悠閒氛圍",
    "design_description": "A cozy and relaxing dining room with a cafe-inspired atmosphere. Features warm natural wood elements, comfortable seating, soft ambient hanging lighting, subtle greenery, and a welcoming, leisurely aesthetic with neutral and earthy tones.",
@@ -1381,7 +1381,7 @@
   "generated_image_path": "artifacts\\render\\47f1ad58-3161-4b82-aae4-c67e27501834_8ae17995.png",
   "generated_image_url": "/demo/gen/room_7_hotel.png",
   "floor_plan_path": "artifacts\\layout\\47f1ad58-3161-4b82-aae4-c67e27501834_floor_plan.png",
-  "floor_plan_url": "http://localhost:8000/artifacts/layout/47f1ad58-3161-4b82-aae4-c67e27501834_floor_plan.png",
+  "floor_plan_url": "/demo/floor/47f1ad58-3161-4b82-aae4-c67e27501834_floor_plan.png",
   "structured_requirement": {
    "user_description_raw": "餐廳。想要像飯店一樣有質感、放鬆",
    "design_description": "A sophisticated and relaxing hotel-style dining room featuring luxurious materials, elegant dining furniture, soft ambient lighting, high-end marble or dark wood textures, warm neutral tones, and a refined atmosphere.",
@@ -1811,7 +1811,7 @@
   "generated_image_path": "artifacts\\render\\0e2b7c47-7a58-420a-88f2-d795d936374a_334e94b8.png",
   "generated_image_url": "/demo/gen/room_7_kids-warm.png",
   "floor_plan_path": "artifacts\\layout\\0e2b7c47-7a58-420a-88f2-d795d936374a_floor_plan.png",
-  "floor_plan_url": "http://localhost:8000/artifacts/layout/0e2b7c47-7a58-420a-88f2-d795d936374a_floor_plan.png",
+  "floor_plan_url": "/demo/floor/0e2b7c47-7a58-420a-88f2-d795d936374a_floor_plan.png",
   "structured_requirement": {
    "user_description_raw": "餐廳。家裡有小孩和老人，想要可愛溫暖的感覺",
    "design_description": "A cozy, warm, and cute dining room designed to be kid-friendly and senior-friendly. The space features safe round-cornered wooden furniture, soft cushioned dining chairs, warm ambient lighting, smooth anti-slip flooring, gentle pastel accents, and an inviting, family-friendly atmosphere.",
@@ -2272,7 +2272,7 @@
   "generated_image_path": "artifacts\\render\\9a74d710-cfbf-43d8-9511-97b43d8d7953_3f47444a.png",
   "generated_image_url": "/demo/gen/room_7_small-bright.png",
   "floor_plan_path": "artifacts\\layout\\9a74d710-cfbf-43d8-9511-97b43d8d7953_floor_plan.png",
-  "floor_plan_url": "http://localhost:8000/artifacts/layout/9a74d710-cfbf-43d8-9511-97b43d8d7953_floor_plan.png",
+  "floor_plan_url": "/demo/floor/9a74d710-cfbf-43d8-9511-97b43d8d7953_floor_plan.png",
   "structured_requirement": {
    "user_description_raw": "餐廳。小坪數，想看起來寬敞明亮一點",
    "design_description": "A bright and airy dining area for a compact space. Modern minimalist style with light-colored wooden furniture, clean lines, and neutral tones. Natural soft light illuminating the space, visually expanding the room with light reflective surfaces, simple decor, and uncluttered atmosphere.",
@@ -2768,7 +2768,7 @@
   "generated_image_path": "artifacts\\render\\51252b63-7979-43c8-b40e-437e08a54005_d3bf28e9.png",
   "generated_image_url": "/demo/gen/room_9_cafe.png",
   "floor_plan_path": "artifacts\\layout\\51252b63-7979-43c8-b40e-437e08a54005_floor_plan.png",
-  "floor_plan_url": "http://localhost:8000/artifacts/layout/51252b63-7979-43c8-b40e-437e08a54005_floor_plan.png",
+  "floor_plan_url": "/demo/floor/51252b63-7979-43c8-b40e-437e08a54005_floor_plan.png",
   "structured_requirement": {
    "user_description_raw": "客廳。喜歡咖啡廳的悠閒氛圍",
    "design_description": "A cozy cafe-inspired living room featuring a warm and relaxing ambiance. The space incorporates soft natural lighting, warm wood tones, comfortable upholstery, subtle metal accents, potted indoor plants, and an inviting, laid-back atmosphere.",
@@ -3245,7 +3245,7 @@
   "generated_image_path": "artifacts\\render\\3ff6b60f-2dc8-4497-b088-ecf5634f58f4_6bf8a724.png",
   "generated_image_url": "/demo/gen/room_9_hotel.png",
   "floor_plan_path": "artifacts\\layout\\3ff6b60f-2dc8-4497-b088-ecf5634f58f4_floor_plan.png",
-  "floor_plan_url": "http://localhost:8000/artifacts/layout/3ff6b60f-2dc8-4497-b088-ecf5634f58f4_floor_plan.png",
+  "floor_plan_url": "/demo/floor/3ff6b60f-2dc8-4497-b088-ecf5634f58f4_floor_plan.png",
   "structured_requirement": {
    "user_description_raw": "客廳。想要像飯店一樣有質感、放鬆",
    "design_description": "A luxury hotel-style living room designed for relaxation. Featuring sophisticated high-end materials, rich textures, plush seating, subtle soft ambient lighting, warm neutral tones, elegant architectural detailing, clean lines, and a peaceful, tranquil atmosphere reminiscent of a five-star boutique resort.",
@@ -3724,7 +3724,7 @@
   "generated_image_path": "artifacts\\render\\0ade776e-97ae-4f95-85f3-fa9ee6e62268_b08f5e7f.png",
   "generated_image_url": "/demo/gen/room_9_small-bright.png",
   "floor_plan_path": "artifacts\\layout\\0ade776e-97ae-4f95-85f3-fa9ee6e62268_floor_plan.png",
-  "floor_plan_url": "http://localhost:8000/artifacts/layout/0ade776e-97ae-4f95-85f3-fa9ee6e62268_floor_plan.png",
+  "floor_plan_url": "/demo/floor/0ade776e-97ae-4f95-85f3-fa9ee6e62268_floor_plan.png",
   "structured_requirement": {
    "user_description_raw": "客廳。小坪數，想看起來寬敞明亮一點",
    "design_description": "A small living room designed to look spacious and bright, featuring light-colored low-profile furniture, natural sunlight streaming in, soft minimalist decor, white walls, light wood flooring, clean lines, and an open, airy atmosphere.",
@@ -4201,7 +4201,7 @@
   "generated_image_path": "artifacts\\render\\ad23cd10-c0ec-491a-831c-1ebac243b9a2_896d4571.png",
   "generated_image_url": "/demo/gen/room_10_kids-warm.png",
   "floor_plan_path": "artifacts\\layout\\ad23cd10-c0ec-491a-831c-1ebac243b9a2_floor_plan.png",
-  "floor_plan_url": "http://localhost:8000/artifacts/layout/ad23cd10-c0ec-491a-831c-1ebac243b9a2_floor_plan.png",
+  "floor_plan_url": "/demo/floor/ad23cd10-c0ec-491a-831c-1ebac243b9a2_floor_plan.png",
   "structured_requirement": {
    "user_description_raw": "書房。家裡有小孩和老人，想要可愛溫暖的感覺",
    "design_description": "A cozy, warm, and cute study room designed to be safe and accessible for both children and elderly family members. The space features soft rounded furniture with smooth edges, warm timber flooring, gentle pastel color palette combined with creamy white tones. Soft plush rugs, cozy seating, low-height open bookshelves for easy reach, bright and warm diffused ambient lighting, creating a comfortable and safe multi-generational reading and study space.",
@@ -4670,7 +4670,7 @@
   "generated_image_path": "artifacts\\render\\7b654108-71e2-4b09-b452-66a70d92006d_92f91334.png",
   "generated_image_url": "/demo/gen/room_11_kids-warm.png",
   "floor_plan_path": "artifacts\\layout\\7b654108-71e2-4b09-b452-66a70d92006d_floor_plan.png",
-  "floor_plan_url": "http://localhost:8000/artifacts/layout/7b654108-71e2-4b09-b452-66a70d92006d_floor_plan.png",
+  "floor_plan_url": "/demo/floor/7b654108-71e2-4b09-b452-66a70d92006d_floor_plan.png",
   "structured_requirement": {
    "user_description_raw": "陽台。家裡有小孩和老人，想要可愛溫暖的感覺",
    "design_description": "A cozy, warm, and cute balcony design tailored for a child- and elderly-friendly family environment. Features smooth rounded-edge furniture, warm pastel tones, soft textiles, wooden decking, child-safe railings, and vibrant potted plants under gentle warm lighting.",
@@ -5101,7 +5101,7 @@
   "generated_image_path": "artifacts\\render\\8179b743-7493-4741-aa97-81a33559c380_61daa116.png",
   "generated_image_url": "/demo/gen/room_1_kids-warm.png",
   "floor_plan_path": "artifacts\\layout\\8179b743-7493-4741-aa97-81a33559c380_floor_plan.png",
-  "floor_plan_url": "http://localhost:8000/artifacts/layout/8179b743-7493-4741-aa97-81a33559c380_floor_plan.png",
+  "floor_plan_url": "/demo/floor/8179b743-7493-4741-aa97-81a33559c380_floor_plan.png",
   "structured_requirement": {
    "user_description_raw": "工作陽台。家裡有小孩和老人，想要可愛溫暖的感覺",
    "design_description": "A warm and cute utility balcony designed safely and comfortably for children and the elderly. Features cozy light wood tones, soft pastel colors, rounded edge cabinetry, non-slip flooring, and bright, warm natural lighting to create a safe, welcoming, and cheerful atmosphere.",
@@ -5532,7 +5532,7 @@
   "generated_image_path": "artifacts\\render\\c78130b3-6ed4-460b-9c52-3fe33c017d54_77893679.png",
   "generated_image_url": "/demo/gen/room_3_kids-warm.png",
   "floor_plan_path": "artifacts\\layout\\c78130b3-6ed4-460b-9c52-3fe33c017d54_floor_plan.png",
-  "floor_plan_url": "http://localhost:8000/artifacts/layout/c78130b3-6ed4-460b-9c52-3fe33c017d54_floor_plan.png",
+  "floor_plan_url": "/demo/floor/c78130b3-6ed4-460b-9c52-3fe33c017d54_floor_plan.png",
   "structured_requirement": {
    "user_description_raw": "浴室。家裡有小孩和老人，想要可愛溫暖的感覺",
    "design_description": "A safe, warm, and cute bathroom designed for a family with young children and elderly members. Soft warm light, rounded corners, anti-slip porcelain tiles, pastel color palette with gentle warm tones, cozy ambiance, functional safety handrails integrated seamlessly into the cute interior design.",
@@ -5969,7 +5969,7 @@
   "generated_image_path": "artifacts\\render\\7115ce4b-6b85-45b7-a714-e95fe61f70c3_0d408d94.png",
   "generated_image_url": "/demo/gen/room_4_kids-warm.png",
   "floor_plan_path": "artifacts\\layout\\7115ce4b-6b85-45b7-a714-e95fe61f70c3_floor_plan.png",
-  "floor_plan_url": "http://localhost:8000/artifacts/layout/7115ce4b-6b85-45b7-a714-e95fe61f70c3_floor_plan.png",
+  "floor_plan_url": "/demo/floor/7115ce4b-6b85-45b7-a714-e95fe61f70c3_floor_plan.png",
   "structured_requirement": {
    "user_description_raw": "小廁所。家裡有小孩和老人，想要可愛溫暖的感覺",
    "design_description": "A cute and warm compact bathroom designed with child and elderly safety in mind. Features rounded edges, non-slip light wood-textured tile flooring, soft pastel and warm cream color palette, charming friendly decorations, safety grab bars seamlessly integrated with a cozy design, smooth curved fixtures, bright soft ambient lighting, and gentle, welcoming atmosphere.",
@@ -6406,7 +6406,7 @@
   "generated_image_path": "artifacts\\render\\04e04805-688c-4650-b730-67f885bfd43c_c4c1f2f8.png",
   "generated_image_url": "/demo/gen/room_5_kids-warm.png",
   "floor_plan_path": "artifacts\\layout\\04e04805-688c-4650-b730-67f885bfd43c_floor_plan.png",
-  "floor_plan_url": "http://localhost:8000/artifacts/layout/04e04805-688c-4650-b730-67f885bfd43c_floor_plan.png",
+  "floor_plan_url": "/demo/floor/04e04805-688c-4650-b730-67f885bfd43c_floor_plan.png",
   "structured_requirement": {
    "user_description_raw": "客房。家裡有小孩和老人，想要可愛溫暖的感覺",
    "design_description": "A cozy, warm, and cute guest bedroom designed to be safe and suitable for children and seniors. Features a soothing warm color palette with pastel tones, soft rounded furniture to ensure safety, gentle lighting, plush rugs, and cute decor elements to create a welcoming atmosphere.",
@@ -6836,7 +6836,7 @@
   "generated_image_path": "artifacts\\render\\6bf3c4d2-11b7-4f23-b350-8b2378f945b5_fdac9c40.png",
   "generated_image_url": "/demo/gen/room_6_kids-warm.png",
   "floor_plan_path": "artifacts\\layout\\6bf3c4d2-11b7-4f23-b350-8b2378f945b5_floor_plan.png",
-  "floor_plan_url": "http://localhost:8000/artifacts/layout/6bf3c4d2-11b7-4f23-b350-8b2378f945b5_floor_plan.png",
+  "floor_plan_url": "/demo/floor/6bf3c4d2-11b7-4f23-b350-8b2378f945b5_floor_plan.png",
   "structured_requirement": {
    "user_description_raw": "廚房。家裡有小孩和老人，想要可愛溫暖的感覺",
    "design_description": "A cozy, warm, and cute safety-conscious kitchen designed for families with children and elderly. Soft pastel warm tones, rounded corner cabinetry, friendly lighting, safe non-slip wooden floor texture, approachable and inviting atmosphere with subtle playful decor.",
@@ -7266,7 +7266,7 @@
   "generated_image_path": "artifacts\\render\\8284f1bd-12b8-4ef6-8788-5226b5f90726_cc93f49e.png",
   "generated_image_url": "/demo/gen/room_8_kids-warm.png",
   "floor_plan_path": "artifacts\\layout\\8284f1bd-12b8-4ef6-8788-5226b5f90726_floor_plan.png",
-  "floor_plan_url": "http://localhost:8000/artifacts/layout/8284f1bd-12b8-4ef6-8788-5226b5f90726_floor_plan.png",
+  "floor_plan_url": "/demo/floor/8284f1bd-12b8-4ef6-8788-5226b5f90726_floor_plan.png",
   "structured_requirement": {
    "user_description_raw": "玄關。家裡有小孩和老人，想要可愛溫暖的感覺",
    "design_description": "A cute and warm entryway (foyer) suitable for a multi-generational family with elderly and kids. Soft pastel colors, warm timber textures, rounded safety furniture edges, cozy lighting, practical entryway bench, shoe storage cabinet, friendly decor, inviting atmosphere.",

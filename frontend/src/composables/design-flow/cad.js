@@ -244,8 +244,9 @@ async function prepareUploadedRoom(room, requestId) {
   if (croppedPath) uploadedPlanUrl.value = mediaUrl(croppedPath)   // 「對照原始上傳平面圖」顯示這間的裁切圖
 
   const type = roomTypeForPlan.value
-  // demo 模式的家具辨識只比對房型與尺寸，沒有裁切圖也能命中預錄結果
-  if (DETECTABLE.has(type) && (croppedPath || demoPlan.value)) {
+  // demo 模式的家具辨識只比對房型與尺寸，沒有裁切圖也能命中預錄結果；玄關也有預錄的家具
+  const detectable = DETECTABLE.has(type) || (demoPlan.value && type === 'room')
+  if (detectable && (croppedPath || demoPlan.value)) {
     let data = null
     try {
       const res = await jsonFetch('/api/parse-floor-plan', {
