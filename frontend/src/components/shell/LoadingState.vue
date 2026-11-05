@@ -11,6 +11,7 @@ import { ref, computed, onMounted, onBeforeUnmount } from 'vue'
 defineProps({
   title: { type: String, default: 'AI 生成中' },
   sub:   { type: String, default: '' },
+  image: { type: String, default: '' },   // 有給就顯示這張圖（例如正在辨識的平面圖），取代裝飾線稿
 })
 
 const SLOW_AFTER = 40
@@ -28,7 +29,11 @@ const slow = computed(() => sec.value >= SLOW_AFTER)
 
 <template>
   <div class="loading-state" role="status" aria-live="polite" aria-atomic="false" aria-busy="true">
-    <svg class="plan" viewBox="0 0 260 170" aria-hidden="true" focusable="false">
+    <div v-if="image" class="scan">
+      <img :src="image" alt="正在辨識的平面圖" />
+      <span class="scan-line" aria-hidden="true"></span>
+    </div>
+    <svg v-else class="plan" viewBox="0 0 260 170" aria-hidden="true" focusable="false">
       <!-- 圖紙格線 -->
       <defs>
         <pattern id="ls-grid" width="10" height="10" patternUnits="userSpaceOnUse">
@@ -88,6 +93,25 @@ const slow = computed(() => sec.value >= SLOW_AFTER)
   overflow: visible;
 }
 .grid { opacity: 0.8; }
+
+.scan {
+  position: relative;
+  max-width: 100%;
+  margin-bottom: 1rem;
+  border-radius: 8px;
+  overflow: hidden;
+  background: var(--db-chip-soft);
+}
+.scan img { display: block; max-width: 100%; max-height: 440px; object-fit: contain; }
+/* 一條淡色光帶上下掃過，表示還在辨識中 */
+.scan-line {
+  position: absolute; left: 0; right: 0; top: 0;
+  height: 18%;
+  background: linear-gradient(to bottom, transparent, var(--db-accent-soft), transparent);
+  opacity: 0.7;
+  animation: scan 2.4s ease-in-out infinite alternate;
+}
+@keyframes scan { to { transform: translateY(455%); } }
 
 /* 線稿共用：墨色細線 */
 .wall, .dim path {
@@ -186,6 +210,7 @@ const slow = computed(() => sec.value >= SLOW_AFTER)
 
 /* 減少動態：直接顯示畫好的平面圖，不跑動畫 */
 @media (prefers-reduced-motion: reduce) {
+  .scan-line { display: none; }
   .wall, .dim path, .dim text, .rug, .furn {
     animation: none;
     stroke-dashoffset: 0;

@@ -228,7 +228,7 @@ _CIRCULATION_WORDS = ("玄關", "走廊", "走道", "過道", "通道", "廊道"
 # 不收單獨的 hall：living hall 是客廳
 _CIRCULATION_WORDS_EN = ("entrance", "entry", "foyer", "corridor", "hallway", "passage")
 # 改了提示詞就換版本號，舊快取自動失效
-_SEED_PROMPT_VERSION = "v3"
+_SEED_PROMPT_VERSION = "v4"
 _SEED_CACHE_DIR = Path("artifacts/cache/room_seeds")
 # 逐區辨識的提示詞版本（快取檔名用）；改了逐區辨識的提示詞就換
 _LABEL_PROMPT_VERSION = "v4"
@@ -259,8 +259,11 @@ def _room_seed_prompt() -> str:
         "balcony. A balcony is a separate strip outside the main exterior wall line, "
         "reached through a door, often with railings, plants, laundry or a washer.\n"
         "Ignore the title block, legend and anything outside the building.\n"
+        "`is_floor_plan` = false if the image is NOT a top-down floor plan (a room photo, "
+        "a 3D/perspective render, a document, a screenshot of something else); then return "
+        "an empty rooms list.\n"
         "Return STRICT JSON only, no prose, no markdown fences:\n"
-        '{"rooms":[{"label":"主臥室","room_type":"bedroom","point":[360,220]}]}'
+        '{"is_floor_plan":true,"rooms":[{"label":"主臥室","room_type":"bedroom","point":[360,220]}]}'
     )
 
 
@@ -284,7 +287,11 @@ def _room_seeds(image_path: str) -> list[dict] | None:
     except Exception as e:  # noqa: BLE001
         print(f"⚠️  Gemini room points failed: {e}")
         return None
-    seeds = ((_parse_llm_layout(text) or {}).get("rooms")) or []
+    data = _parse_llm_layout(text) or {}
+    if data.get("is_floor_plan") is False:
+        from designbridge.layout.floorplan_quality import FloorPlanRejected
+        raise FloorPlanRejected("這張看起來不是平面圖（像是照片或 3D 圖），請上傳俯視的平面配置圖")
+    seeds = data.get("rooms") or []
     seeds = [s for s in seeds if isinstance(s, dict) and isinstance(s.get("point"), list)]
     if not seeds:
         return None

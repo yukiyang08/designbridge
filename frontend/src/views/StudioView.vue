@@ -190,7 +190,11 @@ onMounted(() => {
         <!-- 其他第一步把這顆放在底部操作列左邊；照片工作台沒有操作列，留在上方 -->
         <ModeBackButton v-if="currentStep === 'photoStudio' && !loading" class="mode-back-top" />
 
-        <LoadingState v-if="loading || activeRendering" :title="loadingMsg.title" :sub="loadingMsg.sub" />
+        <!-- 上傳後辨識房間時保留使用者的平面圖，不換成裝飾動畫 -->
+        <LoadingState
+          v-if="loading || activeRendering" :title="loadingMsg.title" :sub="loadingMsg.sub"
+          :image="currentStep === 'planUpload' ? flow.floorPlanUpload.preview : ''"
+        />
         <CadOverview v-else-if="showOverview" />
         <component :is="STEP_COMPONENTS[currentStep]" v-else />
 

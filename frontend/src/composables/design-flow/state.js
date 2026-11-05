@@ -301,6 +301,7 @@ export const uploadedPlanPath  = ref('')   // 原始（未裁切）上傳圖的�
 export const detectedRooms     = ref([])   // /api/detect-rooms 偵測到的房間清單，多間時才會用到
 // 平面圖解析沒結果時停下來讓使用者決定，不默默退回後備路徑：
 // { kind: 'rooms' | 'furniture', reason: 'failed' | 'empty', path, roomType }
+// kind: 'quality' 時 reason 是要顯示給使用者的不合格原因（換圖才能繼續）
 export const planParseIssue    = ref(null)
 export const uploadTotalPing   = ref(null)   // 上傳平面圖前先填的總坪數，決定比例尺（不靠 AI 猜圖上標註）
 

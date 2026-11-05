@@ -264,9 +264,12 @@ def detect_rooms(request: DetectRoomsRequest, user_id: str = Depends(get_user_id
     """整戶平面圖上傳後，先抓出每個房間的邊界框，讓使用者選要看哪一間。"""
     _require_artifact_file(request.image_path)
 
+    from designbridge.layout.floorplan_quality import FloorPlanRejected, check_floor_plan_image
+
     try:
         from designbridge.layout.floorplan_parse import detect_rooms_in_floor_plan
 
+        check_floor_plan_image(request.image_path)
         rooms = detect_rooms_in_floor_plan(request.image_path) or []
         plan = None
         # 整戶圖（多間房）：另外給一份整層流程格式的資料，前端接進整層進度（沒有輪廓就用方框）
@@ -278,6 +281,8 @@ def detect_rooms(request: DetectRoomsRequest, user_id: str = Depends(get_user_id
         # 整層或單間：切出多間房就是整層圖；只有一間就是單間；一間都沒有則未知（前端另有出口）
         plan_kind = "whole_floor" if len(rooms) > 1 else ("single_room" if rooms else "unknown")
         return {"rooms": rooms, "plan": plan, "plan_kind": plan_kind}
+    except FloorPlanRejected as e:
+        raise HTTPException(status_code=422, detail=str(e))
     except Exception as e:
         import traceback
         traceback.print_exc()

@@ -106,6 +106,15 @@ async function detectRoomsAndProceed(path, requestId) {
   let reason = 'empty'
   try {
     const roomsRes = await jsonFetch('/api/detect-rooms', { image_path: path, total_ping: uploadTotalPing.value })
+    // 圖片品質不合格：重試也沒用，直接請使用者換圖
+    if (roomsRes.status === 422) {
+      const { detail } = await roomsRes.json().catch(() => ({}))
+      if (requestId === requestState.current) {
+        planParseIssue.value = { kind: 'quality', reason: detail || '這張圖片不適合辨識，請換一張' }
+        loading.value = false
+      }
+      return
+    }
     if (!roomsRes.ok) throw new Error(`${roomsRes.status}`)
     ;({ rooms = [], plan = null } = await roomsRes.json())
   } catch {

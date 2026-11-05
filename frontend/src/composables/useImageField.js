@@ -4,11 +4,14 @@ export function useImageField() {
   const file = ref(null)
   const preview = ref('')
 
-  function onChange(e) {
-    const f = e.target.files[0]
-    if (!f) return
+  function setFile(f) {
     file.value = f
     preview.value = URL.createObjectURL(f)
+  }
+
+  function onChange(e) {
+    const f = e.target.files[0]
+    if (f) setFile(f)
   }
 
   function remove() {
@@ -16,5 +19,5 @@ export function useImageField() {
     preview.value = ''
   }
 
-  return reactive({ file, preview, onChange, remove })
+  return reactive({ file, preview, setFile, onChange, remove })
 }

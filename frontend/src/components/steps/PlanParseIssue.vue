@@ -1,4 +1,5 @@
 <script setup>
+import { Icon } from '@iconify/vue'
 /**
  * 平面圖解析沒結果時的提示：讓使用者知道「沒解析出來」，再自己選重試或改走後備路徑，
  * 而不是被默默帶到下一步。上傳平面圖、選擇房間兩個步驟共用。
@@ -13,6 +14,7 @@ const {
 const text = computed(() => {
   const i = planParseIssue.value
   if (!i) return null
+  if (i.kind === 'quality') return { title: '這張圖片無法使用', body: i.reason }
   if (i.kind === 'rooms') {
     return i.reason === 'failed'
       ? { title: '房間辨識失敗', body: 'AI 服務這次沒有回應或回傳格式有誤，可以再試一次。' }
@@ -26,9 +28,10 @@ const text = computed(() => {
 
 <template>
   <div v-if="text" class="parse-issue" role="alert">
-    <p class="pi-title">⚠ {{ text.title }}</p>
+    <p class="pi-title"><Icon icon="mdi:alert-outline" aria-hidden="true" /> {{ text.title }}</p>
     <p class="pi-body">{{ text.body }}</p>
-    <div class="pi-actions">
+    <!-- 品質不合格重試沒用，換圖的按鈕在上傳區 -->
+    <div v-if="planParseIssue.kind !== 'quality'" class="pi-actions">
       <button type="button" class="db-btn db-btn--sm" :disabled="loading" @click="retryPlanParse">重試</button>
       <button
         v-if="planParseIssue.kind === 'rooms'"
