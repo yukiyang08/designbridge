@@ -32,6 +32,7 @@
 - [ ] Supabase → Authentication → URL Configuration：Site URL 與 Redirect URLs 加上正式網域
 - [ ] 執行 `docs/sql/credits.sql` 並設定第一個管理員（見下方）
 - [ ] 下載 SAM 2 模型到 `model/sam2/checkpoints/sam2.1_hiera_tiny.pt`（不在 git 裡）
+- [ ] 下載平面圖牆線模型：`python scripts/fetch_cubicasa_weights.py`（存到 `models/cubicasa/`，約 70 MB，不在 git 裡；缺檔時平面圖改用規則式牆線，辨識會變差。權重只限非商業用途）
 - [ ] fal.ai 後台設花費上限，當作點數之外的第二道保險
 - [ ] 設 cron 定期刪 `artifacts/` 裡 N 天前的檔；設計結果在 Supabase Storage，缺檔時會自動補回
 

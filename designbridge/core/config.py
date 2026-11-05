@@ -25,6 +25,11 @@ class Config:
     # thinking token 上限：0 關閉（抽取/翻譯/辨識不需要）、-1 由模型決定
     GEMINI_THINKING_BUDGET: int = int(os.getenv("DESIGNBRIDGE_GEMINI_THINKING_BUDGET", "0"))
 
+    # 平面圖切房間的牆改用 CubiCasa5K 模型預測（比規則式牆線準，見 test/FLOORPLAN_SEGMENTATION_EXPERIMENT.md）；
+    # 權重不在 repo（scripts/fetch_cubicasa_weights.py），缺檔時退回規則式。只限非商業用途
+    ENABLE_CUBICASA_WALLS: bool = _flag("DESIGNBRIDGE_ENABLE_CUBICASA_WALLS", "true")
+    CUBICASA_WEIGHTS: str = os.getenv("DESIGNBRIDGE_CUBICASA_WEIGHTS", "models/cubicasa/cubicasa_state.pt")
+
     # Vertex 模式：不用 API key，改用 service-account JSON 驗證
     GOOGLE_GENAI_USE_VERTEXAI: bool = _flag("GOOGLE_GENAI_USE_VERTEXAI", "")
     GOOGLE_GENAI_FORCE_API_KEY: bool = _flag("GOOGLE_GENAI_FORCE_API_KEY", "")

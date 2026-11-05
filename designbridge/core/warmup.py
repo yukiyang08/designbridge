@@ -74,7 +74,13 @@ def run_startup_warmup() -> None:
         list_categories()
         list_filters()
 
+    def _warm_cubicasa() -> None:
+        from designbridge.layout.cubicasa_walls import load_model
+
+        load_model()
+
     _step("Furniture browse (Supabase client + filters)", _warm_furniture_browse)
+    _step("CubiCasa floor-plan wall model", _warm_cubicasa)
     _step("Text-to-text style embedder (sentence-transformers)", _warm_text_embedder)
     _step("Pipeline CLIP evaluator (transformers)", _warm_clip_eval)
     _step("Quotation CLIP + furniture KB", _warm_quotation)

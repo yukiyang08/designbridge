@@ -155,3 +155,5 @@ test/data/cubicasa/
 test/data/floorplans_tw/
 # 設計工具（impeccable）的設定與快取
 .impeccable/
+# CubiCasa5K 權重（scripts/fetch_cubicasa_weights.py 下載；CC BY-NC，只限非商業用途）
+/models/

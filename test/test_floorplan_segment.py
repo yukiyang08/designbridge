@@ -95,3 +95,48 @@ def test_finds_rooms_by_geometry_without_usable_seeds(tmp_path):
     assert all(r["label"] == "" and r["room_type"] == "other" for r in rooms)
     for x, y in ((300, 550), (900, 230), (900, 560)):
         assert sum(_inside(r, x, y) for r in rooms) == 1
+
+
+def test_transparent_background_reads_as_white(tmp_path):
+    """透明底的 PNG：透明處要當白紙，不能變成黑色線條（跟 CubiCasa 的讀法一致）。"""
+    from designbridge.layout.floorplan_segment import _work_gray
+
+    im = Image.new("RGBA", (W, H), (0, 0, 0, 0))
+    ImageDraw.Draw(im).rectangle((100, 100, 300, 300), fill=(0, 0, 0, 255))
+    p = tmp_path / "transparent.png"
+    im.save(p)
+    g = _work_gray(str(p))
+    assert g[5, 5] > 250 and g[g.shape[0] // 2, g.shape[1] - 5] > 250   # 透明處
+    assert g.min() < 10                                                  # 黑框還在
+
+
+def test_model_masks_finding_nothing_falls_back_to_rule_walls(tmp_path, monkeypatch):
+    """CubiCasa 把整張判成屋外而切不出房間時，要改用規則式牆線重切，不是直接放棄。"""
+    import designbridge.layout.cubicasa_walls as cw
+    import designbridge.layout.floorplan_parse as fp
+
+    p = _plan(tmp_path)
+    everything_outside = (np.zeros((H, W), bool), np.ones((H, W), bool))
+    monkeypatch.setattr(cw, "predict_masks", lambda _p: everything_outside)
+    monkeypatch.setattr(fp, "_room_seeds", lambda _p: [])
+    monkeypatch.setattr(fp, "_relabel_rooms", lambda *_a: None)
+    assert segment_rooms(str(p), [], *everything_outside) is None
+    rooms = fp._detect_rooms_by_segmentation(str(p))
+    assert rooms and len(rooms) == 3
+
+
+def test_cubicasa_masks_cached_per_image(tmp_path, monkeypatch):
+    """同一張圖第二次辨識不重跑推論；內容不同才重跑。"""
+    import designbridge.layout.cubicasa_walls as cw
+
+    calls = []
+    monkeypatch.setattr(cw, "load_model", lambda: object())
+    monkeypatch.setattr(cw, "_predict", lambda _m, path: calls.append(path) or ("w", "o"))
+    monkeypatch.setattr(cw, "_cache", type(cw._cache)())
+    a, b = tmp_path / "a.png", tmp_path / "b.png"
+    Image.new("L", (10, 10), 255).save(a)
+    Image.new("L", (10, 10), 0).save(b)
+    assert cw.predict_masks(str(a)) == ("w", "o")
+    cw.predict_masks(str(a))
+    cw.predict_masks(str(b))
+    assert calls == [str(a), str(b)]

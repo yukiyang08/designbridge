@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Any
 
@@ -327,15 +328,22 @@ def _is_circulation(room: dict) -> bool:
 
 def _detect_rooms_by_segmentation(image_path: str) -> list[dict] | None:
     """Gemini 只給每間房的中心點和房名，邊界交給 floorplan_segment 從牆線算；
-    切完再請 Gemini 看標號圖逐區確認類型與房名。"""
+    牆和屋外優先用 CubiCasa 模型預測，不可用時用規則式。切完再請 Gemini 看標號圖逐區確認類型與房名。"""
+    from designbridge.layout.cubicasa_walls import predict_masks
     from designbridge.layout.floorplan_segment import segment_rooms
 
-    seeds = _room_seeds(image_path) or []  # Gemini 沒給點也照切，靠自動補種子
+    # Gemini 給種子（網路）與 CubiCasa 推論（CPU）互不相依，同時跑
+    with ThreadPoolExecutor(max_workers=1) as pool:
+        masks_future = pool.submit(predict_masks, image_path)
+        seeds = _room_seeds(image_path) or []  # Gemini 沒給點也照切，靠自動補種子
+        wall, outside = masks_future.result() or (None, None)
     for s in seeds:
         _apply_type(s, s.get("room_type"))
         s["label"] = str(s.get("label") or "").strip()
     try:
-        rooms = segment_rooms(image_path, seeds)
+        rooms = segment_rooms(image_path, seeds, wall_mask=wall, outside_mask=outside)
+        if not rooms and wall is not None:   # 模型把整張判成屋外時（照片、掃描檔）退回規則式牆線
+            rooms = segment_rooms(image_path, seeds)
     except Exception as e:  # noqa: BLE001
         print(f"⚠️  room segmentation error: {e}")
         return None

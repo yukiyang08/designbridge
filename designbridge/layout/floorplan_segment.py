@@ -249,7 +249,10 @@ def _simplify(pts: list[tuple[float, float]], eps: float) -> list[tuple[float, f
 
 def _work_gray(image_path: str) -> np.ndarray:
     """灰階圖統一縮放到 _WORK_SIDE 長邊，像素參數才對得上。"""
-    im = Image.open(image_path).convert("L")
+    # 透明背景先疊白底（跟 cubicasa_walls 一致）；直接 convert("L") 會把透明處變成黑色線條
+    with Image.open(image_path) as src:
+        rgba = src.convert("RGBA")
+    im = Image.alpha_composite(Image.new("RGBA", rgba.size, "white"), rgba).convert("L")
     scale = _WORK_SIDE / max(im.size)
     if abs(scale - 1) > 0.05:
         im = im.resize((round(im.width * scale), round(im.height * scale)), Image.LANCZOS)
@@ -271,13 +274,20 @@ def _wall_mask(g: np.ndarray) -> np.ndarray:
     return wall
 
 
+def _fit(mask: np.ndarray, H: int, W: int) -> np.ndarray:
+    """外部遮罩縮放到工作解析度（最近鄰，不產生半透明邊）；回傳新陣列，不改到呼叫端的。"""
+    if mask.shape == (H, W):
+        return mask.copy()
+    return np.asarray(Image.fromarray(mask.astype(np.uint8) * 255).resize((W, H), Image.NEAREST)) > 127
+
+
 def segment_rooms(image_path: str, seeds: list[dict], wall_mask: np.ndarray | None = None,
                   outside_mask: np.ndarray | None = None) -> list[dict[str, Any]] | None:
     """依種子點把平面圖切成房間。
 
     ``seeds``：``[{room_type, label, point: [y, x]}]``，point 為整張圖 0–1000 座標。
-    ``wall_mask`` / ``outside_mask``：外部模型（如 CubiCasa）預測的牆、屋外，_WORK_SIDE 解析度的
-    布林陣列；給了就取代規則偵測，其餘流程（淹水、凸窗合併、自動補種子）不變。
+    ``wall_mask`` / ``outside_mask``：外部模型（如 CubiCasa）預測的牆、屋外布林陣列，尺寸不同會
+    縮放到工作解析度；給了就取代規則偵測，其餘流程（淹水、凸窗合併、自動補種子）不變。
     回傳 ``[{id, room_type, label, x, y, w, h, polygon, anchor}]``，座標皆為 0–1 正規化，
     polygon 為 ``[[x, y], ...]`` 且含外圍牆厚（裁切時才不會把牆塗掉）。
     切不出任何房間時回傳 ``None``。
@@ -285,10 +295,10 @@ def segment_rooms(image_path: str, seeds: list[dict], wall_mask: np.ndarray | No
     g = _work_gray(image_path)
     H, W = g.shape
     lines = ndi.binary_dilation(g < _LINE_GRAY, iterations=1)
-    wall = _wall_mask(g) if wall_mask is None else wall_mask
+    wall = _wall_mask(g) if wall_mask is None else _fit(wall_mask, H, W)
 
     if outside_mask is not None:
-        outside = outside_mask.copy()
+        outside = _fit(outside_mask, H, W)
     else:
         # 屋外 = 所有線條當屏障時最大的白色連通區（尺寸線不封閉，會被併進來）
         barrier = ndi.binary_dilation(g < _OUT_LINE_GRAY, iterations=1 + _OUT_CLOSE)
