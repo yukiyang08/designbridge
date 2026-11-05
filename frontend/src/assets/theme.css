@@ -77,6 +77,11 @@ svg.iconify { vertical-align: -0.125em; flex: none; }
 }
 .db-scene > * { position: relative; }
 
+/* 跟 /studio 工作區同款的滿版白底頁（我的設計、我的收藏）：白色導覽列＋細線，不鋪室內照、不包卡片 */
+.db-page { min-height: 100vh; background: var(--db-card); font-family: var(--db-font-body); color: var(--db-text); }
+.db-page-nav { border-bottom: 1px solid var(--db-line); }
+.db-page-body { box-sizing: border-box; width: min(1760px, 100%); margin: 0 auto; padding: clamp(1.5rem, 3vw, 2.5rem); }
+
 /* 置中白卡 —— Figma 是固定 1192×620，這裡改成上限 + 自適應高度 */
 .db-card {
   width: min(1760px, calc(100vw - 2rem));   /* 與 /studio 白卡同寬，各頁切換時框不會忽寬忽窄 */

@@ -3,7 +3,6 @@ import { Icon } from '@iconify/vue'
 import { ref, computed, onBeforeUnmount } from 'vue'
 import { useFurnitureSelection } from '@/composables/useFurnitureSelection'
 import AppNav from '@/components/shell/AppNav.vue'
-import sceneBg from '@/assets/figma/room-bg.png'
 
 const { selectedFurniture, selectedCount, toggle, remove, clear } = useFurnitureSelection()
 
@@ -65,9 +64,9 @@ onBeforeUnmount(() => clearTimeout(undoTimer))
 </script>
 
 <template>
-  <div class="db-scene" :style="{ '--db-scene-image': `url(${sceneBg})` }">
-    <AppNav />
-    <div class="db-card cart-page">
+  <div class="db-page">
+    <AppNav tone="paper" class="db-page-nav" />
+    <div class="db-page-body cart-page">
       <header class="cart-header">
         <h1>我的收藏 <span v-if="selectedCount" class="count">{{ selectedCount }} 件</span></h1>
         <div class="header-actions">
@@ -126,7 +125,6 @@ onBeforeUnmount(() => clearTimeout(undoTimer))
 </template>
 
 <style scoped>
-.cart-page { margin: 1.25rem auto 3rem; padding: 1.75rem 1.5rem 3rem; }
 
 .cart-header { display: flex; align-items: center; justify-content: space-between; gap: 1rem; margin-bottom: 0.75rem; }
 .cart-header h1 {
