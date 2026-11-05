@@ -16,8 +16,9 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 
+from designbridge.core import usage
 from designbridge.core.config import Config
-from routers import favorites, fengshui, floorplan, generate, history, style
+from routers import admin, favorites, fengshui, floorplan, generate, history, style
 
 
 @asynccontextmanager
@@ -71,6 +72,13 @@ async def _limit_body(request: Request, call_next):
     return await call_next(request)
 
 
+@app.middleware("http")
+async def _usage_context(request: Request, call_next):
+    # 讓這個請求裡的 Gemini / fal 呼叫記到對的帳號（get_user_id 會填 user_id）
+    usage.start_request(request.url.path)
+    return await call_next(request)
+
+
 # 解決前後端跨域問題 (具備彈性與擴充性的解法)
 cors_origins = os.getenv("CORS_ORIGINS", "").split(",") if os.getenv("CORS_ORIGINS") else []
 
@@ -83,7 +91,7 @@ app.add_middleware(
 )
 
 
-for _r in (history, favorites, style, floorplan, generate, fengshui):
+for _r in (admin, history, favorites, style, floorplan, generate, fengshui):
     app.include_router(_r.router)
 
 

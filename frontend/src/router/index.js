@@ -1,6 +1,7 @@
 import { hasDraft } from '../composables/design-flow/state'
 import { useAuth, authEnabled } from '../composables/useAuth'
 import { createRouter, createWebHistory } from 'vue-router'
+import { authFetch } from '../config/api'
 import HeroView from '../views/HeroView.vue'
 import StartView from '../views/StartView.vue'
 import StudioView from '../views/StudioView.vue'
@@ -24,6 +25,7 @@ const router = createRouter({
     { path: '/start',   name: 'start',   component: StartView },
     { path: '/studio',  name: 'studio',  component: StudioView },
     { path: '/account', name: 'account', component: AccountView },
+    { path: '/admin',   name: 'admin',   component: () => import('../views/AdminView.vue') },
 
     // 我的設計：登入者每次生成的設計（即歷史紀錄）
     { path: '/designs',   name: 'designs',   component: MyDesignsView },
@@ -42,7 +44,7 @@ const router = createRouter({
 router.beforeEach(to => (to.name === 'studio' && !hasDraft() ? { name: 'start' } : true))
 
 // 需要登入的頁面：未登入就導去 Google 登入，登入後回到原頁（會整頁重載，所以守在 /start 而非 /studio）
-const AUTH_PAGES = ['start', 'account', 'designs', 'cart', 'invite']
+const AUTH_PAGES = ['start', 'account', 'designs', 'cart', 'invite', 'admin']
 router.beforeEach(async to => {
   if (!AUTH_PAGES.includes(to.name)) return true
   // 本機沒設定 Supabase 時不擋，否則會被導去一個無法完成的登入
@@ -50,9 +52,15 @@ router.beforeEach(async to => {
   if (import.meta.env.DEV && import.meta.env.VITE_SKIP_AUTH === '1') return true
   const { user, ready, signInWithGoogle } = useAuth()
   await ready
-  if (user.value) return true
-  signInWithGoogle(to.fullPath)
-  return false
+  if (!user.value) {
+    signInWithGoogle(to.fullPath)
+    return false
+  }
+  if (to.name === 'account') return true
+  // 只擋畫面；真正的權限在後端 get_user_id / require_admin。未開通的帳號一律留在個人專區看提示
+  const me = await authFetch('/api/me').then(r => r.json()).catch(() => ({}))
+  if (me.role === 'pending') return { name: 'account' }
+  return to.name !== 'admin' || me.role === 'admin' || { name: 'account' }
 })
 
 export default router

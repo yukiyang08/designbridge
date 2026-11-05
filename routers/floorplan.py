@@ -7,6 +7,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 
 from routers.common import (
+    charge_credit,
     DesignRequest, _artifact_url, _build_user_input, _layout_render_config, _require_artifact_file,
     check_request_paths, get_user_id,
 )
@@ -441,6 +442,7 @@ def plan_layout(request: DesignRequest, user_id: str = Depends(get_user_id)):
 @router.post("/api/photo-layout")
 def photo_layout(request: PhotoLayoutRequest, user_id: str = Depends(get_user_id)):
     """照片入口：偵測照片裡的家具與門窗成可編輯的俯視佈局，同時跑深度/分割供之後疊回照片投影。"""
+    import contextvars
     from concurrent.futures import ThreadPoolExecutor
 
     from designbridge.core.nodes import visual_preprocessing_local
@@ -451,7 +453,7 @@ def photo_layout(request: PhotoLayoutRequest, user_id: str = Depends(get_user_id
     vision_state = {"user_input": {"initial_image": request.image_path}, "task_id": task_id}
     # Gemini 偵測與本機深度/分割互不相依，並行省一半等待
     with ThreadPoolExecutor(max_workers=2) as pool:
-        plan_future = pool.submit(parse_room_photo, request.image_path, request.room_type)
+        plan_future = pool.submit(contextvars.copy_context().run, parse_room_photo, request.image_path, request.room_type)
         vision_future = pool.submit(visual_preprocessing_local, vision_state)
         plan = plan_future.result()
         vision = vision_future.result() or {}
@@ -477,7 +479,7 @@ def photo_layout(request: PhotoLayoutRequest, user_id: str = Depends(get_user_id
 
 
 @router.post("/api/photo-move")
-def photo_move(request: PhotoMoveRequest, user_id: str = Depends(get_user_id)):
+def photo_move(request: PhotoMoveRequest, user_id: str = Depends(charge_credit)):
     """在原圖上搬家具：挖掉舊位置、補背景、把同一件家具貼到新位置，房間其他部分不重新生成。"""
     from designbridge.core.config import Config
     from designbridge.core.nodes import visual_preprocessing_local

@@ -11,6 +11,7 @@ from __future__ import annotations
 import json
 import os
 import re
+import time
 from pathlib import Path
 from typing import Iterator
 
@@ -146,13 +147,18 @@ def _thinking_config(types):
     return types.ThinkingConfig(thinking_budget=budget)
 
 
-def _model_may_think() -> bool:
-    """模型會自行思考（關不掉）時，呼叫端的 max_tokens 需要另外加思考的餘裕。"""
-    return (
-        Config.GEMINI_THINKING_BUDGET == 0
-        and not Config.GEMINI_MODEL.startswith(("gemini-1.", "gemini-2."))
-        and "flash" not in Config.GEMINI_MODEL
-    )
+def _thinking_headroom() -> int:
+    """思考 token 也算在 max_output_tokens 裡：模型會思考時，呼叫端的 max_tokens 要另外加的餘裕。"""
+    budget = Config.GEMINI_THINKING_BUDGET
+    if budget > 0:
+        return budget
+    if budget < 0:
+        # -1 動態思考：實測一張平面圖想了 3.8k～7.4k token，留少了 JSON 會被截斷
+        return 16384
+    # 0：3.x 非 flash 關不掉思考，模型自己決定
+    if not Config.GEMINI_MODEL.startswith(("gemini-1.", "gemini-2.")) and "flash" not in Config.GEMINI_MODEL:
+        return 4096
+    return 0
 
 
 _clients: dict[str | None, object] = {}  # api_key (None = Vertex) -> cached genai.Client
@@ -165,7 +171,12 @@ def _get_client(api_key: str | None):
         return _clients[api_key]
 
     from google import genai
+    from google.genai import types
 
+    # Vertex 配額滿了回 429；平面圖逐區辨識一次平行 3 個請求，不退避重試就會整批失敗
+    http_options = types.HttpOptions(retry_options=types.HttpRetryOptions(
+        attempts=5, initial_delay=2.0, max_delay=30.0, http_status_codes=[429, 500, 503, 504],
+    ))
     if api_key is None:  # Vertex AI mode
         sa = _find_service_account()
         project = Config.GOOGLE_CLOUD_PROJECT or os.getenv("GOOGLE_CLOUD_PROJECT", "")
@@ -175,9 +186,10 @@ def _get_client(api_key: str | None):
                 project = json.loads(sa.read_text(encoding="utf-8")).get("project_id", "")
         if not project:
             raise RuntimeError("Vertex 模式但找不到 project id（放 service-account.json 或設 GOOGLE_CLOUD_PROJECT）")
-        client = genai.Client(vertexai=True, project=project, location=Config.GOOGLE_CLOUD_LOCATION)
+        client = genai.Client(vertexai=True, project=project, location=Config.GOOGLE_CLOUD_LOCATION,
+                              http_options=http_options)
     else:
-        client = genai.Client(api_key=api_key)
+        client = genai.Client(api_key=api_key, http_options=http_options)
     _clients[api_key] = client
     return client
 
@@ -194,8 +206,8 @@ def _gemini_client_and_config(
         raise RuntimeError("google-genai 未安裝。請先執行: pip install google-genai") from exc
 
     client = _get_client(api_key)
-    if max_tokens is not None and _model_may_think():
-        max_tokens += 4096   # 思考 token 也算在 max_output_tokens 裡
+    if max_tokens is not None:
+        max_tokens += _thinking_headroom()
     cfg = types.GenerateContentConfig(
         temperature=temperature if temperature is not None else Config.GEMINI_TEMPERATURE,
         **({"max_output_tokens": max_tokens} if max_tokens is not None else {}),
@@ -469,6 +481,16 @@ def _call_llama_stream(
 
 # ── Public API ───────────────────────────────────────────────────────────────
 
+def _record_gemini_usage(usage, duration_s: float) -> None:
+    """記到帳號用量；思考 token 跟輸出同價，併進 completion。"""
+    from designbridge.core import usage as usage_log
+
+    if usage is None:
+        return
+    out = (getattr(usage, "candidates_token_count", 0) or 0) + (getattr(usage, "thoughts_token_count", 0) or 0)
+    usage_log.record_llm(Config.GEMINI_MODEL, getattr(usage, "prompt_token_count", 0), out, duration_s)
+
+
 def call_llm(
     prompt: str,
     *,
@@ -508,6 +530,7 @@ def call_llm(
     errors: list[str] = []
     for i, api_key in enumerate(keys):
         try:
+            started = time.perf_counter()
             client, cfg = _gemini_client_and_config(api_key, system, temperature, max_tokens)
             if converted is not None:
                 chat = client.chats.create(model=Config.GEMINI_MODEL, config=cfg, history=converted)
@@ -525,6 +548,10 @@ def call_llm(
                 "completion_tokens": getattr(usage, "candidates_token_count", None) if usage else None,
                 "total_tokens": getattr(usage, "total_token_count", None) if usage else None,
             })
+            _record_gemini_usage(usage, time.perf_counter() - started)
+            if not response.text:
+                cand = (response.candidates or [None])[0]
+                print(f"⚠️  Gemini 回了空內容（finish_reason={getattr(cand, 'finish_reason', None)}）")
             return response.text or ""
         except Exception as e:  # noqa: BLE001
             errors.append(f"[key {i + 1}/{len(keys)}] {e}")
@@ -573,6 +600,7 @@ def call_llm_stream(
     for i, api_key in enumerate(keys):
         yielded_any = False
         try:
+            started = time.perf_counter()
             client, cfg = _gemini_client_and_config(api_key, system, temperature, max_tokens)
             if converted is not None:
                 chat = client.chats.create(model=Config.GEMINI_MODEL, config=cfg, history=converted)
@@ -581,10 +609,13 @@ def call_llm_stream(
                 stream = client.models.generate_content_stream(
                     model=Config.GEMINI_MODEL, contents=parts, config=cfg
                 )
+            usage = None
             for chunk in stream:
+                usage = getattr(chunk, "usage_metadata", None) or usage
                 if chunk.text:
                     yielded_any = True
                     yield chunk.text
+            _record_gemini_usage(usage, time.perf_counter() - started)
             return
         except Exception as e:  # noqa: BLE001
             if yielded_any:

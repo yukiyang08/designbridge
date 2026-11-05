@@ -777,8 +777,12 @@ def _fal_flux_general(endpoint: str, arguments: dict) -> bytes:
     import fal_client
     import requests
 
+    from designbridge.core import usage
+
+    start = time.perf_counter()
     result = fal_client.subscribe(endpoint, arguments=arguments, with_logs=False,
                                   client_timeout=Config.FAL_TIMEOUT_S)
+    usage.record_fal(endpoint, result, time.perf_counter() - start)
     resp = requests.get(result["images"][0]["url"], timeout=60)
     resp.raise_for_status()
     return resp.content

@@ -6,10 +6,11 @@ import threading
 from pathlib import Path
 from typing import Optional, List
 
-from fastapi import Header, HTTPException, Request
+from fastapi import Depends, Header, HTTPException, Request
 from pydantic import BaseModel, Field, model_validator
 
 from designbridge import get_compiled_graph
+from designbridge.core import usage
 from designbridge.style.style_supabase import _get_supabase
 
 # 對外可存取的後端網址；非本機 8000 埠（換埠、部署、手機連區網）時用 API_PUBLIC_URL 覆蓋
@@ -36,16 +37,77 @@ def get_user_id(request: Request, authorization: Optional[str] = Header(None)) -
     """驗證前端帶來的 Supabase JWT，回傳 user_id；沒登入或 token 無效就 401。
 
     DEV_NO_AUTH 開啟且請求來自本機、又沒帶 token 時回傳空字串（呼叫端據此跳過雲端存檔）。
+    只有名單內（app_metadata.role 為 admin/user）的帳號能用，其餘 403。
     """
+    user = _get_user(request, authorization)
+    if user and user_role(user) == "pending" and activate_if_allowed(user) == "pending":
+        raise HTTPException(status_code=403, detail="帳號尚未開通，請聯絡管理員")
+    usage.set_user(user.id if user else "")
+    return user.id if user else ""
+
+
+def get_login_id(request: Request, authorization: Optional[str] = Header(None)) -> str:
+    """只驗證登入、不看名單；給 /api/me 讓未開通的帳號也能知道自己的狀態。"""
+    user = _get_user(request, authorization)
+    return user.id if user else ""
+
+
+def user_role(user) -> str:
+    """admin / user 為名單內帳號；沒設角色的新帳號是 pending（未開通）。"""
+    return (user.app_metadata or {}).get("role") or "pending"
+
+
+def activate_if_allowed(user) -> str:
+    """未開通帳號的 email 若在許可名單（allowed_emails）就開通並移出名單；回傳開通後的角色。"""
+    sb = _get_supabase()
+    email = (user.email or "").lower()
+    try:
+        rows = sb.table("allowed_emails").select("role").eq("email", email).execute().data
+        if not rows:
+            return "pending"
+        role = rows[0]["role"]
+        sb.auth.admin.update_user_by_id(user.id, {"app_metadata": {**(user.app_metadata or {}), "role": role}})
+        sb.table("allowed_emails").delete().eq("email", email).execute()
+    except Exception as e:  # noqa: BLE001 — 名單表還沒建時當作不在名單
+        print(f"⚠️ [auth] 查許可名單失敗：{e}")
+        return "pending"
+    return role
+
+
+def _get_user(request: Request, authorization: Optional[str]):
     token = (authorization or "").removeprefix("Bearer ").strip()
     if not token:
         if DEV_NO_AUTH and request.client and request.client.host in _LOCAL_HOSTS:
-            return ""
+            return None
         raise HTTPException(status_code=401, detail="請先登入")
     try:
-        return _get_supabase().auth.get_user(token).user.id
+        return _get_supabase().auth.get_user(token).user
     except Exception:
         raise HTTPException(status_code=401, detail="登入已失效，請重新登入")
+
+
+def require_admin(request: Request, authorization: Optional[str] = Header(None)) -> str:
+    user = _get_user(request, authorization)
+    if not user or user_role(user) != "admin":
+        raise HTTPException(status_code=403, detail="需要管理員權限")
+    return user.id
+
+
+def charge_credit(user_id: str = Depends(get_user_id)):
+    """生圖類 API 的依賴：先扣 1 點，端點丟例外（生成失敗）就退回。點數邏輯見 docs/sql/credits.sql。"""
+    if not user_id:   # DEV_NO_AUTH 的本機請求
+        yield user_id
+        return
+    sb = _get_supabase()
+    remaining = sb.rpc("consume_credit", {"uid": user_id, "amount": 1}).execute().data
+    if remaining is None:
+        raise HTTPException(status_code=402, detail="點數不足，請聯絡管理員")
+    try:
+        yield user_id
+    except Exception:
+        if remaining >= 0:   # 管理員回 -1，沒扣就不退
+            sb.rpc("consume_credit", {"uid": user_id, "amount": -1}).execute()
+        raise
 
 
 ARTIFACTS_DIR = (Path(__file__).parent.parent / "artifacts").resolve()

@@ -11,6 +11,7 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field, model_validator
 
 from routers.common import (
+    charge_credit,
     get_user_id, ensure_artifact, _MAX_PAYLOAD_CHARS,
     API_PUBLIC_URL, DesignRequest, _artifact_url, _build_user_input, _get_graph, _inside_artifacts, _walk_paths, check_request_paths,
     _is_artifact_file, _layout_render_config, _require_artifact_file,
@@ -150,7 +151,7 @@ def prefetch_layout_conditions(request: PrefetchConditionsRequest, user_id: str 
 
 # 3. 建立 POST 路由
 @router.post("/api/generate")
-def generate_design(request: DesignRequest, user_id: str = Depends(get_user_id)):
+def generate_design(request: DesignRequest, user_id: str = Depends(charge_credit)):
     check_request_paths(request)
     try:
         # 微調的底圖、換風格的上一張圖：本機沒有就從 Storage 補回（見 ensure_artifact）
@@ -368,7 +369,7 @@ def furniture_instances_endpoint(request: _PlanRequest, user_id: str = Depends(g
 
 
 @router.post("/api/move-furniture")
-def move_furniture_endpoint(request: MoveFurnitureRequest, user_id: str = Depends(get_user_id)):
+def move_furniture_endpoint(request: MoveFurnitureRequest, user_id: str = Depends(charge_credit)):
     """移動家具後，用舊圖剪貼出的合成圖當起點，只重修舊位置與家具邊緣，不從零重生。"""
     from designbridge.render.move_furniture import MoveFurnitureError, move_furniture, move_instances
 
@@ -518,7 +519,7 @@ def _resolve_depth_for_panorama(request: PanoramaRequest, out_dir: Path) -> Path
 
 
 @router.post("/api/generate-panorama")
-def generate_panorama(request: PanoramaRequest, user_id: str = Depends(get_user_id)):
+def generate_panorama(request: PanoramaRequest, user_id: str = Depends(charge_credit)):
     """按需生成 Text2Room 全景圖，獨立於主要生成流程。"""
     if request.depth_path and not _inside_artifacts(request.depth_path):
         raise HTTPException(status_code=400, detail=f"路徑不合法：{request.depth_path}")

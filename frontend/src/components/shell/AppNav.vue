@@ -4,6 +4,7 @@ import { ref, computed, watch, onMounted, onBeforeUnmount } from 'vue'
 import { RouterLink, useRoute } from 'vue-router'
 import { useAuth } from '@/composables/useAuth'
 import { useFurnitureSelection } from '@/composables/useFurnitureSelection'
+import { authFetch } from '@/config/api'
 import logo from '../../../asset/designbridge_logo.png'
 
 const { user, signInWithGoogle, signOut } = useAuth()
@@ -22,6 +23,15 @@ watch(() => route.fullPath, () => { navOpen.value = false; menuOpen.value = fals
 const menuEl = ref(null)
 const displayName = computed(() => user.value?.user_metadata?.name || user.value?.email || '')
 const initial = computed(() => (displayName.value[0] || '?').toUpperCase())
+
+// 只決定要不要顯示入口；真正的權限在後端 require_admin
+const isAdmin = ref(false)
+watch(user, async u => {
+  isAdmin.value = false
+  if (!u) return
+  const me = await authFetch('/api/me').then(r => r.json()).catch(() => ({}))
+  isAdmin.value = me.role === 'admin'
+}, { immediate: true })
 
 function onDocClick(e) {
   navOpen.value = false   // 漢堡鈕與選單本身都有 @click.stop，走到這裡一定是點在外面
@@ -75,6 +85,7 @@ onBeforeUnmount(() => {
             <small v-if="user.user_metadata?.name">{{ user.email }}</small>
           </div>
           <RouterLink to="/account">個人專區</RouterLink>
+          <RouterLink v-if="isAdmin" to="/admin">管理員後台</RouterLink>
           <button type="button" @click="signOut">登出</button>
         </div>
       </div>
@@ -99,6 +110,7 @@ onBeforeUnmount(() => {
           <RouterLink to="/cart">我的收藏<span v-if="selectedCount" class="nav-count">{{ selectedCount }}</span></RouterLink>
           <template v-if="user">
             <RouterLink to="/account">個人專區</RouterLink>
+            <RouterLink v-if="isAdmin" to="/admin">管理員後台</RouterLink>
             <div class="m-who">{{ displayName }}</div>
             <button type="button" @click="signOut">登出</button>
           </template>

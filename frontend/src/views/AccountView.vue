@@ -6,7 +6,9 @@
  * 「家具查詢」：那是既有的 /furniture 頁，舊版靠工作台的浮動按鈕進入，新版工作台
  * 沒有浮動按鈕了，不給它一個入口就會變成沒人找得到的孤兒頁。
  */
+import { onMounted, ref } from 'vue'
 import { RouterLink } from 'vue-router'
+import { authFetch } from '@/config/api'
 import { useAuth } from '@/composables/useAuth'
 import AppNav from '@/components/shell/AppNav.vue'
 import { useFurnitureSelection } from '@/composables/useFurnitureSelection'
@@ -14,6 +16,12 @@ import sceneBg from '@/assets/figma/room-bg.png'
 
 const { selectedCount } = useFurnitureSelection()
 const { user, signOut } = useAuth()
+
+const me = ref(null)
+onMounted(async () => {
+  const res = await authFetch('/api/me').catch(() => null)
+  if (res?.ok) me.value = await res.json()
+})
 
 const SECTIONS = [
   {
@@ -36,6 +44,11 @@ const SECTIONS = [
           <span v-if="user?.user_metadata?.name">（{{ user.email }}）</span>
           · <a href="#" @click.prevent="signOut">登出</a>
         </p>
+        <p v-if="me" class="lead credits">
+          {{ me.role === 'admin' ? '管理員（生圖不扣點）'
+            : me.role === 'pending' ? '帳號尚未開通，請聯絡管理員把你加入名單。'
+            : `剩餘生圖點數：${me.credits} 點` }}
+        </p>
 
         <div class="cards">
           <RouterLink v-for="s in SECTIONS" :key="s.to" :to="s.to" class="entry">
@@ -44,6 +57,11 @@ const SECTIONS = [
               <span v-if="s.to === '/cart' && selectedCount" class="count">{{ selectedCount }}</span>
             </h2>
             <p>{{ s.desc }}</p>
+            <span class="go">前往 →</span>
+          </RouterLink>
+          <RouterLink v-if="me?.role === 'admin'" to="/admin" class="entry">
+            <h2>後台管理</h2>
+            <p>查看所有帳號，設定角色與生圖點數。</p>
             <span class="go">前往 →</span>
           </RouterLink>
         </div>
@@ -98,6 +116,7 @@ const SECTIONS = [
   color: var(--db-text);
 }
 .lead { margin: 0 0 2rem; color: var(--db-text-soft); }
+.lead:has(+ .credits) { margin-bottom: 0.4rem; }
 
 .cards {
   display: grid;
