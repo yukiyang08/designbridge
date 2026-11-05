@@ -26,7 +26,7 @@
       `uvicorn api:app --host 0.0.0.0 --port 8000 --workers 1`
 - [ ] VM 前面放 Caddy 或 nginx 反向代理，提供 HTTPS
 - [ ] 後端 `.env`：`CORS_ORIGINS=https://<前端網域>`、`API_PUBLIC_URL=https://<後端網域>`，其餘沿用 `FAL_KEY`、`HF_TOKEN`、`SUPABASE_URL`、`SUPABASE_SERVICE_ROLE_KEY`、`PYTHONUTF8=1`
-- [ ] 確認 `DESIGNBRIDGE_DEV_NO_AUTH` 沒有開
+- [ ] 確認 `DESIGNBRIDGE_DEV_NO_AUTH` 與 `DESIGNBRIDGE_DEV_TOOLS`（Swagger、debug-console）都沒有開
 - [ ] 前端 build 時設 `VITE_API_BASE=https://<後端網域>`、`VITE_SUPABASE_URL`、`VITE_SUPABASE_ANON_KEY`
 - [ ] `StyleSuggestions.vue` 的 `apiBase` 預設寫死 `http://localhost:8000`，確認父元件有傳值
 - [ ] Supabase → Authentication → URL Configuration：Site URL 與 Redirect URLs 加上正式網域

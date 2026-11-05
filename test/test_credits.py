@@ -104,3 +104,36 @@ def test_allowlisted_email_activates(monkeypatch):
     monkeypatch.setattr(common, "_get_user", lambda *_a: user("b@x.com"))
     with pytest.raises(HTTPException):
         common.get_user_id(None)
+
+
+def test_concurrent_runs_limited(monkeypatch):
+    """每人同時生圖數有上限，結束（含失敗）後釋放；全站也有上限。"""
+    import pytest
+    monkeypatch.setattr(common, "_runs", {})
+    for _ in range(common._MAX_RUNS_PER_USER):
+        common._acquire_run("u1")
+    with pytest.raises(HTTPException) as e:
+        common._acquire_run("u1")
+    assert e.value.status_code == 429
+    common._release_run("u1")
+    common._acquire_run("u1")   # 釋放一個就能再進
+    for i in range(common._MAX_RUNS_TOTAL - common._MAX_RUNS_PER_USER):
+        common._acquire_run(f"other{i}")
+    with pytest.raises(HTTPException):
+        common._acquire_run("new-user")
+
+
+def test_runs_released_after_failure(monkeypatch):
+    monkeypatch.setattr(common, "_runs", {})
+    c = _client(monkeypatch, _FakeSb(10))
+    for _ in range(common._MAX_RUNS_PER_USER + 1):
+        assert c.post("/fail").status_code == 502
+    assert common._runs == {}
+
+
+def test_dev_no_auth_ignores_proxied(monkeypatch):
+    """經 Caddy 轉發的請求（帶 X-Forwarded-For）不能吃 DEV_NO_AUTH 免登入。"""
+    from types import SimpleNamespace
+    local = lambda headers: SimpleNamespace(client=SimpleNamespace(host="127.0.0.1"), headers=headers)
+    assert common._is_local_direct(local({}))
+    assert not common._is_local_direct(local({"x-forwarded-for": "1.2.3.4"}))

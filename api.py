@@ -37,10 +37,16 @@ async def _app_lifespan(_: FastAPI):
     yield
 
 
+# Swagger 與 debug-console 預設關閉，本機 .env 設 DESIGNBRIDGE_DEV_TOOLS=1 才開
+DEV_TOOLS = os.getenv("DESIGNBRIDGE_DEV_TOOLS", "").lower() in ("1", "true", "yes")
+
 app = FastAPI(
     title="DesignBridge API",
     description="室內設計 AI 工作流接口",
     lifespan=_app_lifespan,
+    docs_url="/docs" if DEV_TOOLS else None,
+    redoc_url="/redoc" if DEV_TOOLS else None,
+    openapi_url="/openapi.json" if DEV_TOOLS else None,
 )
 
 artifacts_dir = Path("artifacts")
@@ -57,7 +63,7 @@ product_mesh_dir.mkdir(parents=True, exist_ok=True)
 app.mount("/product-meshes", StaticFiles(directory=str(product_mesh_dir)), name="product-meshes")
 
 debug_console_dir = Path("debug-console")
-if debug_console_dir.exists():
+if DEV_TOOLS and debug_console_dir.exists():
     app.mount("/debug-console", StaticFiles(directory=str(debug_console_dir), html=True), name="debug-console")
 
 _MAX_BODY_BYTES = 30 * 1024 * 1024   # 圖片上限 20 MB + multipart 開銷

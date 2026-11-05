@@ -42,14 +42,14 @@ class PhotoMoveRequest(BaseModel):
 
 class RoomProgramRequest(BaseModel):
     """輸入：整層樓的房間需求（幾房幾廳…）+ 總坪數，獨立於既有單房家具佈局流程。"""
-    bedroom_count: int = 2
-    living_count: int = 1
-    bathroom_count: int = 1
-    dining_count: int = 0
-    kitchen_count: int = 1
-    balcony_count: int = 1
-    total_ping: float = 25.0
-    extra_rooms: List[str] = []      # 自訂空間名稱（書房、儲藏室…），每個 1 間
+    bedroom_count: int = Field(default=2, ge=0, le=10)
+    living_count: int = Field(default=1, ge=0, le=10)
+    bathroom_count: int = Field(default=1, ge=0, le=10)
+    dining_count: int = Field(default=0, ge=0, le=10)
+    kitchen_count: int = Field(default=1, ge=0, le=10)
+    balcony_count: int = Field(default=1, ge=0, le=10)
+    total_ping: float = Field(default=25.0, gt=0, le=500)
+    extra_rooms: List[str] = Field(default=[], max_length=10)      # 自訂空間名稱（書房、儲藏室…），每個 1 間
     room_w: Optional[float] = None   # 自訂整層外框寬/深（公尺），兩者都給才生效，此時 total_ping 以 w*d 換算
     room_d: Optional[float] = None
 
@@ -296,7 +296,7 @@ class RescalePlanRequest(BaseModel):
 
 
 @router.post("/api/rescale-upload-plan")
-def rescale_upload_plan_endpoint(request: RescalePlanRequest):
+def rescale_upload_plan_endpoint(request: RescalePlanRequest, user_id: str = Depends(get_user_id)):
     """使用者校正總坪數：整張上傳平面圖等比例重算尺寸並重畫，不重跑房間辨識。"""
     from designbridge.layout.floorplan_upload_plan import rescale_upload_plan
 
@@ -317,11 +317,11 @@ class CropFloorPlanRequest(BaseModel):
     y: float
     w: float
     h: float
-    polygon: Optional[List[List[float]]] = None  # 正規化 [[x, y], ...]；有給就把房間外塗白
+    polygon: Optional[List[List[float]]] = Field(default=None, max_length=200)  # 正規化 [[x, y], ...]；有給就把房間外塗白
 
 
 @router.post("/api/crop-floor-plan")
-def crop_floor_plan(request: CropFloorPlanRequest):
+def crop_floor_plan(request: CropFloorPlanRequest, user_id: str = Depends(get_user_id)):
     """依使用者選定的房間邊界框，從整戶平面圖裁出單一房間的子圖。"""
     _require_artifact_file(request.image_path)
 
@@ -360,14 +360,14 @@ def crop_floor_plan(request: CropFloorPlanRequest):
 
 
 class FloorPlanRenderRequest(BaseModel):
-    furniture_placements: List[dict]
-    room_w: float = 5.0
-    room_d: float = 4.0
+    furniture_placements: List[dict] = Field(max_length=300)
+    room_w: float = Field(default=5.0, gt=0, le=100)
+    room_d: float = Field(default=4.0, gt=0, le=100)
     room_type: str = "living_room"
 
 
 @router.post("/api/render-floor-plan")
-def render_floor_plan(request: FloorPlanRenderRequest):
+def render_floor_plan(request: FloorPlanRenderRequest, user_id: str = Depends(get_user_id)):
     """Re-render the 2D floor plan PNG from (edited) furniture placements."""
     import uuid as _uuid
     try:

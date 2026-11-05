@@ -11,7 +11,7 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field, model_validator
 
 from routers.common import (
-    charge_credit,
+    charge_credit, is_admin,
     get_user_id, ensure_artifact, _MAX_PAYLOAD_CHARS,
     API_PUBLIC_URL, DesignRequest, _artifact_url, _build_user_input, _get_graph, _inside_artifacts, _walk_paths, check_request_paths,
     _is_artifact_file, _layout_render_config, _require_artifact_file,
@@ -149,10 +149,22 @@ def prefetch_layout_conditions(request: PrefetchConditionsRequest, user_id: str 
     return {"started": prefetch(placements, request.room_w, request.room_d, width, height)}
 
 
+# debug-console 專用的渲染覆寫（DesignRequest 的 *_override 等欄位），會改變步數與費用
+_DEBUG_FIELDS = ("controlnet_model_override", "controlnet_scale_override", "controlnet_steps_override",
+                 "controlnet_guidance_override", "controlnet_control_end_override", "lora_overrides",
+                 "disable_edge_control", "disable_lora")
+
+
+def _has_debug_overrides(request: DesignRequest) -> bool:
+    return any(getattr(request, f) is not None for f in _DEBUG_FIELDS)
+
+
 # 3. 建立 POST 路由
 @router.post("/api/generate")
 def generate_design(request: DesignRequest, user_id: str = Depends(charge_credit)):
     check_request_paths(request)
+    if user_id and _has_debug_overrides(request) and not is_admin(user_id):
+        raise HTTPException(status_code=403, detail="除錯參數只限管理員使用")
     try:
         # 微調的底圖、換風格的上一張圖：本機沒有就從 Storage 補回（見 ensure_artifact）
         ensure_artifact(request.initial_image_path, user_id)

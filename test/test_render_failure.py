@@ -67,13 +67,14 @@ def test_generate_returns_502_when_render_failed(monkeypatch):
 
     import api
     from routers import generate as gen
-    from routers.common import get_user_id
+    from routers.common import charge_credit, get_user_id
 
     failed = {"generated_image": "artifacts/render/missing.png",
               "render_result": {"generation_params": {"backend": "placeholder", "render_error": "所有雲端後端皆失敗"}}}
     monkeypatch.setattr(gen, "_get_graph", lambda: SimpleNamespace(invoke=lambda state: failed))
     monkeypatch.setattr(gen, "_save_history", lambda *a, **k: pytest.fail("失敗結果不該存進歷史"))
     monkeypatch.setitem(api.app.dependency_overrides, get_user_id, lambda: "u1")
+    monkeypatch.setitem(api.app.dependency_overrides, charge_credit, lambda: "u1")   # 不真的扣點
     res = TestClient(api.app).post("/api/generate", json={"text_prompt": "x"})
     assert res.status_code == 502
     assert "生成失敗" in res.json()["detail"]

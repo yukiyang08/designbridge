@@ -1,7 +1,7 @@
 """Style KB search/preview, furniture catalog and style profile endpoints."""
 from typing import Optional
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Query
 
 from designbridge.style.style_apply import list_available_style_profiles
 from style_kb.styles import STYLES
@@ -10,12 +10,12 @@ router = APIRouter()
 
 @router.get("/api/style-search")
 def search_styles(
-    query: str = "",
-    style_id: str = "",
-    top_k: int = 3,
+    query: str = Query("", max_length=500),
+    style_id: str = Query("", max_length=64),
+    top_k: int = Query(3, ge=1, le=50),   # 前端一次要 24 張
     diverse: bool = False,
-    anchor_image_url: str = "",
-    space: str = "",
+    anchor_image_url: str = Query("", max_length=2000),
+    space: str = Query("", max_length=64),
 ):
     """向量搜尋最相似的風格參考圖，回傳多筆候選供使用者選擇。
 
@@ -124,8 +124,8 @@ def search_styles(
 
 @router.get("/api/style-preview")
 def get_style_preview(
-    query: str = "",
-    style_id: str = "",
+    query: str = Query("", max_length=500),
+    style_id: str = Query("", max_length=64),
 ):
     """根據文字語意搜尋最符合的風格參考圖（Supabase pgvector），供前端即時預覽。"""
     sid = style_id.strip() or ""
@@ -175,9 +175,9 @@ def get_furniture(
     max_price: Optional[float] = None,
     brand: str = "",
     style: str = "",
-    q: str = "",
+    q: str = Query("", max_length=200),
     sort: str = "",
-    limit: int = 60,
+    limit: int = Query(60, ge=1, le=200),
     offset: int = 0,
 ):
     """瀏覽 / 篩選家具清單（分類 + 價位區間 + 品牌 + 風格 + 關鍵字），分頁回傳。"""

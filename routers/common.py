@@ -74,10 +74,16 @@ def activate_if_allowed(user) -> str:
     return role
 
 
+def _is_local_direct(request: Request) -> bool:
+    # 經 Caddy 轉發的請求來源也是 127.0.0.1，帶 X-Forwarded-For 的不算本機
+    return bool(request.client and request.client.host in _LOCAL_HOSTS
+                and "x-forwarded-for" not in request.headers)
+
+
 def _get_user(request: Request, authorization: Optional[str]):
     token = (authorization or "").removeprefix("Bearer ").strip()
     if not token:
-        if DEV_NO_AUTH and request.client and request.client.host in _LOCAL_HOSTS:
+        if DEV_NO_AUTH and _is_local_direct(request):
             return None
         raise HTTPException(status_code=401, detail="請先登入")
     try:
@@ -93,21 +99,55 @@ def require_admin(request: Request, authorization: Optional[str] = Header(None))
     return user.id
 
 
-def charge_credit(user_id: str = Depends(get_user_id)):
-    """生圖類 API 的依賴：先扣 1 點，端點丟例外（生成失敗）就退回。點數邏輯見 docs/sql/credits.sql。"""
-    if not user_id:   # DEV_NO_AUTH 的本機請求
-        yield user_id
-        return
-    sb = _get_supabase()
-    remaining = sb.rpc("consume_credit", {"uid": user_id, "amount": 1}).execute().data
-    if remaining is None:
-        raise HTTPException(status_code=402, detail="點數不足，請聯絡管理員")
+def is_admin(user_id: str) -> bool:
     try:
-        yield user_id
+        return user_role(_get_supabase().auth.admin.get_user_by_id(user_id).user) == "admin"
     except Exception:
-        if remaining >= 0:   # 管理員回 -1，沒扣就不退
-            sb.rpc("consume_credit", {"uid": user_id, "amount": -1}).execute()
-        raise
+        return False
+
+
+# 同時進行中的生圖數：每人上限對齊前端批次的 CONCURRENCY（cadBatch.js），全站上限防記憶體爆掉
+_MAX_RUNS_PER_USER = 4
+_MAX_RUNS_TOTAL = 8
+_runs: dict = {}
+_runs_lock = threading.Lock()
+
+
+def _acquire_run(user_id: str) -> None:
+    with _runs_lock:
+        if sum(_runs.values()) >= _MAX_RUNS_TOTAL:
+            raise HTTPException(status_code=429, detail="伺服器忙碌中，請稍後再試")
+        if _runs.get(user_id, 0) >= _MAX_RUNS_PER_USER:
+            raise HTTPException(status_code=429, detail="同時進行的生成太多，請等前面的完成")
+        _runs[user_id] = _runs.get(user_id, 0) + 1
+
+
+def _release_run(user_id: str) -> None:
+    with _runs_lock:
+        _runs[user_id] -= 1
+        if not _runs[user_id]:
+            del _runs[user_id]
+
+
+def charge_credit(user_id: str = Depends(get_user_id)):
+    """生圖類 API 的依賴：限制同時進行數，先扣 1 點，端點丟例外（生成失敗）就退回。點數邏輯見 docs/sql/credits.sql。"""
+    _acquire_run(user_id)
+    try:
+        if not user_id:   # DEV_NO_AUTH 的本機請求
+            yield user_id
+            return
+        sb = _get_supabase()
+        remaining = sb.rpc("consume_credit", {"uid": user_id, "amount": 1}).execute().data
+        if remaining is None:
+            raise HTTPException(status_code=402, detail="點數不足，請聯絡管理員")
+        try:
+            yield user_id
+        except Exception:
+            if remaining >= 0:   # 管理員回 -1，沒扣就不退
+                sb.rpc("consume_credit", {"uid": user_id, "amount": -1}).execute()
+            raise
+    finally:
+        _release_run(user_id)
 
 
 ARTIFACTS_DIR = (Path(__file__).parent.parent / "artifacts").resolve()

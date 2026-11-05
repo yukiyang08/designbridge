@@ -2,7 +2,7 @@
 from typing import List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from routers.common import _require_artifact_file, get_user_id
 
@@ -10,9 +10,9 @@ router = APIRouter()
 
 
 class AuditRequest(BaseModel):
-    placements: List[dict]
-    room_w: float = 5.0
-    room_d: float = 4.0
+    placements: List[dict] = Field(max_length=300)
+    room_w: float = Field(default=5.0, gt=0, le=100)
+    room_d: float = Field(default=4.0, gt=0, le=100)
     room_type: Optional[str] = None
     # 兩者都不給 = 用預設門窗推估，報告會標記 assumed_openings
     doors: Optional[List[dict]] = None
@@ -30,7 +30,7 @@ class PhotoAuditRequest(BaseModel):
 
 
 @router.post("/api/fengshui/audit")
-def fengshui_audit(request: AuditRequest):
+def fengshui_audit(request: AuditRequest, user_id: str = Depends(get_user_id)):
     from designbridge.layout.fengshui_audit import audit_layout
     return audit_layout(
         request.placements, request.room_w, request.room_d, request.room_type,
@@ -39,7 +39,7 @@ def fengshui_audit(request: AuditRequest):
 
 
 @router.post("/api/fengshui/fix")
-def fengshui_fix(request: FixRequest):
+def fengshui_fix(request: FixRequest, user_id: str = Depends(get_user_id)):
     from designbridge.layout.fengshui_audit import (
         DEFAULT_DOORS, DEFAULT_WINDOWS, audit_layout, fix_layout,
     )
