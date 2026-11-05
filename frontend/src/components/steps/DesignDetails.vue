@@ -153,9 +153,9 @@ const depthMaps = computed(() => {
 
 .card {
   padding: 1.1rem 1.25rem;
-  border: 1px solid #ececec;
+  border: 1px solid var(--db-line);
   border-radius: 12px;
-  background: #fcfcfc;
+  background: var(--db-chip-soft);
 }
 
 .card-title {
@@ -230,7 +230,7 @@ const depthMaps = computed(() => {
   border: 1px solid rgba(0, 0, 0, 0.08);
 }
 .swatch-label { font-size: 0.72rem; color: var(--db-text-soft); }
-.swatch-hex { font-size: 0.68rem; color: var(--db-placeholder); font-variant-numeric: tabular-nums; }
+.swatch-hex { font-size: 0.68rem; color: var(--db-text-soft); font-variant-numeric: tabular-nums; }
 
 .tags { display: flex; flex-wrap: wrap; gap: 0.4rem; margin-top: 0.9rem; }
 .tag {
@@ -255,14 +255,14 @@ const depthMaps = computed(() => {
 }
 .raw-toggle:hover { color: var(--db-text); }
 .raw-group { display: grid; gap: 0.9rem; margin-top: 0.85rem; }
-.raw-label { font-size: 0.78rem; color: var(--db-placeholder); margin-bottom: 0.3rem; }
+.raw-label { font-size: 0.78rem; color: var(--db-text-soft); margin-bottom: 0.3rem; }
 .raw {
   max-height: 320px;
   margin: 0;
   padding: 0.75rem;
   overflow: auto;
   border-radius: 8px;
-  background: #f4f4f4;
+  background: var(--db-chip-soft);
   font-size: 0.75rem;
   line-height: 1.55;
 }

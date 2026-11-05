@@ -1,4 +1,5 @@
 <script setup>
+import { Icon } from '@iconify/vue'
 /**
  * 我的設計 — 目前登入者的設計（即歷史紀錄）。一張卡片 = 一個設計（project），
  * 底下分空間（客廳、主臥…），每個空間有多張渲染圖（每次生成／換風格／微調各一張）。
@@ -351,9 +352,9 @@ function reuseDesign(r) {
             <span v-if="projectStatus(p)" :class="['status', projectStatus(p).cls]">{{ projectStatus(p).text }}</span>
             <span v-if="!p.isOwner" class="shared-tag">共編</span>
             <button
-              v-if="p.isOwner" type="button" class="del-btn" title="刪除整個設計" :disabled="deleting"
+              v-if="p.isOwner" type="button" class="del-btn" title="刪除整個設計" aria-label="刪除整個設計" :disabled="deleting"
               @click.stop="deleteProject(p)"
-            >✕</button>
+            ><Icon icon="mdi:close" aria-hidden="true" /></button>
           </div>
           <div class="card-body">
             <p class="card-title">{{ p.title }}</p>
@@ -398,7 +399,7 @@ function reuseDesign(r) {
       <div class="panel" role="dialog" aria-modal="true">
         <header class="panel-head">
           <h2>{{ openProject.title }}</h2>
-          <button type="button" class="x" aria-label="關閉" @click="closeDetail">✕</button>
+          <button type="button" class="x" aria-label="關閉" @click="closeDetail"><Icon icon="mdi:close" aria-hidden="true" /></button>
         </header>
 
         <div v-if="openProject.spaces.length > 1" class="tabs">
@@ -484,7 +485,7 @@ function reuseDesign(r) {
       <div class="panel share-panel" role="dialog" aria-modal="true" :aria-label="`分享 ${shareProject?.title}`">
         <header class="panel-head">
           <h2>分享「{{ shareProject?.title }}」</h2>
-          <button type="button" class="x" aria-label="關閉" @click="shareOpen = false">✕</button>
+          <button type="button" class="x" aria-label="關閉" @click="shareOpen = false"><Icon icon="mdi:close" aria-hidden="true" /></button>
         </header>
         <p v-if="shareError" class="db-error">{{ shareError }}</p>
         <div v-if="sharing" class="share-body">
@@ -503,7 +504,7 @@ function reuseDesign(r) {
             <template v-else>
               <div class="share-link">
                 <input readonly :value="linkOf(k)" aria-label="連結" @focus="$event.target.select()" />
-                <button type="button" class="db-btn db-btn--sm" @click="copyLink(k)">{{ copied === k.key ? '✓ 已複製' : '複製連結' }}</button>
+                <button type="button" class="db-btn db-btn--sm" @click="copyLink(k)"><template v-if="copied === k.key"><Icon icon="mdi:check" aria-hidden="true" /> 已複製</template><template v-else>複製連結</template></button>
               </div>
               <button type="button" class="link-btn share-stop" :disabled="shareBusy" @click="stopShare(k)">停用這個連結</button>
             </template>
@@ -547,7 +548,7 @@ function reuseDesign(r) {
 }
 .share-panel { width: min(520px, 100%); }
 .share-body { display: flex; flex-direction: column; gap: 0.9rem; }
-.share-card { display: flex; flex-direction: column; gap: 0.7rem; padding: 1rem 1.1rem; border: 1px solid #ececec; border-radius: var(--db-radius-chip); background: #fff; }
+.share-card { display: flex; flex-direction: column; gap: 0.7rem; padding: 1rem 1.1rem; border: 1px solid var(--db-line); border-radius: var(--db-radius-chip); background: #fff; }
 .share-head { display: flex; gap: 0.8rem; align-items: flex-start; }
 .share-head p { margin: 0.2rem 0 0; font-size: 0.85rem; line-height: 1.5; color: var(--db-text-soft); }
 .share-ico { display: grid; place-items: center; flex: 0 0 40px; height: 40px; border-radius: 50%; background: var(--db-chip-soft); font-size: 1.15rem; }
@@ -566,7 +567,7 @@ function reuseDesign(r) {
 
 .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(380px, 100%), 1fr)); gap: 1.25rem; }
 .card {
-  background: #fff; border: 1px solid #ececec; border-radius: var(--db-radius-chip);
+  background: #fff; border: 1px solid var(--db-line); border-radius: var(--db-radius-chip);
   overflow: hidden; cursor: pointer;
   transition: transform 0.16s, box-shadow 0.16s, border-color 0.16s;
 }
@@ -611,13 +612,13 @@ function reuseDesign(r) {
 }
 .card:hover .del-btn, .del-btn:focus-visible { opacity: 1; }
 @media (hover: none) { .del-btn { opacity: 1; } }
-.del-btn:hover { background: #fff; color: #c0392b; }
+.del-btn:hover { background: #fff; color: var(--db-danger); }
 .del-btn:disabled { cursor: not-allowed; }
 
 .card-body { padding: 0.9rem 1.1rem 1.1rem; display: flex; flex-direction: column; gap: 0.3rem; }
 .card-title { margin: 0; font-size: 1rem; color: var(--db-text); line-height: 1.4; }
 .card-meta { margin: 0; font-size: 0.82rem; color: var(--db-text-soft); }
-.card-time { font-size: 0.75rem; color: var(--db-placeholder); }
+.card-time { font-size: 0.75rem; color: var(--db-text-soft); }
 
 .overlay {
   position: fixed; inset: 0; z-index: 50; display: grid; place-items: center; padding: 1.5rem;
@@ -646,7 +647,7 @@ function reuseDesign(r) {
 .viewer { display: flex; flex-direction: column; gap: 0.7rem; min-width: 0; align-self: start; position: sticky; top: 0; }
 .stage {
   position: relative; aspect-ratio: 4 / 3; max-height: 70vh; width: 100%;
-  border-radius: var(--db-radius-chip); background: #fff; border: 1px solid #ececec; overflow: hidden;
+  border-radius: var(--db-radius-chip); background: #fff; border: 1px solid var(--db-line); overflow: hidden;
 }
 .main-img { width: 100%; height: 100%; object-fit: contain; display: block; cursor: zoom-in; }
 .main-img.cover { object-fit: cover; }
@@ -688,7 +689,7 @@ function reuseDesign(r) {
 .q-item-price { font-size: 0.85rem; color: var(--db-text); font-variant-numeric: tabular-nums; }
 .meta { margin: 0; font-size: 0.85rem; color: var(--db-text-soft); display: flex; flex-wrap: wrap; gap: 0.2rem 0.75rem; }
 .link-btn { border: 0; background: none; padding: 0 0.4rem; font-size: 0.82rem; color: var(--db-text-soft); cursor: pointer; text-decoration: underline; }
-.link-btn:hover { color: #c0392b; }
+.link-btn:hover { color: var(--db-danger); }
 .q-box { border-top: 1px dashed #e8e6e1; padding-top: 0.6rem; }
 .q-box summary {
   display: flex; justify-content: space-between; align-items: center; cursor: pointer;

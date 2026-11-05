@@ -214,7 +214,7 @@ function clearAll() {
   cursor: pointer;
   transition: background 0.16s, border-color 0.16s, box-shadow 0.16s;
 }
-.fs-card:hover:not(.is-active) { background: #e4e4e4; }
+.fs-card:hover:not(.is-active) { background: var(--db-accent-soft); }
 .fs-card.is-active {
   background: var(--fs-active-bg);
   border-color: var(--fs-active-border);

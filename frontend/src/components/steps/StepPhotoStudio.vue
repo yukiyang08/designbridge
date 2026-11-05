@@ -88,7 +88,7 @@ const quoteTotal = computed(() => quoteRows.value.reduce((s, r) => s + (r.c?.pri
     <label class="drop" :class="{ busy }">
       <input type="file" accept="image/*" hidden :disabled="busy" @change="onFile" />
       <template v-if="!busy">
-        <span class="drop-icon">📷</span>
+        <Icon icon="mdi:camera-outline" class="drop-icon" aria-hidden="true" />
         <span class="drop-label">先上傳你現在的房間照片</span>
         <small class="drop-hint">JPG、PNG、WebP，盡量拍到地板與整面牆</small>
         <span class="db-btn drop-btn">選擇照片</span>
@@ -198,7 +198,7 @@ const quoteTotal = computed(() => quoteRows.value.reduce((s, r) => s + (r.c?.pri
               <span class="swap-thumb">
                 <img v-if="styleThumb(s.value)" :src="styleThumb(s.value)" :alt="s.name" />
                 <span v-else class="swap-thumb-empty">＋</span>
-                <span v-if="styleVersionIndex(s.value) >= 0" class="swap-done" aria-label="已生成">✓</span>
+                <span v-if="styleVersionIndex(s.value) >= 0" class="swap-done" aria-label="已生成"><Icon icon="mdi:check" aria-hidden="true" /></span>
               </span>
               <span class="swap-label">{{ s.name }}</span>
             </button>
@@ -207,7 +207,7 @@ const quoteTotal = computed(() => quoteRows.value.reduce((s, r) => s + (r.c?.pri
 
         <!-- 調整家具位置 -->
         <template v-else-if="tool === 'layout'">
-          <h3 class="side-title">✥ 移動家具</h3>
+          <h3 class="side-title"><Icon icon="mdi:cursor-move" aria-hidden="true" /> 移動家具</h3>
           <p class="side-note">在左邊圖上直接拖曳家具到新位置，可以一次搬好幾件，按「套用」後 AI 會補上原位置並融合光影。</p>
           <p class="side-note">第一次會先辨識圖上的家具，約需 40 秒。每次套用都會多一個版本，可以從下方版本列切回去比較。</p>
         </template>
@@ -295,10 +295,10 @@ const quoteTotal = computed(() => quoteRows.value.reduce((s, r) => s + (r.c?.pri
 .drop {
   display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 0.7rem;
   min-height: max(360px, calc(100vh - 360px));
-  border: 2px dashed #cfcfcf; border-radius: 8px; background: var(--db-chip); cursor: pointer;
+  border: 2px dashed var(--db-accent); border-radius: 8px; background: var(--db-chip); cursor: pointer;
   transition: background 0.16s, border-color 0.16s;
 }
-.drop:hover:not(.busy) { background: #cfcfcf; border-color: var(--db-accent); }
+.drop:hover:not(.busy) { background: var(--db-accent-soft); border-color: var(--db-accent); }
 .drop.busy { cursor: progress; }
 .drop-icon { font-size: 2.8rem; }
 .drop-label { font-family: var(--db-font-display); font-size: 1.7rem; color: var(--db-text); }
@@ -347,7 +347,7 @@ const quoteTotal = computed(() => quoteRows.value.reduce((s, r) => s + (r.c?.pri
 /* ── 右側控制欄 ── */
 .ps-side { min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 0.7rem; padding-right: 2px; }
 .field-label { font-size: 0.95rem; font-weight: 600; color: var(--db-text); }
-.style-prompt { min-height: 96px; background: #fff; border: 2px solid #756d66; font-size: 0.95rem; }
+.style-prompt { min-height: 96px; background: #fff; border: 2px solid var(--db-accent-ink); font-size: 0.95rem; }
 .style-prompt:focus { outline: none; box-shadow: 0 0 0 3px var(--db-accent-soft); }
 .side-title { margin: 0.4rem 0 0; font-family: var(--db-font-display); font-style: italic; font-weight: 500; font-size: 1.05rem; color: var(--db-text); }
 .side-note { margin: 0; font-size: 0.82rem; color: var(--db-text-soft); line-height: 1.6; }
@@ -363,7 +363,7 @@ const quoteTotal = computed(() => quoteRows.value.reduce((s, r) => s + (r.c?.pri
 }
 .swap-thumb {
   position: relative; display: grid; place-items: center; width: 100%; aspect-ratio: 1;
-  border-radius: 12px; overflow: hidden; border: 2px solid #ececec; background: #f5f3ee;
+  border-radius: 12px; overflow: hidden; border: 2px solid var(--db-line); background: #f5f3ee;
   transition: border-color 0.16s, box-shadow 0.16s, transform 0.16s;
 }
 .swap-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }

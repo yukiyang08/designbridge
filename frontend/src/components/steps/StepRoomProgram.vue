@@ -312,7 +312,7 @@ const nextRoom = computed(() => pendingRoom.value ? null :
           <li v-for="(name, i) in cadExtraRooms" :key="name + i" class="count-row count-row--extra">
             <span class="count-thumb count-thumb--text" aria-hidden="true">＋</span>
             <span class="count-name">{{ name }}</span>
-            <button type="button" class="extra-remove" :aria-label="`移除${name}`" @click="removeExtraRoom(i)">✕</button>
+            <button type="button" class="extra-remove" :aria-label="`移除${name}`" @click="removeExtraRoom(i)"><Icon icon="mdi:close" aria-hidden="true" /></button>
           </li>
           <li v-if="showAddRoom" class="count-row count-row--add">
             <input
@@ -450,7 +450,7 @@ const nextRoom = computed(() => pendingRoom.value ? null :
               >
                 <span class="chip-name">{{ r.label_zh }}</span>
                 <span class="chip-area">{{ Math.round(r.actual_area_m2 || 0) }} m²</span>
-                <span v-if="STATE_TEXT[chipState(r)]" class="chip-state">{{ chipState(r) === 'done' ? '✓ ' : '' }}{{ STATE_TEXT[chipState(r)] }}</span>
+                <span v-if="STATE_TEXT[chipState(r)]" class="chip-state"><Icon v-if="chipState(r) === 'done'" icon="mdi:check" aria-hidden="true" /> {{ STATE_TEXT[chipState(r)] }}</span>
                 <span v-else-if="r.id === nextRoom?.id" class="chip-state chip-state--hint">{{ doneCount ? '下一間' : '建議先做' }}</span>
               </button>
             </li>
@@ -550,7 +550,7 @@ const nextRoom = computed(() => pendingRoom.value ? null :
 .size-input { width: 68px; height: 36px; padding: 0 0.3rem; text-align: center; font-size: 1rem; font-variant-numeric: tabular-nums; }
 .size-unit { font-size: 0.88rem; color: var(--db-text-soft); }
 .dim-x { color: var(--db-placeholder); }
-.ping-suffix { font-size: 0.82rem; color: var(--db-placeholder); white-space: nowrap; }
+.ping-suffix { font-size: 0.82rem; color: var(--db-text-soft); white-space: nowrap; }
 .size-hint, .size-error { margin: 0; font-size: 0.82rem; line-height: 1.5; color: var(--db-text-soft); }
 .size-error { color: var(--db-danger); }
 
@@ -605,7 +605,7 @@ const nextRoom = computed(() => pendingRoom.value ? null :
 .add-row {
   width: 100%;
   min-height: 44px;
-  border: 2px dashed #c9c4bb;
+  border: 2px dashed var(--db-accent);
   border-radius: var(--db-radius-chip);
   background: none;
   color: var(--db-text-soft);
@@ -668,7 +668,7 @@ const nextRoom = computed(() => pendingRoom.value ? null :
 .room-chip {
   display: flex; align-items: baseline; gap: 0.5rem; width: 100%;
   min-height: 44px; padding: 0.5rem 0.95rem;
-  border: 1px solid #dcdcdc; border-radius: var(--db-radius-chip);
+  border: 1px solid var(--db-line-strong); border-radius: var(--db-radius-chip);
   background: #fff; color: var(--db-text); cursor: pointer;
   transition: border-color 0.16s, background 0.16s;
 }

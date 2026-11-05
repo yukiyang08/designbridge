@@ -107,8 +107,8 @@ const narrowWarn = computed(() => {
 .size-input { width: 68px; height: 36px; padding: 0 0.3rem; text-align: center; font-size: 1rem; font-variant-numeric: tabular-nums; }
 .size-unit { font-size: 0.88rem; color: var(--db-text-soft); }
 .dim-x { color: var(--db-placeholder); }
-.ping-suffix { font-size: 0.82rem; color: var(--db-placeholder); white-space: nowrap; }
-.size-hint, .size-error, .size-warn { margin: 0; font-size: 0.76rem; line-height: 1.5; color: var(--db-placeholder); }
+.ping-suffix { font-size: 0.82rem; color: var(--db-text-soft); white-space: nowrap; }
+.size-hint, .size-error, .size-warn { margin: 0; font-size: 0.76rem; line-height: 1.5; color: var(--db-text-soft); }
 .size-error { color: var(--db-danger); }
 .size-warn { color: #8a6a00; }
 </style>

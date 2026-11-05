@@ -1,4 +1,5 @@
 <script setup>
+import { Icon } from '@iconify/vue'
 /**
  * 圖上直接編輯：塗抹範圍＋一句需求就能重繪，可切全螢幕。
  * 取代原本結果頁下方那塊要先展開、又把同一張圖再畫一次的微調區。
@@ -68,9 +69,10 @@ onBeforeUnmount(() => {
           <button
             type="button"
             :title="fullscreen ? '離開全螢幕（Esc）' : '全螢幕編輯'"
+            :aria-label="fullscreen ? '離開全螢幕' : '全螢幕編輯'"
             @click="emit('update:fullscreen', !fullscreen)"
-          >{{ fullscreen ? '⤡' : '⛶' }}</button>
-          <button type="button" title="結束編輯" @click="emit('close')">✕</button>
+          ><Icon :icon="fullscreen ? 'mdi:fullscreen-exit' : 'mdi:fullscreen'" aria-hidden="true" /></button>
+          <button type="button" title="結束編輯" aria-label="結束編輯" @click="emit('close')"><Icon icon="mdi:close" aria-hidden="true" /></button>
         </template>
       </RefineCanvas>
       <div v-if="refining" class="re-busy" role="status">
@@ -88,7 +90,7 @@ onBeforeUnmount(() => {
         <input v-model.number="size" type="range" min="5" max="120" step="5" class="re-slider" aria-label="筆刷大小" />
         <span class="re-size">{{ size }}px</span>
         <button type="button" class="re-link" :disabled="!hasMask" @click="refineCanvasRef?.clearMask()">清除塗抹</button>
-        <button v-if="canUndoRefine" type="button" class="re-link" title="回到微調前的圖片" @click="undoRefine">↶ 還原上一版</button>
+        <button v-if="canUndoRefine" type="button" class="re-link" title="回到微調前的圖片" @click="undoRefine"><Icon icon="mdi:undo" aria-hidden="true" /> 還原上一版</button>
       </div>
 
       <form class="re-prompt" @submit.prevent="onSubmit">
@@ -183,7 +185,7 @@ onBeforeUnmount(() => {
 
 .re-note, .re-error { margin: 0; font-size: 0.82rem; line-height: 1.5; }
 .re-note { color: var(--db-text-soft); }
-.re-error { color: #b3261e; }
+.re-error { color: var(--db-danger); }
 
 @media (max-width: 600px) {
   .re-prompt { flex-direction: column; }

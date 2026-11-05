@@ -1,4 +1,5 @@
 <script setup>
+import { Icon } from '@iconify/vue'
 /**
  * 風水／動線示範：同一間臥室，切換「排版前 / 自動調整後」。
  * 前：門直沖床（紅）；後：床移開並留出門到窗的動線。資料為手寫範例，不呼叫後端。
@@ -55,7 +56,7 @@ const CHECKS = computed(() => [
       />
       <ul class="checks" aria-label="檢查結果（範例）">
         <li v-for="c in CHECKS" :key="c.t" :class="c.ok ? 'ok' : 'bad'">
-          <b>{{ c.ok ? '✓' : '✕' }}</b>{{ c.t }}
+          <b role="img" :aria-label="c.ok ? '符合' : '不符合'"><Icon :icon="c.ok ? 'mdi:check' : 'mdi:close'" aria-hidden="true" /></b>{{ c.t }}
         </li>
         <li class="msg" role="status">{{ fixed ? '床已移到門的斜對側，進門不直視床腳。' : '進門視線直沖床腳，風水上稱「門沖床」。' }}</li>
       </ul>

@@ -1,4 +1,5 @@
 <script setup>
+import { Icon } from '@iconify/vue'
 import { ref, computed, onMounted, watch } from 'vue'
 import { apiUrl } from '@/config/api'
 import { useFurnitureSelection } from '@/composables/useFurnitureSelection'
@@ -115,7 +116,7 @@ onMounted(async () => {
       <div class="selected-summary">
         <button v-if="selectedCount" class="clear-btn" @click="clear">清除</button>
         <RouterLink to="/cart" class="db-btn db-btn--sm cart-link">
-          ❤ 我的收藏（{{ selectedCount }}）
+          <Icon icon="mdi:heart-outline" aria-hidden="true" /> 我的收藏（{{ selectedCount }}）
         </RouterLink>
       </div>
     </header>
@@ -132,7 +133,7 @@ onMounted(async () => {
           class="search-input"
           placeholder="輸入關鍵字搜尋家具名稱…"
         />
-        <button v-if="searchQuery" class="search-clear" @click="searchQuery = ''">✕</button>
+        <button v-if="searchQuery" class="search-clear" aria-label="清除搜尋" @click="searchQuery = ''"><Icon icon="mdi:close" aria-hidden="true" /></button>
       </div>
       <div class="filter-selects">
         <select v-model.number="priceIndex" :class="['filter-select', { active: priceIndex !== 0 }]" aria-label="價位">
@@ -192,7 +193,7 @@ onMounted(async () => {
           />
           <div v-else class="card-no-img">無圖</div>
           <span :class="['check-icon', { checked: isSelected(item) }]">
-            {{ isSelected(item) ? '✓' : '' }}
+            <Icon v-if="isSelected(item)" icon="mdi:check" aria-hidden="true" />
           </span>
         </div>
         <div class="card-body">
@@ -213,7 +214,7 @@ onMounted(async () => {
               :title="isSelected(item) ? '取消收藏' : '加入收藏'"
               @click.stop="toggle(item)"
             >
-              {{ isSelected(item) ? '✓ 已收藏' : '加入收藏' }}
+              <template v-if="isSelected(item)"><Icon icon="mdi:check" aria-hidden="true" /> 已收藏</template><template v-else>加入收藏</template>
             </button>
           </div>
         </div>
@@ -286,7 +287,7 @@ onMounted(async () => {
 .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(220px, 100%), 1fr)); gap: 1.25rem; margin-top: 1.25rem; }
 
 .card {
-  background: #fff; border: 1px solid #ececec; border-radius: var(--db-radius-chip);
+  background: #fff; border: 1px solid var(--db-line); border-radius: var(--db-radius-chip);
   overflow: hidden; cursor: pointer; transition: transform 0.16s, box-shadow 0.16s, border-color 0.16s;
 }
 .card:hover { transform: translateY(-3px); box-shadow: var(--db-shadow-soft); border-color: var(--db-accent); }

@@ -1,4 +1,5 @@
 <script setup>
+import { Icon } from '@iconify/vue'
 import { ref, computed, watch, onMounted, onBeforeUnmount } from 'vue'
 import { RouterLink, useRoute } from 'vue-router'
 import { useAuth } from '@/composables/useAuth'
@@ -88,7 +89,7 @@ onBeforeUnmount(() => {
       <div v-if="navOpen" class="drawer-wrap">
         <div class="backdrop" @click="navOpen = false"></div>
         <aside class="mobile-menu" @click.stop>
-          <button type="button" class="m-close" aria-label="關閉選單" @click="navOpen = false">✕</button>
+          <button type="button" class="m-close" aria-label="關閉選單" @click="navOpen = false"><Icon icon="mdi:close" aria-hidden="true" /></button>
           <RouterLink to="/">首頁</RouterLink>
           <RouterLink to="/furniture">家具查詢</RouterLink>
           <RouterLink to="/designs">我的設計</RouterLink>
@@ -182,7 +183,7 @@ onBeforeUnmount(() => {
 .dropdown .who {
   display: flex; flex-direction: column; gap: 2px;
   padding: 0.5rem 0.7rem 0.6rem;
-  border-bottom: 1px solid #efefef;
+  border-bottom: 1px solid var(--db-line);
   margin-bottom: 0.3rem;
   color: var(--db-text);
   font-size: 0.9rem;
@@ -251,7 +252,7 @@ onBeforeUnmount(() => {
   .mobile-menu a:hover, .mobile-menu button:hover,
   .mobile-menu a.router-link-exact-active { background: var(--db-chip-soft); }
   .m-who {
-    margin-top: 0.3rem; padding: 0.6rem 1rem 0.2rem; border-top: 1px solid #efefef;
+    margin-top: 0.3rem; padding: 0.6rem 1rem 0.2rem; border-top: 1px solid var(--db-line);
     font-size: 0.85rem; color: var(--db-text-soft); word-break: break-all;
   }
 }

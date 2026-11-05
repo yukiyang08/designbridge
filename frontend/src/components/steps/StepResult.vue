@@ -1,4 +1,5 @@
 <script setup>
+import { Icon } from '@iconify/vue'
 /**
  * Step 生成結果（render ＋ refine ＋ budget 三個舊 step 合併）
  *
@@ -251,7 +252,7 @@ function startOver() {
             <template v-if="!noStyleReference">
               <ImageUpload
                 label="點擊或拖曳上傳"
-                icon="🖼️"
+                icon="mdi:image-outline"
                 hint="上傳想要的風格圖片，AI 會參考其色調與氛圍"
                 :preview="styleRefImage.preview"
                 @change="styleRefImage.onChange"
@@ -338,13 +339,13 @@ function startOver() {
               <button
                 v-if="canMoveFurniture" type="button" :disabled="swappingStyle"
                 title="在圖上直接拖曳家具" @click="startMove"
-              >✥ 移動家具</button>
+              ><Icon icon="mdi:cursor-move" aria-hidden="true" /> 移動家具</button>
               <button
                 v-if="canUndoMove" type="button" :disabled="swappingStyle || applyingMove"
                 title="回到移動家具之前的圖" @click="undoMove"
-              >↶ 復原移動</button>
-              <button type="button" :disabled="swappingStyle" @click="startEdit(false)">✎ 編輯</button>
-              <button type="button" :disabled="swappingStyle" title="全螢幕編輯" aria-label="全螢幕編輯" @click="startEdit(true)">⛶</button>
+              ><Icon icon="mdi:undo" aria-hidden="true" /> 復原移動</button>
+              <button type="button" :disabled="swappingStyle" @click="startEdit(false)"><Icon icon="mdi:pencil-outline" aria-hidden="true" /> 編輯</button>
+              <button type="button" :disabled="swappingStyle" title="全螢幕編輯" aria-label="全螢幕編輯" @click="startEdit(true)"><Icon icon="mdi:fullscreen" aria-hidden="true" /></button>
             </div>
 
             <!-- 滑鼠移到圖上才出現（觸控裝置沒有 hover，常駐顯示） -->
@@ -373,7 +374,7 @@ function startOver() {
             </button>
 
             <div v-if="panoError && !panoLoading" class="pano-fail" role="alert">
-              <span>⚠ {{ panoError }}</span>
+              <span><Icon icon="mdi:alert-outline" aria-hidden="true" /> {{ panoError }}</span>
               <button type="button" class="pano-retry" @click="startPano">重試</button>
             </div>
           </div>
@@ -414,7 +415,7 @@ function startOver() {
                   :alt="opt.name"
                 />
                 <span v-else class="swap-thumb-empty">＋</span>
-                <span v-if="styleSwapCache[opt.value]" class="swap-done" aria-label="已生成">✓</span>
+                <span v-if="styleSwapCache[opt.value]" class="swap-done" aria-label="已生成"><Icon icon="mdi:check" aria-hidden="true" /></span>
               </span>
               <span class="swap-label">{{ opt.name }}</span>
             </button>
@@ -476,7 +477,7 @@ function startOver() {
 .block-budget {
   margin-top: 2rem;
   padding-top: 1.75rem;
-  border-top: 1px solid #ececec;
+  border-top: 1px solid var(--db-line);
 }
 @media (min-width: 1100px) {
   .result-grid {
@@ -493,7 +494,7 @@ function startOver() {
     overflow-y: auto;
     margin-top: 0.5rem;   /* 跟左邊圖片頂端對齊（.result-stage 上方有 0.5rem 內距） */
     padding: 1.1rem 1.1rem 0.5rem;
-    border: 1px solid #ececec;
+    border: 1px solid var(--db-line);
     border-radius: var(--db-radius-chip);
     background: #fff;
   }
@@ -568,7 +569,7 @@ function startOver() {
   font-weight: 500;
   color: var(--db-text-soft);
 }
-.field-hint { margin: 0.4rem 0 0; font-size: 0.78rem; color: var(--db-placeholder); }
+.field-hint { margin: 0.4rem 0 0; font-size: 0.78rem; color: var(--db-text-soft); }
 .field-hint.error { color: var(--db-danger); }
 .retry {
   margin-left: 0.5rem;
@@ -807,7 +808,7 @@ function startOver() {
   aspect-ratio: 1;
   border-radius: 12px;
   overflow: hidden;
-  border: 2px solid #ececec;
+  border: 2px solid var(--db-line);
   background: #f5f3ee;
   transition: border-color 0.16s, box-shadow 0.16s, transform 0.16s;
 }

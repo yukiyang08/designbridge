@@ -69,7 +69,7 @@ const SECTIONS = [
   flex-direction: column;
   gap: 0.35rem;
   padding: 2rem 1rem;
-  border-right: 1px solid #efefef;
+  border-right: 1px solid var(--db-line);
 }
 .side-item {
   display: flex;
@@ -110,7 +110,7 @@ const SECTIONS = [
   flex-direction: column;
   gap: 0.5rem;
   padding: 1.35rem;
-  border: 2px solid #ececec;
+  border: 2px solid var(--db-line);
   border-radius: var(--db-radius-chip);
   color: inherit;
   text-decoration: none;
@@ -160,7 +160,7 @@ const SECTIONS = [
     flex-direction: row;
     overflow-x: auto;
     border-right: none;
-    border-bottom: 1px solid #efefef;
+    border-bottom: 1px solid var(--db-line);
     padding: 1rem;
   }
   .side-item { white-space: nowrap; }

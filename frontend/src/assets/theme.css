@@ -20,6 +20,7 @@
   --db-card:          #ffffff;
   --db-paper:         #f1efeb;   /* 非 scene 頁面（歷史／收藏…）的底，accent-soft 再淡一階 */
   --db-line:          #e2ded6;   /* 滿版工作區（/studio）各區之間的分隔細線，取代卡片陰影 */
+  --db-line-strong:   #cfcbc4;   /* 按鈕、輸入框的框線 */
 
   /* 互動元件 */
   --db-chip:          #e6e3dd;   /* 空間類型 chip；暖灰，避免冷灰在紙色底上發悶 */
@@ -31,7 +32,7 @@
   --db-text:          #1a1a1a;
   --db-text-soft:     #5a5a5a;
   --db-muted:         #c2c1c1;   /* 停用文字 */
-  --db-placeholder:   #b2b2b2;
+  --db-placeholder:   #878079;   /* 白底 3.9:1；說明文字請用 --db-text-soft */
 
   /* 狀態（設計稿沒畫，補齊才有辦法顯示 loading / error） */
   --db-danger:        #b4443a;
@@ -54,6 +55,9 @@
 }
 
 /* ── 共用基礎元件 ───────────────────────────────────────────── */
+
+/* Iconify 圖示跟文字並排時對齊基線 */
+svg.iconify { vertical-align: -0.125em; flex: none; }
 
 /* 流程頁的滿版背景：室內照 opacity 40% 疊在 --db-fog 上（Figma frame 9/10/11） */
 .db-scene {
@@ -113,7 +117,13 @@
 }
 .db-btn:active:not(:disabled) { transform: translateY(1px); box-shadow: none; }
 .db-btn:focus-visible { outline: 3px solid var(--db-accent-deep); outline-offset: 2px; }
-.db-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+/* 停用用淡灰褐底，不用 opacity：半透明看起來像壞掉 */
+.db-btn:disabled {
+  background: var(--db-accent-soft);
+  border-color: var(--db-accent-soft);
+  color: var(--db-accent-ink);
+  cursor: not-allowed;
+}
 
 .db-btn--ghost {
   background: #fff;

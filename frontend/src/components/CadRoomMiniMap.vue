@@ -1,4 +1,5 @@
 <script setup>
+import { Icon } from '@iconify/vue'
 /**
  * CAD 多房間逐一設計：右上角常駐縮圖。
  *
@@ -326,7 +327,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey))
         <button
           v-if="compact && selecting"
           type="button" class="minimap-close" aria-label="關閉" @click="cancelConfirm"
-        >✕</button>
+        ><Icon icon="mdi:close" aria-hidden="true" /></button>
       </div>
       <div ref="boardRef" class="minimap-board" v-html="svgMarkup"></div>
       <!-- 結果頁頂部：房間標籤列取代「整層進度 N/M」。✓ 已完成、深色 = 目前這間，點標籤直接切房 -->
@@ -427,7 +428,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey))
             >
               <img v-if="thumbs[r.id]" :src="thumbs[r.id]" :alt="`${r.label_zh}的渲染圖`" class="frame-img" />
               <span class="frame-name">{{ r.label_zh }}</span>
-              <span class="frame-badge" aria-hidden="true">✓</span>
+              <span class="frame-badge" aria-hidden="true"><Icon icon="mdi:check" aria-hidden="true" /></span>
             </button>
             <div v-else class="frame-face">
               <span class="frame-name">{{ r.label_zh }}</span>
@@ -468,7 +469,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey))
         <div class="modal-card" role="dialog" aria-modal="true" aria-label="整層平面圖">
           <div class="modal-head">
             <h3 class="modal-title">整層平面圖 <small>{{ doneCount }} / {{ totalCount }} 間完成</small></h3>
-            <button type="button" class="modal-close" aria-label="關閉" @click="closeModal">✕</button>
+            <button type="button" class="modal-close" aria-label="關閉" @click="closeModal"><Icon icon="mdi:close" aria-hidden="true" /></button>
           </div>
           <p class="modal-hint">
             <template v-if="selecting">點房間決定要不要套用，選好回到卡片按「開始生成」。</template>
@@ -599,7 +600,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey))
   cursor: pointer;
   transition: background 0.16s;
 }
-.minimap-close:hover { background: #e2ded6; }
+.minimap-close:hover { background: var(--db-line); }
 .minimap-close:focus-visible { outline: 2px solid var(--db-text); outline-offset: 2px; }
 /* 浮動視窗本身就是面板，裡面的確認卡不再自己畫框（避免框中有框） */
 .is-compact-open .minimap-head { padding-bottom: 0.9rem; border-bottom: 1px solid #eeeae3; }
@@ -764,7 +765,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey))
   gap: 0.1rem;
   overflow: hidden;
   padding: 0.4rem 0.5rem;
-  border: 1px solid #e6e3dd;
+  border: 1px solid var(--db-accent-soft);
   border-radius: 8px;
   background: var(--db-chip-soft);
   text-align: left;
@@ -788,7 +789,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey))
 }
 .frame.is-queued .frame-face { background: #f6f5f2; }
 .frame.is-queued .frame-name, .frame.is-queued .frame-state { opacity: 0.6; }
-.frame.is-stopped .frame-face { background: #f3f3f3; border-style: dashed; }
+.frame.is-stopped .frame-face { background: var(--db-chip-soft); border-style: dashed; }
 .frame.is-failed .frame-face { background: var(--db-danger-soft); border-color: #e9c4bf; }
 
 /* 生成中：一道緩慢掃過的光，像底片正在顯影 */
@@ -947,7 +948,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey))
   margin: 0.5rem 0 0;
   font-size: 0.72rem;
   line-height: 1.5;
-  color: var(--db-placeholder);
+  color: var(--db-text-soft);
   text-align: center;
 }
 .minimap-hint--done { color: var(--db-accent-deep); }

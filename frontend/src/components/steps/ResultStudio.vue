@@ -128,7 +128,7 @@ const timingRuns = computed(() => {
               <span class="swap-thumb">
                 <img v-if="styleThumb(s.value)" :src="styleThumb(s.value)" :alt="s.name" />
                 <span v-else class="swap-thumb-empty">＋</span>
-                <span v-if="styleSwapCache[s.value]" class="swap-done" aria-label="已生成">✓</span>
+                <span v-if="styleSwapCache[s.value]" class="swap-done" aria-label="已生成"><Icon icon="mdi:check" aria-hidden="true" /></span>
               </span>
               <span class="swap-label">{{ s.name }}</span>
             </button>
@@ -137,11 +137,11 @@ const timingRuns = computed(() => {
 
         <!-- 調整家具位置 -->
         <template v-else-if="tool === 'layout'">
-          <h3 class="side-title">✥ 移動家具</h3>
+          <h3 class="side-title"><Icon icon="mdi:cursor-move" aria-hidden="true" /> 移動家具</h3>
           <template v-if="canMoveFurniture">
             <p class="side-note">在左邊圖上直接拖曳家具到新位置，可以一次搬好幾件，按「套用」後 AI 會補上原位置並融合光影。</p>
             <p class="side-note">第一次會先辨識圖上的家具，約需 40 秒。</p>
-            <button v-if="canUndoMove" type="button" class="re-link" :disabled="busy" @click="undoMove">↶ 復原上一次移動</button>
+            <button v-if="canUndoMove" type="button" class="re-link" :disabled="busy" @click="undoMove"><Icon icon="mdi:undo" aria-hidden="true" /> 復原上一次移動</button>
           </template>
           <p v-else class="side-note">這張圖目前不能移動家具。</p>
         </template>
@@ -158,7 +158,7 @@ const timingRuns = computed(() => {
           </div>
           <div class="re-links">
             <button type="button" class="re-link" :disabled="!hasMask" @click="refineCanvasRef?.clearMask()">清除塗抹</button>
-            <button v-if="canUndoRefine" type="button" class="re-link" :disabled="busy" @click="undoRefine">↶ 還原上一版</button>
+            <button v-if="canUndoRefine" type="button" class="re-link" :disabled="busy" @click="undoRefine"><Icon icon="mdi:undo" aria-hidden="true" /> 還原上一版</button>
           </div>
           <label class="field-label" for="refine-text">要怎麼改？</label>
           <textarea
@@ -227,7 +227,7 @@ const timingRuns = computed(() => {
 }
 .swap-thumb {
   position: relative; display: grid; place-items: center; width: 100%; aspect-ratio: 1;
-  border-radius: 12px; overflow: hidden; border: 2px solid #ececec; background: #f5f3ee;
+  border-radius: 12px; overflow: hidden; border: 2px solid var(--db-line); background: #f5f3ee;
   transition: border-color 0.16s, box-shadow 0.16s, transform 0.16s;
 }
 .swap-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }

@@ -602,7 +602,7 @@ onBeforeUnmount(() => {
 
       <!-- 操作說明／動作回饋放在平面圖上面：一開始就看得到，不用捲到畫布底下 -->
       <span v-if="editorNotice" class="hint hint-notice" role="status">{{ editorNotice }}</span>
-      <span v-else-if="flashMsg" class="hint hint-ok" role="status">✓ {{ flashMsg }}</span>
+      <span v-else-if="flashMsg" class="hint hint-ok" role="status"><Icon icon="mdi:check" aria-hidden="true" /> {{ flashMsg }}</span>
       <span v-else class="hint">拖動移動 · 右下角縮放 · ⟳ 旋轉 · 靠牆自動吸附 · 點選外框可調整房間尺寸 · 「尺寸」可顯示標註 · 橘色箭頭＝家具正面朝向</span>
 
       <div ref="viewportRef" class="board-viewport">
@@ -694,7 +694,7 @@ onBeforeUnmount(() => {
   font-family: inherit; font-weight: 600; cursor: pointer; transition: all 0.15s;
 }
 .tool-btn:hover:not(:disabled) { background: #f7efe3; }
-.tool-btn.active { background: #756d66; color: #fff; }
+.tool-btn.active { background: var(--db-accent-ink); color: #fff; }
 .tool-btn:disabled { opacity: 0.35; cursor: default; }
 .tool-sep { width: 1px; height: 24px; background: #e7dcc9; margin: 0 0.2rem; }
 .toolbar-end { margin-left: auto; }
@@ -724,7 +724,7 @@ onBeforeUnmount(() => {
   font-size: 0.76rem; font-family: inherit; background: #fdfaf5;
 }
 .palette-search { padding-left: 0.55rem; }
-.palette-search:focus { outline: none; border-color: #756d66; background: #fff; }
+.palette-search:focus { outline: none; border-color: var(--db-accent-ink); background: #fff; }
 .palette-empty { margin: 0.2rem 0; font-size: 0.74rem; color: #a08a6f; text-align: center; }
 .palette-list {
   display: grid; grid-template-columns: repeat(2, minmax(0, 1fr));   /* 一行兩個，卡片夠大好點 */
@@ -743,9 +743,9 @@ onBeforeUnmount(() => {
 .palette-item-add {
   position: absolute; top: 0.25rem; right: 0.25rem;
   width: 18px; height: 18px; padding: 2px; border-radius: 50%;
-  background: #fff; color: #756d66; transition: background 0.15s, color 0.15s;
+  background: #fff; color: var(--db-accent-ink); transition: background 0.15s, color 0.15s;
 }
-.palette-item:hover .palette-item-add { background: #756d66; color: #fff; }
+.palette-item:hover .palette-item-add { background: var(--db-accent-ink); color: #fff; }
 .palette-hint { font-size: 0.68rem; color: #a08a6f; margin: 0; text-align: center; }
 
 .board-viewport {
@@ -789,12 +789,12 @@ onBeforeUnmount(() => {
 }
 .props-note { margin: 0; font-size: 0.74rem; color: #a08a6f; }
 .gap { position: absolute; pointer-events: none; }
-.gap-h { height: 0; border-top: 1px dashed #c0392b; }
-.gap-v { width: 0; border-left: 1px dashed #c0392b; }
+.gap-h { height: 0; border-top: 1px dashed var(--db-danger); }
+.gap-v { width: 0; border-left: 1px dashed var(--db-danger); }
 .gap-lab {
   position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%);
   padding: 0 3px; font-size: 10px; line-height: 1.3; border-radius: 2px;
-  background: #fff; color: #c0392b; white-space: nowrap;
+  background: #fff; color: var(--db-danger); white-space: nowrap;
 }
 
 /* 外框點擊熱區——貼著內側邊緣，board 本身 overflow:hidden 所以不能用負值往外伸 */
@@ -815,7 +815,7 @@ onBeforeUnmount(() => {
 }
 .node:active { cursor: grabbing; }
 .node.floor { background: rgba(160,160,160,0.20); border: 1.5px dashed #999; z-index: 0; }
-.node.selected { box-shadow: 0 0 0 2px #756d66, 0 3px 12px rgba(0,0,0,0.2); z-index: 5; }
+.node.selected { box-shadow: 0 0 0 2px var(--db-accent-ink), 0 3px 12px rgba(0,0,0,0.2); z-index: 5; }
 .node.locked { cursor: default; opacity: 0.85; }
 /* 風水健檢「定位」：朱紅虛線外框（像設計師的紅筆圈注），一開始閃兩下引導視線 */
 .node.flagged { outline: 2px dashed var(--db-danger); outline-offset: 4px; z-index: 6; animation: flag-pulse 0.5s ease-in-out 2; }
@@ -858,10 +858,10 @@ onBeforeUnmount(() => {
   box-shadow: 0 1px 3px rgba(0,0,0,0.25);
 }
 .node-btn.rot { background: #6b4f30; }
-.node-btn.del { background: #c0392b; }
+.node-btn.del { background: var(--db-danger); }
 .handle {
   position: absolute; right: -6px; bottom: -6px; width: 13px; height: 13px; z-index: 3;
-  background: #756d66; border: 2px solid #fff; border-radius: 3px;
+  background: var(--db-accent-ink); border: 2px solid #fff; border-radius: 3px;
   cursor: nwse-resize;
 }
 .handle.in-x { right: 1px; }
@@ -885,7 +885,7 @@ onBeforeUnmount(() => {
   display: flex; align-items: center; justify-content: space-between;
   font-size: 0.78rem; color: #5c4630; font-weight: 600;
 }
-.hint-notice { color: #a33b2b; font-weight: 600; }
+.hint-notice { color: var(--db-danger); font-weight: 600; }
 .lock-label { display: inline-flex; align-items: center; gap: 0.3rem; }
 .hint-ok { color: #2f7a4b; font-weight: 600; }
 
@@ -894,7 +894,7 @@ onBeforeUnmount(() => {
   .board-viewport { max-height: min(70vh, 640px); }
   .side { order: 1; }
 }
-.switch-input { width: 36px; height: 20px; accent-color: #756d66; cursor: pointer; }
+.switch-input { width: 36px; height: 20px; accent-color: var(--db-accent-ink); cursor: pointer; }
 
 /* 手機：畫布優先，工具列與家具面板收成單行橫向捲動，不再把畫布擠到畫面下方 */
 @media (max-width: 640px) {

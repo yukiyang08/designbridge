@@ -118,7 +118,7 @@ function cancelClosePopover() { clearTimeout(closeTimer) }
     <!-- 無結果 -->
     <div v-else-if="!topCandidates.length" class="empty-state">
       <template v-if="error">
-        <p class="empty-error">⚠ {{ error }}</p>
+        <p class="empty-error"><Icon icon="mdi:alert-outline" aria-hidden="true" /> {{ error }}</p>
         <button type="button" class="search-btn" @click="emit('retry')"><Icon icon="mdi:refresh" width="15" />重試</button>
       </template>
       <template v-else>找不到相符的風格參考，請嘗試更換關鍵字或選擇特定風格</template>
@@ -254,9 +254,9 @@ function cancelClosePopover() { clearTimeout(closeTimer) }
   display: flex;
   align-items: center;
   gap: 0.3rem;
-  border: 1.5px solid #756d66;
+  border: 1.5px solid var(--db-accent-ink);
   background: #fff;
-  color: #756d66;
+  color: var(--db-accent-ink);
   border-radius: 8px;
   padding: 0.4rem 0.85rem;
   font-size: 0.8rem;
@@ -265,7 +265,7 @@ function cancelClosePopover() { clearTimeout(closeTimer) }
   cursor: pointer;
   transition: all 0.15s;
 }
-.search-btn:hover:not(:disabled) { background: #756d66; color: #fff; }
+.search-btn:hover:not(:disabled) { background: var(--db-accent-ink); color: #fff; }
 .search-btn:disabled { opacity: 0.55; cursor: default; }
 
 /* 單列橫向捲動 + 左右箭頭 */
@@ -292,9 +292,9 @@ function cancelClosePopover() { clearTimeout(closeTimer) }
   width: 2.1rem;
   height: 2.1rem;
   border-radius: 50%;
-  border: 1.5px solid #c9c4bb;
+  border: 1.5px solid var(--db-accent);
   background: rgba(255, 250, 243, 0.95);
-  color: #756d66;
+  color: var(--db-accent-ink);
   font-size: 1.3rem;
   line-height: 1;
   cursor: pointer;
@@ -303,7 +303,7 @@ function cancelClosePopover() { clearTimeout(closeTimer) }
   justify-content: center;
   transition: all 0.15s;
 }
-.rail-arrow:hover { background: #756d66; color: white; border-color: #756d66; }
+.rail-arrow:hover { background: var(--db-accent-ink); color: white; border-color: var(--db-accent-ink); }
 
 /* slot 負責 rail 裡的寬度與吸附；ⓘ 按鈕是 .card 的兄弟節點，不放在 role=option 裡面 */
 .card-slot {
@@ -369,14 +369,14 @@ function cancelClosePopover() { clearTimeout(closeTimer) }
   aspect-ratio: 10 / 11;
   overflow: hidden;
   border-radius: 14px;
-  border: 1.5px solid #c9c4bb;
+  border: 1.5px solid var(--db-accent);
   background: #f5e8d8;
   transition: border-color 0.15s, box-shadow 0.15s, transform 0.15s;
 }
 .card:hover .card-img-wrap { border-color: #b07845; box-shadow: 0 8px 24px rgba(117, 109, 102, 0.2); }
 /* 選中：邊框變色 + 微放大 + 陰影，不用太誇張的粗框/外圈光暈 */
 .card.selected .card-img-wrap {
-  border-color: #756d66;
+  border-color: var(--db-accent-ink);
   box-shadow: 0 6px 16px rgba(92, 61, 36, 0.28);
   transform: scale(1.03);
 }
@@ -428,10 +428,10 @@ function cancelClosePopover() { clearTimeout(closeTimer) }
 .empty-state {
   padding: 2rem;
   text-align: center;
-  color: #a39b94;
+  color: var(--db-accent-deep);
   font-size: 0.9rem;
   background: rgba(255,250,243,0.6);
-  border: 1px dashed #c9c4bb;
+  border: 1px dashed var(--db-accent);
   border-radius: 12px;
 }
 
@@ -441,7 +441,7 @@ function cancelClosePopover() { clearTimeout(closeTimer) }
   z-index: 200;
   width: 280px;
   background: #fffaf3;
-  border: 1.5px solid #c9c4bb;
+  border: 1.5px solid var(--db-accent);
   border-radius: 12px;
   box-shadow: 0 12px 32px rgba(92, 61, 36, 0.22);
   padding: 0.9rem 1rem;
@@ -461,7 +461,7 @@ function cancelClosePopover() { clearTimeout(closeTimer) }
 .popover-close {
   border: none;
   background: none;
-  color: #a39b94;
+  color: var(--db-accent-deep);
   cursor: pointer;
   display: flex;
   padding: 0;
@@ -509,7 +509,7 @@ function cancelClosePopover() { clearTimeout(closeTimer) }
   align-items: center;
   justify-content: space-between;
   background: rgba(117, 109, 102, 0.08);
-  border: 1px solid #c9c4bb;
+  border: 1px solid var(--db-accent);
   border-radius: 10px;
   padding: 0.65rem 1rem;
   font-size: 0.875rem;

@@ -143,7 +143,7 @@ onMounted(paint)
 
 .ov-body { display: grid; grid-template-columns: minmax(280px, 0.8fr) minmax(0, 1.2fr); gap: 2rem; align-items: start; }
 
-.ov-plan { overflow: hidden; border-radius: 12px; background: #fff; border: 1px solid #ececec; padding: 0.75rem; }
+.ov-plan { overflow: hidden; border-radius: 12px; background: #fff; border: 1px solid var(--db-line); padding: 0.75rem; }
 .ov-plan :deep(svg) { width: 100%; height: auto; display: block; }
 .ov-plan :deep(.room-rect) { cursor: pointer; }
 .ov-plan :deep(.room-rect .room-floor) { transition: fill 0.15s, stroke 0.15s; }
@@ -157,7 +157,7 @@ onMounted(paint)
   gap: 0.35rem;
   width: 100%;
   padding: 0.5rem;
-  border: 2px solid #ececec;
+  border: 2px solid var(--db-line);
   border-radius: 14px;
   background: #fff;
   text-align: left;

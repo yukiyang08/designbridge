@@ -30,7 +30,7 @@ function back() {
   gap: 0.4rem;
   padding: 0.5rem 1.1rem;
   min-height: 44px;
-  border: 2px solid #dcdcdc;
+  border: 2px solid var(--db-line-strong);
   border-radius: var(--db-radius-pill);
   background: #fff;
   color: var(--db-text);

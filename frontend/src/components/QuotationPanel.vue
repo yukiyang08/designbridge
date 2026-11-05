@@ -1,4 +1,5 @@
 <script setup>
+import { Icon } from '@iconify/vue'
 /** 結果圖的家具推薦清單：每件家具選中的商品、換款、收藏與總價。 */
 import { reactive, computed, ref, watch } from 'vue'
 import { useDesignFlow } from '@/composables/useDesignFlow'
@@ -159,7 +160,7 @@ function toFavoriteItem(item, c) {
                       :title="isFavorited(toFavoriteItem(g.item, c)) ? '取消收藏' : '加入收藏'"
                       :aria-label="isFavorited(toFavoriteItem(g.item, c)) ? '取消收藏' : '加入收藏'"
                       @click="toggleFavorite(toFavoriteItem(g.item, c))"
-                    >{{ isFavorited(toFavoriteItem(g.item, c)) ? '★' : '☆' }}</button>
+                    ><Icon :icon="isFavorited(toFavoriteItem(g.item, c)) ? 'mdi:star' : 'mdi:star-outline'" aria-hidden="true" /></button>
                     <button
                       v-if="imageAlts(g).length > 1"
                       type="button" class="swap-btn" :class="{ open: openRow === g.key }"
@@ -263,7 +264,7 @@ function toFavoriteItem(item, c) {
 
 /* 家具清單：每件一行（選中的商品），其他候選按「換」才展開 */
 .furn-list { margin: 0; padding: 0; list-style: none; }
-.furn { padding: 0.4rem 0; border-bottom: 1px solid #f0f0f0; }
+.furn { padding: 0.4rem 0; border-bottom: 1px solid var(--db-line); }
 .furn:last-child { border-bottom: none; }
 /* 跟結果圖上滑到的家具對應的那一行：左側一條灰褐線＋淡底，往內縮一點不會貼邊 */
 .furn, .est-row { transition: background 0.14s, box-shadow 0.14s; }
@@ -289,7 +290,7 @@ function toFavoriteItem(item, c) {
 .est-list { margin: 0; padding: 0; list-style: none; }
 .est-row {
   display: grid; grid-template-columns: auto 1fr auto; align-items: baseline; gap: 0.6rem;
-  padding: 0.45rem 0; border-bottom: 1px solid #f0f0f0; font-size: 0.88rem;
+  padding: 0.45rem 0; border-bottom: 1px solid var(--db-line); font-size: 0.88rem;
 }
 .est-row:last-child { border-bottom: none; }
 .est-cat { font-size: 0.74rem; color: var(--db-text-soft); }
@@ -354,7 +355,7 @@ function toFavoriteItem(item, c) {
   flex-shrink: 0;
   width: 112px;
   padding: 0.5rem;
-  border: 2px solid #ececec;
+  border: 2px solid var(--db-line);
   border-radius: var(--db-radius-chip);
   background: #fff;
   text-align: left;
@@ -395,7 +396,7 @@ function toFavoriteItem(item, c) {
   overflow: hidden;
 }
 .price { font-size: 0.9rem; font-weight: 600; color: var(--db-text); }
-.sim { font-size: 0.7rem; color: var(--db-placeholder); }
+.sim { font-size: 0.7rem; color: var(--db-text-soft); }
 
 .fav {
   display: grid;
@@ -422,7 +423,7 @@ function toFavoriteItem(item, c) {
   justify-content: space-between;
   gap: 0.85rem;
   padding: 0.75rem 0 0.6rem;
-  border-bottom: 1px solid #f0f0f0;
+  border-bottom: 1px solid var(--db-line);
 }
 .total-label { color: var(--db-text-soft); font-size: 0.9rem; }
 .total-val {
@@ -435,7 +436,7 @@ function toFavoriteItem(item, c) {
 
 .note, .hint {
   margin: 0.5rem 0 0;
-  color: var(--db-placeholder);
+  color: var(--db-text-soft);
   font-size: 0.8rem;
   line-height: 1.7;
 }

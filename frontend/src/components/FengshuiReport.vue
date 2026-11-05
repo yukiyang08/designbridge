@@ -1,4 +1,5 @@
 <script setup>
+import { Icon } from '@iconify/vue'
 /**
  * 風水＋動線健檢報告卡。
  *
@@ -80,7 +81,7 @@ const scoreTone = s => s == null ? '' : s >= 85 ? 'is-good' : s >= 60 ? 'is-mid'
         這個配置有 <strong>{{ failed.length }}</strong> 處不符合風水
         <span class="rp-off-list">（{{ failed.map(r => r.label).join('、') }}）</span>
       </p>
-      <p v-else-if="fs?.score != null" class="rp-ok">✓ 目前的擺法都符合風水</p>
+      <p v-else-if="fs?.score != null" class="rp-ok"><Icon icon="mdi:check" aria-hidden="true" /> 目前的擺法都符合風水</p>
       <button v-if="failed.length" type="button" class="db-btn db-btn--ghost db-btn--sm" @click="$emit('enable')">
         {{ enableLabel }}
       </button>
@@ -122,7 +123,7 @@ const scoreTone = s => s == null ? '' : s >= 85 ? 'is-good' : s >= 60 ? 'is-mid'
         <ul class="rp-changes">
           <li v-for="(m, k) in lastFix.moves" :key="k"><strong>{{ m.label }}</strong>{{ m.text }}</li>
         </ul>
-        <p v-if="lastFix.resolved.length" class="rp-resolved">✓ 已解決：{{ lastFix.resolved.join('、') }}</p>
+        <p v-if="lastFix.resolved.length" class="rp-resolved"><Icon icon="mdi:check" aria-hidden="true" /> 已解決：{{ lastFix.resolved.join('、') }}</p>
       </template>
       <div v-else-if="showPlan" class="rp-plans rp-plans--single">
         <FengshuiMiniPlan title="門窗位置（推估）與違規家具" :plan="planOf(placements)" :offenders="currentOffenders" />
@@ -134,7 +135,7 @@ const scoreTone = s => s == null ? '' : s >= 85 ? 'is-good' : s >= 60 ? 'is-mid'
       <ul v-if="failed.length" class="rp-list">
         <li v-for="r in failed" :key="r.trigger" class="rp-item is-fail">
           <p class="rp-item-head">
-            <span class="rp-mark" aria-hidden="true">⚠</span>
+            <span class="rp-mark" aria-hidden="true"><Icon icon="mdi:alert-outline" aria-hidden="true" /></span>
             <strong>{{ r.label }}</strong>
             <span v-if="r.offenders.length" class="rp-who">{{ names(r.offenders) }}</span>
             <button
@@ -148,7 +149,7 @@ const scoreTone = s => s == null ? '' : s >= 85 ? 'is-good' : s >= 60 ? 'is-mid'
           </p>
         </li>
       </ul>
-      <p v-else-if="fs?.score != null" class="rp-ok">✓ 套用的風水規則全部符合</p>
+      <p v-else-if="fs?.score != null" class="rp-ok"><Icon icon="mdi:check" aria-hidden="true" /> 套用的風水規則全部符合</p>
 
       <p v-if="passed.length" class="rp-passed">
         已符合：{{ passed.map(r => r.label).join('、') }}

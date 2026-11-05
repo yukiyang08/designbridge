@@ -1,4 +1,5 @@
 <script setup>
+import { Icon } from '@iconify/vue'
 /**
  * 房型配置 CAD 平面圖產生器 — 獨立新功能，跟既有精靈流程（useDesignFlow）無關。
  * 使用者輸入幾房幾廳幾衛幾廚幾陽台＋總坪數，後端 /api/generate-room-plan
@@ -111,7 +112,7 @@ async function generate() {
         </div>
 
         <ul v-if="result.warnings && result.warnings.length" class="warnings">
-          <li v-for="(w, i) in result.warnings" :key="i">⚠ {{ w }}</li>
+          <li v-for="(w, i) in result.warnings" :key="i"><Icon icon="mdi:alert-outline" aria-hidden="true" /> {{ w }}</li>
         </ul>
 
         <div class="room-list">
@@ -149,7 +150,7 @@ async function generate() {
 }
 .back-btn {
   background: none;
-  border: 1px solid #999;
+  border: 1px solid var(--db-line-strong);
   border-radius: 6px;
   padding: 0.3rem 0.8rem;
   cursor: pointer;
@@ -157,7 +158,7 @@ async function generate() {
   color: var(--db-text);
   font-weight: 600;
 }
-.back-btn:hover { background: #eee; border-color: #666; }
+.back-btn:hover { background: var(--db-accent-soft); border-color: var(--db-accent-ink); }
 
 .room-plan-card {
   padding: clamp(1.5rem, 4vw, 2.5rem);
@@ -252,7 +253,7 @@ async function generate() {
   text-align: center;
   padding: 1rem;
   border-radius: var(--db-radius-chip);
-  background: #fafafa;
+  background: var(--db-chip-soft);
 }
 .svg-wrap :deep(svg) { max-width: 100%; height: auto; }
 

@@ -1,4 +1,5 @@
 <script setup>
+import { Icon } from '@iconify/vue'
 import { ref, computed, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { useFurnitureSelection } from '@/composables/useFurnitureSelection'
@@ -108,7 +109,7 @@ function goHome() {
               @error="$event.target.style.display='none'"
             />
             <div v-else class="card-no-img">無圖</div>
-            <button class="remove-badge" title="移除" @click.stop="remove(item)">✕</button>
+            <button class="remove-badge" title="移除" aria-label="移除" @click.stop="remove(item)"><Icon icon="mdi:close" aria-hidden="true" /></button>
           </div>
           <div class="card-body">
             <p class="card-name">{{ item.name }}</p>
@@ -149,19 +150,19 @@ function goHome() {
 .cart-header { display: flex; align-items: center; gap: 1rem; margin-bottom: 1.25rem; }
 .cart-header h1 { font-size: 1.3rem; margin: 0; }
 .local-note { margin: 0 0 1rem; font-size: 0.85rem; color: var(--db-text-soft); }
-.back-btn { background: none; border: 1px solid #999; border-radius: 6px; padding: 0.3rem 0.8rem; cursor: pointer; font-size: 0.88rem; color: #333; font-weight: 600; }
-.back-btn:hover { background: #eee; border-color: #666; }
+.back-btn { background: none; border: 1px solid var(--db-line-strong); border-radius: 6px; padding: 0.3rem 0.8rem; cursor: pointer; font-size: 0.88rem; color: #333; font-weight: 600; }
+.back-btn:hover { background: var(--db-accent-soft); border-color: var(--db-accent-ink); }
 
 .header-actions { margin-left: auto; display: flex; align-items: center; gap: 0.6rem; }
-.clear-btn { background: none; border: 1px solid #ccc; border-radius: 6px; padding: 0.3rem 0.8rem; font-size: 0.8rem; cursor: pointer; color: #555; }
-.clear-btn:hover { background: #f0f0f0; }
-.done-btn { background: linear-gradient(135deg, #756d66 0%, #b07845 100%); color: #fff; border: none; border-radius: 6px; padding: 0.4rem 1rem; font-size: 0.85rem; font-weight: 700; cursor: pointer; }
+.clear-btn { background: none; border: 1px solid var(--db-line-strong); border-radius: 6px; padding: 0.3rem 0.8rem; font-size: 0.8rem; cursor: pointer; color: #555; }
+.clear-btn:hover { background: var(--db-accent-soft); }
+.done-btn { background: linear-gradient(135deg, var(--db-accent-ink) 0%, #b07845 100%); color: #fff; border: none; border-radius: 6px; padding: 0.4rem 1rem; font-size: 0.85rem; font-weight: 700; cursor: pointer; }
 .done-btn:hover { opacity: 0.9; }
 
-.empty-state { text-align: center; padding: 4rem 1rem; color: #888; }
+.empty-state { text-align: center; padding: 4rem 1rem; color: var(--db-text-soft); }
 .browse-btn {
   margin-top: 1rem;
-  background: linear-gradient(135deg, #756d66 0%, #b07845 100%);
+  background: linear-gradient(135deg, var(--db-accent-ink) 0%, #b07845 100%);
   color: #fff; border: none; border-radius: 8px;
   padding: 0.55rem 1.4rem; font-size: 0.85rem; font-weight: 700; cursor: pointer;
 }
@@ -170,12 +171,12 @@ function goHome() {
 .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 0.75rem; }
 
 .card { border: 1px solid #e8ddd0; border-radius: 10px; overflow: hidden; background: #fffaf5; transition: box-shadow 0.15s, border-color 0.15s; }
-.card:hover { box-shadow: 0 4px 18px rgba(117, 109, 102,0.18); border-color: #c9c4bb; }
-.card.checked { border-color: #756d66; box-shadow: 0 0 0 2px #c9c4bb; }
+.card:hover { box-shadow: 0 4px 18px rgba(117, 109, 102,0.18); border-color: var(--db-accent); }
+.card.checked { border-color: var(--db-accent-ink); box-shadow: 0 0 0 2px var(--db-accent); }
 
-.card-img-wrap { position: relative; aspect-ratio: 1/1; background: #f5f5f5; overflow: hidden; }
+.card-img-wrap { position: relative; aspect-ratio: 1/1; background: var(--db-chip-soft); overflow: hidden; }
 .card-img { width: 100%; height: 100%; object-fit: cover; display: block; }
-.card-no-img { display: flex; align-items: center; justify-content: center; width: 100%; height: 100%; color: #bbb; font-size: 0.78rem; }
+.card-no-img { display: flex; align-items: center; justify-content: center; width: 100%; height: 100%; color: var(--db-placeholder); font-size: 0.78rem; }
 
 .remove-badge {
   position: absolute; top: 6px; right: 6px;
@@ -184,10 +185,10 @@ function goHome() {
   font-size: 0.7rem; font-weight: 700; cursor: pointer;
   display: flex; align-items: center; justify-content: center;
 }
-.remove-badge:hover { background: #c00; }
+.remove-badge:hover { background: var(--db-danger); }
 
 .card-body { padding: 0.5rem 0.6rem; display: flex; flex-direction: column; gap: 0.2rem; }
-.card-name { font-size: 0.76rem; color: #222; margin: 0; line-height: 1.35;
+.card-name { font-size: 0.76rem; color: var(--db-text); margin: 0; line-height: 1.35;
   display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
 .card-category {
   font-size: 0.65rem; color: #8a5a00; background: #fff0d8;
@@ -210,7 +211,7 @@ function goHome() {
   display: flex; align-items: center; gap: 0.35rem;
   font-size: 0.7rem; color: #6b4a28; font-weight: 600; cursor: pointer;
 }
-.check-total input { accent-color: #756d66; cursor: pointer; }
+.check-total input { accent-color: var(--db-accent-ink); cursor: pointer; }
 
 .cart-summary {
   display: flex; justify-content: space-between; align-items: center;

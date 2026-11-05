@@ -149,7 +149,7 @@ function goNext() {
 .foot-hint {
   margin: 0.85rem 0 0;
   text-align: center;
-  color: var(--db-placeholder);
+  color: var(--db-text-soft);
   font-size: 0.82rem;
 }
 
