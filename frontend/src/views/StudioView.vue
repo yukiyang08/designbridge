@@ -10,7 +10,6 @@ import ModeBackButton from '@/components/shell/ModeBackButton.vue'
 import StepBar from '@/components/shell/StepBar.vue'
 import LoadingState from '@/components/shell/LoadingState.vue'
 import StepSpaceSetup from '@/components/steps/StepSpaceSetup.vue'
-import StepPhotoUpload from '@/components/steps/StepPhotoUpload.vue'
 import StepPhotoStudio from '@/components/steps/StepPhotoStudio.vue'
 import StepPlanUpload from '@/components/steps/StepPlanUpload.vue'
 import StepRoomProgram from '@/components/steps/StepRoomProgram.vue'
@@ -110,7 +109,6 @@ const activeRoomLabel = computed(
 
 const STEP_COMPONENTS = {
   space:       StepSpaceSetup,
-  photo:       StepPhotoUpload,
   photoStudio: StepPhotoStudio,
   planUpload:  StepPlanUpload,
   roomProgram: StepRoomProgram,
