@@ -6,7 +6,7 @@ import { useDesignFlow } from '@/composables/useDesignFlow'
 import { useFurnitureSelection } from '@/composables/useFurnitureSelection'
 
 const { result, quotationLoading, quotationError, fetchQuotation, furnitureHover } = useDesignFlow()
-const { toggle: toggleFavorite, isSelected: isFavorited } = useFurnitureSelection()
+const { selectedFurniture, toggle: toggleFavorite, isSelected: isFavorited } = useFurnitureSelection()
 
 const quotation = computed(() => result.value?.quotation_result || null)
 
@@ -92,6 +92,31 @@ const computedTotal = computed(() => {
   }, 0)
 })
 
+// 從收藏加入：使用者自己挑要放進這份報價的收藏，接在辨識結果後面（沒有 bbox，不會畫在圖上）。
+// 跟換款一樣只改前端這份報價，重新估價就會回到辨識結果
+const favOpen = ref(false)
+const favKey = (f) => String(f.id || f.url || f.name)
+const addedKeys = computed(() => new Set((quotation.value?.furniture_list || [])
+  .filter(it => it.from_favorite).map(it => it.fav_key)))
+const addableFavorites = computed(() => selectedFurniture.value.filter(f => !addedKeys.value.has(favKey(f))))
+function setList(list) {
+  result.value = { ...result.value, quotation_result: { ...quotation.value, furniture_list: list } }
+}
+function addFavorite(f) {
+  setList([...quotation.value.furniture_list, {
+    detected_name: f.name, category: f.category, from_favorite: true, fav_key: favKey(f),
+    candidates: [{
+      id: String(f.id || ''), name: f.name || '', price: Math.round(Number(f.price) || 0),
+      purchase_url: f.url || '', product_image_url: f.image_url || '', similarity: 1,
+    }],
+  }])
+}
+// 收藏項目都接在清單最後，刪掉不會讓前面辨識項目的 selected_indices 錯位
+function removeAdded(g) {
+  const drop = new Set(g.idxs)
+  setList(quotation.value.furniture_list.filter((_, i) => !drop.has(i)))
+}
+
 function toFavoriteItem(item, c) {
   return {
     id: c.id || c.purchase_url || `${item.detected_name}__${c.name}`,
@@ -142,7 +167,7 @@ function toFavoriteItem(item, c) {
                 <img :src="c.product_image_url" :alt="c.name" />
               </span>
               <div class="furn-info" :title="g.item.detected_name">
-                <span class="furn-cat">{{ categoryLabel(g.item) }}</span>
+                <span class="furn-cat">{{ categoryLabel(g.item) }}<span v-if="g.item.from_favorite" class="from-fav-tag">從收藏加入</span></span>
                 <a v-if="c.purchase_url" :href="c.purchase_url" target="_blank" rel="noopener" class="name name--link" :title="c.name">{{ shortName(c.name) }}</a>
                 <span v-else class="name" :title="c.name">{{ shortName(c.name) }}</span>
                 <div class="furn-foot">
@@ -153,7 +178,11 @@ function toFavoriteItem(item, c) {
                   </span>
                   <span class="furn-side">
                     <button
-                      v-if="!isEstimate(c)"
+                      v-if="g.item.from_favorite"
+                      type="button" class="fav" title="從報價移除" aria-label="從報價移除" @click="removeAdded(g)"
+                    ><Icon icon="mdi:close" aria-hidden="true" /></button>
+                    <button
+                      v-else-if="!isEstimate(c)"
                       type="button"
                       class="fav"
                       :class="{ active: isFavorited(toFavoriteItem(g.item, c)) }"
@@ -212,10 +241,33 @@ function toFavoriteItem(item, c) {
             <span class="est-price">
               NT$ {{ pickedOf(g).price.toLocaleString() }}
               <small v-if="g.idxs.length > 1" class="qty">×{{ g.idxs.length }}</small>
+              <button
+                v-if="g.item.from_favorite" type="button" class="est-remove" title="從報價移除" aria-label="從報價移除"
+                @click="removeAdded(g)"
+              ><Icon icon="mdi:close" aria-hidden="true" /></button>
             </span>
           </li>
         </ul>
       </template>
+
+      <div v-if="selectedFurniture.length" class="from-fav">
+        <button type="button" class="from-fav-toggle" :aria-expanded="favOpen" @click="favOpen = !favOpen">
+          <Icon :icon="favOpen ? 'mdi:chevron-up' : 'mdi:plus'" aria-hidden="true" /> 從收藏加入（{{ addableFavorites.length }}）
+        </button>
+        <template v-if="favOpen">
+          <p v-if="!addableFavorites.length" class="from-fav-empty">收藏的家具都已加入這份報價</p>
+          <ul v-else class="from-fav-list">
+            <li v-for="f in addableFavorites" :key="favKey(f)">
+              <button type="button" class="from-fav-row" @click="addFavorite(f)">
+                <span class="from-fav-thumb"><img v-if="f.image_url" :src="f.image_url" alt="" /></span>
+                <span class="from-fav-name" :title="f.name">{{ shortName(f.name) }}</span>
+                <span class="from-fav-price">NT$ {{ Math.round(Number(f.price) || 0).toLocaleString() }}</span>
+                <Icon icon="mdi:plus" class="from-fav-add" aria-hidden="true" />
+              </button>
+            </li>
+          </ul>
+        </template>
+      </div>
     </template>
 
     <p v-else-if="quotationLoading" class="hint" role="status">
@@ -266,12 +318,11 @@ function toFavoriteItem(item, c) {
 .furn-list { margin: 0; padding: 0; list-style: none; }
 .furn { padding: 0.4rem 0; border-bottom: 1px solid var(--db-line); }
 .furn:last-child { border-bottom: none; }
-/* 跟結果圖上滑到的家具對應的那一行：左側一條灰褐線＋淡底，往內縮一點不會貼邊 */
-.furn, .est-row { transition: background 0.14s, box-shadow 0.14s; }
+/* 跟結果圖上滑到的家具對應的那一行：淡底，往內縮一點不會貼邊 */
+.furn, .est-row { transition: background 0.14s; }
 .furn.is-hovered, .est-row.is-hovered {
   margin: 0 -0.5rem; padding-left: 0.5rem; padding-right: 0.5rem;
   border-radius: 8px; background: var(--db-accent-soft);
-  box-shadow: inset 3px 0 0 var(--db-accent-ink);
 }
 .furn-main { display: flex; align-items: center; gap: 0.75rem; }
 .furn-thumb {
@@ -295,7 +346,9 @@ function toFavoriteItem(item, c) {
 .est-row:last-child { border-bottom: none; }
 .est-cat { font-size: 0.74rem; color: var(--db-text-soft); }
 .est-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--db-text-soft); }
-.est-price { white-space: nowrap; }
+.est-price { display: inline-flex; align-items: center; white-space: nowrap; }
+.est-remove { display: grid; place-items: center; width: 32px; height: 32px; margin-left: 0.25rem; border: none; border-radius: 50%; background: none; color: var(--db-text-soft); cursor: pointer; }
+.est-remove:hover { background: var(--db-chip-soft); color: var(--db-text); }
 .est-row .qty { font-size: 0.8rem; padding: 0.05rem 0.45rem; }
 .furn-info { display: flex; flex-direction: column; gap: 0.15rem; flex: 1; min-width: 0; }
 .furn-info .name { font-size: 0.92rem; }
@@ -416,6 +469,30 @@ function toFavoriteItem(item, c) {
 .fav:active { transform: scale(0.9); }
 .fav.active { color: var(--db-accent); }
 .fav:focus-visible { outline: 2px solid var(--db-text); outline-offset: 2px; }
+
+.from-fav-tag {
+  margin-left: 0.4rem; padding: 0.02rem 0.4rem; border-radius: var(--db-radius-pill);
+  background: var(--db-accent-soft); color: var(--db-accent-ink); font-size: 0.68rem; letter-spacing: 0;
+}
+.from-fav { margin-top: 0.75rem; padding-top: 0.6rem; border-top: 1px solid var(--db-line); }
+.from-fav-toggle {
+  display: inline-flex; align-items: center; gap: 0.35rem; min-height: 40px; padding: 0 0.5rem; margin-left: -0.5rem;
+  border: none; border-radius: var(--db-radius-pill); background: none; color: var(--db-text); font-size: 0.88rem; cursor: pointer;
+}
+.from-fav-toggle:hover { background: var(--db-chip-soft); }
+.from-fav-toggle:focus-visible, .from-fav-row:focus-visible { outline: 2px solid var(--db-text); outline-offset: 2px; }
+.from-fav-empty { margin: 0.4rem 0 0; font-size: 0.8rem; color: var(--db-text-soft); }
+.from-fav-list { margin: 0.3rem 0 0; padding: 0; list-style: none; }
+.from-fav-row {
+  display: grid; grid-template-columns: 44px 1fr auto auto; align-items: center; gap: 0.6rem; width: 100%;
+  padding: 0.35rem 0.4rem; border: none; border-radius: 8px; background: none; text-align: left; cursor: pointer;
+}
+.from-fav-row:hover { background: var(--db-accent-soft); }
+.from-fav-thumb { display: grid; place-items: center; width: 44px; height: 44px; border-radius: 8px; background: var(--db-chip-soft); overflow: hidden; }
+.from-fav-thumb img { max-width: 100%; max-height: 100%; object-fit: contain; }
+.from-fav-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 0.85rem; color: var(--db-text); }
+.from-fav-price { font-size: 0.82rem; color: var(--db-text-soft); font-variant-numeric: tabular-nums; }
+.from-fav-add { color: var(--db-accent-ink); font-size: 1.1rem; }
 
 .total {
   display: flex;

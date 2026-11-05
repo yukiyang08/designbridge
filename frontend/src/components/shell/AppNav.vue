@@ -3,9 +3,11 @@ import { Icon } from '@iconify/vue'
 import { ref, computed, watch, onMounted, onBeforeUnmount } from 'vue'
 import { RouterLink, useRoute } from 'vue-router'
 import { useAuth } from '@/composables/useAuth'
+import { useFurnitureSelection } from '@/composables/useFurnitureSelection'
 import logo from '../../../asset/designbridge_logo.png'
 
 const { user, signInWithGoogle, signOut } = useAuth()
+const { selectedCount } = useFurnitureSelection()
 
 defineProps({
   // 深色底（首頁 hero）用白字，照片底（流程頁）維持白字但加陰影才看得清楚；
@@ -54,6 +56,7 @@ onBeforeUnmount(() => {
 
     <nav class="links right">
       <RouterLink to="/designs">我的設計</RouterLink>
+      <RouterLink to="/cart">我的收藏<span v-if="selectedCount" class="nav-count">{{ selectedCount }}</span></RouterLink>
 
       <div v-if="user" ref="menuEl" class="user-menu">
         <button
@@ -93,6 +96,7 @@ onBeforeUnmount(() => {
           <RouterLink to="/">首頁</RouterLink>
           <RouterLink to="/furniture">家具查詢</RouterLink>
           <RouterLink to="/designs">我的設計</RouterLink>
+          <RouterLink to="/cart">我的收藏<span v-if="selectedCount" class="nav-count">{{ selectedCount }}</span></RouterLink>
           <template v-if="user">
             <RouterLink to="/account">個人專區</RouterLink>
             <div class="m-who">{{ displayName }}</div>
@@ -106,6 +110,11 @@ onBeforeUnmount(() => {
 </template>
 
 <style scoped>
+.nav-count {
+  display: inline-grid; place-items: center; min-width: 1.25rem; height: 1.25rem; margin-left: 0.35rem; padding: 0 0.3rem;
+  border-radius: var(--db-radius-pill); background: var(--db-accent); color: var(--db-on-accent);
+  font-size: 0.7rem; font-weight: 600; line-height: 1; text-shadow: none; vertical-align: 0.1em;
+}
 .app-nav {
   position: relative;
   display: flex;
