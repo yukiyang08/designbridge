@@ -146,3 +146,6 @@ docs/images/mobile/
 /test/test_picture/run_*/
 # Vite 依賴快取
 .vite/
+
+# CubiCasa 評估集（CC BY-NC-SA，只限非商業用途）
+test/data/
