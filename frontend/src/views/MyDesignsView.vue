@@ -838,4 +838,21 @@ function reuseDesign(r) {
   .panel-body { grid-template-columns: 1fr; }
   .viewer { position: static; }
 }
+/* 手機：詳情改成全螢幕，標題列（含關閉）固定在上方；空間分頁單行橫滑 */
+@media (max-width: 560px) {
+  .overlay { padding: 0; place-items: stretch; }
+  .panel { width: 100%; height: 100%; max-height: none; border-radius: 0; padding: 0 1rem 1.5rem; }
+  .share-panel { height: auto; max-height: 100%; align-self: end; border-radius: var(--db-radius-card) var(--db-radius-card) 0 0; }
+  .panel-head { position: sticky; top: 0; z-index: 2; margin: 0 -1rem 0.75rem; padding: 0.6rem 0.5rem 0.6rem 1rem; background: var(--db-card); border-bottom: 1px solid var(--db-line); }
+  .panel-head h2 { font-size: 1.15rem; min-width: 0; }
+  .tabs { flex-wrap: nowrap; overflow-x: auto; margin: 0 -1rem 0.75rem; padding: 0 1rem 0.2rem; scrollbar-width: none; }
+  .tabs::-webkit-scrollbar { display: none; }
+  .tab { flex: none; }
+  .ver { flex-basis: 84px; }
+  .prompt { font-size: 0.9rem; }
+  /* 觸控點擊範圍 */
+  .icon-btn { width: 40px; height: 40px; }
+  .del-btn { width: 40px; height: 40px; top: 6px; right: 6px; }
+  .x { display: grid; place-items: center; width: 44px; height: 44px; flex: none; font-size: 1.3rem; }
+}
 </style>

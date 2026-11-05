@@ -128,7 +128,7 @@ def test_parallel_room_saves_all_reach_cloud(tmp_path, monkeypatch):
 
 def _share(sb):
     for p in sb.db["projects"]:
-        p.update(share_token=None, invite_token=None, title="設計")
+        p.update(share_token=None, invite_token=None, title=f"{p['user_id']}的設計")   # 標題以 projects 為準
 
 
 def test_invite_makes_editor_who_sees_and_edits_but_cannot_delete(sb):

@@ -332,7 +332,7 @@ const nextRoom = computed(() => pendingRoom.value ? null :
           <template v-if="refreshing">更新平面圖中…</template>
           <template v-else-if="planError"><span class="live-error">{{ planError }}</span></template>
           <template v-else-if="hasProgress">已經有設計的房間，改設定不會自動更新平面圖。</template>
-          <template v-else>改任何設定，右邊的平面圖會即時更新。</template>
+          <template v-else>改任何設定，平面圖會即時更新。</template>
         </p>
         <button
           v-if="dirty" type="button" class="db-btn generate-btn"

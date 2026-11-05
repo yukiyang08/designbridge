@@ -48,10 +48,11 @@
 
   /* 中文在 Iosevka Charon 底下本來就是靠 fallback + 合成斜體，
      所以這裡直接用襯線 stack + font-style: italic，視覺結果等價。 */
-  --db-font-display: 'Noto Serif TC', 'Songti TC', 'PingFang TC', 'Microsoft JhengHei', serif;
-  --db-font-body:    'Noto Sans TC', 'PingFang TC', 'Microsoft JhengHei', -apple-system,
+  /* 'DM Sans' 只載入數字子集（index.html），排第一只影響數字 */
+  --db-font-display: 'DM Sans', 'Noto Serif TC', 'Songti TC', 'PingFang TC', 'Microsoft JhengHei', serif;
+  --db-font-body:    'DM Sans', 'Noto Sans TC', 'PingFang TC', 'Microsoft JhengHei', -apple-system,
                      BlinkMacSystemFont, 'Segoe UI', sans-serif;
-  --db-font-num:     'Jeju Gothic', 'Helvetica Neue', Arial, sans-serif;
+  --db-font-num:     'DM Sans', 'Noto Sans TC', 'PingFang TC', 'Microsoft JhengHei', sans-serif;
 }
 
 /* ── 共用基礎元件 ───────────────────────────────────────────── */

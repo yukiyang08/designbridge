@@ -102,11 +102,15 @@ function selectCategory(cat) {
   activeCategory.value = cat
 }
 
-const hasExtraFilters = computed(() => priceIndex.value !== 0 || activeBrand.value || activeStyle.value)
+// 手機上篩選下拉收進「篩選」鈕，避免第一屏全是篩選條件
+const filtersOpen = ref(false)
+const filterCount = computed(() => [priceIndex.value !== 0, activeBrand.value, activeStyle.value, sortBy.value].filter(Boolean).length)
+const hasExtraFilters = computed(() => filterCount.value > 0)   // 徽章有數字就要能清掉，排序也算
 function clearExtraFilters() {
   priceIndex.value = 0
   activeBrand.value = ''
   activeStyle.value = ''
+  sortBy.value = ''
 }
 
 watch([activeCategory, activePriceRange, activeBrand, activeStyle, sortBy], () => fetchFurniture())
@@ -157,7 +161,13 @@ onMounted(() => {
         />
         <button v-if="searchQuery" class="search-clear" aria-label="清除搜尋" @click="searchQuery = ''"><Icon icon="mdi:close" aria-hidden="true" /></button>
       </div>
-      <div class="filter-selects">
+      <button
+        type="button" :class="['filter-toggle', { active: filterCount }]"
+        :aria-expanded="filtersOpen" aria-controls="filter-selects" @click="filtersOpen = !filtersOpen"
+      >
+        <Icon icon="mdi:tune-variant" aria-hidden="true" /> 篩選<span v-if="filterCount" class="filter-count">{{ filterCount }}</span>
+      </button>
+      <div id="filter-selects" :class="['filter-selects', { open: filtersOpen }]">
         <select v-model.number="priceIndex" :class="['filter-select', { active: priceIndex !== 0 }]" aria-label="價位">
           <option v-for="(range, idx) in priceRanges" :key="range.label" :value="idx">
             {{ idx === 0 ? '價位' : range.label }}
@@ -274,9 +284,22 @@ onMounted(() => {
 .filter-select.active { border-color: var(--db-accent-deep); background-color: var(--db-accent-soft); }
 .clear-filters { border: 0; background: none; padding: 0 0.25rem; font-size: 0.8rem; color: var(--db-text-soft); text-decoration: underline; cursor: pointer; }
 .clear-filters:hover { color: var(--db-danger); }
-/* 窄螢幕：四個下拉排成兩欄，不要各佔一層 */
+.filter-toggle { display: none; }
+/* 窄螢幕：下拉收進「篩選」鈕，展開時排成兩欄 */
 @media (max-width: 560px) {
-  .filter-selects { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); width: 100%; }
+  .search-bar { flex: 1 1 0; min-width: 0; }
+  .filter-toggle {
+    display: inline-flex; align-items: center; gap: 0.3rem; flex: none; min-height: 40px; padding: 0 0.9rem;
+    border: 1px solid #d8d4cb; border-radius: var(--db-radius-pill); background: #fff;
+    color: var(--db-text); font: inherit; font-size: 0.85rem; cursor: pointer;
+  }
+  .filter-toggle.active { border-color: var(--db-accent-deep); background: var(--db-accent-soft); }
+  .filter-count {
+    display: inline-grid; place-items: center; min-width: 1.15rem; height: 1.15rem; padding: 0 0.25rem;
+    border-radius: var(--db-radius-pill); background: var(--db-accent); color: var(--db-on-accent); font-size: 0.7rem;
+  }
+  .filter-selects { display: none; }
+  .filter-selects.open { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); width: 100%; }
   .filter-select { width: 100%; min-width: 0; padding: 0.42rem 1.5rem 0.42rem 0.7rem; background-position: right 0.55rem center; font-size: 0.8rem; text-overflow: ellipsis; }
   .clear-filters { grid-column: 1 / -1; justify-self: start; }
 }
@@ -343,4 +366,19 @@ onMounted(() => {
 }
 .favorite-btn:hover { background: var(--db-chip-soft); }
 .favorite-btn.favorited { background: var(--db-accent); border-color: var(--db-accent); color: var(--db-on-accent); }
+
+/* 手機：兩欄、分類單行橫滑，一屏看得到 4 件以上 */
+@media (max-width: 560px) {
+  .furniture-page { padding: 1.25rem 1rem 2rem; }
+  .furniture-header h1 { font-size: 1.4rem; }
+  .category-tabs { flex-wrap: nowrap; overflow-x: auto; margin: 0 -1rem 0.85rem; padding: 0 1rem 0.25rem; scrollbar-width: none; }
+  .category-tabs::-webkit-scrollbar { display: none; }
+  .cat-tab { flex: none; }
+  .grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.75rem; margin-top: 0.75rem; }
+  .card-body { padding: 0.6rem 0.65rem 0.7rem; gap: 0.2rem; }
+  .card-name { font-size: 0.8rem; }
+  .card-price { font-size: 0.85rem; }
+  .card-actions { flex-wrap: wrap; }
+  .favorite-btn { min-height: 32px; }
+}
 </style>

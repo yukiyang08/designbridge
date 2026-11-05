@@ -208,7 +208,7 @@ const quoteTotal = computed(() => quoteRows.value.reduce((s, r) => s + (r.c?.pri
         <!-- 調整家具位置 -->
         <template v-else-if="tool === 'layout'">
           <h3 class="side-title"><Icon icon="mdi:cursor-move" aria-hidden="true" /> 移動家具</h3>
-          <p class="side-note">在左邊圖上直接拖曳家具到新位置，可以一次搬好幾件，按「套用」後 AI 會補上原位置並融合光影。</p>
+          <p class="side-note">在圖上直接拖曳家具到新位置，可以一次搬好幾件，按「套用」後 AI 會補上原位置並融合光影。</p>
           <p class="side-note">第一次會先辨識圖上的家具，約需 40 秒。每次套用都會多一個版本，可以從下方版本列切回去比較。</p>
         </template>
 
@@ -235,7 +235,7 @@ const quoteTotal = computed(() => quoteRows.value.reduce((s, r) => s + (r.c?.pri
           <label class="field-label" for="refine-text">要怎麼改？</label>
           <textarea
             id="refine-text" v-model="refineText" class="db-textarea" rows="2"
-            :placeholder="hasMask ? '例如：刪除、換成淺灰布沙發' : '先在左邊圖上圈出要改的家具'"
+            :placeholder="hasMask ? '例如：刪除、換成淺灰布沙發' : '先在圖上圈出要改的家具'"
           />
           <button type="button" class="db-btn" :disabled="busy || !hasMask || !refineText.trim()" @click="onRefine">執行細節調整</button>
         </template>
@@ -249,7 +249,7 @@ const quoteTotal = computed(() => quoteRows.value.reduce((s, r) => s + (r.c?.pri
               @click="quotePhoto(true)"
             >重新估價</button>
           </div>
-          <p class="side-note">依左邊目前這張圖辨識家具並推薦商品。</p>
+          <p class="side-note">依目前這張圖辨識家具並推薦商品。</p>
           <p v-if="photoQuoting" class="side-note" role="status">估價中，約 30 秒…</p>
           <p v-else-if="currentVersion.quoteError" class="db-error">{{ currentVersion.quoteError }}</p>
           <template v-if="quotation">
@@ -441,9 +441,13 @@ const quoteTotal = computed(() => quoteRows.value.reduce((s, r) => s + (r.c?.pri
 @media (max-width: 760px) {
   .ps { height: auto; }
   .ps-top { flex-direction: column; align-items: stretch; }
-  .ps-tabs { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .ps-work { grid-template-columns: 1fr; }
-  .stage { min-height: 360px; }
+  /* 手機：分頁一列四格（圖示在上），看圖時不留灰邊，只有畫筆／移動需要畫布高度 */
+  .ps-tabs { grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 0.35rem; }
+  .ps-tab { flex-direction: column; gap: 0.15rem; padding: 0.5rem 0.25rem; border-radius: 12px; font-size: 0.75rem; }
+  .stage { min-height: 0; }
+  .stage--canvas, .stage--mover { min-height: 360px; }
+  .swap-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); }
   .ps-side { overflow: visible; }
 }
 </style>

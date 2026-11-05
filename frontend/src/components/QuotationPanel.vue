@@ -1,7 +1,7 @@
 <script setup>
 import { Icon } from '@iconify/vue'
 /** 結果圖的家具推薦清單：每件家具選中的商品、換款、收藏與總價。 */
-import { reactive, computed, ref, watch } from 'vue'
+import { reactive, computed, ref, watch, nextTick, onBeforeUnmount } from 'vue'
 import { useDesignFlow } from '@/composables/useDesignFlow'
 import { useFurnitureSelection } from '@/composables/useFurnitureSelection'
 
@@ -71,11 +71,21 @@ const isHovered = (g) => furnitureHover.value != null && g.idxs.includes(furnitu
 const rowEls = {}
 let hoverFromList = false
 function hoverRow(g) { hoverFromList = true; furnitureHover.value = g ? g.idxs[0] : null }
-watch(furnitureHover, (idx) => {
+watch(furnitureHover, async (idx) => {
   if (hoverFromList) { hoverFromList = false; return }
+  if (idx != null && !listOpen.value) { listOpen.value = true; await nextTick() }
   const g = furnitureGroups.value.find(x => x.idxs.includes(idx))
   rowEls[g?.key]?.scrollIntoView({ block: 'nearest', behavior: 'smooth' })
 })
+
+// 手機上清單接在大圖下面很長：預設只露總價，點開才看明細；點圖上的家具也會自動展開
+const narrowMql = window.matchMedia('(max-width: 560px)')
+const narrow = ref(narrowMql.matches)
+const listOpen = ref(!narrow.value)
+// 旋轉或拉寬視窗跨過斷點：切到桌面版就展開，切回手機版回到只露總價
+const onNarrowChange = e => { narrow.value = e.matches; listOpen.value = !e.matches }
+narrowMql.addEventListener('change', onNarrowChange)
+onBeforeUnmount(() => narrowMql.removeEventListener('change', onNarrowChange))
 
 // 目前展開「換款」的那一組
 const openRow = ref(null)
@@ -151,10 +161,18 @@ function toFavoriteItem(item, c) {
     <p v-if="quotationError" class="db-error">{{ quotationError }}</p>
 
     <template v-if="quotation">
-      <div class="total">
-        <span class="total-label">預算 · {{ quotation.furniture_list.length }} 件</span>
+      <component
+        :is="narrow ? 'button' : 'div'" class="total" :type="narrow ? 'button' : undefined"
+        :aria-expanded="narrow ? listOpen : undefined" @click="narrow && (listOpen = !listOpen)"
+      >
+        <span class="total-label">
+          預算 · {{ quotation.furniture_list.length }} 件
+          <span v-if="narrow" class="total-more">{{ listOpen ? '收合明細' : '看明細' }}<Icon :icon="listOpen ? 'mdi:chevron-up' : 'mdi:chevron-down'" aria-hidden="true" /></span>
+        </span>
         <span class="total-val">NT$ {{ computedTotal.toLocaleString() }}</span>
-      </div>
+      </component>
+
+      <template v-if="listOpen">
 
       <ul v-if="shopGroups.length" class="furn-list">
         <li
@@ -268,6 +286,7 @@ function toFavoriteItem(item, c) {
           </ul>
         </template>
       </div>
+      </template>
     </template>
 
     <p v-else-if="quotationLoading" class="hint" role="status">
@@ -503,6 +522,8 @@ function toFavoriteItem(item, c) {
   border-bottom: 1px solid var(--db-line);
 }
 .total-label { color: var(--db-text-soft); font-size: 0.9rem; }
+button.total { width: 100%; border-width: 0 0 1px; background: none; font: inherit; text-align: left; cursor: pointer; }
+.total-more { display: inline-flex; align-items: center; gap: 0.1rem; margin-left: 0.4rem; color: var(--db-accent-ink); font-size: 0.8rem; }
 .total-val {
   font-family: var(--db-font-display);
   font-style: normal;

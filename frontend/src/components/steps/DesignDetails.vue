@@ -48,6 +48,8 @@ const depthMaps = computed(() => {
   return [
     { label: '深度圖', url: artifactUrl(ci.depth || r?.vision_features?.depth || r?.scene_graph?.projected_depth_path) },
     { label: '佈局深度圖', url: artifactUrl(ci.layout_depth) },
+    { label: '邊緣圖', url: artifactUrl(ci.edge) },
+    { label: '分割圖', url: artifactUrl(ci.segmentation || r?.vision_features?.segmentation) },
   ].filter((m, i, all) => m.url && all.findIndex(o => o.url === m.url) === i)
 })
 </script>
@@ -62,7 +64,7 @@ const depthMaps = computed(() => {
     </section>
 
     <section v-if="depthMaps.length" class="card">
-      <h3 class="card-title">深度圖</h3>
+      <h3 class="card-title">深度圖與條件圖</h3>
       <div class="depth-grid">
         <figure v-for="m in depthMaps" :key="m.url" class="depth-item">
           <a :href="m.url" target="_blank" rel="noopener"><img :src="m.url" :alt="m.label" class="ref-img" /></a>
@@ -187,8 +189,9 @@ const depthMaps = computed(() => {
   border-radius: 8px;
 }
 
-.depth-grid { display: flex; flex-wrap: wrap; gap: 1rem; }
-.depth-item { margin: 0; }
+.depth-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(200px, 100%), 1fr)); gap: 1rem; }
+.depth-item { margin: 0; min-width: 0; }
+.depth-item .ref-img { width: 100%; max-width: none; }
 .depth-item figcaption { margin-top: 0.35rem; font-size: 0.8rem; color: var(--db-text-soft); }
 
 .req-grid {

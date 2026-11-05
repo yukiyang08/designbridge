@@ -189,5 +189,20 @@ onBeforeUnmount(() => clearTimeout(undoTimer))
   border-radius: var(--db-radius-pill); background: var(--db-text); color: #fff; font-size: 0.85rem;
   box-shadow: var(--db-shadow-soft);
 }
+/* 手機：改成橫向列表（小圖＋文字），總計固定在底部 */
+@media (max-width: 560px) {
+  .cart-header h1 { font-size: 1.4rem; }
+  .grid { grid-template-columns: 1fr; gap: 0.6rem; }
+  .card { position: relative; display: grid; grid-template-columns: 76px 1fr; }
+  .card-img-wrap { position: static; width: 76px; height: 76px; aspect-ratio: auto; }
+  .remove-btn { top: 0; right: 0; color: var(--db-text-soft); }
+  .remove-btn svg { width: 24px; height: 24px; background: none; }
+  .remove-btn:hover svg { background: none; color: var(--db-danger); }
+  .card-body { padding: 0.5rem 2.75rem 0.5rem 0.75rem; gap: 0.15rem; }
+  .card-brand { display: none; }
+  .card-name { font-size: 0.82rem; }
+  .card-price { font-size: 0.85rem; }
+  .cart-summary { position: sticky; bottom: 0.75rem; box-shadow: var(--db-shadow-soft); }
+}
 .undo-btn { min-height: 36px; padding: 0 0.9rem; border: none; border-radius: var(--db-radius-pill); background: #fff; color: var(--db-text); font-size: 0.82rem; font-weight: 600; cursor: pointer; }
 </style>

@@ -416,15 +416,22 @@ onMounted(() => {
   .studio .studio-main :deep(.actions) { flex-direction: row; }
   .studio-main :deep(.actions .db-btn) { flex: 1; width: auto; }
 }
-/* 手機：底部操作列不再固定（3 個子項疊起來會吃掉半個畫面），改成接在內容後面、自然換行、按鈕滿寬 */
+/* 手機：fixed 會蓋住疊在下方的右欄，改 sticky 黏在主內容底部；次要的提示／跳過縮成一行小字，整條不超過約兩行高 */
 @media (max-width: 640px) {
   .studio { --actions-h: 0px; }
+  /* 操作列改 sticky 後 --actions-h 是 0，錯誤訊息要自己讓開約兩行高的操作列，並疊在它上面 */
+  .studio-error { bottom: 6rem; z-index: 51; }
   .studio .studio-main :deep(.actions) {
-    position: static; flex-wrap: wrap; gap: 0.6rem;
+    position: sticky; flex-wrap: wrap; gap: 0.35rem 0.6rem;
     margin: 1.5rem calc(-1 * var(--pad)) 0;
+    padding: 0.6rem var(--pad) calc(0.6rem + env(safe-area-inset-bottom));
+    box-shadow: 0 -6px 16px rgba(0, 0, 0, 0.06);
   }
   .studio-main :deep(.actions .db-btn) { flex: 1 1 140px; }
+  .studio-main :deep(.actions .db-btn--ghost) { flex: 0 1 auto; }
   .studio-main :deep(.actions p),
-  .studio-main :deep(.actions .skip-btn) { flex: 1 1 100%; text-align: center; }
+  .studio-main :deep(.actions small),
+  .studio-main :deep(.actions .skip-btn) { flex: 1 1 100%; margin: 0; text-align: center; font-size: 0.78rem; }
+  .studio-main :deep(.actions .skip-btn) { min-height: 32px; padding: 0; border: 0; background: none; text-decoration: underline; }
 }
 </style>

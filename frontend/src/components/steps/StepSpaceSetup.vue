@@ -351,6 +351,14 @@ function submit() {
 .setup .room-section { padding-bottom: 0; align-items: stretch; }
 .setup .room-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.6rem; }
 .setup .room-card-photo + .room-card-label { font-size: 1.3rem; }
+/* 手機：三欄小卡（8 張不再佔滿一屏），並先選房型再填坪數 */
+@media (max-width: 560px) {
+  .setup .room-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0.45rem; }
+  .setup .room-card-photo + .room-card-label { font-size: 1rem; }
+  .setup .room-card--add .room-card-icon { margin-top: 0.6rem; font-size: 1.8rem; }
+  .setup .setup-head { order: -2; }
+  .setup .room-section { order: -1; }
+}
 
 .setup-head { display: flex; flex-direction: column; gap: 0.7rem; }
 .setup-title {
