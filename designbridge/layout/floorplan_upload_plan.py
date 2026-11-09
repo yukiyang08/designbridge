@@ -69,7 +69,8 @@ def _scale_from_rooms(image_path: str, rooms: list[dict], img_w: int, img_h: int
         )
         try:
             text = call_llm(prompt, images=[image_path, _mark_rooms_image(image_path, rooms)],
-                            json_mode=True, max_tokens=3000)
+                            json_mode=True, max_tokens=3000,
+                            thinking_budget=Config.FLOORPLAN_THINKING_BUDGET)
             answers = ((_parse_llm_layout(text) or {}).get("regions")) or []
         except Exception as e:  # noqa: BLE001
             print(f"⚠️  Gemini plan scale failed: {e}")
@@ -337,7 +338,8 @@ def _detect_openings(image_path: str, rooms: list[dict]) -> list[dict]:
     )
     try:
         text = call_llm(prompt, images=[image_path, _mark_rooms_image(image_path, rooms)],
-                        json_mode=True, max_tokens=6000)
+                        json_mode=True, max_tokens=6000,
+                        thinking_budget=Config.FLOORPLAN_THINKING_BUDGET)
         raw = ((_parse_llm_layout(text) or {}).get("openings")) or []
     except Exception as e:  # noqa: BLE001
         print(f"⚠️  Gemini plan openings failed: {e}")

@@ -140,3 +140,22 @@ def test_cubicasa_masks_cached_per_image(tmp_path, monkeypatch):
     cw.predict_masks(str(a))
     cw.predict_masks(str(b))
     assert calls == [str(a), str(b)]
+
+
+def _rect_room(i, x, w, room_type, label=""):
+    return {"id": f"room_{i}", "x": x, "y": 0.1, "w": w, "h": 0.4, "room_type": room_type,
+            "space_type": room_type, "label": label, "written": bool(label),
+            "polygon": [[x, 0.1], [x + w, 0.1], [x + w, 0.5], [x, 0.5]]}
+
+
+def test_unlabeled_piece_merges_into_labeled_room_of_same_type():
+    """主臥被衣櫃線切出的梳妝區（沒寫房名、面積相近）要併回主臥；陽台不能併進客廳。"""
+    import designbridge.layout.floorplan_parse as fp
+
+    rooms = [_rect_room(1, 0.1, 0.2, "bedroom", "主臥室"), _rect_room(2, 0.3, 0.2, "bedroom"),
+             _rect_room(3, 0.6, 0.2, "living_room", "客廳"), _rect_room(4, 0.8, 0.05, "balcony")]
+    by_n = {2: {"same_room_as": "A"}, 4: {"same_room_as": "C"}}
+    fp._merge_split_rooms(rooms, by_n, {fp._mark(i): i for i in range(1, 5)})
+    assert [(r["room_type"], r["label"]) for r in rooms] == [
+        ("bedroom", "主臥室"), ("living_room", "客廳"), ("balcony", "")]
+    assert rooms[0]["w"] > 0.35   # 形狀已聯集

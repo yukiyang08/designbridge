@@ -7,6 +7,7 @@ from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Any
 
+from designbridge.core.config import Config
 from designbridge.layout.layout_items import FURNITURE_SIZES, FurnitureItem, _parse_llm_layout
 from designbridge.layout.layout_enforce import _clip_to_room
 from designbridge.layout.floorplan_render import _generate_floor_plan
@@ -137,7 +138,8 @@ def parse_floor_plan_image(
         # (ablation 4.4), a runaway repetition loop with no cap ran to the 32k platform
         # ceiling (308s, see ablation 4.3b). 4000 truncated dense plans (30+ items); 8000
         # still bounds the worst case while giving them room.
-        text = call_llm(prompt, images=[image_path], json_mode=True, max_tokens=8000)
+        text = call_llm(prompt, images=[image_path], json_mode=True, max_tokens=8000,
+                        thinking_budget=Config.FLOORPLAN_THINKING_BUDGET)
     except Exception as e:  # noqa: BLE001
         print(f"⚠️  Gemini floor-plan parse failed: {e}")
         return None
@@ -293,7 +295,8 @@ def _room_seeds(image_path: str) -> list[dict] | None:
 
     # 呼叫失敗（例如配額 429 重試後仍失敗）往上拋：只靠自動補種子切出來的房間全是 other，
     # 看起來像成功其實是錯的，寧可讓前端顯示「辨識失敗，請重試」
-    text = call_llm(_room_seed_prompt(), images=[image_path], json_mode=True, max_tokens=4000)
+    text = call_llm(_room_seed_prompt(), images=[image_path], json_mode=True, max_tokens=4000,
+                    thinking_budget=Config.FLOORPLAN_THINKING_BUDGET)
     data = _parse_llm_layout(text) or {}
     if data.get("is_floor_plan") is False:
         from designbridge.layout.floorplan_quality import FloorPlanRejected
@@ -491,7 +494,8 @@ def _vote_regions(prompt: str, images: list) -> list[dict]:
 
     def ask(_):
         try:
-            text = call_llm(prompt, images=images, json_mode=True, max_tokens=4000)
+            text = call_llm(prompt, images=images, json_mode=True, max_tokens=4000,
+                            thinking_budget=Config.FLOORPLAN_THINKING_BUDGET)
         except Exception as e:  # noqa: BLE001
             print(f"⚠️  Gemini region labeling failed: {e}")
             return []
@@ -517,8 +521,8 @@ def _vote_regions(prompt: str, images: list) -> list[dict]:
 
 def _merge_split_rooms(rooms: list[dict], by_n: dict[int, dict], index: dict[str, int]) -> None:
     """依逐區辨識的 same_room_as 把被切開的同一間房合回去（凸窗角落、無牆的小塊）。
-    只合兩邊都沒寫房名、且小塊面積不到大塊 _MERGE_MAX_RATIO 的：
-    Gemini 偶爾會把隔著門的兩間房也判成同一間。"""
+    兩邊都寫房名不合；只一邊寫房名時要同類型（梳妝區併回主臥，不把陽台併進客廳）；
+    兩邊都沒寫時小塊面積要不到大塊 _MERGE_MAX_RATIO：Gemini 偶爾會把隔著門的兩間房判成同一間。"""
     from designbridge.layout.floorplan_segment import merge_room_shapes
 
     parent = list(range(len(rooms) + 1))
@@ -532,15 +536,22 @@ def _merge_split_rooms(rooms: list[dict], by_n: dict[int, dict], index: dict[str
     def area(r: dict) -> float:
         return r["w"] * r["h"]
 
+    def kind(r: dict) -> str | None:
+        return r.get("space_type") or r.get("room_type")
+
     for n, a in by_n.items():
         m = index.get(str(a.get("same_room_as") or "").strip().upper())
         if not m or m == n:
             continue
         rn, rm = rooms[n - 1], rooms[m - 1]
-        if rn.get("written") or rm.get("written"):
+        if rn.get("written") and rm.get("written"):
             continue
-        small, big = sorted((area(rn), area(rm)))
-        if big and small / big < _MERGE_MAX_RATIO:
+        if rn.get("written") or rm.get("written"):
+            ok = kind(rn) == kind(rm)
+        else:
+            small, big = sorted((area(rn), area(rm)))
+            ok = bool(big) and small / big < _MERGE_MAX_RATIO
+        if ok:
             parent[find(n)] = find(m)
 
     groups: dict[int, list[int]] = {}
@@ -552,8 +563,8 @@ def _merge_split_rooms(rooms: list[dict], by_n: dict[int, dict], index: dict[str
     merged: list[dict] = []
     for members in groups.values():
         group = [rooms[n - 1] for n in members]
-        # 類型和房名跟著面積最大的那塊走
-        main = dict(max(group, key=area))
+        # 類型和房名跟著有寫房名的那塊，都沒寫才取面積最大
+        main = dict(max(group, key=lambda r: (bool(r.get("written")), area(r))))
         if len(group) > 1:
             main.update(merge_room_shapes(group))
         merged.append(main)
@@ -584,7 +595,8 @@ def _detect_rooms_by_boxes(image_path: str) -> list[dict] | None:
     )
 
     try:
-        text = call_llm(prompt, images=[image_path], json_mode=True, max_tokens=8000)
+        text = call_llm(prompt, images=[image_path], json_mode=True, max_tokens=8000,
+                        thinking_budget=Config.FLOORPLAN_THINKING_BUDGET)
     except Exception as e:  # noqa: BLE001
         print(f"⚠️  Gemini room detection failed: {e}")
         return None

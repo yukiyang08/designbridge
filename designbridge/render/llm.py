@@ -127,8 +127,9 @@ def _build_gemini_parts(
     return parts
 
 
-def _thinking_config(types):
+def _thinking_config(types, budget: int | None = None):
     """ThinkingConfig for the configured model, or None to leave it to the model.
+    ``budget`` overrides Config.GEMINI_THINKING_BUDGET for a single call.
 
     ``thinking_budget=0`` means "don't think at all". Only the Gemini 2.x models
     accept that: sending 0 to a 3.x model is rejected outright with
@@ -137,7 +138,8 @@ def _thinking_config(types):
     translation of "0" there is to send no thinking_config and let the model pick
     its own budget. A positive budget is a real request and is always passed on.
     """
-    budget = Config.GEMINI_THINKING_BUDGET
+    if budget is None:
+        budget = Config.GEMINI_THINKING_BUDGET
     if budget == 0 and not Config.GEMINI_MODEL.startswith(("gemini-1.", "gemini-2.")):
         # 3.x flash 用 thinking_level=minimal 才等於不思考；不設的話思考 token 會吃掉
         # max_output_tokens，輸出被截斷（composer 只剩「(#DDC8B4), yellow (#F」）
@@ -147,9 +149,10 @@ def _thinking_config(types):
     return types.ThinkingConfig(thinking_budget=budget)
 
 
-def _thinking_headroom() -> int:
+def _thinking_headroom(budget: int | None = None) -> int:
     """思考 token 也算在 max_output_tokens 裡：模型會思考時，呼叫端的 max_tokens 要另外加的餘裕。"""
-    budget = Config.GEMINI_THINKING_BUDGET
+    if budget is None:
+        budget = Config.GEMINI_THINKING_BUDGET
     if budget > 0:
         return budget
     if budget < 0:
@@ -199,6 +202,8 @@ def _gemini_client_and_config(
     system: str | None,
     temperature: float | None,
     max_tokens: int | None,
+    json_mode: bool = False,
+    thinking_budget: int | None = None,
 ):
     try:
         from google.genai import types
@@ -207,13 +212,14 @@ def _gemini_client_and_config(
 
     client = _get_client(api_key)
     if max_tokens is not None:
-        max_tokens += _thinking_headroom()
+        max_tokens += _thinking_headroom(thinking_budget)
     cfg = types.GenerateContentConfig(
         temperature=temperature if temperature is not None else Config.GEMINI_TEMPERATURE,
         **({"max_output_tokens": max_tokens} if max_tokens is not None else {}),
         **({"system_instruction": system} if system else {}),
+        **({"response_mime_type": "application/json"} if json_mode else {}),
     )
-    thinking = _thinking_config(types)
+    thinking = _thinking_config(types, thinking_budget)
     if thinking is not None:
         cfg.thinking_config = thinking
     return client, cfg
@@ -500,15 +506,11 @@ def call_llm(
     temperature: float | None = None,
     max_tokens: int | None = None,
     json_mode: bool = False,
+    thinking_budget: int | None = None,
 ) -> str:
-    """``json_mode=True`` asks the backend to constrain decoding to valid JSON
-    (OpenAI-style ``response_format``). Only actually does anything for Llama, which
-    otherwise leaks chat-template tokens into structured output and breaks the closing
-    bracket. Gemini doesn't show that problem (left alone rather than wiring up its
-    differently-shaped response_mime_type config for no benefit), and Qwen gets *worse*
-    under it — it pads the response with unrequested fields and overruns tight
-    max_tokens budgets — so both silently ignore the flag. Safe for every caller to pass
-    when parsing JSON out of the response; it only changes behavior on Llama."""
+    """``json_mode=True`` constrains decoding to valid JSON: Gemini 用 response_mime_type
+    （整戶平面圖曾回壞 JSON），Llama 用 response_format；Qwen 開了反而會塞多餘欄位、
+    超出 max_tokens，所以忽略。``thinking_budget`` 只對 Gemini 有效，覆寫全域預算。"""
     if Config.LLM_PROVIDER == "qwen":
         return _call_qwen(
             prompt, images=images, system=system, history=history,
@@ -531,7 +533,9 @@ def call_llm(
     for i, api_key in enumerate(keys):
         try:
             started = time.perf_counter()
-            client, cfg = _gemini_client_and_config(api_key, system, temperature, max_tokens)
+            client, cfg = _gemini_client_and_config(
+                api_key, system, temperature, max_tokens, json_mode=json_mode, thinking_budget=thinking_budget,
+            )
             if converted is not None:
                 chat = client.chats.create(model=Config.GEMINI_MODEL, config=cfg, history=converted)
                 response = chat.send_message(parts)

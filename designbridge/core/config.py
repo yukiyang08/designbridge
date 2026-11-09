@@ -24,6 +24,8 @@ class Config:
     GEMINI_TEMPERATURE: float = 0.3
     # thinking token 上限：0 關閉（抽取/翻譯/辨識不需要）、-1 由模型決定
     GEMINI_THINKING_BUDGET: int = int(os.getenv("DESIGNBRIDGE_GEMINI_THINKING_BUDGET", "0"))
+    # 平面圖辨識單獨的思考預算；台灣 30 張比較 0／2048／-1，2048 分數最好、-1 最慢（見 FLOORPLAN_SEGMENTATION_EXPERIMENT.md）
+    FLOORPLAN_THINKING_BUDGET: int = int(os.getenv("DESIGNBRIDGE_FLOORPLAN_THINKING_BUDGET", "2048"))
 
     # 平面圖切房間的牆改用 CubiCasa5K 模型預測（比規則式牆線準，見 test/FLOORPLAN_SEGMENTATION_EXPERIMENT.md）；
     # 權重不在 repo（scripts/fetch_cubicasa_weights.py），缺檔時退回規則式。只限非商業用途

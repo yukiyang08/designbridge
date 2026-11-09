@@ -1,6 +1,6 @@
 # 提升平面圖辨識精準度
 
-> 更新：2026-11-05
+> 更新：2026-11-07
 
 房間切割的牆線已改用 CubiCasa5K 模型預測，台灣 30 張圖的房間數完全正確率約為原本規則式的 2 倍（實驗見 [test/FLOORPLAN_SEGMENTATION_EXPERIMENT.md](../test/FLOORPLAN_SEGMENTATION_EXPERIMENT.md)）。剩下的錯誤主要在三個地方：Gemini 呼叫的設定、家具框的座標與比例尺、下游只認矩形。建議依序修呼叫設定、加 few-shot、讓下游支援不規則空間；自己訓練模型列為未來計畫。
 
@@ -18,11 +18,9 @@
 
 | 錯誤來源 | 影響 | 位置 |
 | --- | --- | --- |
-| Gemini 呼叫忽略 `json_mode` | 整戶圖偶爾回傳壞掉的 JSON，只能用正規表示式撈回部分資料（`_salvage_boxes`） | `render/llm.py` |
-| 思考預算是全域設定 | `.env` 目前為 -1（動態），所有呼叫都會思考、變慢；平面圖之外的呼叫不需要 | `core/config.py`、`render/llm.py` |
 | 沒設圖片解析度 | CAD 圖上的小字和家具符號容易糊掉 | `render/llm.py` |
 | 家具框座標基準不一致 | 提示詞要求以房間內部為基準，送進去的卻是含牆和留白的裁切圖，造成系統性偏移 | `floorplan_parse.py` |
-| 比例尺靠坪數推估 | 比例一錯，尺寸檢查會把真的家具也丟掉 | `routers/floorplan.py` |
+| 單間房比例尺靠坪數推估 | 比例一錯，尺寸檢查會把真的家具也丟掉（整戶圖沒填坪數時已改讀尺寸標註，`_scale_from_rooms`） | `routers/floorplan.py` |
 | 沒問旋轉角度 | 斜放的家具一律畫成正的 | `floorplan_parse.py` |
 | 下游只認矩形 | L 型房的缺角被當成地板，家具可能擺進去 | 佈局、深度投影 |
 
@@ -36,6 +34,8 @@
 | 思考預算 -1 時沒預留輸出空間，JSON 被截斷 | `_thinking_headroom()` 依思考預算加 `max_output_tokens`（影響所有 Gemini 呼叫） |
 | 無效圖片也送進辨識 | 上傳時檢查解析度、對比、銳利度，Gemini 判斷是不是平面圖 |
 | 家具符號認錯（矮櫃／高櫃、立燈／桌燈、REF） | 家具辨識提示詞加入台灣平面配置圖的符號慣例 |
+| Gemini 忽略 `json_mode`，整戶圖偶爾回壞 JSON（2026-11-07） | `json_mode=True` 時設 `response_mime_type="application/json"`（影響所有傳 json_mode 的 Gemini 呼叫）；`_salvage_boxes` 先留著防截斷 |
+| 思考預算只有全域設定（2026-11-07） | `call_llm(thinking_budget=...)`；平面圖 6 個呼叫用 `DESIGNBRIDGE_FLOORPLAN_THINKING_BUDGET`（預設 2048：台灣 30 張比較後分數最好，-1 最慢且沒比較準），全域維持 0 |
 
 ## 2. Gemini + Python 的優化
 
