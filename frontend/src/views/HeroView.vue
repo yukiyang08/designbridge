@@ -29,9 +29,9 @@ const PROMPTS = [
   { text: '奢華、水晶吊燈、深色木飾板' },
 ]
 const ENTRIES = [
-  { img: thumbPlan, t: '從 CAD 平面圖開始', d: '填房型與坪數，自動生成尺寸精準、標好門窗與面積的整層平面圖；也能上傳自己的 CAD 平面圖。' },
-  { img: thumbPhoto, t: '上傳現有空間照片', d: '拍一張現況照，AI 讀懂格局後直接改造成你要的樣子。' },
-  { img: thumbScratch, t: '從零開始描述', d: '不排家具，用一段描述加風格參考直接生成效果圖。' },
+  { img: thumbPlan, label: '平面圖', t: '先看懂格局，再想像每個房間' },
+  { img: thumbPhoto, label: '現況照片', t: '從熟悉的空間，試出新的可能' },
+  { img: thumbScratch, label: '靈感描述', t: '把腦中的畫面，慢慢具體化' },
 ]
 
 /* ── 打字示範 ── */
@@ -97,14 +97,16 @@ const caretOn = computed(() => playing.value && !hovering.value)
 
     <main id="features">
       <section class="entries" aria-labelledby="entries-h">
-        <p class="eyebrow">三種開始方式</p>
-        <h2 id="entries-h">手上有什麼，就從什麼開始</h2>
+        <h2 id="entries-h">讓設計，從你手邊的靈感開始</h2>
+        <p class="entries-intro">一張平面圖、一張現況照，或一個還沒成形的念頭，都能成為新家的起點。</p>
         <ul>
           <li v-for="e in ENTRIES" :key="e.t">
             <button type="button" class="entry" @click="start">
               <span class="entry-img"><img :src="e.img" alt="" loading="lazy" /></span>
-              <strong>{{ e.t }}</strong>
-              <span class="entry-d">{{ e.d }}</span>
+              <span class="entry-cap">
+                <span class="entry-label">{{ e.label }}</span>
+                <strong>{{ e.t }}</strong>
+              </span>
             </button>
           </li>
         </ul>
@@ -223,7 +225,7 @@ const caretOn = computed(() => playing.value && !hovering.value)
 }
 .start-btn:hover { background: var(--db-accent-deep); box-shadow: 0 10px 30px rgba(0, 0, 0, 0.32); transform: translateY(-2px); }
 .start-btn:active { transform: translateY(0); }
-.start-btn:focus-visible,.scroll-cue:focus-visible, .entry:focus-visible {
+.start-btn:focus-visible, .scroll-cue:focus-visible {
   outline: 3px solid #fff;
   outline-offset: 3px;
 }
@@ -261,27 +263,28 @@ const caretOn = computed(() => playing.value && !hovering.value)
   line-height: 1.35;
   text-wrap: balance;
 }
-.entries ul { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 1.25rem; }
+.entries h2 { margin-bottom: 0.65rem; }
+.entries-intro { max-width: 55ch; margin: 0 0 2rem; color: var(--db-text-soft); line-height: 1.8; }
+.entries ul { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: clamp(1rem, 2.4vw, 2rem); }
 .entry {
-  display: flex;
-  flex-direction: column;
-  gap: 0.5rem;
+  display: grid;
+  gap: 0.85rem;
   width: 100%;
-  height: 100%;
-  padding: 0.9rem 0.9rem 1.2rem;
+  padding: 0;
   border: none;
-  border-radius: var(--db-radius-card);
-  background: var(--db-card);
-  box-shadow: var(--db-shadow-soft);
+  background: none;
+  color: inherit;
+  font: inherit;
   text-align: left;
-  cursor: pointer;
-  transition: transform 0.22s, box-shadow 0.22s;
 }
-.entry:hover { transform: translateY(-4px); box-shadow: var(--db-shadow-card); }
 .entry-img { display: block; aspect-ratio: 16 / 10; border-radius: 12px; overflow: hidden; background: var(--db-accent-soft); }
-.entry-img img { width: 100%; height: 100%; object-fit: cover; display: block; }
-.entry strong { padding: 0 0.3rem; font-family: var(--db-font-display); font-weight: 500; font-size: 1.2rem; }
-.entry-d { padding: 0 0.3rem; font-size: 0.9rem; line-height: 1.75; color: var(--db-text-soft); }
+.entry-img img { width: 100%; height: 100%; object-fit: cover; display: block; transition: transform 0.4s; }
+.entry:hover .entry-img img { transform: scale(1.04); }
+.entry:hover strong { text-decoration: underline; text-underline-offset: 0.3em; }
+.entry:focus-visible { outline: 3px solid var(--db-accent); outline-offset: 4px; border-radius: 12px; }
+.entry-cap { display: grid; gap: 0.2rem; }
+.entry-label { color: var(--db-accent-ink); font-size: 0.82rem; letter-spacing: 0.08em; }
+.entry strong { font-family: var(--db-font-display); font-weight: 500; font-size: 1.2rem; line-height: 1.5; }
 
 /* ── 更多功能 ── */
 .duo {
@@ -326,9 +329,10 @@ const caretOn = computed(() => playing.value && !hovering.value)
   .hero-body { gap: 1.75rem; padding-bottom: 5rem; }
 }
 @media (prefers-reduced-motion: reduce) {
-  .start-btn, .entry { transition: background 0.18s; }
-  .start-btn:hover, .entry:hover { transform: none; }
+  .start-btn { transition: background 0.18s; }
+  .start-btn:hover { transform: none; }
   .scroll-cue svg, .pano img { animation: none; }
+  .entry:hover .entry-img img { transform: none; }
 }
 </style>
 
