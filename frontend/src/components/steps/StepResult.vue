@@ -14,7 +14,7 @@ import { Icon } from '@iconify/vue'
  *
  * 還沒生成時（!result）沿用原 StepRender 的設定表單（描述/風格推薦/風水/進階設定）。
  */
-import { ref, computed, watch, defineAsyncComponent } from 'vue'
+import { ref, computed, watch, defineAsyncComponent, onBeforeUnmount } from 'vue'
 import { useRouter } from 'vue-router'
 import AdvancedPanel from '@/components/shell/AdvancedPanel.vue'
 import StyleSuggestions from '@/components/StyleSuggestions.vue'
@@ -27,7 +27,7 @@ import QuotationPanel from '@/components/QuotationPanel.vue'
 import ResultStudio from '@/components/steps/ResultStudio.vue'
 import { canMoveFurniture, canUndoMove, undoMove, applyingMove } from '@/composables/design-flow/move'
 import { useDesignFlow, ASPECT_OPTIONS, ORIGINAL_STYLE_KEY } from '@/composables/useDesignFlow'
-import { spaceInfo, ROOM_TYPE_LABEL } from '@/composables/design-flow/state'
+import { spaceInfo, ROOM_TYPE_LABEL, planSheetOpen } from '@/composables/design-flow/state'
 import { API_BASE } from '@/config/api'
 import { useMe } from '@/composables/useMe'
 
@@ -43,7 +43,7 @@ const {
   result, loading, submit3D, prevStep,
   swappingStyle, swapStyle, restoreOriginal, styleSwapCache, styleDemoImages,
   panoLoading, panoUrl, panoError, generatePanorama,
-  fetchQuotation, resetFlow,
+  fetchQuotation, resetFlow, quotationLoading,
   cadActiveRoomId, furnitureHover, fetchOutlines,
 } = useDesignFlow()
 
@@ -64,6 +64,28 @@ const editing = ref(false)      // 在結果圖上直接編輯（塗抹重繪）
 const editFull = ref(false)     // 編輯時是否全螢幕
 
 const imageUrl = computed(() => result.value?.generated_image_url || '')
+
+// 窄螢幕：家具推薦收進固定在操作列上方的抽屜（跟平面圖步驟的健檢抽屜同一套），
+// 平常只露件數＋總價；點圖上的家具會自動展開到那一件
+const budgetOpen = ref(false)
+const quoteRef = ref(null)
+const drawerMql = window.matchMedia('(max-width: 1099px)')
+const narrow = ref(drawerMql.matches)
+const onNarrow = (e) => { narrow.value = e.matches }
+drawerMql.addEventListener('change', onNarrow)
+onBeforeUnmount(() => drawerMql.removeEventListener('change', onNarrow))
+// 整層流程：家具推薦搬進 StudioView 的抽屜（跟整層縮圖同一個），不另外畫一個
+const budgetInSheet = computed(() => narrow.value && planSource.value === 'cad')
+const budgetSummary = computed(() => {
+  const list = result.value?.quotation_result?.furniture_list
+  if (!list) return quotationLoading.value ? '估價中…' : '點開取得家具報價'
+  return `${list.length} 件・NT$ ${(quoteRef.value?.computedTotal ?? 0).toLocaleString()}`
+})
+watch(furnitureHover, (idx) => {
+  if (idx == null || !narrow.value) return
+  if (budgetInSheet.value) planSheetOpen.value = true
+  else budgetOpen.value = true
+})
 
 // 報價辨識到的家具在圖上的位置：滑過去就在右邊清單標出對應的市售商品（反過來也一樣）。
 // 大的排前面、小的排後面，小家具（檯燈、邊桌）疊在上層才點得到。舊報價沒有 bbox 就不顯示。
@@ -441,21 +463,36 @@ function startOver() {
 
       </section>
 
-      <!-- ── ② 家具預算 ── -->
-      <QuotationPanel class="block block-budget" />
+      <!-- ── ② 家具預算：寬螢幕是右欄；窄螢幕是固定在操作列上方的抽屜 ── -->
+      <!-- 單間流程沒有 #sheet-budget：停用時指向 body（停用不會真的搬，只是別找不存在的目標） -->
+      <Teleport defer :to="budgetInSheet ? '#sheet-budget' : 'body'" :disabled="!budgetInSheet">
+      <section class="block block-budget" :class="{ 'is-open': budgetOpen, 'in-sheet': budgetInSheet }">
+        <button v-if="!budgetInSheet" type="button" class="db-drawer-head" :aria-expanded="budgetOpen" @click="budgetOpen = !budgetOpen">
+          <span class="db-drawer-grip" aria-hidden="true"></span>
+          <strong class="db-drawer-title">家具推薦</strong>
+          <span class="db-drawer-summary">{{ budgetSummary }}</span>
+          <Icon icon="mdi:chevron-up" class="db-drawer-chevron" width="20" aria-hidden="true" />
+        </button>
+        <QuotationPanel ref="quoteRef" in-drawer />
+      </section>
+      </Teleport>
 
       </div>
 
       <!-- ── 頁尾：開始新的設計 / 上一步（自動存檔不另外宣告，導覽列有「我的設計」） ── -->
       <div class="actions">
         <button class="db-btn db-btn--ghost db-btn--sm" @click="prevStep">← 上一步</button>
-        <button v-if="!confirmingReset" class="db-btn db-btn--ghost db-btn--sm" @click="regenerate">重新調整並生成</button>
+        <button v-if="!confirmingReset" class="db-btn db-btn--ghost db-btn--sm" @click="regenerate">
+          <span class="label-full">重新調整並生成</span><span class="label-short">重新調整</span>
+        </button>
         <template v-if="confirmingReset">
           <span class="reset-warn">目前的設計與報價會被清除</span>
           <button class="db-btn db-btn--ghost db-btn--sm" @click="confirmingReset = false">取消</button>
           <button class="db-btn db-btn--sm" @click="startOver">確定，重新開始</button>
         </template>
-        <button v-else class="db-btn db-btn--ghost db-btn--sm" @click="confirmingReset = true">開始新的設計</button>
+        <button v-else class="db-btn db-btn--ghost db-btn--sm" @click="confirmingReset = true">
+          <span class="label-full">開始新的設計</span><span class="label-short">新設計</span>
+        </button>
       </div>
     </template>
   </div>
@@ -477,10 +514,44 @@ function startOver() {
 
 .block { display: flex; flex-direction: column; }
 .result-grid { display: block; }
-.block-budget {
-  margin-top: 2rem;
-  padding-top: 1.75rem;
-  border-top: 1px solid var(--db-line);
+/* 窄螢幕：家具推薦是固定在操作列（StudioView 量好的 --bar-h）上方的抽屜，摘要列樣式在 theme.css */
+@media (max-width: 1099px) {
+  .block-budget {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: var(--bar-h, 0px);
+    z-index: 55;
+    max-height: var(--peek, 58px);
+    overflow: hidden;
+    padding: 0 var(--pad, 1.5rem);
+    border-radius: 18px 18px 0 0;
+    background: var(--db-paper);
+    border-top: 1px solid var(--db-line);
+    box-shadow: 0 -8px 24px rgba(20, 18, 16, 0.1);
+    transition: max-height 0.3s cubic-bezier(0.2, 0.8, 0.2, 1);
+  }
+  .block-budget.is-open {
+    max-height: calc(85vh - var(--bar-h, 0px));
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    padding-bottom: 1.25rem;
+  }
+  .block-budget :deep(.block-title) { display: none; }   /* 抽屜摘要列已經寫了「家具推薦」 */
+  /* 整層流程：已經搬進 StudioView 的抽屜，自己不再定位 */
+  .block-budget.in-sheet {
+    position: static;
+    max-height: none;
+    overflow: visible;
+    padding: 0;
+    border: 0;
+    border-radius: 0;
+    background: none;
+    box-shadow: none;
+  }
+}
+@media (max-width: 1099px) and (prefers-reduced-motion: reduce) {
+  .block-budget { transition: none; }
 }
 @media (min-width: 1100px) {
   .result-grid {
@@ -923,8 +994,28 @@ function startOver() {
   padding-top: 1.75rem;
 }
 
+/* 窄螢幕操作列固定在最底：三顆按鈕排一列，不再直向疊成三排吃掉半個畫面 */
 @media (max-width: 900px) {
-  .actions { flex-direction: column-reverse; }
-  .actions .db-btn { width: 100%; }
+  .actions { flex-wrap: wrap; gap: 0.5rem; }
+  .studio-main .result-step .actions .db-btn { flex: 1 1 0; min-width: 0; padding-inline: 0.5rem; }
+  .reset-warn { flex: 1 1 100%; text-align: center; }
+}
+
+.label-short { display: none; }
+
+/* 手機字級：標題、說明整體縮一階，圖才是主角 */
+@media (max-width: 640px) {
+  .label-full { display: none; }   /* 三顆按鈕排一列，長字會折成兩行 */
+  .label-short { display: inline; }
+  .room-title { gap: 0.6rem; margin-bottom: 0.6rem; }
+  .room-name { font-size: 1.35rem; }
+  .room-dims { font-size: 0.82rem; }
+  .lead { font-size: 1.3rem; margin-bottom: 0.6rem; }
+  .prompt { min-height: 120px; padding: 0.8rem 0.9rem; font-size: 0.95rem; }
+  .sub-title { font-size: 1.02rem; }
+  .recap { padding: 0.75rem 0.9rem; }
+  .recap-text { font-size: 0.88rem; }
+  .result-img { max-height: 58vh; }
+  .studio-main .result-step .actions .db-btn { font-size: 0.92rem; min-height: 44px; }
 }
 </style>

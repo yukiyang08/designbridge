@@ -205,6 +205,8 @@ function onApplyChanges() {
 const narrow = ref(false)
 const editing = ref(false)
 const foldable = computed(() => narrow.value && !!cadPlanResult.value)
+// 窄螢幕展開設定時，平面圖縮小黏在頂端：改數量能即時看到，不用捲到表單最底下
+const liveEdit = computed(() => foldable.value && editing.value)
 const summary = computed(() => {
   const parts = COUNT_FIELDS.filter(f => cadCounts.value[f.key]).map(f => `${cadCounts.value[f.key]} ${f.label}`)
   parts.push(...cadExtraRooms.value)
@@ -240,7 +242,7 @@ const nextRoom = computed(() => pendingRoom.value ? null :
 </script>
 
 <template>
-  <div class="room-program-step" :class="{ 'is-uploaded': isUploaded }">
+  <div class="room-program-step" :class="{ 'is-uploaded': isUploaded, 'live-edit': liveEdit }">
     <!-- ── 左：設定 ───────────────────────────────────────── -->
     <!-- 平面圖是使用者上傳的（見 cad.js enterUploadedWholeFloor）：沒有幾房幾廳可調，整個隱藏 -->
     <aside v-if="!isUploaded" class="setup" aria-label="房型設定">
@@ -338,6 +340,7 @@ const nextRoom = computed(() => pendingRoom.value ? null :
           v-if="dirty" type="button" class="db-btn generate-btn"
           :disabled="loading || !sizeValid" @click="onApplyChanges" @blur="confirmingApply = false"
         >{{ confirmingApply ? '確定？已設計的房間會清除' : '套用變更並重新開始' }}</button>
+        <button v-if="foldable" type="button" class="db-btn db-btn--ghost db-btn--sm fold-btn" @click="editing = false">完成</button>
       </div>
     </aside>
 
@@ -718,5 +721,24 @@ const nextRoom = computed(() => pendingRoom.value ? null :
 @media (max-width: 960px) {
   .room-program-step { grid-template-columns: minmax(0, 1fr); }
   .setup { position: static; }
+  .fold-btn { align-self: stretch; }
+  .live-edit .plan-pane {
+    order: -1;
+    position: sticky;
+    top: 0;
+    z-index: 3;
+    gap: 0;
+    margin: 0 calc(-1 * clamp(1.5rem, 3vw, 2.5rem));
+    padding: 0.25rem clamp(1.5rem, 3vw, 2.5rem) 0.4rem;
+    background: var(--db-card);
+    border-bottom: 1px solid var(--db-line);
+    box-shadow: 0 6px 16px rgba(0, 0, 0, 0.06);
+  }
+  .live-edit .plan-head, .live-edit .room-chips, .live-edit .pending-bar, .live-edit .stale-banner { display: none; }
+  .live-edit .plan-pane :deep(.board) { padding: 0.25rem; }
+  .live-edit .plan-pane :deep(.board svg) { max-height: 30vh; }
+}
+@media (max-width: 640px) {
+  .next-hint { display: none; }   /* 黏底操作列在手機上越矮越好；平面圖標題已說可以直接點 */
 }
 </style>

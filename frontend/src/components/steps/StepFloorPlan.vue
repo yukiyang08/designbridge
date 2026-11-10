@@ -13,6 +13,7 @@
  *    報告本身顯示在 StudioView 的右欄（全局資訊），不佔畫布下方的空間。
  */
 import { computed, defineAsyncComponent, watch } from 'vue'
+import { Icon } from '@iconify/vue'
 import LayoutEditor from '@/components/LayoutEditor.vue'
 import { useDesignFlow } from '@/composables/useDesignFlow'
 
@@ -44,6 +45,11 @@ const editSpaceInfo = computed(() => ({
   estimated_size: { width: roomW.value, depth: roomD.value },
 }))
 
+const VIEW_MODES = [
+  { key: '2d', num: '2D', label: '平面', icon: 'mdi:floor-plan' },
+  { key: '3d', num: '3D', label: '立體', icon: 'mdi:cube-outline' },
+]
+
 function goNext() {
   scheduleSearch()
   nextStep()
@@ -52,13 +58,20 @@ function goNext() {
 
 <template>
   <div class="floor-plan-step">
-    <div class="stage">
-      <!-- 2D／3D 切換固定浮在畫布區右上角：2D 時剛好落在編輯器工具列的右端（省一整排），
-           3D 時在預覽的右上角——切換前後按鈕位置不變。2D 工具列右側留了同寬的空位，不會蓋到工具。 -->
-      <div v-if="editPlacements.length" class="view-toggle" role="group" aria-label="檢視模式">
-        <button :class="{ active: layoutViewMode === '2d' }" @click="layoutViewMode = '2d'">2D模式</button>
-        <button :class="{ active: layoutViewMode === '3d' }" @click="layoutViewMode = '3d'">3D模式</button>
+    <!-- 2D／3D 切換放在畫布上方自成一列：兩種模式位置不變，也不會蓋到手機上橫向捲動的工具列 -->
+    <div v-if="editPlacements.length" class="stage-head">
+      <div class="view-toggle" role="radiogroup" aria-label="檢視模式">
+        <button
+          v-for="m in VIEW_MODES" :key="m.key" type="button" role="radio"
+          :aria-checked="layoutViewMode === m.key" :class="{ active: layoutViewMode === m.key }"
+          @click="layoutViewMode = m.key"
+        >
+          <Icon :icon="m.icon" width="18" aria-hidden="true" />
+          {{ m.num }} {{ m.label }}
+        </button>
       </div>
+    </div>
+    <div class="stage">
       <LayoutEditor
         v-if="layoutViewMode === '2d'"
         :placements="editPlacements"
@@ -71,11 +84,7 @@ function goNext() {
         @opening-change="setOpeningEdit"
         @update:placements="onUserEdit"
         @room-size-changed="onUserEdit(editPlacements)"
-      >
-        <template v-if="editPlacements.length" #toolbar-end>
-          <span class="toggle-room" aria-hidden="true"></span>
-        </template>
-      </LayoutEditor>
+      />
       <LayoutPreview3D
         v-else
         :scene-graph="editSceneGraph"
@@ -93,9 +102,8 @@ function goNext() {
     </p>
 
     <div class="actions">
-      <button class="db-btn db-btn--ghost db-btn--sm" @click="prevStep">← 上一步</button>
-      <button class="db-btn" :disabled="loading" @click="goNext">
-        下一步：生成渲染圖
+      <button class="db-btn db-btn--ghost db-btn--sm" @click="prevStep">← 上一步</button>      <button class="db-btn" :disabled="loading" @click="goNext">
+        <span class="label-full">下一步：生成渲染圖</span><span class="label-short">下一步</span>
       </button>
     </div>
 
@@ -105,35 +113,43 @@ function goNext() {
 <style scoped>
 .floor-plan-step { display: flex; flex-direction: column; }
 
+.stage-head { display: flex; justify-content: flex-end; align-items: center; margin-bottom: 0.75rem; }
 .view-toggle {
-  position: absolute;
-  top: 1.3rem;      /* 落在編輯區工具列裡、上下置中（編輯區內距＋框線＋工具列內距） */
-  right: 1.05rem;
-  z-index: 10;
   display: inline-flex;
-  padding: 4px;
+  padding: 3px;
+  border: 1px solid var(--db-line);
   border-radius: var(--db-radius-pill);
   background: var(--db-chip-soft);
 }
-/* 工具列右端給浮在上面的 2D／3D 切換留位子（寬度 ≈ 兩顆按鈕＋內距） */
-.toggle-room { display: block; width: 13.5rem; }
 .view-toggle button {
-  min-width: 76px;
-  min-height: 44px;
-  padding: 0.55rem 1.25rem;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  min-height: 40px;
+  padding: 0 1.1rem 0 0.9rem;
   border: none;
   border-radius: var(--db-radius-pill);
   background: none;
   color: var(--db-text-soft);
   font-family: var(--db-font-body);
-  font-size: 1rem;
+  font-size: 0.95rem;
   font-weight: 600;
   cursor: pointer;
-  transition: background 0.16s, color 0.16s;
+  transition: background 0.18s, color 0.18s, box-shadow 0.18s;
 }
+.view-toggle button:hover:not(.active) { color: var(--db-text); }
 .view-toggle button.active {
-  background: var(--db-accent);
-  color: var(--db-on-accent);
+  background: var(--db-ink);
+  color: #fff;
+  box-shadow: 0 2px 8px rgba(28, 24, 18, 0.18);
+}
+.view-toggle button:focus-visible { outline: 2px solid var(--db-accent-deep); outline-offset: 2px; }
+.label-short { display: none; }
+@media (max-width: 640px) {
+  .label-full { display: none; }   /* 手機上整句會折成兩行 */
+  .label-short { display: inline; }
+  .view-toggle { display: flex; width: 100%; }
+  .view-toggle button { flex: 1; justify-content: center; min-height: 44px; }
 }
 
 .stage { position: relative; min-height: 430px; }
@@ -154,19 +170,5 @@ function goNext() {
 }
 
 /* ── 讓既有的 LayoutEditor 換上 Figma 的配色，不改動元件本身 ── */
-.stage :deep(.palette-title) {
-  background: var(--db-secondary-2);
-  color: #fff;
-  border-radius: 4px;
-  padding: 0.4rem 0.75rem;
-  font-family: var(--db-font-display);
-  font-style: italic;
-}
-.stage :deep(.palette-item) {
-  border-radius: var(--db-radius-chip);
-  background: var(--db-chip-soft);
-}
-.stage :deep(.palette-item:hover) { background: var(--db-accent-soft); }
-.stage :deep(.tool-btn.active),
 .stage :deep(.node.selected) { border-color: var(--db-accent); }
 </style>

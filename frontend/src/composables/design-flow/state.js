@@ -383,6 +383,7 @@ export const roomW              = ref(5.0)
 export const roomD              = ref(4.0)
 export const roomTypeForPlan    = ref('living_room')
 export const layoutViewMode     = ref('2d')        // '2d' | '3d'
+export const planSheetOpen      = ref(false)       // 窄螢幕平面圖步驟：風水健檢＋整層平面圖的底部面板
 export const layoutRenderConfig = ref(null)
 
 // ── 空間設定表單 ──

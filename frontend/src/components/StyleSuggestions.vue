@@ -105,7 +105,7 @@ function cancelClosePopover() { clearTimeout(closeTimer) }
           </button>
         </div>
       </div>
-      <p class="subtitle">根據你的文字描述，找到以下相似風格圖片，選擇一張套用其風格參數；點卡片右下角的 ⓘ 看詳情</p>
+      <p class="subtitle">依你的描述找到的風格參考，選一張套用它的配色與材質</p>
     </div>
 
     <!-- 骨架載入 -->
@@ -143,13 +143,11 @@ function cancelClosePopover() { clearTimeout(closeTimer) }
               <img :src="normalizeImageUrl(c.image_url)" :alt="c.style_name" loading="lazy" @error="$event.target.style.display='none'" />
               <div class="card-overlay">
                 <div class="overlay-name">{{ c.style_name }}</div>
-                <div v-if="c.tags?.length" class="overlay-tags">
-                  <span v-for="t in c.tags.slice(0, 3)" :key="t" class="overlay-tag">{{ t }}</span>
-                </div>
+                <div v-if="c.tags?.length" class="overlay-tags">{{ c.tags.slice(0, 2).join(' · ') }}</div>
               </div>
               <!-- 選中打勾：邊框變色在一排圖片裡不夠明顯 -->
               <span v-if="confirmed?.image_url === c.image_url" class="check-badge" aria-hidden="true">
-                <Icon icon="mdi:check" width="16" />已選
+                <Icon icon="mdi:check" width="14" />已選
               </span>
               <!-- 主要色彩放卡片右上角，不跟底部的名稱／標籤擠在一起 -->
               <div v-if="Object.keys(c.colors || {}).length" class="overlay-swatches" aria-label="主要色彩">
@@ -166,18 +164,13 @@ function cancelClosePopover() { clearTimeout(closeTimer) }
             @click.stop="toggleInfo(c, $event)"
             @mouseenter="hoverOpen(c, $event)" @mouseleave="hoverLeave"
           >
-            <Icon icon="mdi:information-outline" width="18" />
+            <Icon icon="mdi:information-outline" width="16" />
           </button>
         </div>
       </div>
       <button type="button" class="rail-arrow right" aria-label="往右捲動" @click="scrollRail(1)">›</button>
     </div>
 
-    <!-- 已選提示 + 清除 -->
-    <div v-if="confirmed" class="confirmed-bar">
-      <span>已選：<strong>{{ confirmed.style_name }}</strong></span>
-      <button class="clear-btn" @click="emit('clear')">取消套用</button>
-    </div>
   </div>
 
   <!-- 風格詳情浮卡：Teleport 到 body，避免被 .rail 的橫向捲動裁掉 -->
@@ -229,16 +222,17 @@ function cancelClosePopover() { clearTimeout(closeTimer) }
   width: 100%;
 }
 
+/* 標題跟頁面其他區塊同款：斜體襯線、墨色 */
 .header h2 {
-  font-size: 1.4rem;
-  font-weight: 800;
-  color: #5c3d24;
-  margin-bottom: 0.1rem;
+  font-family: var(--db-font-display);
+  font-style: italic;
+  font-size: 1.5rem;
+  font-weight: 500;
+  color: var(--db-text);
 }
 .subtitle {
-  font-size: 0.875rem;
-  color: #7d746c;
-  margin-bottom: 0.2rem;
+  font-size: 0.85rem;
+  color: var(--db-text-soft);
 }
 
 .header-top {
@@ -254,18 +248,18 @@ function cancelClosePopover() { clearTimeout(closeTimer) }
   display: flex;
   align-items: center;
   gap: 0.3rem;
-  border: 1.5px solid var(--db-accent-ink);
+  border: 1px solid var(--db-line-strong);
   background: #fff;
-  color: var(--db-accent-ink);
-  border-radius: 8px;
-  padding: 0.4rem 0.85rem;
-  font-size: 0.8rem;
+  color: var(--db-text);
+  border-radius: var(--db-radius-pill);
+  padding: 0.4rem 0.95rem;
+  font-size: 0.82rem;
   font-family: inherit;
-  font-weight: 700;
+  font-weight: 500;
   cursor: pointer;
-  transition: all 0.15s;
+  transition: border-color 0.15s, background 0.15s;
 }
-.search-btn:hover:not(:disabled) { background: var(--db-accent-ink); color: #fff; }
+.search-btn:hover:not(:disabled) { border-color: var(--db-ink); background: var(--db-paper); }
 .search-btn:disabled { opacity: 0.55; cursor: default; }
 
 /* 單列橫向捲動 + 左右箭頭 */
@@ -278,8 +272,8 @@ function cancelClosePopover() { clearTimeout(closeTimer) }
 .rail {
   display: flex;
   gap: 1.05rem;
-  /* 上下留夠空間給選中卡片的 scale + 陰影，不然會被 overflow-x:auto 連帶產生的 overflow-y 裁掉 */
-  padding: 1rem 0.3rem 1.15rem;
+  /* 上下留空間給選中外框與 hover 陰影，不然會被 overflow-x:auto 連帶產生的 overflow-y 裁掉 */
+  padding: 0.5rem 0.4rem 0.9rem;
   overflow-x: auto;
   scroll-snap-type: x proximity;
   scroll-behavior: smooth;
@@ -292,146 +286,145 @@ function cancelClosePopover() { clearTimeout(closeTimer) }
   width: 2.1rem;
   height: 2.1rem;
   border-radius: 50%;
-  border: 1.5px solid var(--db-accent);
-  background: rgba(255, 250, 243, 0.95);
-  color: var(--db-accent-ink);
+  border: 1px solid var(--db-line-strong);
+  background: #fff;
+  color: var(--db-text);
   font-size: 1.3rem;
   line-height: 1;
   cursor: pointer;
   display: flex;
   align-items: center;
   justify-content: center;
-  transition: all 0.15s;
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
 }
-.rail-arrow:hover { background: var(--db-accent-ink); color: white; border-color: var(--db-accent-ink); }
+.rail-arrow:hover { background: var(--db-ink); color: #fff; border-color: var(--db-ink); }
 
 /* slot 負責 rail 裡的寬度與吸附；ⓘ 按鈕是 .card 的兄弟節點，不放在 role=option 裡面 */
 .card-slot {
   animation: card-in 0.35s both;
   animation-delay: calc(var(--i, 0) * 35ms);   /* 換一批／搜尋完成時依序浮現，看得出內容換了 */
   position: relative;
-  flex: 0 0 clamp(210px, 26%, 320px);
+  /* 直式窄卡，一排約 5 張：原本近正方形、佔 26% 寬，只放得下 3.5 張 */
+  flex: 0 0 clamp(150px, 18%, 210px);
   scroll-snap-align: start;
 }
 .info-btn {
   position: absolute;
-  right: 0.55rem;
-  bottom: 0.55rem;
-  width: 32px;
-  height: 32px;
+  right: 0.5rem;
+  bottom: 0.5rem;
+  width: 30px;
+  height: 30px;
   display: flex;
   align-items: center;
   justify-content: center;
   border: none;
   border-radius: 50%;
-  background: rgba(255, 255, 255, 0.92);
-  color: #5c3d24;
+  background: rgba(255, 255, 255, 0.18);
+  color: #fff;
   cursor: pointer;
-  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.3);
-  transition: transform 0.15s, background 0.15s;
+  backdrop-filter: blur(4px);
+  transition: background 0.15s, color 0.15s;
 }
-.info-btn:hover { background: #fff; transform: scale(1.1); }
-.info-btn:focus-visible { outline: 2px solid #5c3d24; outline-offset: 2px; }
+.info-btn:hover { background: #fff; color: var(--db-text); }
+.info-btn:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
 .check-badge {
   position: absolute;
-  top: 0.55rem;
-  left: 0.55rem;
+  top: 0.5rem;
+  left: 0.5rem;
   display: flex;
   align-items: center;
   gap: 0.15rem;
-  padding: 0.2rem 0.55rem 0.2rem 0.35rem;
+  padding: 0.15rem 0.5rem 0.15rem 0.35rem;
   border-radius: 99px;
-  background: #5c3d24;
-  color: #fff;
-  font-size: 0.75rem;
-  font-weight: 700;
+  background: #fff;
+  color: var(--db-text);
+  font-size: 0.72rem;
+  font-weight: 500;
 }
 
 /* Card：整張是圖，文字疊在圖片底部（漸層），不再另外留白色 card-body */
 .card {
   position: relative;
-  border-radius: 14px;
-  overflow: visible;
+  border-radius: 12px;
   cursor: pointer;
-  transition: all 0.2s;
 }
-.card:hover { transform: translateY(-2px); }
 .card:focus-visible {
-  outline: none;
-  border-radius: 14px;
-  box-shadow: 0 0 0 3px rgba(117, 109, 102, 0.25), 0 0 0 6px rgba(117, 109, 102, 0.14);
+  outline: 2px solid var(--db-ink);
+  outline-offset: 3px;
 }
 
 /* Image */
 .card-img-wrap {
   position: relative;
   width: 100%;
-  aspect-ratio: 10 / 11;
+  aspect-ratio: 4 / 5;
   overflow: hidden;
-  border-radius: 14px;
-  border: 1.5px solid var(--db-accent);
-  background: #f5e8d8;
-  transition: border-color 0.15s, box-shadow 0.15s, transform 0.15s;
+  border-radius: 12px;
+  background: var(--db-accent-soft);
+  transition: box-shadow 0.2s;
 }
-.card:hover .card-img-wrap { border-color: #b07845; box-shadow: 0 8px 24px rgba(117, 109, 102, 0.2); }
-/* 選中：邊框變色 + 微放大 + 陰影，不用太誇張的粗框/外圈光暈 */
-.card.selected .card-img-wrap {
-  border-color: var(--db-accent-ink);
-  box-shadow: 0 6px 16px rgba(92, 61, 36, 0.28);
-  transform: scale(1.03);
-}
+.card:hover .card-img-wrap { box-shadow: var(--db-shadow-soft); }
+/* 選中用外框描邊，不放大：放大會被 rail 裁切、也讓整排高低不齊 */
+.card.selected .card-img-wrap { box-shadow: 0 0 0 2px var(--db-paper), 0 0 0 4px var(--db-ink); }
 .card-img-wrap img {
   width: 100%;
   height: 100%;
   object-fit: cover;
   display: block;
-  transition: transform 0.3s;
+  transition: transform 0.5s ease;
 }
 .card:hover .card-img-wrap img { transform: scale(1.04); }
 
-/* 名稱常駐在圖片底部；沒有 hover/選取時漸層也夠深、文字雙層陰影，避免亮色照片把白字洗掉。 */
+/* 名稱常駐在底部；漸層只壓下緣 45%，不把整張照片染暗 */
 .card-overlay {
   position: absolute;
   inset: auto 0 0 0;
-  padding: 2.2rem 0.85rem 0.7rem;
-  background: linear-gradient(to top, rgba(15, 9, 3, 0.92) 35%, rgba(15, 9, 3, 0));
+  padding: 2.4rem 2.6rem 0.75rem 0.8rem;
+  background: linear-gradient(to top, rgba(20, 18, 16, 0.78), rgba(20, 18, 16, 0));
   color: #fff;
   pointer-events: none;
 }
 .overlay-name {
-  font-size: 1rem;
-  font-weight: 800;
-  text-shadow: 0 1px 2px rgba(0,0,0,0.85), 0 1px 8px rgba(0,0,0,0.5);
+  font-family: var(--db-font-display);
+  font-style: italic;
+  font-size: 1.05rem;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+  text-shadow: 0 1px 6px rgba(0, 0, 0, 0.4);
 }
-/* 卡片只露標籤 + 主要用色；描述文字留在 hover 浮卡（information） */
-.overlay-tags { display: flex; flex-wrap: wrap; gap: 0.25rem; margin-top: 0.35rem; }
-.overlay-tag {
-  font-size: 0.75rem;
-  color: #fff;
-  background: rgba(255, 255, 255, 0.2);
-  border-radius: 99px;
-  padding: 0.1rem 0.5rem;
+/* 標籤改純文字，不疊 pill：圖片上元素少一層才乾淨 */
+.overlay-tags {
+  margin-top: 0.15rem;
+  font-size: 0.72rem;
+  color: rgba(255, 255, 255, 0.82);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .overlay-swatches {
   position: absolute;
   top: 0.55rem;
   right: 0.55rem;
   display: flex;
-  gap: 0.3rem;
-  padding: 0.25rem 0.4rem;
-  border-radius: 99px;
-  background: rgba(15, 9, 3, 0.35);   /* 淺色照片上色塊也看得清楚 */
+  padding-left: 4px;
   pointer-events: none;
 }
-.overlay-swatches .swatch { width: 16px; height: 16px; border-color: rgba(255,255,255,0.8); }
+/* 色票疊在一起，白邊分隔，淺色照片上也看得清 */
+.overlay-swatches .swatch {
+  width: 14px;
+  height: 14px;
+  margin-left: -4px;
+  border: 1.5px solid #fff;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25);
+}
 
 .empty-state {
   padding: 2rem;
   text-align: center;
-  color: var(--db-accent-deep);
+  color: var(--db-text-soft);
   font-size: 0.9rem;
-  background: rgba(255,250,243,0.6);
-  border: 1px dashed var(--db-accent);
+  background: var(--db-paper);
+  border: 1px dashed var(--db-line-strong);
   border-radius: 12px;
 }
 
@@ -440,10 +433,10 @@ function cancelClosePopover() { clearTimeout(closeTimer) }
   position: fixed;
   z-index: 200;
   width: 280px;
-  background: #fffaf3;
-  border: 1.5px solid var(--db-accent);
+  background: #fff;
+  border: 1px solid var(--db-line);
   border-radius: 12px;
-  box-shadow: 0 12px 32px rgba(92, 61, 36, 0.22);
+  box-shadow: var(--db-shadow-card);
   padding: 0.9rem 1rem;
   display: flex;
   flex-direction: column;
@@ -453,11 +446,14 @@ function cancelClosePopover() { clearTimeout(closeTimer) }
   display: flex;
   align-items: center;
   justify-content: space-between;
-  font-size: 0.92rem;
-  color: #5c3d24;
+  font-family: var(--db-font-display);
+  font-style: italic;
+  font-size: 1rem;
+  color: var(--db-text);
   padding-bottom: 0.4rem;
-  border-bottom: 1px solid #ecdcc4;
+  border-bottom: 1px solid var(--db-line);
 }
+.popover-header strong { font-weight: 500; }
 .popover-close {
   border: none;
   background: none;
@@ -466,15 +462,15 @@ function cancelClosePopover() { clearTimeout(closeTimer) }
   display: flex;
   padding: 0;
 }
-.popover-close:hover { color: #5c3d24; }
+.popover-close:hover { color: var(--db-text); }
 .popover-desc {
   font-size: 0.8rem;
-  color: #6b5a45;
+  color: var(--db-text-soft);
   line-height: 1.6;
   margin: 0;
 }
 .popover-row { display: flex; flex-direction: column; gap: 0.35rem; }
-.popover-label { font-size: 0.75rem; font-weight: 700; color: #7d746c; }
+.popover-label { font-size: 0.75rem; font-weight: 500; color: var(--db-accent-ink); }
 .swatches { display: flex; gap: 0.4rem; }
 .swatch {
   width: 22px; height: 22px; border-radius: 50%;
@@ -483,10 +479,19 @@ function cancelClosePopover() { clearTimeout(closeTimer) }
 .chip-row { display: flex; flex-wrap: wrap; gap: 0.35rem; }
 .chip-row .chip {
   font-size: 0.72rem;
-  color: #5c3d24;
-  background: rgba(117, 109, 102, 0.1);
+  color: var(--db-text);
+  background: var(--db-chip-soft);
   border-radius: 99px;
   padding: 0.18rem 0.55rem;
+}
+
+@media (max-width: 640px) {
+  .suggestions { gap: 1rem; }
+  .header h2 { font-size: 1.2rem; }
+  .subtitle { font-size: 0.8rem; }
+  .search-btn { padding: 0.35rem 0.75rem; font-size: 0.78rem; }
+  .rail-arrow { display: none; }   /* 手機用手指滑，箭頭只佔寬度 */
+  .card-slot, .skeleton { flex-basis: 132px; }
 }
 
 /* 手機：浮卡改成貼底的 bottom sheet，不用算座標、也不會被螢幕邊緣切掉 */
@@ -503,34 +508,10 @@ function cancelClosePopover() { clearTimeout(closeTimer) }
   }
 }
 
-/* Confirmed bar */
-.confirmed-bar {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  background: rgba(117, 109, 102, 0.08);
-  border: 1px solid var(--db-accent);
-  border-radius: 10px;
-  padding: 0.65rem 1rem;
-  font-size: 0.875rem;
-  color: #5c3d24;
-}
-.clear-btn {
-  background: none;
-  border: none;
-  color: #8a5a2b;
-  cursor: pointer;
-  font-size: 0.82rem;
-  font-weight: 600;
-  padding: 0.3rem 0.6rem;
-  border-radius: 6px;
-}
-.clear-btn:hover { background: rgba(117, 109, 102, 0.12); color: #5c3d24; }
-
 /* Skeleton */
-.skeleton { pointer-events: none; flex: 0 0 clamp(210px, 26%, 320px); }   /* 寬度原本在 .card 上，搬到 .card-slot 後骨架要自己帶 */
+.skeleton { pointer-events: none; flex: 0 0 clamp(150px, 18%, 210px); }   /* 跟 .card-slot 同寬 */
 .skeleton-img {
-  background: linear-gradient(90deg, #f5e8d8 25%, #e8d4b8 50%, #f5e8d8 75%);
+  background: linear-gradient(90deg, var(--db-paper) 25%, var(--db-accent-soft) 50%, var(--db-paper) 75%);
   background-size: 200% 100%;
   animation: shimmer 1.4s infinite;
 }

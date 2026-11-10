@@ -226,6 +226,57 @@ svg.iconify { vertical-align: -0.125em; flex: none; }
   font-size: 0.9rem;
 }
 
+/* 窄螢幕底部抽屜的摘要列（平面圖步驟的健檢、結果頁的家具推薦）：固定在操作列上方，
+   平常只露這一列，點了往上展開。抽屜本身的定位在各頁（StudioView、StepResult） */
+.db-drawer-head { display: none; }
+@media (max-width: 1099px) {
+  .db-drawer-head {
+    position: sticky;
+    top: 0;
+    z-index: 2;
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    width: calc(100% + 2 * var(--pad, 1.5rem));
+    min-height: var(--peek, 58px);
+    margin: 0 calc(-1 * var(--pad, 1.5rem)) 0.75rem;
+    padding: 0.5rem var(--pad, 1.5rem) 0;
+    border: none;
+    background: var(--db-paper);
+    color: var(--db-text);
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+  }
+  .is-open > .db-drawer-head { border-bottom: 1px solid var(--db-line); }
+  .db-drawer-head:focus-visible { outline: 2px solid var(--db-accent-deep); outline-offset: -2px; }
+  .db-drawer-grip {
+    position: absolute;
+    top: 6px;
+    left: 50%;
+    width: 36px;
+    height: 4px;
+    border-radius: 2px;
+    background: var(--db-line-strong);
+    transform: translateX(-50%);
+  }
+  .db-drawer-title { flex: none; font-family: var(--db-font-display); font-style: italic; font-weight: 500; font-size: 1rem; }
+  .db-drawer-summary {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    color: var(--db-text-soft);
+    font-size: 0.82rem;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+  }
+  .db-drawer-chevron { flex: none; color: var(--db-text-soft); transition: transform 0.25s; }
+  .is-open > .db-drawer-head .db-drawer-chevron { transform: rotate(180deg); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .db-drawer-chevron { transition: none; }
+}
+
 /* CAD 平面圖 SVG 的尺寸細節（plan-detail）：手機寬度縮小後看不清，只會雜亂。
    縮圖（CadRoomMiniMap）自己有規則；這裡處理房型設定頁等直接內嵌的平面圖 */
 @media (max-width: 640px) {

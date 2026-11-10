@@ -3,7 +3,7 @@
  * 線性精靈外殼（Figma frame 10/11/13/15/18/19/20 共用的版面）：
  * 滿版工具版面：導覽列 → 章節（流程）列 → 工作區（＋整層縮圖欄），工作區內容由當前步驟決定。
  */
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { jsonFetch } from '@/config/api'
 import AppNav from '@/components/shell/AppNav.vue'
 import ModeBackButton from '@/components/shell/ModeBackButton.vue'
@@ -20,6 +20,7 @@ import CadRoomMiniMap from '@/components/CadRoomMiniMap.vue'
 import CadOverview from '@/components/CadOverview.vue'
 import FengshuiReport from '@/components/FengshuiReport.vue'
 import { useDesignFlow, ASPECT_OPTIONS } from '@/composables/useDesignFlow'
+import { planSheetOpen } from '@/composables/design-flow/state'
 
 const flow = useDesignFlow()
 const {
@@ -70,7 +71,13 @@ watch(cadBatchRunning, (running, was) => {
   const rooms = cadPlanResult.value?.rooms || []
   if (rooms.length && rooms.every(r => cadRoomStatus.value[r.id] === 'done')) cadOverview.value = true
 })
-const minimapCompact = computed(() => currentStep.value === 'result' && !!result.value)
+// 窄螢幕：整層縮圖跟家具推薦一起收進底部抽屜（見 asSheet），不用頂部細列
+const narrowMql = window.matchMedia('(max-width: 1099px)')
+const narrow = ref(narrowMql.matches)
+const onNarrow = (e) => { narrow.value = e.matches }
+narrowMql.addEventListener('change', onNarrow)
+onBeforeUnmount(() => narrowMql.removeEventListener('change', onNarrow))
+const minimapCompact = computed(() => currentStep.value === 'result' && !!result.value && !narrow.value)
 const showCadMiniMap = computed(
   () => planSource.value === 'cad' && !!cadPlanResult.value && MINIMAP_STEPS.has(currentStep.value),
 )
@@ -90,6 +97,7 @@ function onFengshuiToggle(on) {
 // 健檢卡片的「定位」：切回 2D、在編輯器上圈出那件家具。家具一動就會重新健檢，圈圈跟著清掉
 function locateFurniture(ids) {
   layoutViewMode.value = '2d'
+  planSheetOpen.value = false   // 窄螢幕要收起面板才看得到圈出來的家具
   fengshuiHighlight.value = ids
 }
 watch([fengshuiReport, currentStep], () => { fengshuiHighlight.value = [] })
@@ -102,6 +110,47 @@ const minimapSummary = computed(() => {
   return `${done} / ${rooms.length} 間完成`
 })
 const minimapCollapsible = computed(() => showCadMiniMap.value && showFengshui.value)
+
+// 窄螢幕：平面圖步驟的右欄（健檢、整層縮圖）不疊在畫布下面，改成固定在操作列上方的抽屜：
+// 平常只露一條摘要，點了往上展開。寬螢幕照舊是右欄，CSS 只在 1100px 以下生效。
+// 結果頁：整層流程的右欄也變抽屜，StepResult 把家具推薦 Teleport 進 #sheet-budget，合成一個抽屜；
+// 單間流程沒有右欄，家具推薦抽屜由 StepResult 自己畫。這裡負責讓操作列固定在底、量它的高度給抽屜貼
+const resultSheet = computed(() => currentStep.value === 'result' && !!result.value && flowPlanSource.value !== 'skip')
+const asSheet = computed(() => currentStep.value === 'plan' || (resultSheet.value && narrow.value && showCadMiniMap.value))
+const sheetMode = computed(() => (asSheet.value && showAside.value) || resultSheet.value)
+watch([currentStep, cadActiveRoomId], () => { planSheetOpen.value = false })
+const sheetTitle = computed(() =>
+  currentStep.value === 'result' ? '家具推薦與整層進度' : showCadMiniMap.value ? '風水健檢與整層進度' : '風水健檢')
+const sheetSummary = computed(() => {
+  const parts = []
+  if (currentStep.value === 'result') {
+    const n = result.value?.quotation_result?.furniture_list?.length
+    if (n) parts.push(`${n} 件`)
+  }
+  const fs = fengshuiReport.value
+  if (showFengshui.value && fs) {
+    const n = (fs.fengshui?.rules || []).filter(r => r.status === 'fail').length + (fs.circulation?.issues?.length || 0)
+    const score = fs.fengshui?.score
+    parts.push(`${score != null ? `${score} 分・` : ''}${n ? `${n} 項待改善` : '都符合'}`)
+  }
+  if (showCadMiniMap.value) {
+    const rooms = cadPlanResult.value?.rooms || []
+    parts.push(`完成 ${rooms.filter(r => cadRoomStatus.value[r.id] === 'done').length}/${rooms.length} 間`)
+  }
+  return parts.join('・')
+})
+// 抽屜要貼在操作列正上方；操作列高度隨按鈕折行變動，量實際高度
+const barH = ref(0)
+let barObserver = null
+watch([sheetMode, currentStep], async () => {
+  barObserver?.disconnect()
+  await nextTick()
+  const bar = sheetMode.value && document.querySelector('.studio-main .actions')
+  if (!bar) return
+  barObserver = new ResizeObserver(() => { barH.value = bar.offsetHeight })
+  barObserver.observe(bar)
+}, { immediate: true })
+onBeforeUnmount(() => barObserver?.disconnect())
 // 縮圖下方標出正在編輯哪一間，縮圖和中間畫布的關係才看得出來
 const activeRoomLabel = computed(
   () => (cadPlanResult.value?.rooms || []).find(r => r.id === cadActiveRoomId.value)?.label_zh || '',
@@ -184,7 +233,8 @@ onMounted(() => {
          把整個右欄移到上方），父層不變，切換時不會被重新掛載。 -->
     <div
       class="studio-card"
-      :class="{ 'has-aside': showAside && !(showCadMiniMap && minimapCompact), 'minimap-top': showCadMiniMap && minimapCompact }"
+      :class="{ 'has-aside': showAside && !(showCadMiniMap && minimapCompact), 'minimap-top': showCadMiniMap && minimapCompact, 'sheet-mode': sheetMode }"
+      :style="{ '--bar-h': `${barH}px` }"
     >
       <div class="studio-main">
         <!-- 其他第一步把這顆放在底部操作列左邊；照片工作台沒有操作列，留在上方 -->
@@ -201,7 +251,22 @@ onMounted(() => {
         <p v-if="error && !loading" class="db-error studio-error" role="alert">{{ error }}</p>
       </div>
 
-      <aside v-if="showAside" class="studio-aside" :class="{ 'has-toggle': minimapCollapsible }">
+      <aside
+        v-if="showAside" id="plan-sheet" class="studio-aside"
+        :class="{ 'has-toggle': minimapCollapsible, 'as-sheet': asSheet, 'is-open': planSheetOpen }"
+      >
+      <button
+        v-if="asSheet" type="button" class="db-drawer-head"
+        aria-controls="plan-sheet" :aria-expanded="planSheetOpen" @click="planSheetOpen = !planSheetOpen"
+      >
+        <span class="db-drawer-grip" aria-hidden="true"></span>
+        <strong class="db-drawer-title">{{ sheetTitle }}</strong>
+        <span class="db-drawer-summary">{{ sheetSummary }}</span>
+        <svg class="db-drawer-chevron" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 15l6-6 6 6" /></svg>
+      </button>
+      <!-- 結果頁窄螢幕：StepResult 的家具推薦 Teleport 到這裡，跟整層縮圖同一個抽屜。
+           結果頁一律畫出來（寬螢幕就是空的）：Teleport 切換時目標不能剛好不存在 -->
+      <div v-if="currentStep === 'result'" id="sheet-budget" class="sheet-budget"></div>
       <button
         v-if="minimapCollapsible" type="button" class="minimap-toggle"
         :aria-expanded="minimapOpen" @click="minimapOpen = !minimapOpen"
@@ -411,6 +476,45 @@ onMounted(() => {
     border-radius: var(--db-radius-chip);
     background: var(--db-paper);
   }
+
+  /* 平面圖步驟：右欄變成固定在操作列上方的抽屜，平常只露摘要列（--peek），點了往上展開 */
+  .studio-card.sheet-mode { --peek: 58px; padding-bottom: calc(var(--bar-h) + var(--peek) + 1rem); }
+  /* 手機原本操作列是 sticky；抽屜模式要它固定在最底，抽屜才有固定的位置可以貼 */
+  .studio .studio-card.sheet-mode .studio-main :deep(.actions) {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 60;
+    margin: 0;
+  }
+  .studio-card.has-aside > .studio-aside.as-sheet {
+    position: fixed;
+    top: auto;   /* 寬螢幕右欄的 sticky top:0 要蓋掉，不然會黏到畫面最上面 */
+    left: 0;
+    right: 0;
+    bottom: var(--bar-h);
+    z-index: 55;
+    max-height: var(--peek);
+    overflow: hidden;
+    margin: 0;
+    padding: 0 var(--pad);
+    border-radius: 18px 18px 0 0;
+    background: var(--db-paper);
+    border-top: 1px solid var(--db-line);
+    box-shadow: 0 -8px 24px rgba(20, 18, 16, 0.1);
+    transition: max-height 0.3s cubic-bezier(0.2, 0.8, 0.2, 1);
+  }
+  .sheet-budget:not(:empty) { margin-bottom: 1.5rem; padding-bottom: 1.5rem; border-bottom: 1px solid var(--db-line); }
+  .studio-card.has-aside > .studio-aside.as-sheet.is-open {
+    max-height: calc(85vh - var(--bar-h));
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    padding-bottom: 1.25rem;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .studio-aside.as-sheet, .studio-aside.as-sheet.is-open { transition: none !important; }
 }
 @media (max-width: 720px) {
   .studio .studio-main :deep(.actions) { flex-direction: row; }

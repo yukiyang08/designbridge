@@ -5,6 +5,10 @@ import { reactive, computed, ref, watch, nextTick, onBeforeUnmount } from 'vue'
 import { useDesignFlow } from '@/composables/useDesignFlow'
 import { useFurnitureSelection } from '@/composables/useFurnitureSelection'
 
+const props = defineProps({
+  /** 放在手機底部抽屜裡：抽屜本身就是收合，清單不用再收一次 */
+  inDrawer: { type: Boolean, default: false },
+})
 const { result, quotationLoading, quotationError, fetchQuotation, furnitureHover } = useDesignFlow()
 const { selectedFurniture, toggle: toggleFavorite, isSelected: isFavorited } = useFurnitureSelection()
 
@@ -80,10 +84,14 @@ watch(furnitureHover, async (idx) => {
 
 // 手機上清單接在大圖下面很長：預設只露總價，點開才看明細；點圖上的家具也會自動展開
 const narrowMql = window.matchMedia('(max-width: 560px)')
-const narrow = ref(narrowMql.matches)
+const narrow = ref(!props.inDrawer && narrowMql.matches)
 const listOpen = ref(!narrow.value)
 // 旋轉或拉寬視窗跨過斷點：切到桌面版就展開，切回手機版回到只露總價
-const onNarrowChange = e => { narrow.value = e.matches; listOpen.value = !e.matches }
+const onNarrowChange = e => {
+  if (props.inDrawer) return
+  narrow.value = e.matches
+  listOpen.value = !e.matches
+}
 narrowMql.addEventListener('change', onNarrowChange)
 onBeforeUnmount(() => narrowMql.removeEventListener('change', onNarrowChange))
 
@@ -101,6 +109,7 @@ const computedTotal = computed(() => {
     return sum + (c?.price ?? 0)
   }, 0)
 })
+defineExpose({ computedTotal })   // 手機抽屜的摘要列要顯示總價
 
 // 從收藏加入：使用者自己挑要放進這份報價的收藏，接在辨識結果後面（沒有 bbox，不會畫在圖上）。
 // 跟換款一樣只改前端這份報價，重新估價就會回到辨識結果
