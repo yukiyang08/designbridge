@@ -55,12 +55,13 @@ def search_styles(
             # per_style=3（不是 1）是刻意留給前端「下一輪」用的池子——向量搜尋本身是
             # 決定性的，同樣的查詢字重打一次結果不會變，所以一次多要幾張，前端就能在
             # 池子裡輪替顯示，不用每次都重打一樣的 query 卻拿到一樣的結果。
-            results = query_style_images_diverse(text_query=q, per_style=3)[: min(top_k, 24)]
+            results = query_style_images_diverse(text_query=q, per_style=3, space=space.strip())[: min(top_k, 24)]
         else:
             results = query_style_images_supabase(
                 text_query=q,
                 style_id=sid or None,
                 top_k=min(top_k, 24),
+                space=space.strip(),
             )
         if not results:
             return []

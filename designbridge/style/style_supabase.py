@@ -8,6 +8,8 @@ from __future__ import annotations
 
 import hashlib
 import os
+import threading
+import time
 from concurrent.futures import ThreadPoolExecutor, TimeoutError as FutureTimeoutError
 from dataclasses import dataclass
 from functools import lru_cache
@@ -168,6 +170,7 @@ def query_style_images_supabase(
     text_query: str,
     style_id: str | None = None,
     top_k: int = 3,
+    space: str = "",
 ) -> list[SupabaseStyleResult]:
     """Search style images by text query (text-to-text: query text embedding vs
     style_kb text synthesized from JSON)."""
@@ -176,10 +179,11 @@ def query_style_images_supabase(
         text_query=q,
         style_id=style_id,
         top_k=top_k,
+        space=space,
     )
 
 
-def query_style_images_diverse(text_query: str, per_style: int = 1) -> list[SupabaseStyleResult]:
+def query_style_images_diverse(text_query: str, per_style: int = 1, space: str = "") -> list[SupabaseStyleResult]:
     """One result per style instead of a single global top-k — used when the user hasn't
     written a style description, so the generic fallback query (room type label / "interior
     design") would otherwise cluster on whichever 1-2 styles embed closest to it instead of
@@ -187,7 +191,9 @@ def query_style_images_diverse(text_query: str, per_style: int = 1) -> list[Supa
     _encode_query_text(text_query)   # 先 embed 一次進快取，下面併行的 8 個查詢就不會各編一次
     with ThreadPoolExecutor(max_workers=len(_STYLE_PROMPTS)) as pool:
         groups = pool.map(
-            lambda sid: _query_style_text_to_text(text_query=text_query, style_id=sid, top_k=per_style),
+            # per_style：這個風格在該房型沒圖就不給，不拿別的房型、別的風格充數
+            lambda sid: _query_style_text_to_text(
+                text_query=text_query, style_id=sid, top_k=per_style, space=space, per_style=True),
             list(_STYLE_PROMPTS),
         )
     results = [r for g in groups for r in g]
@@ -207,9 +213,9 @@ def query_style_images_by_space(
     """使用者沒打風格描述時的推薦：只用 space 欄位篩房型，依 quality_score 排序，不需要 BGE。
 
     style_id 為空 → 每個風格各取 per_style 張（8 個風格併行查詢），並交錯排列讓第一頁就有各風格；
-    指定 style_id → 該風格取 top_k 張。
-    房型資料太少（浴室、陽台只有個位數）就整個退回客廳，不混著用：過半數風格湊不滿 per_style 張，
-    或指定的那個風格不到 10 張（一頁），都視為太少。
+    指定 style_id → 該風格取 top_k 張，不到一頁（10 張）就用同房型的其他風格補滿——房型比風格重要，
+    設計浴室時寧可看別種風格的浴室，也不要同風格的客廳。
+    房型整體太少（過半數風格湊不滿 per_style 張；指定風格時是補完仍不到一頁）才整個退回客廳。
     similarity 一律 0（沒有向量比對，前端 similarity > 0 才會顯示百分比）。
     """
     from concurrent.futures import ThreadPoolExecutor
@@ -217,13 +223,11 @@ def query_style_images_by_space(
     client = _get_supabase()
     cols = "style_id,image_url,source_meta,style_kb"
 
-    def fetch(sid: str, n: int, sp: str) -> list[SupabaseStyleResult]:
-        rows = (
-            client.table("style_images").select(cols)
-            .eq("style_id", sid).eq("space", sp).not_.is_("style_kb", "null")
-            .order("quality_score", desc=True, nullsfirst=False).limit(n)
-            .execute().data or []
-        )
+    def fetch(sid: str | None, n: int, sp: str) -> list[SupabaseStyleResult]:
+        q = client.table("style_images").select(cols).eq("space", sp).not_.is_("style_kb", "null")
+        if sid:
+            q = q.eq("style_id", sid)
+        rows = q.order("quality_score", desc=True, nullsfirst=False).limit(n).execute().data or []
         return [
             SupabaseStyleResult(
                 style_id=r["style_id"],
@@ -238,7 +242,9 @@ def query_style_images_by_space(
 
     if style_id:
         res = fetch(style_id, top_k, space)
-        # 少於一頁（前端每頁 10 張）就退回客廳，免得使用者只看到兩三個選項
+        if len(res) < 10:   # 一頁 10 張：用同房型其他風格補
+            seen = {r.image_url for r in res}
+            res += [r for r in fetch(None, top_k * 2, space) if r.image_url not in seen][: top_k - len(res)]
         return res if len(res) >= 10 else fetch(style_id, top_k, _DEFAULT_SPACE)
 
     sids = list(_STYLE_PROMPTS)
@@ -282,12 +288,111 @@ def _compose_style_kb_text(row: dict[str, Any]) -> str:
     return " ".join(p.replace("\n", " ").strip() for p in parts if p and str(p).strip())
 
 
+_SPACE_CACHE_TTL = 3600           # 秒：新圖上傳後最多這麼久就看得到
+_SPACE_MIN_ROWS = 10              # 該房型少於這個數就不限房型（跟 query_style_images_by_space 的「一頁」一致）
+# 該房型多過這個數就不在本機算：客廳佔全庫大半（2000+ 張整批拉要十幾秒），全庫 RPC 本來就多半是客廳
+_SPACE_MAX_ROWS = 600
+_space_cache: dict[str, tuple[float, list[dict[str, Any]], Any]] = {}
+_space_cache_lock = threading.Lock()
+
+
+def _space_rows(client, space: str):
+    """某房型所有圖的 (rows, 正規化後的 embedding 矩陣)，快取 _SPACE_CACHE_TTL 秒。
+    RPC query_style_kb 沒有 space 參數，房型篩選在這裡做；單一房型最多幾百張，整批拿得動。
+    整段持鎖：「各風格一張」會 8 個執行緒同時進來，冷快取時只抓一次。"""
+    with _space_cache_lock:
+        hit = _space_cache.get(space)
+        if hit and time.time() - hit[0] < _SPACE_CACHE_TTL:
+            return hit[1], hit[2]
+        rows, embs = _fetch_space_rows(client, space)
+        _space_cache[space] = (time.time(), rows, embs)
+        return rows, embs
+
+
+def _fetch_space_rows(client, space: str):
+    """回傳 (rows, embs)；房型太大（> _SPACE_MAX_ROWS）回傳 (None, None)，呼叫端改走 RPC。"""
+    import json
+
+    import numpy as np
+
+    count = (
+        client.table("style_images").select("id", count="exact", head=True)
+        .eq("space", space).not_.is_("style_kb_embedding", "null").execute().count or 0
+    )
+    if count > _SPACE_MAX_ROWS:
+        return None, None
+    rows: list[dict[str, Any]] = []
+    off = 0
+    while True:
+        batch = (
+            client.table("style_images")
+            .select("style_id,image_url,source_meta,style_kb,style_kb_embedding")
+            .eq("space", space).not_.is_("style_kb_embedding", "null")
+            .order("id").range(off, off + 999).execute().data or []
+        )
+        rows += batch
+        off += 1000
+        if len(batch) < 1000:
+            break
+    vecs = [r.pop("style_kb_embedding") for r in rows]
+    vecs = [json.loads(v) if isinstance(v, str) else v for v in vecs]   # pgvector 經 PostgREST 回來是字串
+    embs = np.asarray(vecs, dtype=np.float32) if vecs else np.zeros((0, 1), np.float32)
+    if len(embs):
+        embs /= np.linalg.norm(embs, axis=1, keepdims=True) + 1e-12
+    return rows, embs
+
+
+def _query_style_in_space(
+    text_query: str, style_id: str | None, top_k: int, space: str, fill_other_styles: bool,
+) -> list[SupabaseStyleResult] | None:
+    """只在該房型的圖裡做向量比對；房型整體圖太少（或太大，見 _space_rows）回傳 None，退回全庫。
+    指定風格時該風格排前面；fill_other_styles=True 會用同房型其他風格補滿 top_k
+    （房型比風格重要：寧可別種風格的浴室，也不要同風格的客廳）；
+    False 只給該風格、沒有就空（「各風格一張」用，別的風格各自會查）。"""
+    import numpy as np
+
+    rows, embs = _space_rows(_get_supabase(), space)
+    if rows is None or len(rows) < _SPACE_MIN_ROWS:
+        return None
+    q = np.asarray(_encode_query_text(text_query), dtype=np.float32)
+    sims = embs @ q
+    order = [int(i) for i in np.argsort(-sims)]
+    picked = [i for i in order if not style_id or rows[i]["style_id"] == style_id]
+    if style_id and fill_other_styles:
+        chosen = set(picked)
+        picked += [i for i in order if i not in chosen]
+    out = []
+    for i in picked[:top_k]:
+        r = rows[i]
+        out.append(SupabaseStyleResult(
+            style_id=r["style_id"],
+            image_url=r["image_url"],
+            display_url=_resolve_display_url(r),
+            style_name=(r.get("source_meta") or {}).get("style", r["style_id"]),
+            similarity=round(float(sims[i]), 4),
+            style_kb=_pick_style_kb(r) or None,
+        ))
+    return out
+
+
 def _query_style_text_to_text(
     text_query: str,
     style_id: str | None,
     top_k: int,
+    space: str = "",
+    per_style: bool = False,
 ) -> list[SupabaseStyleResult]:
-    """Text-to-text retrieval using style_kb textual representation."""
+    """Text-to-text retrieval using style_kb textual representation.
+    給了 space（房型）就只在那個房型的圖裡找；房型圖太少才退回全庫（RPC）。
+    per_style=True 是「各風格一張」的單一風格查詢：該風格在這房型沒圖就回空，不補別的。"""
+    if space:
+        try:
+            hit = _query_style_in_space(text_query, style_id, top_k, space, fill_other_styles=not per_style)
+        except Exception as e:  # noqa: BLE001
+            print(f"⚠️ 房型內搜尋失敗，改全庫：{e}")
+            hit = None
+        if hit is not None:
+            return hit
     client = _get_supabase()
     query_emb = _encode_query_text(text_query)
 
