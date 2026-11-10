@@ -9,10 +9,12 @@
 
 from __future__ import annotations
 
+import contextvars
 import hashlib
 import json
 import math
 import uuid
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Any
 
@@ -635,13 +637,16 @@ def build_upload_plan(image_path: str, rooms: list[dict], total_ping: float | No
 
     from designbridge.layout.floorplan_parse import _mark
     letters = {_mark(i): m["id"] for i, m in enumerate(metas, 1)}
-    spec = _detect_openings(image_path, rooms)
-    try:
-        from designbridge.layout.floorplan_openings import detect_doors
-        geo = detect_doors(image_path, rooms, mpp) or None   # 一扇都量不到（畫法不同）也退回 Gemini
-    except Exception as e:  # noqa: BLE001
-        print(f"⚠️  door geometry detection failed, fall back to Gemini doors: {e}")
-        geo = None
+    # 問 Gemini 門窗（等網路）與量門弧線（吃 CPU）互不相依，並行省掉較短的那一邊
+    with ThreadPoolExecutor(max_workers=1) as pool:
+        spec_future = pool.submit(contextvars.copy_context().run, _detect_openings, image_path, rooms)
+        try:
+            from designbridge.layout.floorplan_openings import detect_doors
+            geo = detect_doors(image_path, rooms, mpp) or None   # 一扇都量不到（畫法不同）也退回 Gemini
+        except Exception as e:  # noqa: BLE001
+            print(f"⚠️  door geometry detection failed, fall back to Gemini doors: {e}")
+            geo = None
+        spec = spec_future.result()
     plan = _assemble(
         image_path, metas, rects, scale_source,
         make_openings=lambda rs: _openings_from_spec(
