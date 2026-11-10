@@ -104,7 +104,8 @@ const scoreTone = s => s == null ? '' : s >= 85 ? 'is-good' : s >= 60 ? 'is-mid'
             已調整 {{ lastFix.moved }} 件家具
             <button type="button" class="rp-link" @click="$emit('undo')">復原</button>
           </p>
-          <p v-else-if="lastFix && failed.length" class="rp-fixed">空間不夠，無法自動避開，請參考化解建議</p>
+          <!-- 不寫「空間不夠」：多半是怎麼搬都會擋到動線或撞到別的家具，不是真的沒空間 -->
+          <p v-else-if="lastFix && failed.length" class="rp-fixed">找不到不影響其他家具和動線的擺法，下面有手動調整的建議</p>
           <button
             v-else-if="fixable && failed.length"
             type="button" class="db-btn db-btn--sm" :disabled="loading" @click="$emit('fix')"
@@ -145,7 +146,7 @@ const scoreTone = s => s == null ? '' : s >= 85 ? 'is-good' : s >= 60 ? 'is-mid'
           </p>
           <p class="rp-reason">{{ r.reason }}</p>
           <p class="rp-remedy">
-            <span>{{ lastFix ? '無法自動避開，建議' : '化解' }}：</span>{{ r.remedy }}
+            <span>{{ lastFix ? '建議手動調整' : '化解' }}：</span>{{ r.remedy }}
           </p>
         </li>
       </ul>

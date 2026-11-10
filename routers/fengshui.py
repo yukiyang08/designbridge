@@ -51,7 +51,7 @@ def fengshui_fix(request: FixRequest, user_id: str = Depends(get_user_id)):
     )
     moved = [
         p.get("id") for p, q in zip(placements, request.placements)
-        if (p.get("x"), p.get("y")) != (q.get("x"), q.get("y"))
+        if any(p.get(k) != q.get(k) for k in ("x", "y", "w", "h"))
     ]
     report = audit_layout(
         placements, request.room_w, request.room_d, request.room_type,

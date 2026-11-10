@@ -382,15 +382,19 @@ def _carry_companions(items: list[FurnitureItem], owner: dict[str, str], start: 
         c.y = max(0.0, min(1.0 - c.h, c.y + a.y - start[aid][1]))
 
 
-def _settle(items: list[FurnitureItem], space_info: dict, owner: dict[str, str], group_of, moved: set[str]) -> None:
-    """排版常理：解開重疊，再套 skills/layout-constraints（靠牆、語意間距、床邊留空），再解一次。"""
+def _settle(
+    items: list[FurnitureItem], space_info: dict, owner: dict[str, str], group_of, moved: set[str],
+    floating: frozenset[str] = frozenset(),
+) -> None:
+    """排版常理：解開重疊，再套 skills/layout-constraints（靠牆、語意間距、床邊留空），再解一次。
+    `floating` 是刻意擺在房間中間的家具（穿堂煞的屏風），不交給靠牆規則拉回牆邊。"""
     from designbridge.layout.layout_constraints import load_layout_constraints
     from designbridge.layout.layout_enforce import _LAYOUT_ENFORCERS
 
     _separate(items, group_of, moved)
     start = {it.id: (it.x, it.y) for it in items}
     # 跟班不直接交給常理規則：床頭櫃會被「床邊要留通道」當成擋路推走，它應該跟著床
-    anchors = [it for it in items if it.id not in owner]
+    anchors = [it for it in items if it.id not in owner and it.id not in floating]
     for card in load_layout_constraints():
         fn = _LAYOUT_ENFORCERS.get(card.enforce)
         if fn:
@@ -407,10 +411,31 @@ _SEARCH_SHORTLIST = 12   # 風水先篩過的候選，最多拿幾個去跑比�
 _HUG_WALL = 0.03         # 離牆這麼近（歸一化）才算貼牆
 
 
+# 整組轉 90° 後，原本貼的那面牆變成哪一面（1＝順時針、-1＝逆時針）
+_TURN = {
+    1: {"far": "right", "right": "near", "near": "left", "left": "far"},
+    -1: {"far": "left", "left": "near", "near": "right", "right": "far"},
+}
+
+
+def _turn_group(grp: list[FurnitureItem], turn: int, room_w: float, room_d: float) -> None:
+    """整組繞外框轉 90°。用公尺算再換回歸一化，房間不是正方形時家具長寬才不會變形。"""
+    gx0, gy0 = min(it.x for it in grp), min(it.y for it in grp)
+    gw = (max(it.x + it.w for it in grp) - gx0) * room_w
+    gh = (max(it.y + it.h for it in grp) - gy0) * room_d
+    for it in grp:
+        x0, y0 = (it.x - gx0) * room_w, (it.y - gy0) * room_d
+        w, h = it.w * room_w, it.h * room_d
+        nx, ny = (gh - (y0 + h), x0) if turn == 1 else (y0, gw - (x0 + w))
+        it.x, it.y = gx0 + nx / room_w, gy0 + ny / room_d
+        it.w, it.h = h / room_w, w / room_d
+        it.rotation = (it.rotation + 90 * turn) % 360
+
+
 def _relocate_groups(
     items: list[FurnitureItem], groups: list[tuple[str, list[str]]], solid: list[FurnitureItem],
-    health, fengshui_bad,
-) -> None:
+    health, fengshui_bad, room_w: float = 1.0, room_d: float = 1.0,
+) -> dict[str, int]:
     """enforcer 只會沿原本那面牆滑動；房間不夠寬就解不掉（例：床對門，左右都滑不出門的視線）。
     這時把違規的家具搬到房內其他位置試試——等於人會做的「床換一面牆」。
 
@@ -420,26 +445,46 @@ def _relocate_groups(
     每種組合先只用風水判定篩出「違規變少、不撞其他家具」的位置，取離原位最近的幾個
     再檢查動線，動線不能變差。一組一組來，前一組搬好之後的狀態就是下一組的起點。
 
-    原本貼牆的主家具搬完仍要貼牆，而且只能是原本那面或對面那面：不然把床拉到房間中間
-    就「躲過」床頭靠窗的判定（那條只看貼牆的床），床頭反而懸空；換到側牆則會變成
-    長邊靠牆（編輯器旋轉不改長寬，見 LayoutEditor rotateNTimes90）。
+    原本貼牆的主家具搬完仍要貼牆：不然把床拉到房間中間就「躲過」床頭靠窗的判定
+    （那條只看貼牆的床），床頭反而懸空。原本那面或對面那面都解不掉時，整組轉 90° 換到側牆
+    （長寬對調、rotation 跟著轉），床頭仍貼牆——窄房間「開門不見床」多半只有這個解。
+
+    回傳被轉向的家具 id → 轉的方向，呼叫端要一併改寫 w/h/rotation/front。
     """
     by_id = {it.id: it for it in items}
 
-    def try_move(ids: list[str]) -> bool:
+    def try_move(ids: list[str], turn: int = 0) -> bool:
         grp = [by_id[i] for i in ids]
         root = grp[0]
         wall0 = _nearest_wall(root)
         hugging = _wall_distance(root, wall0) <= _HUG_WALL
-        walls_ok = {wall0, _WALL_OPPOSITE[wall0]}
+        saved = {it.id: (it.x, it.y, it.w, it.h, it.rotation) for it in grp}
+        if turn:
+            if not hugging:
+                return False   # 沒貼牆的家具沒有「換牆」可言
+            _turn_group(grp, turn, room_w, room_d)
+            walls_ok = {_TURN[turn][wall0]}
+        else:
+            walls_ok = {wall0, _WALL_OPPOSITE[wall0]}
         others = [it for it in solid if it.id not in ids]
         gx0, gy0 = min(it.x for it in grp), min(it.y for it in grp)
         gw = max(it.x + it.w for it in grp) - gx0
         gh = max(it.y + it.h for it in grp) - gy0
-        if gw > 1.0 or gh > 1.0:
+
+        def restore() -> bool:
+            for it in grp:
+                it.x, it.y, it.w, it.h, it.rotation = saved[it.id]
             return False
+
+        if gw > 1.0 or gh > 1.0:
+            return restore()
         start = {it.id: (it.x, it.y) for it in grp}
+        # 違規基準要用轉向前的狀態量：轉完原地的那一刻可能撞到別人，不算數
+        for it in grp:
+            it.x, it.y, it.w, it.h, it.rotation = saved[it.id]
         base_bad, base_circ, _ = health()
+        if turn:
+            _turn_group(grp, turn, room_w, room_d)
 
         def place(nx: float, ny: float) -> None:
             for it in grp:
@@ -467,19 +512,27 @@ def _relocate_groups(
             bad, circ, _ = health()
             if bad < base_bad and circ >= base_circ:
                 return True
-        for it in grp:
-            it.x, it.y = start[it.id]
-        return False
+        return restore()
 
+    turned: dict[str, int] = {}
     for root, companions in groups:
         variants = [[root, *companions]]
         if len(companions) > 1:
             variants += [[root, c] for c in companions]
         if companions:
             variants.append([root])
-        for ids in variants:
-            if try_move(ids):
+        # 先試原牆／對牆（動得最少），都不行才轉向換到側牆
+        done = False
+        for turn in (0, 1, -1):
+            for ids in variants:
+                if try_move(ids, turn):
+                    if turn:
+                        turned.update(dict.fromkeys(ids, turn))
+                    done = True
+                    break
+            if done:
                 break
+    return turned
 
 
 def fix_layout(
@@ -540,15 +593,21 @@ def fix_layout(
             for card in active for key in card.enforce if key in _VERIFIERS
         )
 
+    floating: set[str] = set()   # 被搬去當穿堂煞屏風的家具：本來就該離牆站在門窗之間
     for _ in range(_FIX_PASSES):
         start = {it.id: (it.x, it.y) for it in items}
         for card in active:
             for key in card.enforce:
                 fn = _ENFORCERS.get(key)
-                if fn:
-                    fn(items, doors, windows, card.parameters)
+                if not fn:
+                    continue
+                before = {it.id: (it.x, it.y) for it in items}
+                fn(items, doors, windows, card.parameters)
+                if key == "door_window_screen":
+                    floating |= {it.id for it in items if (it.x, it.y) != before[it.id]}
         _carry_companions(items, owner, start)
-        _settle(items, space_info, owner, group_of, {it.id for it in items if (it.x, it.y) != original[it.id]})
+        _settle(items, space_info, owner, group_of,
+                {it.id for it in items if (it.x, it.y) != original[it.id]}, frozenset(floating))
         if fengshui_ok():
             break
 
@@ -581,7 +640,7 @@ def fix_layout(
     def left_wall() -> bool:
         """原本貼牆、被移動過的家具，現在沒貼在原本那面或對面那面牆上（見 _relocate_groups）。"""
         for it in items:
-            if it.id not in hug0 or (it.x, it.y) == original[it.id]:
+            if it.id not in hug0 or it.id in floating or (it.x, it.y) == original[it.id]:
                 continue
             wall = _nearest_wall(it)
             if wall not in hug0[it.id] or _wall_distance(it, wall) > _HUG_WALL:
@@ -603,18 +662,27 @@ def fix_layout(
 
     # 局部推移之後還有違規（沒解掉、或只解掉其中幾條），從目前狀態再試整組搬家
     bad_now, _, fs_now = health()
+    turned: dict[str, int] = {}
     if bad_now:
         # offenders 也可能是門（「門不對窗」），門搬不動，只搬家具
         offenders_now = {iid for r in fs_now["rules"] if r["status"] == "fail" for iid in r["offenders"]}
         roots = dict.fromkeys(owner.get(i, i) for i in offenders_now if i in by_id)
         groups = [(r, sorted(c for c, a in owner.items() if a == r)) for r in roots]
-        _relocate_groups(items, groups, solid, health, fengshui_bad)
+        turned = _relocate_groups(items, groups, solid, health, fengshui_bad, room_w, room_d)
 
     # 只改寫真的被移動的家具；沒動的原樣回傳。若全部都 round，編輯器拖出來的多位小數
     # 座標會變，/api/fengshui/fix 比對位置時就把沒動的家具也算成「已調整」。
     out: list[dict] = []
     for i, p in enumerate(placements):
         it = by_id.get(str(p.get("id") or f"item_{i}"))
-        moved = it is not None and (it.x, it.y) != original[it.id]
-        out.append({**p, "x": round(it.x, 4), "y": round(it.y, 4)} if moved else p)
+        moved = it is not None and ((it.x, it.y) != original[it.id] or it.id in turned)
+        if not moved:
+            out.append(p)
+            continue
+        q = {**p, "x": round(it.x, 4), "y": round(it.y, 4)}
+        if it.id in turned:
+            q.update(w=round(it.w, 4), h=round(it.h, 4), rotation=int(it.rotation) % 360)
+            if p.get("front") in _TURN[1]:   # 使用者手動轉過的正面也跟著轉
+                q["front"] = _TURN[turned[it.id]][p["front"]]
+        out.append(q)
     return out

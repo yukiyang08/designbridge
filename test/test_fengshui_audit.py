@@ -55,11 +55,29 @@ WINDOW_FAR_CENTRE = {"x": 0.5 - 0.6 / W_34, "y": 0.0, "w": 1.2 / W_34, "h": 0.02
 DOOR_NEAR_RIGHT = [{"x": 0.7, "y": 0.98, "w": 0.9 / W_34, "h": 0.02, "wall": "near"}]
 
 
-def test_fix_that_resolves_nothing_leaves_layout_unchanged():
-    # 上下兩面牆中央都是 1.2m 的窗，3.4m 寬的房間裡 1.5m 的床沿牆滑到哪都躲不開。
-    # 排版常理（床不靠窗）會把床推離牆、床頭懸空，違規卻照舊——這種「動了沒變好」不能交出去。
+def test_fix_turns_bed_to_side_wall_when_both_end_walls_have_windows():
+    # 上下兩面牆中央都是窗，沿牆滑、搬對牆都躲不開：整張床轉 90° 床頭貼右邊實牆
     windows = [WINDOW_FAR_CENTRE, {**WINDOW_FAR_CENTRE, "y": 0.98, "wall": "near"}]
     door = [{"x": 0.0, "y": 0.4, "w": 0.02, "h": 0.9 / D_38, "wall": "left"}]
+    bed = fix_layout([BED_UNDER_WINDOW], door, windows, ["bed_head_not_under_window"], W_34, D_38)[0]
+    assert bed["x"] + bed["w"] >= 0.97, "床頭要貼右牆"
+    assert abs(bed["w"] * W_34 - BED_UNDER_WINDOW["h"] * D_38) < 0.01, "長寬要對調，不是變形"
+    assert bed["rotation"] in (90, 270)
+    report = audit_layout([bed], W_34, D_38, "bedroom", door, windows, ["bed_head_not_under_window"])
+    assert _by_trigger(report)["bed_head_not_under_window"]["status"] == "pass"
+    assert report["circulation"]["score"] == 100
+
+
+def test_fix_that_resolves_nothing_leaves_layout_unchanged():
+    # 四面牆中央都是窗，床換到哪面牆床頭都靠窗。排版常理（床不靠窗）會把床推離牆、
+    # 床頭懸空，違規卻照舊——這種「動了沒變好」不能交出去。
+    side = {"x": 0.0, "y": 0.1, "w": 0.02, "h": 0.8, "wall": "left"}
+    windows = [
+        {**WINDOW_FAR_CENTRE, "x": 0.1, "w": 0.8},
+        {**WINDOW_FAR_CENTRE, "x": 0.1, "w": 0.8, "y": 0.98, "wall": "near"},
+        side, {**side, "x": 0.98, "wall": "right"},
+    ]
+    door = [{"x": 0.0, "y": 0.0, "w": 0.02, "h": 0.05, "wall": "left"}]
     fixed = fix_layout([BED_UNDER_WINDOW], door, windows, ["bed_head_not_under_window"], W_34, D_38)
     assert fixed == [BED_UNDER_WINDOW]
 
