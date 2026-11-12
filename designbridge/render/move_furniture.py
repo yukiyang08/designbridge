@@ -179,7 +179,7 @@ def refine_mask(box: np.ndarray, seg: np.ndarray | None, labels: dict[int, str])
     return _dilate(keep, 2)
 
 
-def segment_image(image_path: str, size: tuple[int, int]) -> tuple[np.ndarray | None, dict[int, str]]:
+def segment_image(image_path: str, size: tuple[int, int], *, strict: bool = False) -> tuple[np.ndarray | None, dict[int, str]]:
     """圖的語意分割，依圖檔快取：同一張圖點第二件家具、按套用都不用再跑一次。失敗回 (None, {})。"""
     out_dir = Path(Config.ARTIFACTS_DIR) / "vision" / "move_seg" / Path(image_path).stem
     seg_path, meta_path = out_dir / "segmentation.png", out_dir / "segmentation_meta.json"
@@ -193,6 +193,8 @@ def segment_image(image_path: str, size: tuple[int, int]) -> tuple[np.ndarray | 
         labels = json.loads(meta_path.read_text(encoding="utf-8")).get("present_labels") or {}
         return np.asarray(seg).astype(np.int32), {int(k): v for k, v in labels.items()}
     except Exception as e:
+        if strict:   # 移動模式沒有退路，要讓前端看到原因
+            raise
         print(f"[move_furniture] 語意分割失敗，退回投影方塊：{e}")
         return None, {}
 
@@ -482,7 +484,13 @@ def list_instances(plan: dict[str, Any]) -> dict[str, Any]:
 
     ctx = _Context(plan)
     w, h = ctx.size
-    insts = segment_furniture(str(ctx.image_path), ctx.size)
+    try:
+        insts = segment_furniture(str(ctx.image_path), ctx.size, strict=True)
+    except Exception as e:
+        print(f"[move_furniture] 辨識家具失敗：{e!r}")
+        raise MoveFurnitureError(f"辨識家具失敗（{type(e).__name__}: {e}）") from e
+    if insts and not any(i["movable"] for i in insts):
+        raise MoveFurnitureError(f"辨識到 {len(insts)} 件東西，但都判定成沒碰到地板，不能移動")
     cam = ctx.lookat()
     layout = _instance_layout(ctx, insts, cam)
     out_dir = Path(Config.ARTIFACTS_DIR) / "vision" / "move_seg" / Path(ctx.image_path).stem

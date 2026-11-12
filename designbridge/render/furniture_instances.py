@@ -28,7 +28,9 @@ _FAMILIES = (
     ("cabinet", "shelf", "wardrobe", "chest of drawers", "bookcase", "case", "buffet", "sideboard"),
     ("bed", "pillow", "blanket", "quilt"),
     ("plant", "pot", "vase", "flower"),
+    ("lamp", "vase"),   # 檯燈的燈座常是花瓶造型，被標成 vase
 )
+_PLANT_FAMILY = {_FAMILIES.index(f) for f in _FAMILIES if "plant" in f}   # 盆栽腳下的地板常被標成旁邊的家具
 _DEPTH_SPILL = 28       # 0–255 深度刻度：輪廓裡被分成背景、深度又差這麼多的像素是溢出去的
 _SEED_SPLIT_JUMP = 25   # 同一類的一塊切開後兩邊中位深度差超過這個，才當成前後兩件家具
 
@@ -69,7 +71,7 @@ def _split_seed(m: np.ndarray, depth: np.ndarray, edges: np.ndarray) -> list[np.
     big = [comp == k for k in range(1, n + 1) if (comp == k).sum() >= 0.2 * m.sum()]
     meds = [float(np.median(depth[b])) for b in big]
     if len(big) < 2 or max(meds) - min(meds) <= _SEED_SPLIT_JUMP:
-        return [m]
+        return _split_by_depth(m, depth, edges)
     # 斷層上的像素分給最近的那塊
     idx = np.zeros(m.shape, dtype=np.int32)
     for k, b in enumerate(big, 1):
@@ -77,6 +79,32 @@ def _split_seed(m: np.ndarray, depth: np.ndarray, edges: np.ndarray) -> list[np.
     _, (iy, ix) = ndimage.distance_transform_edt(idx == 0, return_indices=True)
     nearest = idx[iy, ix]
     return [m & (nearest == k) for k in range(1, len(big) + 1)]
+
+
+def _split_by_depth(m: np.ndarray, depth: np.ndarray, edges: np.ndarray) -> list[np.ndarray]:
+    """斷層沒圍成封閉輪廓時（前排沙發椅背連到後排沙發）：按深度雙峰切成前後兩塊。
+
+    交界大多落在深度斷層上才切；沿牆往後延伸的 L 型沙發深度是漸變的，不會被切斷。
+    """
+    v = depth[m].clip(0, 255).astype(np.int64)
+    hist = np.bincount(v, minlength=256).astype(float)
+    cnt, tot = np.cumsum(hist), np.cumsum(hist * np.arange(256))
+    w0, w1 = cnt[:-1], cnt[-1] - cnt[:-1]
+    ok = (w0 > 0) & (w1 > 0)
+    between = np.zeros(255)
+    mu0 = tot[:-1][ok] / w0[ok]
+    mu1 = (tot[-1] - tot[:-1][ok]) / w1[ok]
+    between[ok] = w0[ok] * w1[ok] * (mu0 - mu1) ** 2
+    t = int(between.argmax()) + 1   # Otsu
+    far, near = m & (depth < t), m & (depth >= t)
+    if min(far.sum(), near.sum()) < 0.1 * m.sum():
+        return [m]
+    if float(np.median(depth[near])) - float(np.median(depth[far])) <= _SEED_SPLIT_JUMP:
+        return [m]
+    border = _dilate(near, 1) & far
+    if not border.any() or (border & _dilate(edges, 2)).sum() < 0.6 * border.sum():
+        return [m]
+    return [near, far]
 
 
 def _seeds(seg: np.ndarray, labels: dict[int, str], depth: np.ndarray) -> list[tuple[str, np.ndarray]]:
@@ -93,27 +121,45 @@ def _seeds(seg: np.ndarray, labels: dict[int, str], depth: np.ndarray) -> list[t
         for k in range(1, n + 1):
             m = comp == k
             if m.sum() >= min_px:
-                seeds += [(name.strip(), p) for p in _split_seed(m, depth, edges) if p.sum() >= min_px]
+                parts = _split_seed(m, depth, edges)
+                if any(p.sum() < min_px for p in parts):   # 落地燈這種細長的切開後兩塊都太小，整件就消失了
+                    parts = [m]
+                seeds += [(name.strip(), p) for p in parts]
     return seeds
 
 
-def _sam_masks(predictor, image: np.ndarray, seeds: list[tuple[str, np.ndarray]]) -> list[tuple[str, np.ndarray, float]]:
-    """每個種子：框 + 種子最內部的一點當提示，三個候選裡挑跟種子最吻合的。"""
-    import torch
+def _inner_point(seed: np.ndarray) -> tuple[int, int]:
     from scipy import ndimage
 
+    dist = ndimage.distance_transform_edt(seed)
+    py, px = np.unravel_index(int(dist.argmax()), dist.shape)
+    return int(px), int(py)
+
+
+def _sam_masks(predictor, image: np.ndarray, seeds: list[tuple[str, np.ndarray]]) -> list[tuple[str, np.ndarray, float]]:
+    """每個種子：框 + 種子最內部的一點當提示，三個候選裡挑跟種子最吻合的。
+
+    框裡其他種子的內點當負點：後排沙發的框蓋住前排沙發時，SAM 才不會把兩件切成一塊。
+    """
+    import torch
+
+    from designbridge.render.inpaint import _SAM2_INFER_LOCK
+
     h, w = image.shape[:2]
+    pts = [_inner_point(s) for _, s in seeds]
     out = []
-    with torch.inference_mode():
+    # predictor 跟描邊、inpaint 共用：不鎖的話別的請求 set_image 會把這張圖的特徵蓋掉
+    with torch.inference_mode(), _SAM2_INFER_LOCK:
         predictor.set_image(image)
-        for name, seed in seeds:
+        for k, (name, seed) in enumerate(seeds):
             x0, y0, x1, y1 = _bbox(seed)
             pad = round(0.05 * max(x1 - x0, y1 - y0))
             box = np.array([max(0, x0 - pad), max(0, y0 - pad), min(w - 1, x1 + pad), min(h - 1, y1 + pad)])
-            dist = ndimage.distance_transform_edt(seed)
-            py, px = np.unravel_index(int(dist.argmax()), dist.shape)
+            neg = [p for j, p in enumerate(pts) if j != k and box[0] <= p[0] <= box[2] and box[1] <= p[1] <= box[3]
+                   and not seed[p[1], p[0]]]
+            coords = np.array([pts[k], *neg])
             masks, scores, _ = predictor.predict(
-                point_coords=np.array([[px, py]]), point_labels=np.array([1]), box=box, multimask_output=True,
+                point_coords=coords, point_labels=np.array([1] + [0] * len(neg)), box=box, multimask_output=True,
             )
             ious = [(m & seed).sum() / max((m | seed).sum(), 1) for m in masks.astype(bool)]
             best = int(np.argmax(ious))
@@ -167,8 +213,11 @@ def _merge_continuous(insts: list[dict], depth: np.ndarray, max_jump: float = 6.
         insts[:] = [i for i in insts if i["mask"].any()]
 
 
-def _attach_small_on_top(insts: list[dict], seg: np.ndarray, labels: dict[int, str]) -> None:
-    """床頭櫃上的檯燈這種太小、當不成種子的東西：碰得到某件家具、又在它底緣上方，就併進去一起搬。"""
+def _attach_small_on_top(insts: list[dict], seg: np.ndarray, labels: dict[int, str], depth: np.ndarray) -> None:
+    """床頭櫃上的檯燈這種太小、當不成種子的東西：碰得到某件家具、又在它底緣上方，就併進去一起搬。
+
+    同族的優先（盆子給盆栽，不給剛好疊在前面的茶几），同族的不限上下（盆子在盆栽底下）。
+    """
     from scipy import ndimage
 
     claimed = np.zeros(seg.shape, dtype=bool)
@@ -186,10 +235,94 @@ def _attach_small_on_top(insts: list[dict], seg: np.ndarray, labels: dict[int, s
             touch = _dilate(piece, 6)
             for s in range(1, 31):
                 touch[s:] |= piece[:-s]
-            hosts = [i for i in insts if (touch & i["mask"]).any() and _bbox(piece)[3] < _bbox(i["mask"])[3]]
+            fam = _family(name)
+            touching = [i for i in insts if (touch & i["mask"]).any()]
+            # 花瓶在花底下、中間常隔幾 px：同族的往上也多找 30 px；花很細、深度常跟牆混在一起，不看深度
+            up = _dilate(piece, 6)
+            for s in range(1, 31):
+                up[:-s] |= piece[s:]
+            hosts = [i for i in insts if fam & _family(i["label"]) and (up & i["mask"]).any()] or [
+                i for i in touching
+                if _bbox(piece)[3] < _bbox(i["mask"])[3] and _depth_continuous(piece, i["mask"], touch, depth)]
             host = max(hosts, key=lambda i: int((touch & i["mask"]).sum()), default=None)
             if host is not None:
                 host["mask"] |= piece
+
+
+def _refine_whole(insts: list[dict], image: np.ndarray, seg: np.ndarray, labels: dict[int, str]) -> None:
+    """可移動的家具用整件的框＋多個正點再切一次，補回第一輪漏掉的細桌腳、椅腳。
+
+    第一輪每個種子各切各的，細腳被語意分割當成地板，SAM 也只切到桌面；整件一起提示才切得到腳。
+    只補原本是背景（地板、牆）的像素；同族零件（桌子底座）大半被整件輪廓蓋住就併進來。
+    """
+    from designbridge.render.inpaint import _SAM2_INFER_LOCK, _get_sam2_predictor
+
+    movable = [i for i in insts if i["on_floor"]]
+    predictor = _get_sam2_predictor() if movable else None
+    if predictor is None:
+        return
+    import torch
+    from scipy import ndimage
+
+    h, w = seg.shape
+    bg = np.isin(seg, [k for k, n in labels.items() if n.strip() in _BACKGROUND_LABELS])
+    with torch.inference_mode(), _SAM2_INFER_LOCK:
+        predictor.set_image(image)
+        for inst in movable:
+            if not inst["mask"].any():
+                continue
+            near = _dilate(inst["mask"], 15)
+            for o in insts:
+                if (o is not inst and o["mask"].any() and _family(o["label"]) & _family(inst["label"])
+                        and (near & o["mask"]).any() and _same_object(predictor, inst["mask"], o["mask"])):
+                    inst["mask"] = inst["mask"] | o["mask"]
+                    o["mask"] = np.zeros_like(o["mask"])
+        centers = {id(i): _inner_point(i["mask"]) for i in insts if i["mask"].any()}
+        for inst in movable:
+            m = inst["mask"]
+            if not m.any():
+                continue
+            x0, y0, x1, y1 = _bbox(m)
+            pad = round(0.05 * max(x1 - x0, y1 - y0))
+            box = np.array([max(0, x0 - pad), max(0, y0 - pad), min(w - 1, x1 + pad), min(h - 1, y1 + pad)])
+            comp, n = ndimage.label(m)
+            sizes = ndimage.sum(m, comp, range(1, n + 1))
+            pos = [_inner_point(comp == k + 1) for k in np.argsort(sizes)[::-1][:4] if sizes[k] >= 0.05 * m.sum()]
+            # 同族的（桌子底座）不當負點，才切得進整件
+            neg = [c for o in insts if o is not inst and id(o) in centers and not _family(o["label"]) & _family(inst["label"])
+                   for c in [centers[id(o)]] if box[0] <= c[0] <= box[2] and box[1] <= c[1] <= box[3] and not m[c[1], c[0]]]
+            masks, scores, _ = predictor.predict(
+                point_coords=np.array(pos + neg), point_labels=np.array([1] * len(pos) + [0] * len(neg)),
+                box=box, multimask_output=True,
+            )
+            # 分數差不多的候選裡取最大的：整件，不是局部
+            ok = [k for k in range(len(scores)) if scores[k] >= scores.max() - 0.1]
+            whole = masks[max(ok, key=lambda k: int(masks[k].sum()))].astype(bool)
+            others = np.zeros_like(m)
+            for o in insts:
+                if o is not inst:
+                    others |= o["mask"]
+            add = whole & bg & ~m & ~others
+            if add.sum() <= 0.5 * m.sum():   # 補太多多半是 SAM 把地板一起切進來，不補
+                m |= add
+            inst["mask"] = m
+    insts[:] = [i for i in insts if i["mask"].any()]
+
+
+def _same_object(predictor, a: np.ndarray, b: np.ndarray, cover: float = 0.9) -> bool:
+    """框住兩塊、只點其中一塊，SAM 自己就把另一塊整個切進來，兩個方向都是，才算同一件（桌面跟底座）。
+
+    同時點兩塊 SAM 一定會切成一塊，並排的兩張椅子也會；只點一邊才看得出它們是不是連在一起。
+    """
+    x0, y0, x1, y1 = _bbox(a | b)
+    box = np.array([x0, y0, x1, y1])
+    for src, dst in ((a, b), (b, a)):
+        masks, _, _ = predictor.predict(point_coords=np.array([_inner_point(src)]), point_labels=np.array([1]),
+                                        box=box, multimask_output=True)
+        masks = masks.astype(bool)
+        if not any((mm & dst).sum() >= cover * dst.sum() and (mm & src).sum() >= cover * src.sum() for mm in masks):
+            return False
+    return True
 
 
 def _clean(mask: np.ndarray) -> np.ndarray:
@@ -209,18 +342,66 @@ def _clean(mask: np.ndarray) -> np.ndarray:
     return mask
 
 
-def _touches_floor(mask: np.ndarray, floorish: np.ndarray) -> bool:
-    """輪廓最下緣正下方大多是地板／地毯：落地家具。掛畫、壁掛電視、層板下方是牆或別的家具。"""
+def _touches_floor(mask: np.ndarray, floorish: np.ndarray, loose: np.ndarray | None = None,
+                   depth: np.ndarray | None = None) -> bool:
+    """輪廓最下緣正下方大多是地板／地毯：落地家具。掛畫、壁掛電視、層板下方是牆或別的家具。
+
+    loose：沒被任何家具佔走、也不是牆的像素。語意分割常把盆栽腳下的地板標成旁邊的茶几，
+    這種像素深度跟家具底部一樣（貼著它），也算地面。
+    """
     x0, y0, x1, y1 = _bbox(mask)
     h = mask.shape[0]
     if y1 >= h - 1:
         return True   # 被畫面下緣裁掉的，一定是站在地上靠鏡頭的
+    below = _below_ring(mask)
+    if not below.any():
+        return False
+    ground = floorish
+    if loose is not None and depth is not None:
+        bottom = float(np.median(depth[below]))
+        ground = floorish | (loose & (np.abs(depth - bottom) <= 6))
+    return ground[below].mean() > 0.4
+
+
+def _below_ring(mask: np.ndarray) -> np.ndarray:
+    x0, y0, x1, y1 = _bbox(mask)
     below = _dilate(mask, 6) & ~mask
     below[: max(0, y1 - max(3, round(0.04 * (y1 - y0))))] = False
-    return below.any() and floorish[below].mean() > 0.4
+    return below
 
 
-def segment_furniture(image_path: str, size: tuple[int, int] | None = None, *, refresh: bool = False) -> list[dict]:
+def _floor_hidden_by_nearer(inst: dict, insts: list[dict], floorish: np.ndarray, depth: np.ndarray) -> bool:
+    """沙發後面的椅子：椅腳底下被前面的沙發擋住，正下方看到的是沙發不是地板，但它其實站在地上。
+
+    正下方除了地板，其餘大多是明顯比它近的家具才算；還要看得到一點地板，
+    掛在沙發上方的壁櫃底下只有沙發、沒有地板，不會被當成落地家具。
+    """
+    below = _below_ring(inst["mask"])
+    if not below.any():
+        return False
+    med = float(np.median(depth[inst["mask"]]))
+    nearer = np.zeros_like(below)
+    for o in insts:
+        if o is not inst and o["mask"].any() and float(np.median(depth[o["mask"]])) - med > _SEED_SPLIT_JUMP:
+            nearer |= o["mask"]
+    floor_frac, near_frac = floorish[below].mean(), nearer[below].mean()
+    return floor_frac > 0.15 and near_frac > 0.2 and floor_frac + near_frac > 0.6
+
+
+def _depth_continuous(small: np.ndarray, host: np.ndarray, touch: np.ndarray, depth: np.ndarray,
+                      max_jump: float = _SEED_SPLIT_JUMP) -> bool:
+    """放在家具上的東西跟家具在交界處深度接近；只是畫面上疊到、其實前後差很遠的（沙發後面的椅子）不併。"""
+    edge_h = touch & host
+    if not edge_h.any():
+        return True
+    edge_s = _dilate(edge_h, 3) & small
+    if not edge_s.any():   # 隔了一段（檯燈細燈桿）：拿整件的深度比
+        edge_s = small
+    return abs(float(np.median(depth[edge_h])) - float(np.median(depth[edge_s]))) <= max_jump
+
+
+def segment_furniture(image_path: str, size: tuple[int, int] | None = None, *, refresh: bool = False,
+                      strict: bool = False) -> list[dict]:
     """回傳每件家具 {index, label, score, bbox, area, contact, depth, mask}，mask 是 bool H×W。
 
     結果存在 artifacts/vision/move_seg/<圖檔>/：instances.png（像素值 = 第幾件 + 1）與 instances.json，
@@ -242,13 +423,13 @@ def segment_furniture(image_path: str, size: tuple[int, int] | None = None, *, r
             if not (meta and all(not m.get("score") for m in meta) and _get_sam2_predictor() is not None):
                 return [{**m, "mask": idmap == m["index"] + 1} for m in meta]
 
-    seg, labels = segment_image(image_path, size)
+    seg, labels = segment_image(image_path, size, strict=strict)
     if seg is None:
         return []
     depth = _depth(image_path, size)
     rgb = np.asarray(image)
     seeds = _seeds(seg, labels, depth)
-    raw_path = out / f"sam_raw_{len(seeds)}.npz"
+    raw_path = out / f"sam_raw_v2_{len(seeds)}.npz"   # 提示方式改了換版號，舊快取不沿用
     raw = None
     if raw_path.is_file():   # SAM 是最慢的一步（每件約 2 秒），後處理規則改了只重跑後處理；種子數變了才重算
         z = np.load(raw_path, allow_pickle=False)
@@ -271,7 +452,9 @@ def segment_furniture(image_path: str, size: tuple[int, int] | None = None, *, r
         med = float(np.median(depth[m]))
         m = m & ~(bg & (np.abs(depth - med) > _DEPTH_SPILL))
         # 跟已收的大半重疊：兩個種子切到同一件（長凳左右半各一個種子），合成一件
-        same = next((i for i in insts if (m & i["mask"]).sum() > 0.5 * min(m.sum(), i["mask"].sum())), None)
+        # 只併同類／同族：檯燈的 SAM 輪廓溢到沙發上時不能把整張沙發吃進來，重疊的像素交給 _resolve 依深度分
+        same = next((i for i in insts if (m & i["mask"]).sum() > 0.5 * min(m.sum(), i["mask"].sum())
+                     and (i["label"] == name or _family(i["label"]) & _family(name))), None)
         if same is not None:
             same["mask"] |= m
             continue
@@ -281,22 +464,36 @@ def segment_furniture(image_path: str, size: tuple[int, int] | None = None, *, r
         _resolve(insts, depth)
     insts = [i for i in insts if i["mask"].sum() >= _MIN_AREA * i["mask"].size]
     _merge_continuous(insts, depth)
+    # 先把盆子這類小東西併回去，盆栽才碰得到地
+    _attach_small_on_top(insts, seg, labels, depth)
 
     floorish = np.isin(seg, [i for i, n in labels.items() if n.strip() in ("floor", "rug")])
+    claimed = np.zeros(seg.shape, dtype=bool)
     for inst in insts:
-        inst["on_floor"] = _touches_floor(inst["mask"], floorish)
+        claimed |= inst["mask"]
+    loose = ~claimed & ~np.isin(seg, [i for i, n in labels.items() if n.strip() in _BACKGROUND_LABELS])
+    for inst in insts:
+        inst["on_floor"] = _touches_floor(inst["mask"], floorish, loose if _family(inst["label"]) & _PLANT_FAMILY else None, depth)
+    for inst in insts:
+        if not inst["on_floor"] and _family(inst["label"]):
+            inst["on_floor"] = _floor_hidden_by_nearer(inst, insts, floorish, depth)
     # 不碰地的：放在家具上的小東西（杯子、抱枕、檯燈…）併進底下那件一起搬；其他（掛畫、壁掛電視、層板）固定不能搬
     for small in sorted([i for i in insts if not i["on_floor"]], key=lambda i: i["mask"].sum()):
         touch = _dilate(small["mask"], 6)
         hosts = [i for i in insts if i is not small and i["mask"].any() and (touch & i["mask"]).any()]
         host = max(hosts, key=lambda i: int((touch & i["mask"]).sum()), default=None)
         # 只併「本來就放在家具上的東西」或同族的部位（長凳上的坐墊）；壁櫃碰到沙發椅背不能被併進沙發
-        if host is not None and (any(k in small["label"] for k in _ON_TOP_LABELS)
-                                 or _family(small["label"]) & _family(host["label"])):
+        if host is None:
+            continue
+        same_kind = any(k in small["label"] for k in _ON_TOP_LABELS) or _family(small["label"]) & _family(host["label"])
+        # 擺在上面的東西接觸處深度幾乎一樣（沙發後面櫃子上的花瓶跟椅背上緣差十幾）；同族部位（抱枕）沿用寬的門檻
+        same_part = small["label"] == host["label"] or _family(small["label"]) & _family(host["label"])
+        jump = _SEED_SPLIT_JUMP if same_part else 10
+        if same_kind and _depth_continuous(small["mask"], host["mask"], touch, depth, max_jump=jump):
             host["mask"] |= small["mask"]
             small["mask"] = np.zeros_like(small["mask"])
     insts = [i for i in insts if i["mask"].any()]
-    _attach_small_on_top(insts, seg, labels)
+    _refine_whole(insts, rgb, seg, labels)
     for inst in insts:
         inst["mask"] = _clean(inst["mask"])
 
