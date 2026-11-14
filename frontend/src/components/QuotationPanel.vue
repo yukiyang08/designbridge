@@ -16,7 +16,9 @@ const quotation = computed(() => result.value?.quotation_result || null)
 
 // 有商品圖才算精準導購；預設選第一個有圖的候選，都沒圖才落到預估估價
 const hasImg = (c) => !!c?.product_image_url
-const firstWithImage = (item) => Math.max(0, (item.candidates || []).findIndex(hasImg))
+// 二手品接在新品候選後面，只在換款時讓使用者自己選，預設不選
+const isUsed = (c) => c?.source === 'secondhand'
+const firstWithImage = (item) => Math.max(0, (item.candidates || []).findIndex(c => hasImg(c) && !isUsed(c)))
 
 // 每件家具目前選中的候選 index
 const selectedCandidates = reactive({})
@@ -45,7 +47,12 @@ const CATEGORY_ZH = {
   sofa: '沙發', table: '桌子', chair: '椅子', lamp: '燈具', rug: '地毯',
   curtain: '窗簾', storage: '收納', shelf: '收納', bed: '床',
 }
-const categoryLabel = (item) => CATEGORY_ZH[item.category] || item.detected_name
+// 顯示圖上偵測到的名稱（書桌、邊桌），只寫大類「桌子」分不出推薦的是哪一件；
+// 收藏或家具查詢勾選加入的 detected_name 就是商品全名，這時用大類
+const categoryLabel = (item) => {
+  const picked = item.from_favorite || item.detected_name === item.candidates?.[0]?.name
+  return (picked ? CATEGORY_ZH[item.category] : item.detected_name) || CATEGORY_ZH[item.category] || item.detected_name
+}
 // IKEA 商品全名後面一長串顏色、尺寸（"KALLAX 層架組, 白色, 77x147 公分"）：清單只留第一段，
 // 全名放在 title（滑過去看得到）與商品頁；"VIHALS/VIHALS" 這種重複的也去掉
 const shortName = (name = '') => name.split(/[,，]/)[0].trim().replace(/^(\S+)\/\1(?=\s|$)/, '$1')
@@ -68,6 +75,9 @@ const shopGroups = computed(() => furnitureGroups.value.filter(g => hasImg(picke
 const estimateGroups = computed(() => furnitureGroups.value.filter(g => pickedOf(g) && !hasImg(pickedOf(g))))
 // 換款只列有圖的商品，保留原本的 index 才能寫回 selectedCandidates
 const imageAlts = (g) => (g.item.candidates || []).map((a, ai) => ({ a, ai })).filter(x => hasImg(x.a))
+const usedCount = (g) => (g.item.candidates || []).filter(isUsed).length
+// 沒比到新品的家具只有 AI 估價；選了二手後要能換回估價
+const estimateIdx = (g) => (g.item.candidates || []).findIndex(c => !hasImg(c))
 
 // 跟結果圖上的家具熱區互相標示：滑到圖上的家具 → 這裡標出那一行並捲過去；
 // 滑過這裡的一行 → 圖上框出那件家具（這時不捲，免得清單跟著滑鼠跳）
@@ -97,7 +107,18 @@ onBeforeUnmount(() => narrowMql.removeEventListener('change', onNarrowChange))
 
 // 目前展開「換款」的那一組
 const openRow = ref(null)
+// 「二手」入口只列二手品（換款的那排新品在前、二手常被擠到看不到的右邊）；換款按鈕列全部
+const openMode = ref('all')
 watch(quotation, () => { openRow.value = null })
+async function toggleAlts(g, mode) {
+  const same = openRow.value === g.key && openMode.value === mode
+  openRow.value = same ? null : g.key
+  openMode.value = mode
+  // 清單最後幾行展開時，候選會落在可視範圍外
+  if (!same) { await nextTick(); rowEls[g.key]?.scrollIntoView({ block: 'nearest', behavior: 'smooth' }) }
+}
+const isOpen = (g, mode) => openRow.value === g.key && openMode.value === mode
+const shownAlts = (g) => openMode.value === 'used' ? imageAlts(g).filter(x => isUsed(x.a)) : imageAlts(g)
 // 向量與關鍵字都沒比到時後端只給一筆 LLM 估價：沒連結、沒圖、similarity 0
 const isEstimate = (c) => !c.purchase_url && !c.product_image_url && !(c.similarity > 0)
 
@@ -194,7 +215,7 @@ function toFavoriteItem(item, c) {
                 <img :src="c.product_image_url" :alt="c.name" />
               </span>
               <div class="furn-info" :title="g.item.detected_name">
-                <span class="furn-cat">{{ categoryLabel(g.item) }}<span v-if="g.item.from_favorite" class="from-fav-tag">從收藏加入</span></span>
+                <span class="furn-cat">{{ categoryLabel(g.item) }}<span v-if="g.item.from_favorite" class="from-fav-tag">從收藏加入</span><span v-if="isUsed(c)" class="used-tag">二手 · {{ c.store || '二手店' }}</span></span>
                 <a v-if="c.purchase_url" :href="c.purchase_url" target="_blank" rel="noopener" class="name name--link" :title="c.name">{{ shortName(c.name) }}</a>
                 <span v-else class="name" :title="c.name">{{ shortName(c.name) }}</span>
                 <div class="furn-foot">
@@ -218,11 +239,17 @@ function toFavoriteItem(item, c) {
                       @click="toggleFavorite(toFavoriteItem(g.item, c))"
                     ><Icon :icon="isFavorited(toFavoriteItem(g.item, c)) ? 'mdi:star' : 'mdi:star-outline'" aria-hidden="true" /></button>
                     <button
-                      v-if="imageAlts(g).length > 1"
-                      type="button" class="swap-btn" :class="{ open: openRow === g.key }"
+                      v-if="usedCount(g) && !isUsed(c)"
+                      type="button" class="used-chip" :class="{ open: isOpen(g, 'used') }"
+                      :title="`有 ${usedCount(g)} 件相似的二手家具`" :aria-expanded="isOpen(g, 'used')"
+                      @click="toggleAlts(g, 'used')"
+                    >二手 {{ usedCount(g) }}</button>
+                    <button
+                      v-if="imageAlts(g).length > 1 || (isUsed(c) && estimateIdx(g) >= 0)"
+                      type="button" class="swap-btn" :class="{ open: isOpen(g, 'all') }"
                       title="換一款" aria-label="換一款"
-                      :aria-expanded="openRow === g.key"
-                      @click="openRow = openRow === g.key ? null : g.key"
+                      :aria-expanded="isOpen(g, 'all')"
+                      @click="toggleAlts(g, 'all')"
                     >
                       <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
                         <path d="m17 2 4 4-4 4" /><path d="M3 11v-1a4 4 0 0 1 4-4h14" />
@@ -238,7 +265,7 @@ function toFavoriteItem(item, c) {
           <!-- 其他候選：點了就換，並自動收合 -->
           <div v-if="openRow === g.key" class="alts">
             <button
-              v-for="{ a, ai } in imageAlts(g)"
+              v-for="{ a, ai } in shownAlts(g)"
               :key="ai"
               type="button"
               :class="['alt', { selected: groupPick(g) === ai }]"
@@ -246,9 +273,20 @@ function toFavoriteItem(item, c) {
             >
               <span class="alt-img">
                 <img :src="a.product_image_url" :alt="a.name" />
+                <span v-if="isUsed(a)" class="alt-used">二手</span>
               </span>
               <span class="alt-name" :title="a.name">{{ shortName(a.name) }}</span>
               <span class="alt-price">NT$ {{ a.price.toLocaleString() }}</span>
+            </button>
+            <!-- 沒比到新品、選了二手的：留一個換回 AI 估價的選項 -->
+            <button
+              v-if="estimateIdx(g) >= 0"
+              type="button" :class="['alt', 'alt--est', { selected: groupPick(g) === estimateIdx(g) }]"
+              @click="setGroupPick(g, estimateIdx(g)); openRow = null"
+            >
+              <span class="alt-img alt-img--est">AI 估價</span>
+              <span class="alt-name">不買二手</span>
+              <span class="alt-price">NT$ {{ g.item.candidates[estimateIdx(g)].price.toLocaleString() }}</span>
             </button>
           </div>
         </li>
@@ -269,10 +307,30 @@ function toFavoriteItem(item, c) {
               NT$ {{ pickedOf(g).price.toLocaleString() }}
               <small v-if="g.idxs.length > 1" class="qty">×{{ g.idxs.length }}</small>
               <button
+                v-if="usedCount(g)"
+                type="button" class="used-chip" :class="{ open: isOpen(g, 'used') }"
+                :title="`有 ${usedCount(g)} 件相似的二手家具`" :aria-expanded="isOpen(g, 'used')"
+                @click="toggleAlts(g, 'used')"
+              >二手 {{ usedCount(g) }}</button>
+              <button
                 v-if="g.item.from_favorite" type="button" class="est-remove" title="從報價移除" aria-label="從報價移除"
                 @click="removeAdded(g)"
               ><Icon icon="mdi:close" aria-hidden="true" /></button>
             </span>
+            <div v-if="openRow === g.key" class="alts alts--est">
+              <button
+                v-for="{ a, ai } in imageAlts(g)" :key="ai" type="button"
+                :class="['alt', { selected: groupPick(g) === ai }]"
+                @click="setGroupPick(g, ai); openRow = null"
+              >
+                <span class="alt-img">
+                  <img :src="a.product_image_url" :alt="a.name" />
+                  <span class="alt-used">二手</span>
+                </span>
+                <span class="alt-name" :title="a.name">{{ shortName(a.name) }}</span>
+                <span class="alt-price">NT$ {{ a.price.toLocaleString() }}</span>
+              </button>
+            </div>
           </li>
         </ul>
       </template>
@@ -465,6 +523,28 @@ function toFavoriteItem(item, c) {
   overflow: hidden;
 }
 .alt-price { font-size: 0.8rem; font-weight: 600; color: var(--db-text); }
+.alt-img { position: relative; }
+.alt-used {
+  position: absolute; top: 4px; left: 4px; padding: 0.05rem 0.4rem; border-radius: var(--db-radius-pill);
+  background: var(--db-accent-ink); color: #fff; font-size: 0.66rem; font-weight: 600;
+}
+.alt-img--est { font-size: 0.8rem; color: var(--db-text-soft); }
+.alts--est { grid-column: 1 / -1; margin-top: 0.3rem; }
+
+/* 二手：選中時在類別旁標店家；有相似二手品時在價格旁給一個入口 */
+.used-tag {
+  margin-left: 0.4rem; padding: 0.02rem 0.4rem; border-radius: var(--db-radius-pill);
+  background: var(--db-accent-ink); color: #fff; font-size: 0.68rem; letter-spacing: 0;
+}
+.used-chip {
+  min-height: 32px; padding: 0 0.7rem; border: 1px solid var(--db-line); border-radius: var(--db-radius-pill);
+  background: none; color: var(--db-accent-ink); font-size: 0.78rem; font-weight: 600; white-space: nowrap; cursor: pointer;
+  transition: background 0.16s, color 0.16s, border-color 0.16s;
+}
+.used-chip:hover { background: var(--db-accent-soft); border-color: var(--db-accent-soft); }
+.used-chip.open { background: var(--db-accent-ink); border-color: var(--db-accent-ink); color: #fff; }
+.used-chip:focus-visible { outline: 2px solid var(--db-text); outline-offset: 2px; }
+.est-price .used-chip { margin-left: 0.4rem; min-height: 28px; }
 
 .name {
   font-size: 0.82rem;

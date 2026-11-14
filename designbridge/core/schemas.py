@@ -144,6 +144,8 @@ class FurnitureCandidate(TypedDict):
     purchase_url: str           # IKEA 商品頁連結
     product_image_url: str      # IKEA 商品圖片 URL
     similarity: float           # cosine similarity 0~1（向量比對得分）
+    source: NotRequired[str]    # "secondhand" = 二手品（pricing/secondhand.py），沒有就是新品
+    store: NotRequired[str]     # 二手品的店家名稱
 
 
 class FurnitureItem(TypedDict):

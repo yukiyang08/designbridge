@@ -10,6 +10,7 @@ import re
 from concurrent.futures import ThreadPoolExecutor
 from typing import Any
 
+from designbridge.core.config import Config
 from designbridge.render.llm import call_llm
 from designbridge.core.schemas import FurnitureCandidate, FurnitureItem, QuotationResultJSON
 
@@ -32,9 +33,14 @@ _IDENTIFY_BBOX_PROMPT = """\
     "category": "chair",
     "quantity": 2,
     "box_2d": [520, 610, 900, 720],
-    "boxes_2d": [[520, 610, 900, 720], [530, 760, 890, 850]]
+    "boxes_2d": [[520, 610, 900, 720], [530, 760, 890, 850]],
+    "appearance_en": "white wooden spindle-back chair"
   }
 ]
+
+appearance_en 用一句簡短英文描述這款家具看得到的顏色、材質與外型（例如 "white bed frame with slatted headboard"、
+"small round white side table"），不要寫品牌或風格名稱；它會拿去跟商品圖比對，顏色與材質一定要寫。
+只描述家具本體：床只寫床架與床頭板，不寫床單、棉被、枕頭；沙發、椅子不寫抱枕；桌櫃不寫上面的擺飾。
 
 box_2d 為 [ymin, xmin, ymax, xmax]，0–1000 的整數（圖片左上角是 0,0、右下角是 1000,1000）。
 框要緊貼物件看得到的輪廓：上下左右都不要留白，也不要把旁邊的家具或地板框進來；
@@ -165,6 +171,11 @@ def get_clip_embedding(image_crop) -> list[float]:
     return emb.tolist()
 
 
+def get_clip_text_embedding(text: str) -> list[float]:
+    """CLIP 文字 embedding（跟商品圖向量同一個空間），用來依顏色、材質重新排序候選。"""
+    return get_clip_embedding(text)
+
+
 def crop_image_by_bbox(img, bbox_ratio: list[float]):
     """
     依 bbox_ratio [x1,y1,x2,y2]（0~1）從 PIL Image 裁切出家具 crop。
@@ -214,7 +225,7 @@ def _process_furniture_item(raw: dict, img: Any, style_id: str = "") -> tuple[Fu
     this concurrently across all detected items instead of one at a time.
     """
     from designbridge.pricing.furniture_kb import (
-        _SMALL_FIXTURE_SUBS, recommend_products, search_kb, subcategories_for,
+        _SMALL_FIXTURE_SUBS, _find_top_k_local, recommend_products, search_kb, subcategories_for,
     )
 
     name_zh: str = raw.get("name_zh") or raw.get("name_en") or "家具"
@@ -223,6 +234,9 @@ def _process_furniture_item(raw: dict, img: Any, style_id: str = "") -> tuple[Fu
 
     candidates: list[FurnitureCandidate] = []
     matched_kb = False
+    appearance = (raw.get("appearance_en") or "").strip()
+    text_emb = None
+    emb = None
 
     # shelf → storage（爬蟲分類統一用 storage）
     if category == "shelf":
@@ -242,7 +256,10 @@ def _process_furniture_item(raw: dict, img: Any, style_id: str = "") -> tuple[Fu
             crop = crop_image_by_bbox(img, bbox_ratio)
             if crop is not None:
                 emb = get_clip_embedding(crop)
-                kb_hits = recommend_products(emb, category=category, detected_name=name_zh, style_id=style_id, top_k=3)
+                # 裁切圖常被床單、背景牆蓋過，CLIP 抓不準顏色材質；Gemini 的外觀描述補上這部分
+                text_emb = get_clip_text_embedding(appearance) if appearance else None
+                kb_hits = recommend_products(emb, category=category, detected_name=name_zh, style_id=style_id, top_k=3,
+                                             text_embedding=text_emb)
                 if kb_hits:
                     matched_kb = True
                     sims = [round(float(h.get("similarity") or 0), 4) for h in kb_hits]
@@ -261,11 +278,20 @@ def _process_furniture_item(raw: dict, img: Any, style_id: str = "") -> tuple[Fu
         except Exception as e:
             print(f"[quotation] CLIP/vector search error for '{name_zh}': {e}")
 
-    # ── Fallback：本地 JSON 關鍵字搜尋 ──
+    # ── Fallback：本地 JSON 文字搜尋 ──
     # 崁燈、軌道燈本地 JSON 沒有，文字搜尋只會比到吊燈、檯燈這些不同種的燈，寧可走 LLM 估價；
     # other 在商品庫沒有商品，文字搜尋只會撈到名稱相近的別種東西（電視 → 電視櫃）
     if not candidates and category != "other" and not (subcategories_for(category, name_zh) & _SMALL_FIXTURE_SUBS):
-        text_hits = search_kb(name_zh, category=category, top_k=3)
+        text_hits = []
+        # 有外觀描述就拿它跟商品圖比（白色床架找白色床架）；關鍵字只看名稱，「床架」會撈到三件柚木床架
+        if appearance:
+            try:
+                text_emb = text_emb or get_clip_text_embedding(appearance)
+                text_hits = recommend_products(text_emb, category=category, detected_name=name_zh, top_k=3,
+                                               min_similarity=0.0, search=_find_top_k_local)
+            except Exception as e:
+                print(f"[quotation] appearance search error for '{name_zh}': {e}")
+        text_hits = text_hits or search_kb(name_zh, category=category, top_k=3)
         if text_hits:
             matched_kb = True
             for hit in text_hits:
@@ -289,6 +315,17 @@ def _process_furniture_item(raw: dict, img: Any, style_id: str = "") -> tuple[Fu
             "product_image_url": "",
             "similarity": 0.0,
         })
+
+    # ── 二手品：接在新品後面，預設選中的仍是新品，總價不變 ──
+    if emb is not None and Config.ENABLE_SECONDHAND:
+        try:
+            from designbridge.pricing.secondhand import match_secondhand, to_candidate
+            used = match_secondhand(emb, category, detected_name=name_zh)
+            if used:
+                print(f"[quotation] '{name_zh}' 二手推薦 {len(used)} 件：{[h['similarity'] for h in used]}")
+            candidates.extend(to_candidate(h) for h in used)
+        except Exception as e:
+            print(f"[quotation] secondhand match error for '{name_zh}': {e}")
 
     item: FurnitureItem = {
         "detected_name": name_zh,

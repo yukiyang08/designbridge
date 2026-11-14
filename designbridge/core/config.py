@@ -32,6 +32,9 @@ class Config:
     ENABLE_CUBICASA_WALLS: bool = _flag("DESIGNBRIDGE_ENABLE_CUBICASA_WALLS", "true")
     CUBICASA_WEIGHTS: str = os.getenv("DESIGNBRIDGE_CUBICASA_WEIGHTS", "models/cubicasa/cubicasa_state.pt")
 
+    # 估價時另外比對北二高家具的二手品，接在新品候選後面（pricing/secondhand.py）
+    ENABLE_SECONDHAND: bool = _flag("DESIGNBRIDGE_ENABLE_SECONDHAND", "true")
+
     # Vertex 模式：不用 API key，改用 service-account JSON 驗證
     GOOGLE_GENAI_USE_VERTEXAI: bool = _flag("GOOGLE_GENAI_USE_VERTEXAI", "")
     GOOGLE_GENAI_FORCE_API_KEY: bool = _flag("GOOGLE_GENAI_FORCE_API_KEY", "")

@@ -22,6 +22,17 @@ python -m style_kb.scrapper.scraper_100_images --style-filter 鄉村風 --target
 
 ---
 
+## 二手家具（北二高家具）
+
+二手品賣掉就下架，估價推薦的二手清單要定期重抓（`DESIGNBRIDGE_ENABLE_SECONDHAND=false` 可關閉推薦）。
+
+```powershell
+python scripts/scrape_beg.py                                       # → designbridge/furniture_kb/secondhand_tw.json
+python scripts/build_ikea_embeddings.py --brand secondhand --rebuild   # → secondhand_embeddings.npz
+```
+
+---
+
 ## 整理 & 上傳
 
 ```powershell

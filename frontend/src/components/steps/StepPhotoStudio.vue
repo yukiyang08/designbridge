@@ -75,7 +75,7 @@ const shortName = (name = '') => name.split(/[,，]/)[0].trim()
 const quoteRows = computed(() => (quotation.value?.furniture_list || []).map((item, i) => {
   const cands = item.candidates || []
   return { key: i, label: CATEGORY_ZH[item.category] || item.detected_name,
-           c: cands.find(c => c?.product_image_url) || cands[0] || null }
+           c: cands.find(c => c?.product_image_url && c.source !== 'secondhand') || cands[0] || null }
 }))
 const shopRows = computed(() => quoteRows.value.filter(r => r.c?.product_image_url))
 const estimateRows = computed(() => quoteRows.value.filter(r => r.c && !r.c.product_image_url))

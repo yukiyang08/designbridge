@@ -198,11 +198,15 @@ _SUBCATEGORY_RULES: dict[str, list[tuple[str, set[str]]]] = {
               (r"書桌|工作桌|電腦桌|辦公桌", {"desk"}),
               (r"餐桌|吧台|吧檯", {"dining-table"})],
     "chair": [(r"吧台椅|吧檯椅|高腳", {"bar-stool"}),
-              (r"書桌椅|辦公椅|電腦椅|工作椅", {"desk-chair"}),
+              (r"辦公椅|電腦椅", {"desk-chair"}),
+              # 渲染圖書桌前常擺木頭餐椅，只找辦公椅會推薦到外型完全不同的旋轉椅
+              (r"書桌椅|書椅|工作椅", {"desk-chair", "dining-chair"}),
               (r"腳凳|腳椅", {"footstool", "stool"}),
               (r"長凳|長椅", {"bench"}),
               (r"凳", {"stool", "footstool"}),
-              (r"單椅|扶手椅|休閒椅|沙發椅|搖椅|躺椅|單人沙發|主人椅", {"armchair"}),
+              (r"扶手椅|休閒椅|沙發椅|搖椅|躺椅|單人沙發|主人椅", {"armchair"}),
+              # Gemini 常把一般木椅也叫單椅，只找扶手椅會推薦到沙發型的椅子
+              (r"單椅", {"armchair", "dining-chair"}),
               (r"餐椅", {"dining-chair"})],
     "sofa": [(r"沙發床", {"sofa-bed", "sofa"})],
     "storage": [(r"電視櫃|視聽櫃", {"tv-bench"}),
@@ -235,10 +239,31 @@ _SUBCATEGORY_RULES: dict[str, list[tuple[str, set[str]]]] = {
               (r"畫|藝術|海報", {"wall-art"})],
 }
 STYLE_BONUS = 0.0    # 商品風格跟渲染圖相同時排序分數加多少；風格標籤還不夠準、效果也量不出來，先關閉
+# 外觀描述（文字）跟商品圖的 CLIP 相似度比候選池平均高多少，就把差距乘上這個權重加進排序分數。
+# 文字對圖的相似度只有 0.15~0.35、差距約 0.05，乘 1 跟圖片相似度的差距同一個量級；尚未用標註資料調過
+TEXT_WEIGHT = 1.0
 _POOL_SIZE = 40      # 先依大類別取這麼多候選，再篩選、去重
 _SMALL_FIXTURE_SUBS = {"recessed-light", "box-downlight", "track-light"}
 _SMALL_FIXTURE_MIN_SIM = 0.5   # 同子分類商品只有十幾件，分數再低也比推薦別種燈好
 _WIDE_POOL_SIZE = 500  # 前 _POOL_SIZE 名沒有目標細分類時的備援，涵蓋整個大類
+
+
+def _text_similarities(pool: list[dict], text_embedding: list[float]) -> dict[str, float]:
+    """候選商品圖跟外觀描述的 CLIP 相似度 {url: sim}；商品圖向量取自本地 npz，沒有向量的商品不列。"""
+    import numpy as np
+
+    kb = _load_local_kb()
+    matrix = _load_embeddings()
+    if matrix is None or len(matrix) != len(kb):
+        return {}
+    row = {item.get("url"): i for i, item in enumerate(kb)}
+    query = np.asarray(text_embedding, dtype="float32")
+    sims = {}
+    for h in pool:
+        i = row.get(h.get("url"))
+        if i is not None and matrix[i].any():   # 零向量 = 圖片下載失敗，不能當成「完全不像」
+            sims[h["url"]] = float(matrix[i] @ query)
+    return sims
 
 
 def subcategories_for(category: str, detected_name: str) -> set[str]:
@@ -258,9 +283,11 @@ def recommend_products(
     min_similarity: float = MIN_SIMILARITY,
     style_bonus: float = STYLE_BONUS,
     search=None,
+    text_embedding: list[float] | None = None,
+    text_weight: float = TEXT_WEIGHT,
 ) -> list[dict]:
-    """估價推薦：向量搜尋取候選後，排除桌椅組、依細分類篩選、風格相符加分、同系列只留一件，
-    最後才套用相似度門檻。
+    """估價推薦：向量搜尋取候選後，排除桌椅組、依細分類篩選、風格相符加分、外觀描述相符加分、
+    同系列只留一件，最後才套用相似度門檻（門檻仍看圖片相似度）。
 
     細分類有商品就只在細分類裡推薦，達不到門檻寧可不推薦（茶几不推薦餐桌）；
     商品庫完全沒有該細分類時才退回整個大類。門檻放在最後，推薦結果才不會隨門檻改變。
@@ -283,8 +310,12 @@ def recommend_products(
         if preferred:
             pool = preferred
 
+    text_sims = _text_similarities(pool, text_embedding) if text_embedding is not None else {}
+    text_mean = sum(text_sims.values()) / len(text_sims) if text_sims else 0.0
     for h in pool:
         bonus = style_bonus if style_id and style_id in (h.get("style_tags") or []) else 0.0
+        # 本地沒有向量的商品（Supabase 上的燈具品牌）不加不減
+        bonus += text_weight * (text_sims.get(h.get("url"), text_mean) - text_mean)
         h["score"] = round(float(h.get("similarity") or 0) + bonus, 4)
     pool.sort(key=lambda h: h["score"], reverse=True)
 
