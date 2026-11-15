@@ -22,13 +22,20 @@ python -m style_kb.scrapper.scraper_100_images --style-filter 鄉村風 --target
 
 ---
 
-## 二手家具（北二高家具）
+## 二手家具
 
-二手品賣掉就下架，估價推薦的二手清單要定期重抓（`DESIGNBRIDGE_ENABLE_SECONDHAND=false` 可關閉推薦）。
+所有店家共用 `designbridge/furniture_kb/secondhand_tw.json` 與 `secondhand_embeddings.npz`；每次只換掉一家的商品，向量自動沿用、只算新圖片，不用重啟後端。
+二手品賣掉就下架，要定期重抓或重新匯入（`DESIGNBRIDGE_ENABLE_SECONDHAND=false` 可關閉估價的二手推薦）。
 
 ```powershell
-python scripts/scrape_beg.py                                       # → designbridge/furniture_kb/secondhand_tw.json
-python scripts/build_ikea_embeddings.py --brand secondhand --rebuild   # → secondhand_embeddings.npz
+# 北二高家具（爬蟲）
+python scripts/scrape_beg.py
+python scripts/scrape_beg.py --dry-run          # 只列出，不寫檔
+
+# 其他店家（CSV，範本 docs/secondhand_import_template.csv）
+python scripts/import_secondhand_csv.py --store "ESG.STYLE" --csv esg.csv --dry-run   # 先檢查
+python scripts/import_secondhand_csv.py --store "ESG.STYLE" --csv esg.csv
+python scripts/import_secondhand_csv.py --store "ESG.STYLE" --remove                  # 刪掉這家
 ```
 
 ---

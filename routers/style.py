@@ -180,11 +180,12 @@ def get_furniture(
     sort: str = "",
     limit: int = Query(60, ge=1, le=200),
     offset: int = 0,
+    condition: str = Query("", pattern="^(|used)$"),
 ):
-    """瀏覽 / 篩選家具清單（分類 + 價位區間 + 品牌 + 風格 + 關鍵字），分頁回傳。"""
+    """瀏覽 / 篩選家具清單（分類 + 價位區間 + 品牌 + 風格 + 關鍵字 + 全新／二手），分頁回傳。"""
     from designbridge.pricing.furniture_kb import list_furniture
     return list_furniture(category=category, min_price=min_price, max_price=max_price, brand=brand, style=style,
-                          q=q, sort=sort, limit=limit, offset=max(0, offset))
+                          q=q, sort=sort, limit=limit, offset=max(0, offset), condition=condition)
 
 
 @router.get("/api/style-profiles")

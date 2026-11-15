@@ -37,6 +37,21 @@ const brands = ref([])
 const styles = ref([])
 const activeBrand = ref(init.brand || '')
 const activeStyle = ref(init.style || '')
+// 全新查 Supabase 商品庫；二手是北二高家具的二手品（後端另一份本地資料），沒有品牌、風格可篩
+const condition = ref(init.cond === 'used' ? 'used' : '')
+// 二手店家也列在品牌選單（後端標 condition: used）：選二手店家就切到二手，選一般品牌就切回全新
+const usedBrands = computed(() => new Set(brands.value.filter(b => b.condition === 'used').map(b => b.value)))
+watch(activeBrand, (b) => {
+  if (usedBrands.value.has(b)) condition.value = 'used'
+  else if (b && condition.value) condition.value = ''
+})
+// 二手沒有風格標籤，風格選單不顯示，殘留的條件要清掉，不然看不到卻還在篩
+watch(condition, (v) => {
+  if (v) {
+    activeStyle.value = ''
+    if (activeBrand.value && !usedBrands.value.has(activeBrand.value)) activeBrand.value = ''
+  } else if (usedBrands.value.has(activeBrand.value)) activeBrand.value = ''
+})
 
 const categoryLabels = {
   sofa: '沙發',
@@ -85,6 +100,10 @@ async function fetchFurniture(more = false) {
     if (activeBrand.value) params.set('brand', activeBrand.value)
     if (activeStyle.value) params.set('style', activeStyle.value)
     if (sortBy.value) params.set('sort', sortBy.value)
+    if (condition.value) {
+      params.set('condition', condition.value)
+      params.delete('style')
+    }
     const res = await fetch(apiUrl(`/api/furniture?${params}`))
     if (!res.ok) throw new Error(String(res.status))
     const data = await res.json()
@@ -104,19 +123,20 @@ function selectCategory(cat) {
 
 // 手機上篩選下拉收進「篩選」鈕，避免第一屏全是篩選條件
 const filtersOpen = ref(false)
-const filterCount = computed(() => [priceIndex.value !== 0, activeBrand.value, activeStyle.value, sortBy.value].filter(Boolean).length)
+const filterCount = computed(() => [condition.value, priceIndex.value !== 0, activeBrand.value, activeStyle.value, sortBy.value].filter(Boolean).length)
 const hasExtraFilters = computed(() => filterCount.value > 0)   // 徽章有數字就要能清掉，排序也算
 function clearExtraFilters() {
+  condition.value = ''
   priceIndex.value = 0
   activeBrand.value = ''
   activeStyle.value = ''
   sortBy.value = ''
 }
 
-watch([activeCategory, activePriceRange, activeBrand, activeStyle, sortBy], () => fetchFurniture())
+watch([activeCategory, activePriceRange, activeBrand, activeStyle, sortBy, condition], () => fetchFurniture())
 
-watch([activeCategory, priceIndex, activeBrand, activeStyle, searchQuery, sortBy], ([cat, price, brand, style, q, sort]) => {
-  const query = Object.fromEntries(Object.entries({ cat, price: price || '', brand, style, q: q.trim(), sort }).filter(([, v]) => v))
+watch([activeCategory, priceIndex, activeBrand, activeStyle, searchQuery, sortBy, condition], ([cat, price, brand, style, q, sort, cond]) => {
+  const query = Object.fromEntries(Object.entries({ cat, price: price || '', brand, style, q: q.trim(), sort, cond }).filter(([, v]) => v))
   router.replace({ query })
 })
 
@@ -168,6 +188,10 @@ onMounted(() => {
         <Icon icon="mdi:tune-variant" aria-hidden="true" /> 篩選<span v-if="filterCount" class="filter-count">{{ filterCount }}</span>
       </button>
       <div id="filter-selects" :class="['filter-selects', { open: filtersOpen }]">
+        <select v-model="condition" :class="['filter-select', { active: condition }]" aria-label="全新或二手">
+          <option value="">全新</option>
+          <option value="used">二手</option>
+        </select>
         <select v-model.number="priceIndex" :class="['filter-select', { active: priceIndex !== 0 }]" aria-label="價位">
           <option v-for="(range, idx) in priceRanges" :key="range.label" :value="idx">
             {{ idx === 0 ? '價位' : range.label }}
@@ -177,7 +201,7 @@ onMounted(() => {
           <option value="">品牌</option>
           <option v-for="b in brands" :key="b.value" :value="b.value">{{ b.label }}（{{ b.count.toLocaleString() }}）</option>
         </select>
-        <select v-model="activeStyle" :class="['filter-select', { active: activeStyle }]" aria-label="風格">
+        <select v-if="!condition" v-model="activeStyle" :class="['filter-select', { active: activeStyle }]" aria-label="風格">
           <option value="">風格</option>
           <option v-for="st in styles" :key="st.value" :value="st.value">{{ st.label }}</option>
         </select>
@@ -230,7 +254,10 @@ onMounted(() => {
           <div v-else class="card-no-img">無圖</div>
         </div>
         <div class="card-body">
-          <span v-if="item.brand" class="card-brand">{{ item.brand }}</span>
+          <span v-if="item.brand || item.condition" class="card-tags">
+            <span v-if="item.condition" class="card-brand card-brand--used">{{ item.condition }}</span>
+            <span v-if="item.brand" class="card-brand">{{ item.brand }}</span>
+          </span>
           <p class="card-name">{{ item.name }}</p>
           <p class="card-price">{{ item.currency || 'TWD' }} {{ Number(item.price || 0).toLocaleString() }}</p>
           <div class="card-actions">
@@ -327,6 +354,8 @@ onMounted(() => {
 .cat-tab.active { background: var(--db-accent); border-color: var(--db-accent); color: var(--db-on-accent); }
 
 .result-count { margin: 0.25rem 0 0; font-size: 0.8rem; color: var(--db-text-soft); }
+.card-tags { display: flex; flex-wrap: wrap; gap: 0.3rem; }
+.card-brand--used { background: var(--db-accent-ink); color: #fff; }
 .card-brand { align-self: flex-start; padding: 0.05rem 0.5rem; border-radius: var(--db-radius-pill); background: var(--db-chip-soft); font-size: 0.7rem; color: var(--db-text-soft); }
 
 .state-msg { text-align: center; color: var(--db-text-soft); padding: 3rem; }

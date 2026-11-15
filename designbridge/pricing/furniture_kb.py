@@ -430,9 +430,17 @@ def list_categories() -> list[str]:
     return sorted({r["category"] for r in _select_all("category") if r.get("category")})
 
 
-@lru_cache(maxsize=1)
 def list_filters() -> dict:
-    """家具查詢頁的品牌、風格篩選選項與件數（依件數多到少）。"""
+    """家具查詢頁的品牌、風格篩選選項與件數；二手店家接在品牌最後（condition: used，前端據此切到二手清單）。"""
+    from designbridge.pricing.secondhand import store_counts
+    base = _list_filters_supabase()
+    used = [{"value": b, "label": f"{b} · 二手", "count": n, "condition": "used"} for b, n in store_counts().items()]
+    return {**base, "brands": base["brands"] + used}
+
+
+@lru_cache(maxsize=1)
+def _list_filters_supabase() -> dict:
+    """Supabase 商品庫的品牌、風格篩選選項與件數（依件數多到少）。"""
     from collections import Counter
     from style_kb.styles import STYLES
     rows = _select_all("brand,style_tags")
@@ -455,13 +463,19 @@ def list_furniture(
     sort: str = "",
     limit: int = 60,
     offset: int = 0,
+    condition: str = "",
 ) -> dict:
     """篩選家具（Supabase ikea_products），一次只回一頁：{"items": [...], "total": 符合總數}。
+    condition="used" 改列北二高二手品（本地資料，不在 Supabase）。
 
     - category / brand / style / q 為空字串代表不篩選；q 比對名稱與品牌
     - min_price / max_price 為 None 代表不限制該端
     - sort：price_asc / price_desc，其他值依 id
     """
+    if condition == "used":
+        from designbridge.pricing.secondhand import browse
+        return browse(category=category, min_price=min_price, max_price=max_price, brand=brand, style=style,
+                      q=q, sort=sort, limit=max(1, min(limit, _PAGE)), offset=offset)
     # PostgREST 的 or 語法用逗號、括號分隔條件，關鍵字裡出現會打壞查詢
     kw = re.sub(r'[,()"\\%*]', " ", q).strip()
 

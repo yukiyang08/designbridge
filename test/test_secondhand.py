@@ -65,3 +65,31 @@ def test_generic_chair_skips_office_chairs(fake_kb):
     # 「單人椅」對不到細分類：不推薦辦公椅，只剩餐椅
     hits = secondhand.match_secondhand((_vec(0) * 0.9 + _vec(1) * 0.436).tolist(), "chair", "單人椅")
     assert [h["name"] for h in hits] == ["皮革餐椅"]
+
+
+def test_browse_filters_and_pages(monkeypatch, tmp_path):
+    import json
+    data = [
+        {"name": "皮革餐椅", "category": "chair", "product_code": "1", "price": 1600, "brand": "北二高家具"},
+        {"name": "柚木沙發", "category": "sofa", "product_code": "2", "price": 14500, "brand": "北二高家具"},
+        {"name": "工業風餐椅", "category": "chair", "product_code": "3", "price": 900, "brand": "北二高家具"},
+    ]
+    path = tmp_path / "secondhand_tw.json"
+    path.write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
+    monkeypatch.setattr(secondhand, "_JSON", path)
+
+    res = secondhand.browse(category="chair", sort="price_asc")
+    assert res["total"] == 2 and [r["id"] for r in res["items"]] == ["beg-3", "beg-1"]
+    assert res["items"][0]["condition"] == "二手"
+    assert secondhand.browse(q="柚木")["total"] == 1
+    assert secondhand.browse(max_price=1000)["total"] == 1
+    assert secondhand.browse(style="modern")["total"] == 0   # 二手品沒有風格標籤
+    assert len(secondhand.browse(limit=2, offset=2)["items"]) == 1
+
+
+def test_store_counts(monkeypatch, tmp_path):
+    import json
+    path = tmp_path / "secondhand_tw.json"
+    path.write_text(json.dumps([{"brand": "北二高家具"}, {"brand": "北二高家具"}], ensure_ascii=False), encoding="utf-8")
+    monkeypatch.setattr(secondhand, "_JSON", path)
+    assert secondhand.store_counts() == {"北二高家具": 2}
