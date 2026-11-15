@@ -13,6 +13,12 @@ from typing import Any
 from designbridge.render.llm import call_llm
 from designbridge.core.schemas import FurnitureCandidate, FurnitureItem, QuotationResultJSON
 
+# 名稱 → 商品庫的大類（覆蓋 Gemini 給的 category）
+_CATEGORY_BY_NAME = [
+    (r"床頭櫃|床邊櫃|電視櫃|視聽櫃", "storage"),
+    (r"單人沙發|沙發椅|主人椅|長凳|長椅", "chair"),
+]
+
 
 # ── Prompts ────────────────────────────────────────────────────────────────────
 
@@ -22,20 +28,23 @@ _IDENTIFY_BBOX_PROMPT = """\
 請以純 JSON 陣列回傳（不要加任何說明文字），格式如下：
 [
   {
-    "name_zh": "三人座沙發",
-    "category": "sofa",
-    "quantity": 1,
-    "bbox": [0.05, 0.40, 0.55, 0.85]
+    "name_zh": "餐椅",
+    "category": "chair",
+    "quantity": 2,
+    "box_2d": [520, 610, 900, 720],
+    "boxes_2d": [[520, 610, 900, 720], [530, 760, 890, 850]]
   }
 ]
 
-bbox 為 [x1, y1, x2, y2]，值為 0~1 的比例座標（左上角到右下角）。
-quantity 是圖中這種家具實際有幾件（4 張一樣的餐椅就是 4、8 顆崁燈就是 8），不確定時填 1；
-同款只列一筆、bbox 框其中一件即可。
+box_2d 為 [ymin, xmin, ymax, xmax]，0–1000 的整數（圖片左上角是 0,0、右下角是 1000,1000）。
+框要緊貼物件看得到的輪廓：上下左右都不要留白，也不要把旁邊的家具或地板框進來；
+被遮住一部分的家具只框看得到的部分。
+同款只列一筆：boxes_2d 列出圖中這款每一件的 box_2d（4 張一樣的餐椅就列 4 個框），
+box_2d 填其中最完整、最清楚的那一件；quantity 是實際件數（不確定時填 boxes_2d 的數量）。
 category 必須是：sofa / table / chair / lamp / rug / curtain / storage / bed / shelf / other
-只列出主要且明顯可見的物件（至多 8 件），勿過度細分。
-天花板燈具（崁燈、軌道燈、吸頂燈、吊燈）即使很小也要列出，不佔上述 8 件名額；
-bbox 框住其中最清楚的一盞並略放大，name_zh 用「崁燈」「軌道燈」「吸頂燈」「吊燈」這類名稱。
+列出主要且明顯可見的家具與軟裝（至多 10 款），植物、單椅、邊桌、層架也要列，勿過度細分成零件。
+天花板燈具（崁燈、軌道燈、吸頂燈、吊燈）即使很小也要列出，不佔上述 10 款名額；
+name_zh 用「崁燈」「軌道燈」「吸頂燈」「吊燈」這類名稱。
 """
 
 _ESTIMATE_PROMPT = """\
@@ -95,9 +104,29 @@ _ROOM_DEFAULTS: dict[str, list[tuple[str, str]]] = {
 
 def _quantity_of(raw: dict) -> int:
     try:
-        return max(1, min(int(raw.get("quantity") or 1), 12))   # 上限防 Gemini 亂報
+        n = int(raw.get("quantity") or 1)
     except (TypeError, ValueError):
-        return 1
+        n = 1
+    return max(1, min(max(n, len(_boxes_of(raw))), 12))   # 框比件數多就以框為準；上限防 Gemini 亂報
+
+
+def _box_ratio(box) -> list[float]:
+    """Gemini 的 box_2d [ymin, xmin, ymax, xmax]（0–1000）→ [x1, y1, x2, y2]（0~1）；格式不對回傳 []。"""
+    try:
+        y0, x0, y1, x1 = (max(0.0, min(1000.0, float(v))) / 1000 for v in box)
+    except (TypeError, ValueError):
+        return []
+    if x1 <= x0 or y1 <= y0:
+        return []
+    return [round(x0, 4), round(y0, 4), round(x1, 4), round(y1, 4)]
+
+
+def _boxes_of(raw: dict) -> list[list[float]]:
+    """這款家具每一件的框（0~1 的 [x1, y1, x2, y2]），第一個是拿去比對商品的那件。
+    box_2d 用 Gemini 原生格式（比要它回 0~1 小數準）；舊格式 bbox 也接受。"""
+    main = _box_ratio(raw["box_2d"]) if raw.get("box_2d") else list(raw.get("bbox") or [])
+    rest = [b for b in (_box_ratio(x) for x in raw.get("boxes_2d") or []) if b and b != main]
+    return ([main] if len(main) == 4 else []) + rest
 
 
 def _fallback_furniture(room_type: str) -> list[dict]:
@@ -145,10 +174,9 @@ def crop_image_by_bbox(img, bbox_ratio: list[float]):
     x1, y1, x2, y2 = bbox_ratio
     px1, py1 = int(x1 * w), int(y1 * h)
     px2, py2 = int(x2 * w), int(y2 * h)
-    # 至少 20×20 px
-    if px2 - px1 < 20 or py2 - py1 < 20:
+    if px2 <= px1 or py2 <= py1:
         return None
-    # 崁燈這類小物件 bbox 太細，向量比對沒資訊；往外撐到至少 64px
+    # 崁燈這類小物件 bbox 太細（1024 寬的圖上常不到 20px），向量比對沒資訊；往外撐到至少 64px
     px1, px2 = px1 - max(0, 64 - (px2 - px1)) // 2, px2 + max(0, 64 - (px2 - px1)) // 2
     py1, py2 = py1 - max(0, 64 - (py2 - py1)) // 2, py2 + max(0, 64 - (py2 - py1)) // 2
     px1, py1 = max(0, px1), max(0, py1)
@@ -169,6 +197,16 @@ def _estimate_price_llm(name_zh: str) -> int:
 
 # ── Main build function ────────────────────────────────────────────────────────
 
+def preload_quotation_resources() -> None:
+    """先載入 lazy singleton（CLIP / Supabase / 本地 KB），免得多執行緒同時第一次初始化。"""
+    from designbridge.pricing.furniture_kb import _get_supabase_client, _load_embeddings, _load_local_kb
+
+    _get_clip_model()
+    _get_supabase_client()
+    _load_local_kb()
+    _load_embeddings()
+
+
 def _process_furniture_item(raw: dict, img: Any, style_id: str = "") -> tuple[FurnitureItem, bool]:
     """Resolve one detected furniture item to KB candidates. Returns (item, matched_kb).
 
@@ -181,7 +219,7 @@ def _process_furniture_item(raw: dict, img: Any, style_id: str = "") -> tuple[Fu
 
     name_zh: str = raw.get("name_zh") or raw.get("name_en") or "家具"
     category: str = raw.get("category") or ""
-    bbox_ratio: list[float] = raw.get("bbox") or []
+    bbox_ratio: list[float] = (_boxes_of(raw) or [[]])[0]
 
     candidates: list[FurnitureCandidate] = []
     matched_kb = False
@@ -189,6 +227,14 @@ def _process_furniture_item(raw: dict, img: Any, style_id: str = "") -> tuple[Fu
     # shelf → storage（爬蟲分類統一用 storage）
     if category == "shelf":
         category = "storage"
+    # 盆栽、抱枕、鏡子、掛畫：Gemini 歸在 other，商品庫放在 decor
+    if category == "other" and subcategories_for("decor", name_zh):
+        category = "decor"
+    # Gemini 的大類偶爾跟商品庫不同（床頭櫃給 table、單人沙發給 sofa），向量搜尋先依大類篩選就撈不到
+    for pattern, cat in _CATEGORY_BY_NAME:
+        if re.search(pattern, name_zh):
+            category = cat
+            break
 
     # ── 嘗試 CLIP + Supabase pgvector ──
     if img is not None and len(bbox_ratio) == 4:
@@ -216,8 +262,9 @@ def _process_furniture_item(raw: dict, img: Any, style_id: str = "") -> tuple[Fu
             print(f"[quotation] CLIP/vector search error for '{name_zh}': {e}")
 
     # ── Fallback：本地 JSON 關鍵字搜尋 ──
-    # 崁燈、軌道燈本地 JSON 沒有，文字搜尋只會比到吊燈、檯燈這些不同種的燈，寧可走 LLM 估價
-    if not candidates and not (subcategories_for(category, name_zh) & _SMALL_FIXTURE_SUBS):
+    # 崁燈、軌道燈本地 JSON 沒有，文字搜尋只會比到吊燈、檯燈這些不同種的燈，寧可走 LLM 估價；
+    # other 在商品庫沒有商品，文字搜尋只會撈到名稱相近的別種東西（電視 → 電視櫃）
+    if not candidates and category != "other" and not (subcategories_for(category, name_zh) & _SMALL_FIXTURE_SUBS):
         text_hits = search_kb(name_zh, category=category, top_k=3)
         if text_hits:
             matched_kb = True
@@ -249,6 +296,9 @@ def _process_furniture_item(raw: dict, img: Any, style_id: str = "") -> tuple[Fu
         "candidates": candidates,
         "selected_index": 0,
     }
+    # 結果圖上滑到這件家具就標出對應商品（前端 StepResult 的熱區）
+    if len(bbox_ratio) == 4:
+        item["bbox"] = [round(float(v), 4) for v in bbox_ratio]
     return item, matched_kb
 
 
@@ -272,7 +322,6 @@ def build_quotation(
     """
     from PIL import Image
     from designbridge.core.timing import log_stage, timed_call
-    from designbridge.pricing.furniture_kb import _get_supabase_client, _load_local_kb, _load_embeddings
 
     # 取風格提示
     style_hint = ""
@@ -280,7 +329,10 @@ def build_quotation(
     if isinstance(style_pref, dict):
         style_hint = style_pref.get("primary_style") or ""
 
-    detected = timed_call("quotation.detect_furniture", None, detect_furniture_gemini, image_path, style_hint)
+    with ThreadPoolExecutor(max_workers=1) as pre:
+        preloading = pre.submit(preload_quotation_resources)
+        detected = timed_call("quotation.detect_furniture", None, detect_furniture_gemini, image_path, style_hint)
+        preloading.result()
 
     # Gemini 失敗（或圖片無法辨識）→ 用房間類型備用清單
     if not detected:
@@ -294,21 +346,20 @@ def build_quotation(
         print(f"[quotation] cannot open image: {e}")
         img = None
 
-    # 預先載入 lazy singleton（CLIP model / Supabase client / 本地 KB 快取），
-    # 避免多執行緒同時第一次觸發初始化造成 race condition。
-    _get_clip_model()
-    _get_supabase_client()
-    _load_local_kb()
-    _load_embeddings()
-
     with ThreadPoolExecutor(max_workers=min(8, max(1, len(detected)))) as executor:
         with log_stage("quotation.match_furniture"):
             results = list(executor.map(lambda raw: _process_furniture_item(raw, img, style_id), detected))
 
-    # 同款多件展開成多筆：前端會把候選相同的合併成 ×N，總價逐件相加
-    furniture_list: list[FurnitureItem] = [
-        {**item} for raw, (item, _) in zip(detected, results) for _ in range(_quantity_of(raw))
-    ]
+    # 同款多件展開成多筆：前端會把候選相同的合併成 ×N，總價逐件相加。
+    # 每一件換上自己的框，結果圖上每張餐椅都能滑到；框不夠的沿用比對商品那件的框
+    furniture_list: list[FurnitureItem] = []
+    for raw, (item, _) in zip(detected, results):
+        boxes = _boxes_of(raw)
+        for k in range(_quantity_of(raw)):
+            copy = {**item}
+            if k < len(boxes):
+                copy["bbox"] = boxes[k]
+            furniture_list.append(copy)
     kb_match_count = sum(1 for _, matched in results if matched)
 
     # ── 使用者手動勾選的家具（家具查詢頁）優先併入，視為已確定候選 ──

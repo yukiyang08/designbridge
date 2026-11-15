@@ -82,7 +82,17 @@ SUBCATEGORIES: dict[str, tuple[str, str]] = {
     "wardrobes/solitaire-wardrobes": ("storage", "wardrobe"),
     "beds/bed-frames": ("bed", "bed-frame"),
     "beds/bed-with-upholstered-headboard": ("bed", "upholstered-bed"),
+    # 軟裝：報價最常退回 LLM 估價的品項（窗簾、盆栽、抱枕、掛畫、鏡子）
+    "window-solutions/curtains-and-window-panels": ("curtain", "curtain"),
+    "window-solutions/blinds-and-panels": ("curtain", "blind"),
+    "cushions-throws-and-chairpads/cushions": ("decor", "cushion"),
+    "green-decoration/plants": ("decor", "plant"),
+    "green-decoration/artificial-plants": ("decor", "plant"),
+    "wall-decoration/pictures": ("decor", "wall-art"),
+    "wall-decoration/mirrors": ("decor", "mirror"),
 }
+# 軟裝不套家具的零件過濾（「靠墊」本身就是商品），只排除單獨販售的套子
+_SOFT_CATEGORIES = {"curtain", "decor"}
 
 # 名稱含這些字的是配件或零件，不是整件家具；出現在「附…」「含…」後面的是商品本身附帶的
 #（「扶手椅附椅墊」「書櫃附門板組合」），不算。布套、椅套無論怎麼寫都是套子
@@ -210,7 +220,7 @@ def scrape(limit: int = 0, workers: int = 3) -> list[dict]:
         if not re.search(r"\.(jpe?g|png|webp)$", row["image_url"], re.I):   # 頁面沒有主圖，無法比對也無法置換
             skipped["no_image"] += 1
             continue
-        if _is_accessory(name):
+        if _COVER_RE.search(name) if category in _SOFT_CATEGORIES else _is_accessory(name):
             skipped["accessory"] += 1
             continue
         if category == "sofa" and _MODULE_RE.search(name):

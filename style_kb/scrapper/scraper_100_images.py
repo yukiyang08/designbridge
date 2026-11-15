@@ -40,6 +40,10 @@ from style_kb.scrapper.scraper_100 import (
 )
 
 HYPERF_API = "https://api.100.com.tw/hyperf/works"
+# 圖集端點才支援伺服器端空間篩選（works 端點只回封面，衛浴/廚房極少）
+HYPERF_IMAGES_API = "https://api.100.com.tw/hyperf/images/v2"
+SPACE_IDS = {"客廳": 1, "餐廳": 2, "衛浴": 3, "書房": 4, "廚房": 5, "臥室": 6,
+             "玄關": 10, "陽臺": 11, "吧檯": 12, "兒童房": 17, "衣帽間": 24}
 OUTPUT_DIR = Path(__file__).resolve().parent.parent / "raw" / "100interior_images"
 MIN_FILE_SIZE = 150 * 1024
 PER_PAGE = 30
@@ -104,11 +108,28 @@ def _download_image(session: requests.Session, image_info: dict, output_dir: Pat
         return False
 
 
-def _fetch_page(session: requests.Session, page: int, per_page: int) -> dict:
-    params = {"page": page, "per_page": per_page, "type": "images"}
-    r = session.get(HYPERF_API, params=params, timeout=REQUEST_TIMEOUT, verify=False)
+def _fetch_page(session: requests.Session, page: int, per_page: int, space_id: int | None = None) -> dict:
+    if space_id is None:
+        params = {"page": page, "per_page": per_page, "type": "images"}
+        r = session.get(HYPERF_API, params=params, timeout=REQUEST_TIMEOUT, verify=False)
+        r.raise_for_status()
+        return r.json()
+    params = {"page": page, "per_page": per_page, "filter_space": space_id}
+    r = session.get(HYPERF_IMAGES_API, params=params, timeout=REQUEST_TIMEOUT, verify=False)
     r.raise_for_status()
-    return r.json()
+    data = r.json()
+    # 圖集每筆是單張圖，轉成 works 形狀以沿用後續流程
+    data["data"] = [
+        {
+            "id": img.get("w_id"),
+            "style_cn": img.get("style_cn", ""),
+            "size_cn": img.get("size_cn", ""),
+            "kind_cn": img.get("kind_cn", ""),
+            "cover_img": {"id": img.get("id"), "url": img.get("url"), "space": space_id},
+        }
+        for img in data.get("data") or []
+    ]
+    return data
 
 
 # 100.com.tw style_cn → 本地 style_id 對照
@@ -128,6 +149,7 @@ def scrape_images(
     refresh_manifest: bool,
     style_filter: str | None = None, 
     kind_filter: str | None = None,   
+    space: str | None = None,
 ) -> None:
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
@@ -144,6 +166,9 @@ def scrape_images(
         print(f"🎯 只下載風格：{style_filter}")
     if kind_filter:
         print(f"🎯 只下載屋況：{kind_filter}")
+    space_id = SPACE_IDS[space] if space else None
+    if space:
+        print(f"🎯 只下載空間：{space}")
 
     session = _create_session()
     downloaded = 0
@@ -156,7 +181,7 @@ def scrape_images(
         if target is not None and downloaded >= target:
             break
 
-        data = _fetch_page(session, page, PER_PAGE)
+        data = _fetch_page(session, page, PER_PAGE, space_id)
         items = data.get("data") or []
         if not items:
             break
@@ -219,6 +244,8 @@ def main() -> None:
                         help="只下載指定風格（中文），例如：工業風、美式風、鄉村風")
     parser.add_argument("--kind-filter", type=str, default=None,
                         help="只下載指定屋況（中文），例如：老屋翻新")
+    parser.add_argument("--space", choices=list(SPACE_IDS), default=None,
+                        help="只下載指定空間，例如：衛浴、廚房")
     parser.add_argument(
         "--refresh-manifest",
         action="store_true",
@@ -233,6 +260,7 @@ def main() -> None:
         refresh_manifest=args.refresh_manifest,
         style_filter=args.style_filter,
         kind_filter=args.kind_filter,
+        space=args.space,
     )
 
 

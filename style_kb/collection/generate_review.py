@@ -97,6 +97,9 @@ FLAG_LABELS = {
     "too_small_kb":     ("檔案太小", "#64748b"),
     "corrupt":          ("損毀", "#1e293b"),
     "is_closeup":       ("近景特寫", "#eab308"),
+    "no_layout":        ("看不出格局", "#ca8a04"),
+    "space_mismatch":   ("空間不符", "#0891b2"),
+    "text_overlay":     ("文字/拼貼", "#475569"),
 }
 
 

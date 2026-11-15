@@ -179,7 +179,63 @@ _FURNITURE_DESC: dict[str, str] = {
     "lamp": "a floor lamp",
     "floor_lamp": "a floor lamp",
     "rug": "a soft area rug on the floor",
+    "bathtub": "a built-in bathtub",
+    "shower": "a glass walk-in shower",
+    "towel_rack": "a wall-mounted towel rack",
+    "washer": "a front-loading washing machine",
+    "drying_rack": "a clothes drying rack",
+    "shoe_cabinet": "a built-in shoe cabinet",
+    "bench": "a small bench for putting on shoes",
 }
+
+# 房型靠 LLM 從描述推，不一定準；有這些設備就認定房型
+_ROOM_FIXTURES = {
+    "bathroom": frozenset({"toilet", "bathtub", "shower"}),
+    "balcony": frozenset({"washer", "drying_rack"}),
+    "kitchen": frozenset({"stove"}),   # 水槽、冰箱客餐廳也會有，不能拿來判斷
+    "entrance": frozenset({"shoe_cabinet"}),
+}
+# LLM 給的房型字彙不固定，玄關常見這幾種講法
+_ROOM_TYPE_ALIASES = {"circulation": "entrance", "foyer": "entrance", "entryway": "entrance", "hallway": "entrance"}
+# 生圖 prompt 的頭尾；客廳那套 sofa/legs/天花板字眼會讓浴室長出家具、陽台被封成室內
+_ROOM_PROMPT = {
+    "bathroom": (
+        "Natural eye-level wide-angle photorealistic bathroom view, solid tiled walls and ceiling. ",
+        " Clean tidy bathroom, tiled walls and floor, realistic white sanitary ware, "
+        "professional interior design photography, high detail.",
+    ),
+    "balcony": (
+        "Natural eye-level wide-angle photorealistic view of a semi-outdoor apartment balcony, "
+        "with a railing and an open side to the outside. ",
+        " Clean tidy balcony, natural daylight, outdoor floor tiles, "
+        "professional architectural photography, high detail.",
+    ),
+    "kitchen": (
+        "Natural eye-level wide-angle photorealistic kitchen view, solid walls and ceiling. ",
+        " Clean tidy kitchen, continuous countertop with built-in base cabinets, upper wall "
+        "cabinets, backsplash, professional interior design photography, high detail.",
+    ),
+    "entrance": (
+        "Natural eye-level photorealistic view of an apartment entrance foyer, solid walls and ceiling. ",
+        " Clean tidy entryway, front door, built-in shoe storage, "
+        "professional interior design photography, high detail.",
+    ),
+    None: (
+        "Natural eye-level wide-angle photorealistic interior view, the whole room "
+        "visible with solid walls and ceiling. ",
+        " Clean tidy space, well-proportioned realistic furniture with proper legs, "
+        "nothing draped on the sofa, professional interior design photography, high detail.",
+    ),
+}
+
+
+def _room_kind(req: dict, placements: list[dict]) -> str | None:
+    room_type = (req.get("meta") or {}).get("room_type")
+    room_type = _ROOM_TYPE_ALIASES.get(room_type, room_type)
+    if room_type in _ROOM_FIXTURES:
+        return room_type
+    types = {p.get("type") for p in placements}
+    return next((room for room, fixtures in _ROOM_FIXTURES.items() if types & fixtures), None)
 
 
 def _projection_meta(depth_path: str) -> dict:
@@ -486,8 +542,9 @@ def renderer(state: DesignBridgeState) -> dict[str, Any]:
     # 深度條件強度：1.0 完全保留結構、0.0 忽略深度圖（Kontext LoRA 的 scale 與它相同）。
     # LLM 沒給值（含呼叫失敗）時預設 0.6：0.85 太僵，目標風格差異大時模型無法重繪材質，
     # 只會在原幾何上貼一層雕刻/浮雕感。
-    depth_conditioning_scale = float(req.get("depth_conditioning_scale") or 0.6)
-    depth_conditioning_scale = max(0.0, min(1.0, depth_conditioning_scale))
+    # LLM 給 0.0（全新設計）時夾到 0.2：低於門檻會整個丟掉深度、掉進純文字出圖，連照片視角都不留
+    _raw_scale = req.get("depth_conditioning_scale")
+    depth_conditioning_scale = 0.6 if _raw_scale is None else max(0.20, min(1.0, float(_raw_scale)))
     # 投影深度是軸對齊的方塊，條件過強會讓家具變成漂浮方塊，故壓低上限
     if using_projected_depth:
         depth_conditioning_scale = min(depth_conditioning_scale, Config.PROJECTED_DEPTH_MAX_CONDITIONING_SCALE)
@@ -664,12 +721,8 @@ def renderer(state: DesignBridgeState) -> dict[str, Any]:
             if layout_edge_path:
                 controlnet_inputs["layout_footprint_edges"] = layout_edge_path
             # 加整潔/品質提示（不能用 negative prompt，會弄壞 fal 上的 ControlNet-Union）
-            layout_prompt = (
-                "Natural eye-level wide-angle photorealistic interior view, the whole room "
-                "visible with solid walls and ceiling. " + prompt +
-                " Clean tidy space, well-proportioned realistic furniture with proper legs, "
-                "nothing draped on the sofa, professional interior design photography, high detail."
-            )
+            _head, _tail = _ROOM_PROMPT[_room_kind(req, furniture_placements)]
+            layout_prompt = _head + prompt + _tail
             _union_kwargs = dict(
                 edge_path=layout_edge_path,
                 edge_conditioning_scale=Config.FAL_EDGE_CONDITIONING_SCALE,
@@ -732,8 +785,11 @@ def renderer(state: DesignBridgeState) -> dict[str, Any]:
             generation_params["kontext_strength"] = _kontext_strength
             generation_params["kontext_control_source"] = "floor_plan"
 
+    # 純文字出圖完全不看結構；照片流程退到這裡會產出跟照片無關的房間，寧可報錯讓使用者重試
+    allow_text_only = not user_input.get("initial_image")
+
     # HF Inference（純文字出圖）
-    if backend == "placeholder" and Config.ENABLE_HF_INFERENCE and Config.HF_TOKEN:
+    if backend == "placeholder" and allow_text_only and Config.ENABLE_HF_INFERENCE and Config.HF_TOKEN:
         if timed_call(
             "renderer.hf_inference", task_id,
             _render_hf_inference,
@@ -744,7 +800,7 @@ def renderer(state: DesignBridgeState) -> dict[str, Any]:
             generation_params["provider"] = Config.HF_INFERENCE_PROVIDER
 
     # fal.ai FLUX 純文字出圖（雲端備援）
-    if backend == "placeholder" and Config.FAL_KEY:
+    if backend == "placeholder" and allow_text_only and Config.FAL_KEY:
         if timed_call(
             "renderer.flux_fal", task_id,
             _render_flux_fal,

@@ -1,4 +1,5 @@
 <script setup>
+import { Icon } from '@iconify/vue'
 /**
  * Step 生成結果（render ＋ refine ＋ budget 三個舊 step 合併）
  *
@@ -13,7 +14,7 @@
  *
  * 還沒生成時（!result）沿用原 StepRender 的設定表單（描述/風格推薦/風水/進階設定）。
  */
-import { ref, computed, watch, defineAsyncComponent } from 'vue'
+import { ref, computed, watch, defineAsyncComponent, onBeforeUnmount } from 'vue'
 import { useRouter } from 'vue-router'
 import AdvancedPanel from '@/components/shell/AdvancedPanel.vue'
 import StyleSuggestions from '@/components/StyleSuggestions.vue'
@@ -27,8 +28,9 @@ import QuotationPanel from '@/components/QuotationPanel.vue'
 import ResultStudio from '@/components/steps/ResultStudio.vue'
 import { canMoveFurniture, canUndoMove, undoMove, applyingMove } from '@/composables/design-flow/move'
 import { useDesignFlow, ASPECT_OPTIONS, ORIGINAL_STYLE_KEY } from '@/composables/useDesignFlow'
-import { spaceInfo, ROOM_TYPE_LABEL } from '@/composables/design-flow/state'
+import { spaceInfo, ROOM_TYPE_LABEL, planSheetOpen } from '@/composables/design-flow/state'
 import { API_BASE } from '@/config/api'
+import { useMe } from '@/composables/useMe'
 
 // PanoramaViewer 吃 three.js（約 700KB）：只有真的要看環景時才下載。
 const PanoramaViewer = defineAsyncComponent(() => import('@/components/PanoramaViewer.vue'))
@@ -42,13 +44,15 @@ const {
   result, loading, submit3D, prevStep,
   swappingStyle, swapStyle, restoreOriginal, styleSwapCache, styleDemoImages,
   panoLoading, panoUrl, panoError, generatePanorama,
-  fetchQuotation, resetFlow,
-  cadActiveRoomId,
+  fetchQuotation, resetFlow, quotationLoading,
+  cadActiveRoomId, furnitureHover, fetchOutlines,
 } = useDesignFlow()
 
 const router = useRouter()
 
 const viewMode = ref('image')   // 'image' | 'pano'
+// 設計詳情與各環節耗時是除錯用，只給管理員看
+const { isAdmin } = useMe()
 const showDetails = ref(false)
 const showTimings = ref(false)
 const timingRuns = computed(() => {
@@ -61,6 +65,56 @@ const editing = ref(false)      // 在結果圖上直接編輯（塗抹重繪）
 const editFull = ref(false)     // 編輯時是否全螢幕
 
 const imageUrl = computed(() => result.value?.generated_image_url || '')
+
+// 窄螢幕：家具推薦收進固定在操作列上方的抽屜（跟平面圖步驟的健檢抽屜同一套），
+// 平常只露件數＋總價；點圖上的家具會自動展開到那一件
+const budgetOpen = ref(false)
+const quoteRef = ref(null)
+const drawerMql = window.matchMedia('(max-width: 1099px)')
+const narrow = ref(drawerMql.matches)
+const onNarrow = (e) => { narrow.value = e.matches }
+drawerMql.addEventListener('change', onNarrow)
+onBeforeUnmount(() => drawerMql.removeEventListener('change', onNarrow))
+// 整層流程：家具推薦搬進 StudioView 的抽屜（跟整層縮圖同一個），不另外畫一個
+const budgetInSheet = computed(() => narrow.value && planSource.value === 'cad')
+const budgetSummary = computed(() => {
+  const list = result.value?.quotation_result?.furniture_list
+  if (!list) return quotationLoading.value ? '估價中…' : '點開取得家具報價'
+  return `${list.length} 件・NT$ ${(quoteRef.value?.computedTotal ?? 0).toLocaleString()}`
+})
+watch(furnitureHover, (idx) => {
+  if (idx == null || !narrow.value) return
+  if (budgetInSheet.value) planSheetOpen.value = true
+  else budgetOpen.value = true
+})
+
+// 報價辨識到的家具在圖上的位置：滑過去就在右邊清單標出對應的市售商品（反過來也一樣）。
+// 大的排前面、小的排後面，小家具（檯燈、邊桌）疊在上層才點得到。舊報價沒有 bbox 就不顯示。
+// 有輪廓（item.outline，見 fetchOutlines）的沿著家具描邊，沒有的（地毯、軌道燈…）用方框。
+const hotspots = computed(() => (result.value?.quotation_result?.furniture_list || [])
+  .map((item, idx) => ({ idx, name: item.detected_name, b: item.bbox, outline: item.outline }))
+  .filter(h => h.b?.length === 4)
+  .sort((p, q) => (q.b[2] - q.b[0]) * (q.b[3] - q.b[1]) - (p.b[2] - p.b[0]) * (p.b[3] - p.b[1]))
+  .map(({ idx, name, b, outline }) => ({
+    idx, name,
+    points: outline ? outline.map(([x, y]) => `${x},${y}`).join(' ') : '',
+    style: { left: `${b[0] * 100}%`, top: `${b[1] * 100}%`, width: `${(b[2] - b[0]) * 100}%`, height: `${(b[3] - b[1]) * 100}%` },
+  })))
+const boxHotspots = computed(() => hotspots.value.filter(h => !h.points))
+const outlineHotspots = computed(() => hotspots.value.filter(h => h.points))
+// 滑到的那件的名稱標籤，放在它方框的左上角
+const hoverLabel = computed(() => {
+  const h = hotspots.value.find(x => x.idx === furnitureHover.value)
+  return h ? { name: h.name, style: { left: h.style.left, top: h.style.top } } : null
+})
+// 同款家具（候選商品相同，右邊清單合併成一行 ×N）一起亮：滑過清單那一行，每一件都框出來
+const candKey = (item) => (item?.candidates || []).map(c => c.id || c.name).join('|')
+const hoveredIdxs = computed(() => {
+  const list = result.value?.quotation_result?.furniture_list || []
+  const key = furnitureHover.value == null ? null : candKey(list[furnitureHover.value])
+  if (!key) return new Set(furnitureHover.value == null ? [] : [furnitureHover.value])
+  return new Set(list.map((it, i) => (candKey(it) === key ? i : -1)).filter(i => i >= 0))
+})
 const isSkipPath = computed(() => planSource.value === 'skip')
 
 // 這一步一律在最上面寫出「現在是哪個房間」：整層是房間名稱，其他路徑是房型
@@ -118,8 +172,25 @@ watch(cadActiveRoomId, () => { stopEdit(); moving.value = false })
 // 「result 換了一個沒有報價的新物件」，因為現在已經不會因為換頁而重新掛載。
 // fetchQuotation 自己會讓舊的估價作廢，所以這裡不能再用「正在估價就跳過」擋掉：
 // 微調或換風格的新圖常常在上一張還在估價時就出來，擋掉的話新圖就永遠不會估價。
+// 舊版報價沒有家具在圖上的位置（bbox），圖上的家具熱區出不來：重新估一次補上。
+// 每張圖只補一次——Gemini 辨識失敗時的備用清單本來就沒有 bbox，不擋的話會一直重估。
+// 有方框之後再跟後端要沿著家具的輪廓（描邊）；每份報價只要一次，失敗就維持方框
+const bboxUpgraded = new Set()
+const outlineTried = new WeakSet()
 watch(result, (r) => {
-  if (r && !r.quotation_result) fetchQuotation()
+  if (!r) return
+  if (!r.quotation_result) { fetchQuotation(); return }
+  const q = r.quotation_result
+  const list = q.furniture_list || []
+  const path = r.generated_image_path
+  const hasBox = list.some(it => it.bbox?.length === 4)
+  if (path && list.length && !hasBox && !bboxUpgraded.has(path)) {
+    bboxUpgraded.add(path)
+    fetchQuotation()
+  } else if (hasBox && !list.some(it => it.outline) && !outlineTried.has(q)) {
+    outlineTried.add(q)
+    fetchOutlines()
+  }
 }, { immediate: true })
 
 const confirmingReset = ref(false)
@@ -208,7 +279,7 @@ function startOver() {
             <template v-if="!noStyleReference">
               <ImageUpload
                 label="點擊或拖曳上傳"
-                icon="🖼️"
+                icon="mdi:image-outline"
                 hint="上傳想要的風格圖片，AI 會參考其色調與氛圍"
                 :preview="styleRefImage.preview"
                 @change="styleRefImage.onChange"
@@ -261,6 +332,30 @@ function startOver() {
             <img v-if="imageUrl" :src="imageUrl" alt="生成的 3D 渲染圖" class="result-img" />
             <p v-else class="no-img">生成完成，但沒有取得圖片 URL。</p>
 
+            <!-- 家具熱區：滑到（觸控是點）家具就在右邊清單標出對應商品。
+                 有輪廓的沿著家具描邊（SVG，疊在上層，重疊時優先），沒有的用方框 -->
+            <div v-if="imageUrl && hotspots.length && !swappingStyle" class="furn-hotspots">
+              <button
+                v-for="h in boxHotspots" :key="h.idx" type="button" class="furn-hot"
+                :class="{ on: hoveredIdxs.has(h.idx) }" :style="h.style"
+                :aria-label="`${h.name}：在報價清單查看市售商品`"
+                @mouseenter="furnitureHover = h.idx" @mouseleave="furnitureHover = null"
+                @focus="furnitureHover = h.idx" @blur="furnitureHover = null"
+                @click="furnitureHover = h.idx"
+              ></button>
+              <svg v-if="outlineHotspots.length" class="furn-outlines" viewBox="0 0 1 1" preserveAspectRatio="none">
+                <polygon
+                  v-for="h in outlineHotspots" :key="h.idx" :points="h.points" class="furn-shape"
+                  :class="{ on: hoveredIdxs.has(h.idx) }" vector-effect="non-scaling-stroke"
+                  tabindex="0" role="button" :aria-label="`${h.name}：在報價清單查看市售商品`"
+                  @mouseenter="furnitureHover = h.idx" @mouseleave="furnitureHover = null"
+                  @focus="furnitureHover = h.idx" @blur="furnitureHover = null"
+                  @click="furnitureHover = h.idx"
+                />
+              </svg>
+              <span v-if="hoverLabel" class="furn-hot-label" :style="hoverLabel.style">{{ hoverLabel.name }}</span>
+            </div>
+
             <div v-if="swappingStyle" class="swap-overlay" role="status">
               <div class="pano-spinner"></div>
               <p>風格變換中…</p>
@@ -270,14 +365,14 @@ function startOver() {
             <div v-if="imageUrl && result.task_id" class="img-tools">
               <button
                 v-if="canMoveFurniture" type="button" :disabled="swappingStyle"
-                title="在圖上直接拖曳家具" @click="startMove"
-              >✥ 移動家具</button>
+                title="在圖上直接拖曳家具" aria-label="移動家具" @click="startMove"
+              ><Icon icon="mdi:cursor-move" aria-hidden="true" /><span class="tool-label"> 移動家具</span></button>
               <button
                 v-if="canUndoMove" type="button" :disabled="swappingStyle || applyingMove"
-                title="回到移動家具之前的圖" @click="undoMove"
-              >↶ 復原移動</button>
-              <button type="button" :disabled="swappingStyle" @click="startEdit(false)">✎ 編輯</button>
-              <button type="button" :disabled="swappingStyle" title="全螢幕編輯" aria-label="全螢幕編輯" @click="startEdit(true)">⛶</button>
+                title="回到移動家具之前的圖" aria-label="復原移動" @click="undoMove"
+              ><Icon icon="mdi:undo" aria-hidden="true" /><span class="tool-label"> 復原移動</span></button>
+              <button type="button" :disabled="swappingStyle" aria-label="編輯" @click="startEdit(false)"><Icon icon="mdi:pencil-outline" aria-hidden="true" /><span class="tool-label"> 編輯</span></button>
+              <button type="button" :disabled="swappingStyle" title="全螢幕編輯" aria-label="全螢幕編輯" @click="startEdit(true)"><Icon icon="mdi:fullscreen" aria-hidden="true" /></button>
             </div>
 
             <!-- 滑鼠移到圖上才出現（觸控裝置沒有 hover，常駐顯示） -->
@@ -296,7 +391,7 @@ function startOver() {
 
             <!-- 右下角：查看這次請求各環節耗時 -->
             <button
-              v-if="imageUrl && timingRuns.length"
+              v-if="isAdmin && imageUrl && timingRuns.length"
               type="button" class="timing-btn" title="各環節耗時" aria-label="查看各環節耗時"
               @click="showTimings = true"
             >
@@ -306,7 +401,7 @@ function startOver() {
             </button>
 
             <div v-if="panoError && !panoLoading" class="pano-fail" role="alert">
-              <span>⚠ {{ panoError }}</span>
+              <span><Icon icon="mdi:alert-outline" aria-hidden="true" /> {{ panoError }}</span>
               <button type="button" class="pano-retry" @click="startPano">重試</button>
             </div>
           </div>
@@ -347,7 +442,7 @@ function startOver() {
                   :alt="opt.name"
                 />
                 <span v-else class="swap-thumb-empty">＋</span>
-                <span v-if="styleSwapCache[opt.value]" class="swap-done" aria-label="已生成">✓</span>
+                <span v-if="styleSwapCache[opt.value]" class="swap-done" aria-label="已生成"><Icon icon="mdi:check" aria-hidden="true" /></span>
               </span>
               <span class="swap-label">{{ opt.name }}</span>
             </button>
@@ -356,12 +451,12 @@ function startOver() {
         </section>
 
         <!-- 設計詳情（結構化需求 / 風格參數 / 點雲 / raw JSON） -->
-        <div class="details-toggle-wrap">
+        <div v-if="isAdmin" class="details-toggle-wrap">
           <button type="button" class="details-toggle" @click="showDetails = !showDetails">
             {{ showDetails ? '▾' : '▸' }} 設計詳情
           </button>
         </div>
-        <DesignDetails v-if="showDetails" :result="result" />
+        <DesignDetails v-if="isAdmin && showDetails" :result="result" />
         <TimingPanel
           v-if="showTimings && timingRuns.length"
           :runs="timingRuns"
@@ -370,21 +465,36 @@ function startOver() {
 
       </section>
 
-      <!-- ── ② 家具預算 ── -->
-      <QuotationPanel class="block block-budget" />
+      <!-- ── ② 家具預算：寬螢幕是右欄；窄螢幕是固定在操作列上方的抽屜 ── -->
+      <!-- 單間流程沒有 #sheet-budget：停用時指向 body（停用不會真的搬，只是別找不存在的目標） -->
+      <Teleport defer :to="budgetInSheet ? '#sheet-budget' : 'body'" :disabled="!budgetInSheet">
+      <section class="block block-budget" :class="{ 'is-open': budgetOpen, 'in-sheet': budgetInSheet }">
+        <button v-if="!budgetInSheet" type="button" class="db-drawer-head" :aria-expanded="budgetOpen" @click="budgetOpen = !budgetOpen">
+          <span class="db-drawer-grip" aria-hidden="true"></span>
+          <strong class="db-drawer-title">家具推薦</strong>
+          <span class="db-drawer-summary">{{ budgetSummary }}</span>
+          <Icon icon="mdi:chevron-up" class="db-drawer-chevron" width="20" aria-hidden="true" />
+        </button>
+        <QuotationPanel ref="quoteRef" in-drawer />
+      </section>
+      </Teleport>
 
       </div>
 
       <!-- ── 頁尾：開始新的設計 / 上一步（自動存檔不另外宣告，導覽列有「我的設計」） ── -->
       <div class="actions">
         <button class="db-btn db-btn--ghost db-btn--sm" @click="prevStep">← 上一步</button>
-        <button v-if="!confirmingReset" class="db-btn db-btn--ghost db-btn--sm" @click="regenerate">重新調整並生成</button>
+        <button v-if="!confirmingReset" class="db-btn db-btn--ghost db-btn--sm" @click="regenerate">
+          <span class="label-full">重新調整並生成</span><span class="label-short">重新調整</span>
+        </button>
         <template v-if="confirmingReset">
           <span class="reset-warn">目前的設計與報價會被清除</span>
           <button class="db-btn db-btn--ghost db-btn--sm" @click="confirmingReset = false">取消</button>
           <button class="db-btn db-btn--sm" @click="startOver">確定，重新開始</button>
         </template>
-        <button v-else class="db-btn db-btn--ghost db-btn--sm" @click="confirmingReset = true">開始新的設計</button>
+        <button v-else class="db-btn db-btn--ghost db-btn--sm" @click="confirmingReset = true">
+          <span class="label-full">開始新的設計</span><span class="label-short">新設計</span>
+        </button>
       </div>
     </template>
   </div>
@@ -406,10 +516,44 @@ function startOver() {
 
 .block { display: flex; flex-direction: column; }
 .result-grid { display: block; }
-.block-budget {
-  margin-top: 2rem;
-  padding-top: 1.75rem;
-  border-top: 1px solid #ececec;
+/* 窄螢幕：家具推薦是固定在操作列（StudioView 量好的 --bar-h）上方的抽屜，摘要列樣式在 theme.css */
+@media (max-width: 1099px) {
+  .block-budget {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: var(--bar-h, 0px);
+    z-index: 55;
+    max-height: var(--peek, 58px);
+    overflow: hidden;
+    padding: 0 var(--pad, 1.5rem);
+    border-radius: 18px 18px 0 0;
+    background: var(--db-paper);
+    border-top: 1px solid var(--db-line);
+    box-shadow: 0 -8px 24px rgba(20, 18, 16, 0.1);
+    transition: max-height 0.3s cubic-bezier(0.2, 0.8, 0.2, 1);
+  }
+  .block-budget.is-open {
+    max-height: calc(85vh - var(--bar-h, 0px));
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    padding-bottom: 1.25rem;
+  }
+  .block-budget :deep(.block-title) { display: none; }   /* 抽屜摘要列已經寫了「家具推薦」 */
+  /* 整層流程：已經搬進 StudioView 的抽屜，自己不再定位 */
+  .block-budget.in-sheet {
+    position: static;
+    max-height: none;
+    overflow: visible;
+    padding: 0;
+    border: 0;
+    border-radius: 0;
+    background: none;
+    box-shadow: none;
+  }
+}
+@media (max-width: 1099px) and (prefers-reduced-motion: reduce) {
+  .block-budget { transition: none; }
 }
 @media (min-width: 1100px) {
   .result-grid {
@@ -426,7 +570,7 @@ function startOver() {
     overflow-y: auto;
     margin-top: 0.5rem;   /* 跟左邊圖片頂端對齊（.result-stage 上方有 0.5rem 內距） */
     padding: 1.1rem 1.1rem 0.5rem;
-    border: 1px solid #ececec;
+    border: 1px solid var(--db-line);
     border-radius: var(--db-radius-chip);
     background: #fff;
   }
@@ -501,7 +645,7 @@ function startOver() {
   font-weight: 500;
   color: var(--db-text-soft);
 }
-.field-hint { margin: 0.4rem 0 0; font-size: 0.78rem; color: var(--db-placeholder); }
+.field-hint { margin: 0.4rem 0 0; font-size: 0.78rem; color: var(--db-text-soft); }
 .field-hint.error { color: var(--db-danger); }
 .retry {
   margin-left: 0.5rem;
@@ -565,6 +709,36 @@ function startOver() {
 
 .result-stage > .stage-pano { width: 100%; }
 .stage-img-wrap { position: relative; display: inline-block; max-width: 100%; line-height: 0; }
+
+/* 家具熱區：平常隱形，只有滑鼠底下那一件（重疊時是最小、最上層的那件）出現白框＋名稱 */
+.furn-hotspots { position: absolute; inset: 0; pointer-events: none; }
+.furn-hot {
+  position: absolute; padding: 0; border: none; border-radius: 6px;
+  background: transparent; cursor: pointer; pointer-events: auto;
+  transition: box-shadow 0.14s, background 0.14s;
+}
+.furn-hot.on {
+  background: rgba(255, 255, 255, 0.12);
+  box-shadow: inset 0 0 0 2px #fff, 0 0 0 1px rgba(0, 0, 0, 0.25);
+}
+.furn-hot:focus-visible { outline: 2px solid var(--db-accent-deep); outline-offset: 2px; }
+/* 沿著家具的輪廓：平常透明（但接得到滑鼠），滑到的那件白色描邊＋深色外暈，淺色背景上也看得到 */
+.furn-outlines { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; pointer-events: none; }
+.furn-shape {
+  fill: transparent; stroke: transparent; stroke-width: 2.5; stroke-linejoin: round;
+  pointer-events: visibleFill; cursor: pointer; outline: none;
+  transition: stroke 0.14s, fill 0.14s;
+}
+.furn-shape.on {
+  fill: rgba(255, 255, 255, 0.12); stroke: #fff;
+  filter: drop-shadow(0 0 1.5px rgba(0, 0, 0, 0.7));
+}
+.furn-hot-label {
+  position: absolute; margin: 6px 0 0 6px;
+  padding: 0.2rem 0.55rem; border-radius: var(--db-radius-pill);
+  background: rgba(20, 18, 14, 0.75); color: #fff;
+  font-size: 0.78rem; line-height: 1.3; white-space: nowrap; pointer-events: none;
+}
 
 /* 圖右上角的編輯入口：跟 360° 按鈕一樣 hover 才出現，觸控裝置常駐 */
 .img-tools {
@@ -631,6 +805,19 @@ function startOver() {
 .timing-btn:hover { background: rgba(20, 18, 14, 0.9); }
 .cta-sub { font-size: 0.72rem; opacity: 0.75; }
 @media (hover: none) { .pano-cta { opacity: 1; transform: translate(-50%, 0); } }
+/* 手機：圖上工具只留圖示、環景鈕縮小，別蓋住圖；換風格改橫滑，每張固定寬才點得到 */
+@media (max-width: 560px) {
+  .img-tools { top: 0.5rem; right: 0.5rem; }
+  .img-tools button { display: inline-flex; align-items: center; justify-content: center; width: 2.5rem; height: 2.5rem; padding: 0; font-size: 1.1rem; }
+  .tool-label { display: none; }
+  .pano-cta { bottom: 0.6rem; padding: 0.45rem 0.9rem; }
+  .pano-cta .cta-title { font-size: 0.82rem; }
+  .pano-cta .cta-sub { display: none; }
+  .timing-btn { right: 0.5rem; bottom: 0.5rem; }
+  .swap-row { overflow-x: auto; margin: 0 -1rem; padding: 0.25rem 1rem 0.4rem; scrollbar-width: none; }
+  .swap-row::-webkit-scrollbar { display: none; }
+  .swap-card { flex: 0 0 72px; }
+}
 
 .pano-overlay {
   position: absolute;
@@ -710,7 +897,7 @@ function startOver() {
   aspect-ratio: 1;
   border-radius: 12px;
   overflow: hidden;
-  border: 2px solid #ececec;
+  border: 2px solid var(--db-line);
   background: #f5f3ee;
   transition: border-color 0.16s, box-shadow 0.16s, transform 0.16s;
 }
@@ -809,8 +996,28 @@ function startOver() {
   padding-top: 1.75rem;
 }
 
+/* 窄螢幕操作列固定在最底：三顆按鈕排一列，不再直向疊成三排吃掉半個畫面 */
 @media (max-width: 900px) {
-  .actions { flex-direction: column-reverse; }
-  .actions .db-btn { width: 100%; }
+  .actions { flex-wrap: wrap; gap: 0.5rem; }
+  .studio-main .result-step .actions .db-btn { flex: 1 1 0; min-width: 0; padding-inline: 0.5rem; }
+  .reset-warn { flex: 1 1 100%; text-align: center; }
+}
+
+.label-short { display: none; }
+
+/* 手機字級：標題、說明整體縮一階，圖才是主角 */
+@media (max-width: 640px) {
+  .label-full { display: none; }   /* 三顆按鈕排一列，長字會折成兩行 */
+  .label-short { display: inline; }
+  .room-title { gap: 0.6rem; margin-bottom: 0.6rem; }
+  .room-name { font-size: 1.35rem; }
+  .room-dims { font-size: 0.82rem; }
+  .lead { font-size: 1.3rem; margin-bottom: 0.6rem; }
+  .prompt { min-height: 120px; padding: 0.8rem 0.9rem; font-size: 0.95rem; }
+  .sub-title { font-size: 1.02rem; }
+  .recap { padding: 0.75rem 0.9rem; }
+  .recap-text { font-size: 0.88rem; }
+  .result-img { max-height: 58vh; }
+  .studio-main .result-step .actions .db-btn { font-size: 0.92rem; min-height: 44px; }
 }
 </style>

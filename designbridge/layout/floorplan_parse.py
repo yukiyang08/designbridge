@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 import re
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Any
 
+from designbridge.core.config import Config
 from designbridge.layout.layout_items import FURNITURE_SIZES, FurnitureItem, _parse_llm_layout
 from designbridge.layout.layout_enforce import _clip_to_room
 from designbridge.layout.floorplan_render import _generate_floor_plan
@@ -114,6 +116,14 @@ def parse_floor_plan_image(
         '{"has_furniture": false, "furniture": []}. Never invent furniture that is not drawn.\n'
         "Otherwise identify every piece of furniture drawn and return each one's footprint "
         "as a bounding box.\n"
+        "Taiwanese interior plans use these symbols: a box with ONE diagonal line is a low "
+        "cabinet under 120 cm (tv_unit when it faces the sofa, otherwise cabinet); a box with "
+        "an X is a tall cabinet over 120 cm (wardrobe in a bedroom, otherwise cabinet or "
+        "bookshelf); two concentric circles with an X, or a circle with S, is a floor lamp, and "
+        "two circles with a line, or a circle with R, is a table lamp (both = lamp); REF is a "
+        "fridge. A/C is a wall-mounted air conditioner, not furniture. Text such as DW/DH "
+        "(door size), WW/WH (window size), LH/TH (wall height under/over a window) labels "
+        "doors and windows, not furniture.\n"
         "Use `box_2d` = [ymin, xmin, ymax, xmax], integers normalized to 0-1000, "
         "measured relative to the room interior: x = 0 is the left wall, 1000 is the "
         "right wall; y = 0 is the back/top wall, 1000 is the front/bottom wall.\n"
@@ -128,7 +138,8 @@ def parse_floor_plan_image(
         # (ablation 4.4), a runaway repetition loop with no cap ran to the 32k platform
         # ceiling (308s, see ablation 4.3b). 4000 truncated dense plans (30+ items); 8000
         # still bounds the worst case while giving them room.
-        text = call_llm(prompt, images=[image_path], json_mode=True, max_tokens=8000)
+        text = call_llm(prompt, images=[image_path], json_mode=True, max_tokens=8000,
+                        thinking_budget=Config.FLOORPLAN_THINKING_BUDGET)
     except Exception as e:  # noqa: BLE001
         print(f"⚠️  Gemini floor-plan parse failed: {e}")
         return None
@@ -228,7 +239,7 @@ _CIRCULATION_WORDS = ("玄關", "走廊", "走道", "過道", "通道", "廊道"
 # 不收單獨的 hall：living hall 是客廳
 _CIRCULATION_WORDS_EN = ("entrance", "entry", "foyer", "corridor", "hallway", "passage")
 # 改了提示詞就換版本號，舊快取自動失效
-_SEED_PROMPT_VERSION = "v3"
+_SEED_PROMPT_VERSION = "v4"
 _SEED_CACHE_DIR = Path("artifacts/cache/room_seeds")
 # 逐區辨識的提示詞版本（快取檔名用）；改了逐區辨識的提示詞就換
 _LABEL_PROMPT_VERSION = "v4"
@@ -259,8 +270,11 @@ def _room_seed_prompt() -> str:
         "balcony. A balcony is a separate strip outside the main exterior wall line, "
         "reached through a door, often with railings, plants, laundry or a washer.\n"
         "Ignore the title block, legend and anything outside the building.\n"
+        "`is_floor_plan` = false if the image is NOT a top-down floor plan (a room photo, "
+        "a 3D/perspective render, a document, a screenshot of something else); then return "
+        "an empty rooms list.\n"
         "Return STRICT JSON only, no prose, no markdown fences:\n"
-        '{"rooms":[{"label":"主臥室","room_type":"bedroom","point":[360,220]}]}'
+        '{"is_floor_plan":true,"rooms":[{"label":"主臥室","room_type":"bedroom","point":[360,220]}]}'
     )
 
 
@@ -279,12 +293,15 @@ def _room_seeds(image_path: str) -> list[dict] | None:
         except (OSError, ValueError):
             pass
 
-    try:
-        text = call_llm(_room_seed_prompt(), images=[image_path], json_mode=True, max_tokens=4000)
-    except Exception as e:  # noqa: BLE001
-        print(f"⚠️  Gemini room points failed: {e}")
-        return None
-    seeds = ((_parse_llm_layout(text) or {}).get("rooms")) or []
+    # 呼叫失敗（例如配額 429 重試後仍失敗）往上拋：只靠自動補種子切出來的房間全是 other，
+    # 看起來像成功其實是錯的，寧可讓前端顯示「辨識失敗，請重試」
+    text = call_llm(_room_seed_prompt(), images=[image_path], json_mode=True, max_tokens=4000,
+                    thinking_budget=Config.FLOORPLAN_THINKING_BUDGET)
+    data = _parse_llm_layout(text) or {}
+    if data.get("is_floor_plan") is False:
+        from designbridge.layout.floorplan_quality import FloorPlanRejected
+        raise FloorPlanRejected("這張看起來不是平面圖（像是照片或 3D 圖），請上傳俯視的平面配置圖")
+    seeds = data.get("rooms") or []
     seeds = [s for s in seeds if isinstance(s, dict) and isinstance(s.get("point"), list)]
     if not seeds:
         return None
@@ -314,15 +331,22 @@ def _is_circulation(room: dict) -> bool:
 
 def _detect_rooms_by_segmentation(image_path: str) -> list[dict] | None:
     """Gemini 只給每間房的中心點和房名，邊界交給 floorplan_segment 從牆線算；
-    切完再請 Gemini 看標號圖逐區確認類型與房名。"""
+    牆和屋外優先用 CubiCasa 模型預測，不可用時用規則式。切完再請 Gemini 看標號圖逐區確認類型與房名。"""
+    from designbridge.layout.cubicasa_walls import predict_masks
     from designbridge.layout.floorplan_segment import segment_rooms
 
-    seeds = _room_seeds(image_path) or []  # Gemini 沒給點也照切，靠自動補種子
+    # Gemini 給種子（網路）與 CubiCasa 推論（CPU）互不相依，同時跑
+    with ThreadPoolExecutor(max_workers=1) as pool:
+        masks_future = pool.submit(predict_masks, image_path)
+        seeds = _room_seeds(image_path) or []  # Gemini 沒給點也照切，靠自動補種子
+        wall, outside = masks_future.result() or (None, None)
     for s in seeds:
         _apply_type(s, s.get("room_type"))
         s["label"] = str(s.get("label") or "").strip()
     try:
-        rooms = segment_rooms(image_path, seeds)
+        rooms = segment_rooms(image_path, seeds, wall_mask=wall, outside_mask=outside)
+        if not rooms and wall is not None:   # 模型把整張判成屋外時（照片、掃描檔）退回規則式牆線
+            rooms = segment_rooms(image_path, seeds)
     except Exception as e:  # noqa: BLE001
         print(f"⚠️  room segmentation error: {e}")
         return None
@@ -462,6 +486,7 @@ def _relabel_unwritten(image_path: str, rooms: list[dict]) -> None:
 def _vote_regions(prompt: str, images: list) -> list[dict]:
     """同一題平行問 _LABEL_VOTES 次，每個字母的類型、房名、same_room_as 各取多數。
     沒寫房名的區域（凸窗臥室像不像陽台）單次回答會搖擺。"""
+    import contextvars
     from collections import Counter
     from concurrent.futures import ThreadPoolExecutor
 
@@ -469,14 +494,16 @@ def _vote_regions(prompt: str, images: list) -> list[dict]:
 
     def ask(_):
         try:
-            text = call_llm(prompt, images=images, json_mode=True, max_tokens=4000)
+            text = call_llm(prompt, images=images, json_mode=True, max_tokens=4000,
+                            thinking_budget=Config.FLOORPLAN_THINKING_BUDGET)
         except Exception as e:  # noqa: BLE001
             print(f"⚠️  Gemini region labeling failed: {e}")
             return []
         return ((_parse_llm_layout(text) or {}).get("regions")) or []
 
     with ThreadPoolExecutor(max_workers=_LABEL_VOTES) as pool:
-        runs = list(pool.map(ask, range(_LABEL_VOTES)))
+        # copy_context：讓用量記錄對得到是哪個帳號
+        runs = list(pool.map(lambda i: contextvars.copy_context().run(ask, i), range(_LABEL_VOTES)))
     votes: dict[str, dict[str, Counter]] = {}
     for run in runs:
         for a in run:
@@ -494,8 +521,8 @@ def _vote_regions(prompt: str, images: list) -> list[dict]:
 
 def _merge_split_rooms(rooms: list[dict], by_n: dict[int, dict], index: dict[str, int]) -> None:
     """依逐區辨識的 same_room_as 把被切開的同一間房合回去（凸窗角落、無牆的小塊）。
-    只合兩邊都沒寫房名、且小塊面積不到大塊 _MERGE_MAX_RATIO 的：
-    Gemini 偶爾會把隔著門的兩間房也判成同一間。"""
+    兩邊都寫房名不合；只一邊寫房名時要同類型（梳妝區併回主臥，不把陽台併進客廳）；
+    兩邊都沒寫時小塊面積要不到大塊 _MERGE_MAX_RATIO：Gemini 偶爾會把隔著門的兩間房判成同一間。"""
     from designbridge.layout.floorplan_segment import merge_room_shapes
 
     parent = list(range(len(rooms) + 1))
@@ -509,15 +536,22 @@ def _merge_split_rooms(rooms: list[dict], by_n: dict[int, dict], index: dict[str
     def area(r: dict) -> float:
         return r["w"] * r["h"]
 
+    def kind(r: dict) -> str | None:
+        return r.get("space_type") or r.get("room_type")
+
     for n, a in by_n.items():
         m = index.get(str(a.get("same_room_as") or "").strip().upper())
         if not m or m == n:
             continue
         rn, rm = rooms[n - 1], rooms[m - 1]
-        if rn.get("written") or rm.get("written"):
+        if rn.get("written") and rm.get("written"):
             continue
-        small, big = sorted((area(rn), area(rm)))
-        if big and small / big < _MERGE_MAX_RATIO:
+        if rn.get("written") or rm.get("written"):
+            ok = kind(rn) == kind(rm)
+        else:
+            small, big = sorted((area(rn), area(rm)))
+            ok = bool(big) and small / big < _MERGE_MAX_RATIO
+        if ok:
             parent[find(n)] = find(m)
 
     groups: dict[int, list[int]] = {}
@@ -529,8 +563,8 @@ def _merge_split_rooms(rooms: list[dict], by_n: dict[int, dict], index: dict[str
     merged: list[dict] = []
     for members in groups.values():
         group = [rooms[n - 1] for n in members]
-        # 類型和房名跟著面積最大的那塊走
-        main = dict(max(group, key=area))
+        # 類型和房名跟著有寫房名的那塊，都沒寫才取面積最大
+        main = dict(max(group, key=lambda r: (bool(r.get("written")), area(r))))
         if len(group) > 1:
             main.update(merge_room_shapes(group))
         merged.append(main)
@@ -561,7 +595,8 @@ def _detect_rooms_by_boxes(image_path: str) -> list[dict] | None:
     )
 
     try:
-        text = call_llm(prompt, images=[image_path], json_mode=True, max_tokens=8000)
+        text = call_llm(prompt, images=[image_path], json_mode=True, max_tokens=8000,
+                        thinking_budget=Config.FLOORPLAN_THINKING_BUDGET)
     except Exception as e:  # noqa: BLE001
         print(f"⚠️  Gemini room detection failed: {e}")
         return None

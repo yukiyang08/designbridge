@@ -1,17 +1,18 @@
 <script setup>
+import { Icon } from '@iconify/vue'
 /**
  * 我的設計 — 目前登入者的設計（即歷史紀錄）。一張卡片 = 一個設計（project），
  * 底下分空間（客廳、主臥…），每個空間有多張渲染圖（每次生成／換風格／微調各一張）。
  * 資料來自 /api/history（Supabase designs 表，依 user_id 隔離），前端依 project_id 分組。
  */
-import { reactive, ref, computed, onMounted, onBeforeUnmount } from 'vue'
+import { reactive, ref, computed, watch, nextTick, onMounted, onBeforeUnmount } from 'vue'
 import { useRouter } from 'vue-router'
 import { authFetch, jsonFetch } from '@/config/api'
 import { cleanDescription } from '@/utils/text'
 import { useDesignFlow } from '@/composables/useDesignFlow'
 import { useAuth } from '@/composables/useAuth'
+import { useFurnitureSelection } from '@/composables/useFurnitureSelection'
 import AppNav from '@/components/shell/AppNav.vue'
-import sceneBg from '@/assets/figma/room-bg.png'
 
 const router = useRouter()
 const { user } = useAuth()
@@ -19,6 +20,7 @@ const badImg = reactive({})   // 載入失敗的圖片網址（雲端上傳失�
 const imgOk = (u) => !!u && !badImg[u]
 const markBad = (u) => { if (u) badImg[u] = true }
 const { startFlow, extraPrompt, selectedStyle, noStyleReference, restoreProject } = useDesignFlow()
+const { toggle: toggleFavorite, isSelected: isFavorited } = useFurnitureSelection()
 
 const records = ref([])
 const loading = ref(true)
@@ -60,7 +62,7 @@ const projects = computed(() => {
     return {
       id, renders, cover,
       isOwner: cover.role !== 'editor',   // editor = 被邀請共編
-      title: renders[renders.length - 1].title || '未命名設計',
+      title: cover.title || '未命名設計',
       spaces: spaceList,
       totalRooms,
       doneRooms: spaceList.length,
@@ -71,13 +73,27 @@ const projects = computed(() => {
   })
 })
 
+// ── 搜尋與排序（全部在前端：設計已經一次載入）──
+const search = ref('')
+const sortBy = ref('recent')   // recent | oldest | title
+const shownProjects = computed(() => {
+  const kw = search.value.trim().toLowerCase()
+  const list = kw
+    ? projects.value.filter(p => [p.title, styleLabel(p.cover), ...p.spaces.map(s => s.name)]
+      .some(t => (t || '').toLowerCase().includes(kw)))
+    : [...projects.value]
+  if (sortBy.value === 'oldest') list.reverse()
+  else if (sortBy.value === 'title') list.sort((a, b) => a.title.localeCompare(b.title, 'zh-Hant'))
+  return list
+})
+
 // 每個空間取最新一版已有的估價（存過的或剛在詳情按出來的）
 const quoteOf = r => quotations[r.task_id]?.data || r.quotation || null
 
 function projectStatus(p) {
   if (!p.totalRooms) return null
   return p.doneRooms >= p.totalRooms
-    ? { text: '✓ 已完成', cls: 'done' }
+    ? { text: '已完成', cls: 'done' }
     : { text: `進行中 ${p.doneRooms} / ${p.totalRooms} 間`, cls: 'wip' }
 }
 
@@ -139,8 +155,31 @@ function openDetail(p) {
   imgKind.value = 'render'
 }
 function pickSpace(s) { activeSpaceId.value = s.id; activeTaskId.value = null; imgKind.value = 'render' }
-function closeDetail() { openId.value = null; zoomed.value = false }
+function closeDetail() { openId.value = null; zoomed.value = false; renaming.value = false }
 const zoomed = ref(false)
+
+// ── 改名（只有擁有者）──
+const renaming = ref(false)
+const titleDraft = ref('')
+const titleInput = ref(null)
+function startRename(p) {
+  titleDraft.value = p.title
+  renaming.value = true
+  nextTick(() => titleInput.value?.select())
+}
+async function saveRename(p) {
+  if (!renaming.value) return   // Enter 存完後 blur 又會觸發一次
+  const title = titleDraft.value.trim()
+  renaming.value = false
+  if (!title || title === p.title) return
+  try {
+    const res = await jsonFetch(`/api/projects/${p.id}/title`, { title }, 'PUT')
+    if (!res.ok) throw new Error(res.status)
+    for (const r of records.value) if ((r.project_id || r.task_id) === p.id) r.title = title
+  } catch {
+    alert('改名失敗，請稍後再試')   // 詳情視窗蓋住頁面錯誤列，所以用 alert
+  }
+}
 
 // ── 刪除 ──
 async function removeTasks(ids) {
@@ -212,6 +251,15 @@ async function loadQuotation(r) {
   }
 }
 
+// 收藏用的格式跟 QuotationPanel 一致，兩邊的收藏狀態才對得上
+function toFavoriteItem(item, c) {
+  return {
+    id: c.id || c.purchase_url || `${item.detected_name}__${c.name}`,
+    name: c.name, category: item.category, price: c.price, currency: 'TWD',
+    url: c.purchase_url, image_url: c.product_image_url,
+  }
+}
+
 function quotationTotal(data) {
   return (data?.furniture_list || []).reduce((sum, item) => sum + (item.candidates?.[0]?.price ?? 0), 0)
 }
@@ -224,9 +272,35 @@ const shareKinds = [
     hint: '任何人有連結都能查看，不用登入，也不能修改。' },
 ]
 const shareOpen = ref(false)
-const onEsc = e => { if (e.key === 'Escape') shareOpen.value = false }
+// Esc 先關最上層：放大圖 → 分享 → 詳情（改名輸入框自己攔下 Esc）
+let closedByKey = false
+function onEsc(e) {
+  if (e.key !== 'Escape' || renaming.value) return
+  if (zoomed.value) zoomed.value = false
+  else if (shareOpen.value) { closedByKey = true; shareOpen.value = false }
+  else if (openId.value) { closedByKey = true; closeDetail() }
+}
 onMounted(() => window.addEventListener('keydown', onEsc))
 onBeforeUnmount(() => window.removeEventListener('keydown', onEsc))
+// ponytail: 只做開啟時移入焦點、關閉時還原，沒有 Tab 循環鎖定；要完整鎖定再換成原生 <dialog>
+const detailPanel = ref(null)
+const sharePanel = ref(null)
+function watchDialog(open, panel) {
+  let returnFocus = null
+  watch(open, (on, was) => {
+    if (on && !was) {
+      returnFocus = document.activeElement
+      nextTick(() => panel.value?.focus())
+    } else if (!on && was) {
+      // 只有鍵盤關的才還焦點：滑鼠關的還回去，瀏覽器會在卡片按鈕上畫焦點框
+      if (closedByKey) returnFocus?.focus?.()
+      closedByKey = false
+    }
+  })
+}
+watchDialog(() => !!openId.value, detailPanel)
+watchDialog(shareOpen, sharePanel)
+
 const shareProject = ref(null)   // 卡片與詳情頁都能開分享，所以不綁 openProject
 const sharing = ref(null)
 const shareBusy = ref(false)
@@ -316,13 +390,25 @@ function reuseDesign(r) {
 </script>
 
 <template>
-  <div class="db-scene" :style="{ '--db-scene-image': `url(${sceneBg})` }">
-    <AppNav />
-    <div class="db-card designs">
+  <div class="db-page">
+    <AppNav tone="paper" class="db-page-nav" />
+    <div class="db-page-body designs">
       <header class="head">
         <h1 class="title">我的設計 <span v-if="projects.length" class="count">{{ projects.length }} 個</span></h1>
         <button class="db-btn db-btn--sm" @click="router.push('/start')">＋ 新的設計</button>
       </header>
+
+      <div v-if="projects.length > 1" class="toolbar">
+        <label class="search">
+          <Icon icon="mdi:magnify" class="search-icon" aria-hidden="true" />
+          <input v-model="search" type="search" placeholder="搜尋名稱、風格或空間" aria-label="搜尋設計" />
+        </label>
+        <select v-model="sortBy" class="sort" aria-label="排序">
+          <option value="recent">最近更新</option>
+          <option value="oldest">最久沒更新</option>
+          <option value="title">依名稱</option>
+        </select>
+      </div>
 
       <p v-if="error" class="db-error err">{{ error }}</p>
 
@@ -335,8 +421,10 @@ function reuseDesign(r) {
         <button class="db-btn" @click="router.push('/start')">開始新的設計</button>
       </div>
 
+      <p v-else-if="!shownProjects.length" class="empty-hint no-match">找不到符合「{{ search }}」的設計</p>
+
       <div v-else class="grid">
-        <article v-for="p in projects" :key="p.id" class="card" @click="openDetail(p)">
+        <article v-for="p in shownProjects" :key="p.id" class="card" @click="openDetail(p)">
           <div :class="['card-img-wrap', { mosaic: p.spaces.length > 1 }]">
             <div class="main-cell">
               <img v-if="imgOk(p.cover.generated_image_url)" :src="p.cover.generated_image_url" alt="" class="card-img" loading="lazy" @error="markBad(p.cover.generated_image_url)" />
@@ -348,12 +436,12 @@ function reuseDesign(r) {
                 <span v-if="i === 1 && p.spaces.length > 3" class="more">+{{ p.spaces.length - 3 }}</span>
               </div>
             </div>
-            <span v-if="projectStatus(p)" :class="['status', projectStatus(p).cls]">{{ projectStatus(p).text }}</span>
+            <span v-if="projectStatus(p)" :class="['status', projectStatus(p).cls]"><Icon v-if="projectStatus(p).cls === 'done'" icon="mdi:check" aria-hidden="true" /> {{ projectStatus(p).text }}</span>
             <span v-if="!p.isOwner" class="shared-tag">共編</span>
             <button
-              v-if="p.isOwner" type="button" class="del-btn" title="刪除整個設計" :disabled="deleting"
+              v-if="p.isOwner" type="button" class="del-btn" title="刪除整個設計" aria-label="刪除整個設計" :disabled="deleting"
               @click.stop="deleteProject(p)"
-            >✕</button>
+            ><Icon icon="mdi:close" aria-hidden="true" /></button>
           </div>
           <div class="card-body">
             <p class="card-title">{{ p.title }}</p>
@@ -395,10 +483,20 @@ function reuseDesign(r) {
 
     <!-- 詳情 -->
     <div v-if="openProject" class="overlay" @click.self="closeDetail">
-      <div class="panel" role="dialog" aria-modal="true">
+      <div ref="detailPanel" class="panel" role="dialog" aria-modal="true" :aria-label="openProject.title" tabindex="-1">
         <header class="panel-head">
-          <h2>{{ openProject.title }}</h2>
-          <button type="button" class="x" aria-label="關閉" @click="closeDetail">✕</button>
+          <input
+            v-if="renaming" ref="titleInput" v-model="titleDraft" class="title-input" maxlength="60" aria-label="設計名稱"
+            @keydown.enter.prevent="saveRename(openProject)" @keydown.esc.stop.prevent="renaming = false" @blur="saveRename(openProject)"
+          />
+          <h2 v-else class="panel-title">
+            {{ openProject.title }}
+            <button
+              v-if="openProject.isOwner" type="button" class="rename-btn" title="改名" aria-label="改名"
+              @click="startRename(openProject)"
+            ><Icon icon="mdi:pencil-outline" aria-hidden="true" /></button>
+          </h2>
+          <button type="button" class="x" aria-label="關閉" @click="closeDetail"><Icon icon="mdi:close" aria-hidden="true" /></button>
         </header>
 
         <div v-if="openProject.spaces.length > 1" class="tabs">
@@ -470,6 +568,13 @@ function reuseDesign(r) {
                     />
                     <span class="q-item-name">{{ item.candidates?.[0]?.name || item.detected_name }}</span>
                     <span class="q-item-price">NT$ {{ (item.candidates?.[0]?.price ?? 0).toLocaleString() }}</span>
+                    <button
+                      v-if="item.candidates?.[0]?.purchase_url" type="button" class="q-fav"
+                      :class="{ on: isFavorited(toFavoriteItem(item, item.candidates[0])) }"
+                      :aria-label="isFavorited(toFavoriteItem(item, item.candidates[0])) ? '取消收藏' : '加入收藏'"
+                      :title="isFavorited(toFavoriteItem(item, item.candidates[0])) ? '取消收藏' : '加入收藏'"
+                      @click="toggleFavorite(toFavoriteItem(item, item.candidates[0]))"
+                    ><Icon :icon="isFavorited(toFavoriteItem(item, item.candidates[0])) ? 'mdi:star' : 'mdi:star-outline'" aria-hidden="true" /></button>
                   </li>
                 </ul>
               </details>
@@ -481,10 +586,10 @@ function reuseDesign(r) {
 
     <!-- 分享與共編（只有擁有者） -->
     <div v-if="shareOpen" class="overlay" @click.self="shareOpen = false">
-      <div class="panel share-panel" role="dialog" aria-modal="true" :aria-label="`分享 ${shareProject?.title}`">
+      <div ref="sharePanel" tabindex="-1" class="panel share-panel" role="dialog" aria-modal="true" :aria-label="`分享 ${shareProject?.title}`">
         <header class="panel-head">
           <h2>分享「{{ shareProject?.title }}」</h2>
-          <button type="button" class="x" aria-label="關閉" @click="shareOpen = false">✕</button>
+          <button type="button" class="x" aria-label="關閉" @click="shareOpen = false"><Icon icon="mdi:close" aria-hidden="true" /></button>
         </header>
         <p v-if="shareError" class="db-error">{{ shareError }}</p>
         <div v-if="sharing" class="share-body">
@@ -503,7 +608,7 @@ function reuseDesign(r) {
             <template v-else>
               <div class="share-link">
                 <input readonly :value="linkOf(k)" aria-label="連結" @focus="$event.target.select()" />
-                <button type="button" class="db-btn db-btn--sm" @click="copyLink(k)">{{ copied === k.key ? '✓ 已複製' : '複製連結' }}</button>
+                <button type="button" class="db-btn db-btn--sm" @click="copyLink(k)"><template v-if="copied === k.key"><Icon icon="mdi:check" aria-hidden="true" /> 已複製</template><template v-else>複製連結</template></button>
               </div>
               <button type="button" class="link-btn share-stop" :disabled="shareBusy" @click="stopShare(k)">停用這個連結</button>
             </template>
@@ -532,13 +637,23 @@ function reuseDesign(r) {
 </template>
 
 <style scoped>
-.designs { margin: 1.25rem auto 3rem; padding: 1.75rem 1.5rem 3rem; }
 .head { display: flex; align-items: center; justify-content: space-between; gap: 1rem; margin-bottom: 1.5rem; }
 .title {
   display: flex; align-items: center; gap: 0.6rem; margin: 0;
   font-family: var(--db-font-display); font-style: italic; font-weight: 500;
   font-size: 1.6rem; color: var(--db-text);
 }
+.toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 0.6rem; margin: -0.5rem 0 1.25rem; }
+.search { position: relative; flex: 1 1 240px; max-width: 360px; }
+.search-icon { position: absolute; top: 50%; left: 0.85rem; transform: translateY(-50%); color: var(--db-text-soft); pointer-events: none; }
+.search input, .sort {
+  box-sizing: border-box; min-height: 40px; border: 1px solid var(--db-line-strong); border-radius: var(--db-radius-pill);
+  background: #fff; color: var(--db-text); font: inherit; font-size: 0.88rem;
+}
+.search input { width: 100%; padding: 0 0.9rem 0 2.3rem; }
+.sort { padding: 0 0.9rem; cursor: pointer; }
+.search input:focus-visible, .sort:focus-visible { outline: none; border-color: var(--db-accent-deep); box-shadow: 0 0 0 3px var(--db-accent-soft); }
+.no-match { text-align: center; padding: 3rem 0; }
 .count { font-size: 0.85rem; color: var(--db-text-soft); font-style: normal; }
 .err { margin: 0 0 1rem; }
 .shared-tag {
@@ -547,7 +662,7 @@ function reuseDesign(r) {
 }
 .share-panel { width: min(520px, 100%); }
 .share-body { display: flex; flex-direction: column; gap: 0.9rem; }
-.share-card { display: flex; flex-direction: column; gap: 0.7rem; padding: 1rem 1.1rem; border: 1px solid #ececec; border-radius: var(--db-radius-chip); background: #fff; }
+.share-card { display: flex; flex-direction: column; gap: 0.7rem; padding: 1rem 1.1rem; border: 1px solid var(--db-line); border-radius: var(--db-radius-chip); background: #fff; }
 .share-head { display: flex; gap: 0.8rem; align-items: flex-start; }
 .share-head p { margin: 0.2rem 0 0; font-size: 0.85rem; line-height: 1.5; color: var(--db-text-soft); }
 .share-ico { display: grid; place-items: center; flex: 0 0 40px; height: 40px; border-radius: 50%; background: var(--db-chip-soft); font-size: 1.15rem; }
@@ -566,7 +681,7 @@ function reuseDesign(r) {
 
 .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(380px, 100%), 1fr)); gap: 1.25rem; }
 .card {
-  background: #fff; border: 1px solid #ececec; border-radius: var(--db-radius-chip);
+  background: #fff; border: 1px solid var(--db-line); border-radius: var(--db-radius-chip);
   overflow: hidden; cursor: pointer;
   transition: transform 0.16s, box-shadow 0.16s, border-color 0.16s;
 }
@@ -611,13 +726,13 @@ function reuseDesign(r) {
 }
 .card:hover .del-btn, .del-btn:focus-visible { opacity: 1; }
 @media (hover: none) { .del-btn { opacity: 1; } }
-.del-btn:hover { background: #fff; color: #c0392b; }
+.del-btn:hover { background: #fff; color: var(--db-danger); }
 .del-btn:disabled { cursor: not-allowed; }
 
 .card-body { padding: 0.9rem 1.1rem 1.1rem; display: flex; flex-direction: column; gap: 0.3rem; }
 .card-title { margin: 0; font-size: 1rem; color: var(--db-text); line-height: 1.4; }
 .card-meta { margin: 0; font-size: 0.82rem; color: var(--db-text-soft); }
-.card-time { font-size: 0.75rem; color: var(--db-placeholder); }
+.card-time { font-size: 0.75rem; color: var(--db-text-soft); }
 
 .overlay {
   position: fixed; inset: 0; z-index: 50; display: grid; place-items: center; padding: 1.5rem;
@@ -633,6 +748,18 @@ function reuseDesign(r) {
   margin: 0; font-family: var(--db-font-display); font-style: italic; font-weight: 500;
   font-size: 1.4rem; color: var(--db-text);
 }
+.panel:focus { outline: none; }
+.panel-title { display: flex; align-items: center; gap: 0.4rem; }
+.rename-btn {
+  display: grid; place-items: center; width: 36px; height: 36px; border: none; border-radius: 50%;
+  background: none; color: var(--db-text-soft); font-size: 1rem; font-style: normal; cursor: pointer;
+}
+.rename-btn:hover { background: var(--db-chip-soft); color: var(--db-text); }
+.title-input {
+  flex: 1; min-width: 0; padding: 0.3rem 0.6rem; border: 1px solid var(--db-accent-deep); border-radius: 8px;
+  font-family: var(--db-font-display); font-style: italic; font-size: 1.3rem; color: var(--db-text);
+}
+.title-input:focus { outline: none; box-shadow: 0 0 0 3px var(--db-accent-soft); }
 .x { border: 0; background: none; font-size: 1.1rem; cursor: pointer; color: var(--db-text-soft); }
 
 .tabs { display: flex; flex-wrap: wrap; gap: 0.5rem; margin-bottom: 1rem; }
@@ -646,7 +773,7 @@ function reuseDesign(r) {
 .viewer { display: flex; flex-direction: column; gap: 0.7rem; min-width: 0; align-self: start; position: sticky; top: 0; }
 .stage {
   position: relative; aspect-ratio: 4 / 3; max-height: 70vh; width: 100%;
-  border-radius: var(--db-radius-chip); background: #fff; border: 1px solid #ececec; overflow: hidden;
+  border-radius: var(--db-radius-chip); background: #fff; border: 1px solid var(--db-line); overflow: hidden;
 }
 .main-img { width: 100%; height: 100%; object-fit: contain; display: block; cursor: zoom-in; }
 .main-img.cover { object-fit: cover; }
@@ -686,9 +813,15 @@ function reuseDesign(r) {
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
 .q-item-price { font-size: 0.85rem; color: var(--db-text); font-variant-numeric: tabular-nums; }
+.q-fav {
+  display: grid; place-items: center; width: 36px; height: 36px; flex-shrink: 0; border: none; border-radius: 50%;
+  background: none; color: var(--db-text-soft); font-size: 1.2rem; cursor: pointer;
+}
+.q-fav:hover { background: var(--db-chip-soft); color: var(--db-text); }
+.q-fav.on { color: var(--db-accent); }
 .meta { margin: 0; font-size: 0.85rem; color: var(--db-text-soft); display: flex; flex-wrap: wrap; gap: 0.2rem 0.75rem; }
 .link-btn { border: 0; background: none; padding: 0 0.4rem; font-size: 0.82rem; color: var(--db-text-soft); cursor: pointer; text-decoration: underline; }
-.link-btn:hover { color: #c0392b; }
+.link-btn:hover { color: var(--db-danger); }
 .q-box { border-top: 1px dashed #e8e6e1; padding-top: 0.6rem; }
 .q-box summary {
   display: flex; justify-content: space-between; align-items: center; cursor: pointer;
@@ -704,5 +837,22 @@ function reuseDesign(r) {
   .designs { padding: 1.25rem 1rem 2.5rem; }
   .panel-body { grid-template-columns: 1fr; }
   .viewer { position: static; }
+}
+/* 手機：詳情改成全螢幕，標題列（含關閉）固定在上方；空間分頁單行橫滑 */
+@media (max-width: 560px) {
+  .overlay { padding: 0; place-items: stretch; }
+  .panel { width: 100%; height: 100%; max-height: none; border-radius: 0; padding: 0 1rem 1.5rem; }
+  .share-panel { height: auto; max-height: 100%; align-self: end; border-radius: var(--db-radius-card) var(--db-radius-card) 0 0; }
+  .panel-head { position: sticky; top: 0; z-index: 2; margin: 0 -1rem 0.75rem; padding: 0.6rem 0.5rem 0.6rem 1rem; background: var(--db-card); border-bottom: 1px solid var(--db-line); }
+  .panel-head h2 { font-size: 1.15rem; min-width: 0; }
+  .tabs { flex-wrap: nowrap; overflow-x: auto; margin: 0 -1rem 0.75rem; padding: 0 1rem 0.2rem; scrollbar-width: none; }
+  .tabs::-webkit-scrollbar { display: none; }
+  .tab { flex: none; }
+  .ver { flex-basis: 84px; }
+  .prompt { font-size: 0.9rem; }
+  /* 觸控點擊範圍 */
+  .icon-btn { width: 40px; height: 40px; }
+  .del-btn { width: 40px; height: 40px; top: 6px; right: 6px; }
+  .x { display: grid; place-items: center; width: 44px; height: 44px; flex: none; font-size: 1.3rem; }
 }
 </style>

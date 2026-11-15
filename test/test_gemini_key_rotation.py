@@ -46,7 +46,7 @@ def _patch_client(monkey: dict, fake):
     class _Client:
         models = _Models()
 
-    def patched(api_key, system, temperature, max_tokens):
+    def patched(api_key, system, temperature, max_tokens, **_):
         client, cfg = _Client(), type("Cfg", (), {})()
         cfg._test_api_key = api_key
         return client, cfg

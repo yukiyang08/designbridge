@@ -38,13 +38,14 @@ const emit = defineEmits(['go'])
 </template>
 
 <style scoped>
+/* 放在 /studio 頂部的米色章節列上（淺底），所以是深字、不用文字陰影 */
 .step-bar {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 0.35rem 0.6rem;
+  gap: 0.35rem 1rem;
   margin: 0;
-  padding: 0.5rem 1.5rem 1.25rem;
+  padding: 0.6rem 1.25rem;
   list-style: none;
 }
 
@@ -66,13 +67,13 @@ const emit = defineEmits(['go'])
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 44px;
-  height: 44px;
+  width: 34px;
+  height: 34px;
   border-radius: 50%;
   background: var(--db-chip);
   color: var(--db-on-accent);
   font-family: var(--db-font-num);
-  font-size: 1.35rem;
+  font-size: 1.05rem;
   line-height: 1;
   flex-shrink: 0;
 }
@@ -80,24 +81,22 @@ const emit = defineEmits(['go'])
 .label {
   font-family: var(--db-font-display);
   font-style: italic;
-  font-size: 1.35rem;
-  color: #fff;
-  text-shadow: 0 1px 8px rgba(0, 0, 0, 0.5);
+  font-size: 1.15rem;
+  color: var(--db-text-soft);
   white-space: nowrap;
 }
 
 /* 只有進行中那一步變色（圓圈 + 標籤）。已完成的步驟不上色——同時有兩三個
    米色圓圈時看不出「現在在哪一步」，那正是這條流程列唯一要回答的問題。 */
-.step.active .dot   { background: #fff; color: #222; box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.45), 0 2px 10px rgba(0, 0, 0, 0.35); }
-.step.active .label { color: #fff; font-weight: 700; text-shadow: 0 1px 10px rgba(0, 0, 0, 0.75); }
+.step.active .dot   { background: var(--db-ink); color: #fff; }
+.step.active .label { color: var(--db-text); font-weight: 700; }
 
 /* 還沒走到的步驟淡出，暗示不能點 */
 .step:not(.reachable) { opacity: 0.5; }
 
 @media (max-width: 1100px) {
-  .dot   { width: 34px; height: 34px; font-size: 1rem; }
   .label { font-size: 1rem; }
-  .step-bar { padding: 0.4rem 0.75rem 0.9rem; }
+  .step-bar { padding: 0.5rem 0.75rem; }
 }
 @media (max-width: 640px) {
   /* 手機上標籤只留進行中那一個，不然一行塞不下六步 */

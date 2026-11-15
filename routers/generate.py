@@ -11,6 +11,7 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field, model_validator
 
 from routers.common import (
+    charge_credit, is_admin,
     get_user_id, ensure_artifact, _MAX_PAYLOAD_CHARS,
     API_PUBLIC_URL, DesignRequest, _artifact_url, _build_user_input, _get_graph, _inside_artifacts, _walk_paths, check_request_paths,
     _is_artifact_file, _layout_render_config, _require_artifact_file,
@@ -148,10 +149,22 @@ def prefetch_layout_conditions(request: PrefetchConditionsRequest, user_id: str 
     return {"started": prefetch(placements, request.room_w, request.room_d, width, height)}
 
 
+# debug-console 專用的渲染覆寫（DesignRequest 的 *_override 等欄位），會改變步數與費用
+_DEBUG_FIELDS = ("controlnet_model_override", "controlnet_scale_override", "controlnet_steps_override",
+                 "controlnet_guidance_override", "controlnet_control_end_override", "lora_overrides",
+                 "disable_edge_control", "disable_lora")
+
+
+def _has_debug_overrides(request: DesignRequest) -> bool:
+    return any(getattr(request, f) is not None for f in _DEBUG_FIELDS)
+
+
 # 3. 建立 POST 路由
 @router.post("/api/generate")
-def generate_design(request: DesignRequest, user_id: str = Depends(get_user_id)):
+def generate_design(request: DesignRequest, user_id: str = Depends(charge_credit)):
     check_request_paths(request)
+    if user_id and _has_debug_overrides(request) and not is_admin(user_id):
+        raise HTTPException(status_code=403, detail="除錯參數只限管理員使用")
     try:
         # 微調的底圖、換風格的上一張圖：本機沒有就從 Storage 補回（見 ensure_artifact）
         ensure_artifact(request.initial_image_path, user_id)
@@ -208,6 +221,9 @@ def generate_design(request: DesignRequest, user_id: str = Depends(get_user_id))
             result = _get_graph().invoke(initial_state)
         elapsed = time.perf_counter() - t0
         generated_image_path = result.get("generated_image")
+        render_error = ((result.get("render_result") or {}).get("generation_params") or {}).get("render_error")
+        if render_error:
+            raise HTTPException(status_code=502, detail=f"生成失敗：{render_error}，請稍後再試")
 
         # 每輪一筆，串上這張圖之前的流程，前端與歷史紀錄都能看到完整耗時
         if result.get("routing_decision") == "design_adjuster":
@@ -307,6 +323,8 @@ def generate_design(request: DesignRequest, user_id: str = Depends(get_user_id))
 
         return response
 
+    except HTTPException:
+        raise
     except Exception as e:
         import traceback
         traceback.print_exc()
@@ -363,7 +381,7 @@ def furniture_instances_endpoint(request: _PlanRequest, user_id: str = Depends(g
 
 
 @router.post("/api/move-furniture")
-def move_furniture_endpoint(request: MoveFurnitureRequest, user_id: str = Depends(get_user_id)):
+def move_furniture_endpoint(request: MoveFurnitureRequest, user_id: str = Depends(charge_credit)):
     """移動家具後，用舊圖剪貼出的合成圖當起點，只重修舊位置與家具邊緣，不從零重生。"""
     from designbridge.render.move_furniture import MoveFurnitureError, move_furniture, move_instances
 
@@ -452,6 +470,30 @@ def get_quotation(req: QuotationRequest, user_id: str = Depends(get_user_id)):
         raise HTTPException(status_code=500, detail=str(e))
 
 
+class OutlineRequest(BaseModel):
+    image_path: str
+    boxes: List[List[float]]   # 報價家具的 [x1, y1, x2, y2]（0~1），跟 furniture_list 同順序
+
+
+@router.post("/api/furniture-outlines")
+def get_furniture_outlines(req: OutlineRequest, user_id: str = Depends(get_user_id)):
+    """結果圖家具描邊：報價的方框 → 家具輪廓多邊形，配不到的回 null（前端沿用方框）。
+
+    跟估價分開：分割第一次要數十秒（之後讀快取，也跟「移動家具」共用），
+    不拖慢報價本身——前端先顯示方框，輪廓算好再換上去。
+    """
+    from designbridge.pricing.outlines import furniture_outlines
+    if not _inside_artifacts(req.image_path):
+        raise HTTPException(status_code=400, detail=f"路徑不合法：{req.image_path}")
+    try:
+        ensure_artifact(req.image_path, user_id)
+        return {"outlines": furniture_outlines(req.image_path, req.boxes[:40])}
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 # ── 獨立的全景生成端點 ──────────────────────────────────────────────────────────
 
 class PanoramaRequest(BaseModel):
@@ -489,7 +531,7 @@ def _resolve_depth_for_panorama(request: PanoramaRequest, out_dir: Path) -> Path
 
 
 @router.post("/api/generate-panorama")
-def generate_panorama(request: PanoramaRequest, user_id: str = Depends(get_user_id)):
+def generate_panorama(request: PanoramaRequest, user_id: str = Depends(charge_credit)):
     """按需生成 Text2Room 全景圖，獨立於主要生成流程。"""
     if request.depth_path and not _inside_artifacts(request.depth_path):
         raise HTTPException(status_code=400, detail=f"路徑不合法：{request.depth_path}")

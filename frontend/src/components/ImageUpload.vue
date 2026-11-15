@@ -1,8 +1,9 @@
 <script setup>
+import { Icon } from '@iconify/vue'
 defineProps({
   preview: { type: String, default: '' },
   label:   { type: String, required: true },
-  icon:    { type: String, default: '📁' },
+  icon:    { type: String, default: 'mdi:image-plus-outline' },
   hint:    { type: String, default: '' },
 })
 defineEmits(['change', 'remove'])
@@ -13,11 +14,11 @@ defineEmits(['change', 'remove'])
     <p v-if="hint" class="hint">{{ hint }}</p>
     <div v-if="preview" class="preview">
       <img :src="preview" :alt="label" />
-      <button type="button" class="remove-btn" @click="$emit('remove')">✕</button>
+      <button type="button" class="remove-btn" aria-label="移除圖片" @click="$emit('remove')"><Icon icon="mdi:close" aria-hidden="true" /></button>
     </div>
     <label v-else class="upload-area">
       <input type="file" accept="image/*" @change="$emit('change', $event)" hidden />
-      <span class="icon">{{ icon }}</span>
+      <Icon :icon="icon" class="icon" aria-hidden="true" />
       <span>{{ label }}</span>
       <small>JPG、PNG、WebP</small>
     </label>
@@ -27,7 +28,7 @@ defineEmits(['change', 'remove'])
 <style scoped>
 .image-upload { display: flex; flex-direction: column; gap: 0.5rem; }
 
-.hint { font-size: 0.75rem; color: #a39b94; margin: 0; }
+.hint { font-size: 0.75rem; color: var(--db-accent-deep); margin: 0; }
 
 .upload-area {
   display: flex;
@@ -35,10 +36,10 @@ defineEmits(['change', 'remove'])
   align-items: center;
   gap: 0.4rem;
   padding: 1.5rem;
-  border: 2px dashed #c9c4bb;
+  border: 2px dashed var(--db-accent);
   border-radius: 8px;
   cursor: pointer;
-  color: #a39b94;
+  color: var(--db-accent-deep);
   font-size: 0.85rem;
   transition: all 0.2s;
   font-weight: normal;

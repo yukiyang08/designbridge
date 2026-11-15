@@ -1,7 +1,7 @@
 """Style KB search/preview, furniture catalog and style profile endpoints."""
 from typing import Optional
 
-from fastapi import APIRouter
+from fastapi import APIRouter, HTTPException, Query
 
 from designbridge.style.style_apply import list_available_style_profiles
 from style_kb.styles import STYLES
@@ -10,12 +10,12 @@ router = APIRouter()
 
 @router.get("/api/style-search")
 def search_styles(
-    query: str = "",
-    style_id: str = "",
-    top_k: int = 3,
+    query: str = Query("", max_length=500),
+    style_id: str = Query("", max_length=64),
+    top_k: int = Query(3, ge=1, le=50),   # 前端一次要 24 張
     diverse: bool = False,
-    anchor_image_url: str = "",
-    space: str = "",
+    anchor_image_url: str = Query("", max_length=2000),
+    space: str = Query("", max_length=64),
 ):
     """向量搜尋最相似的風格參考圖，回傳多筆候選供使用者選擇。
 
@@ -55,12 +55,13 @@ def search_styles(
             # per_style=3（不是 1）是刻意留給前端「下一輪」用的池子——向量搜尋本身是
             # 決定性的，同樣的查詢字重打一次結果不會變，所以一次多要幾張，前端就能在
             # 池子裡輪替顯示，不用每次都重打一樣的 query 卻拿到一樣的結果。
-            results = query_style_images_diverse(text_query=q, per_style=3)[: min(top_k, 24)]
+            results = query_style_images_diverse(text_query=q, per_style=3, space=space.strip())[: min(top_k, 24)]
         else:
             results = query_style_images_supabase(
                 text_query=q,
                 style_id=sid or None,
                 top_k=min(top_k, 24),
+                space=space.strip(),
             )
         if not results:
             return []
@@ -117,14 +118,15 @@ def search_styles(
             })
         return candidates
     except Exception as e:
+        # 回空陣列前端會誤報成「找不到相符風格」；改回錯誤讓前端顯示重試
         print(f"⚠️ style-search error: {e}")
-        return []
+        raise HTTPException(status_code=502, detail="風格搜尋暫時失敗") from e
 
 
 @router.get("/api/style-preview")
 def get_style_preview(
-    query: str = "",
-    style_id: str = "",
+    query: str = Query("", max_length=500),
+    style_id: str = Query("", max_length=64),
 ):
     """根據文字語意搜尋最符合的風格參考圖（Supabase pgvector），供前端即時預覽。"""
     sid = style_id.strip() or ""
@@ -174,10 +176,15 @@ def get_furniture(
     max_price: Optional[float] = None,
     brand: str = "",
     style: str = "",
+    q: str = Query("", max_length=200),
+    sort: str = "",
+    limit: int = Query(60, ge=1, le=200),
+    offset: int = 0,
 ):
-    """瀏覽 / 篩選家具清單（分類 + 價位區間 + 品牌 + 風格）。"""
+    """瀏覽 / 篩選家具清單（分類 + 價位區間 + 品牌 + 風格 + 關鍵字），分頁回傳。"""
     from designbridge.pricing.furniture_kb import list_furniture
-    return list_furniture(category=category, min_price=min_price, max_price=max_price, brand=brand, style=style)
+    return list_furniture(category=category, min_price=min_price, max_price=max_price, brand=brand, style=style,
+                          q=q, sort=sort, limit=limit, offset=max(0, offset))
 
 
 @router.get("/api/style-profiles")

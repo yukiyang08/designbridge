@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextvars
 import threading
 from pathlib import Path
 from typing import Any
@@ -44,5 +45,5 @@ def clip_evaluator_node(state: DesignBridgeState) -> dict[str, Any]:
             print(f"⚠️ [clip_evaluator] CLIP evaluation failed: {e}")
 
     # 分數沒有任何下游節點或前端在用，放背景跑，不佔生圖回應時間；結果只印在後端 log
-    threading.Thread(target=_run, daemon=True).start()
+    threading.Thread(target=contextvars.copy_context().run, args=(_run,), daemon=True).start()
     return {"evaluation_result": {"scores": {}, "weighted_score": 0.0, "decision": "background", "feedback": "CLIP 評分在背景執行，結果見後端 log", "issues_found": [], "suggestions": []}}

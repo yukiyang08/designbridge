@@ -1,13 +1,18 @@
 <script setup>
+import { Icon } from '@iconify/vue'
 import { ref, computed, watch, onMounted, onBeforeUnmount } from 'vue'
 import { RouterLink, useRoute } from 'vue-router'
 import { useAuth } from '@/composables/useAuth'
+import { useFurnitureSelection } from '@/composables/useFurnitureSelection'
+import { useMe } from '@/composables/useMe'
 import logo from '../../../asset/designbridge_logo.png'
 
 const { user, signInWithGoogle, signOut } = useAuth()
+const { selectedCount } = useFurnitureSelection()
 
 defineProps({
-  // 深色底（首頁 hero）用白字，淺色底（流程頁）維持白字但加陰影才看得清楚
+  // 深色底（首頁 hero）用白字，照片底（流程頁）維持白字但加陰影才看得清楚；
+  // 'paper' = 白色導覽列上的深字（/studio 滿版工作區）
   tone: { type: String, default: 'light' },  // 'light' = 白字
 })
 
@@ -18,6 +23,8 @@ watch(() => route.fullPath, () => { navOpen.value = false; menuOpen.value = fals
 const menuEl = ref(null)
 const displayName = computed(() => user.value?.user_metadata?.name || user.value?.email || '')
 const initial = computed(() => (displayName.value[0] || '?').toUpperCase())
+
+const { isAdmin } = useMe()
 
 function onDocClick(e) {
   navOpen.value = false   // 漢堡鈕與選單本身都有 @click.stop，走到這裡一定是點在外面
@@ -47,8 +54,12 @@ onBeforeUnmount(() => {
       <RouterLink to="/furniture">家具查詢</RouterLink>
     </nav>
 
+    <!-- 導覽列中間：/studio 放流程步驟（省掉另外一整排，高度留給畫布） -->
+    <div v-if="$slots.default" class="nav-center"><slot /></div>
+
     <nav class="links right">
       <RouterLink to="/designs">我的設計</RouterLink>
+      <RouterLink to="/cart">我的收藏<span v-if="selectedCount" class="nav-count">{{ selectedCount }}</span></RouterLink>
 
       <div v-if="user" ref="menuEl" class="user-menu">
         <button
@@ -67,6 +78,7 @@ onBeforeUnmount(() => {
             <small v-if="user.user_metadata?.name">{{ user.email }}</small>
           </div>
           <RouterLink to="/account">個人專區</RouterLink>
+          <RouterLink v-if="isAdmin" to="/admin">管理員後台</RouterLink>
           <button type="button" @click="signOut">登出</button>
         </div>
       </div>
@@ -84,12 +96,14 @@ onBeforeUnmount(() => {
       <div v-if="navOpen" class="drawer-wrap">
         <div class="backdrop" @click="navOpen = false"></div>
         <aside class="mobile-menu" @click.stop>
-          <button type="button" class="m-close" aria-label="關閉選單" @click="navOpen = false">✕</button>
+          <button type="button" class="m-close" aria-label="關閉選單" @click="navOpen = false"><Icon icon="mdi:close" aria-hidden="true" /></button>
           <RouterLink to="/">首頁</RouterLink>
           <RouterLink to="/furniture">家具查詢</RouterLink>
           <RouterLink to="/designs">我的設計</RouterLink>
+          <RouterLink to="/cart">我的收藏<span v-if="selectedCount" class="nav-count">{{ selectedCount }}</span></RouterLink>
           <template v-if="user">
             <RouterLink to="/account">個人專區</RouterLink>
+            <RouterLink v-if="isAdmin" to="/admin">管理員後台</RouterLink>
             <div class="m-who">{{ displayName }}</div>
             <button type="button" @click="signOut">登出</button>
           </template>
@@ -101,6 +115,11 @@ onBeforeUnmount(() => {
 </template>
 
 <style scoped>
+.nav-count {
+  display: inline-grid; place-items: center; min-width: 1.25rem; height: 1.25rem; margin-left: 0.35rem; padding: 0 0.3rem;
+  border-radius: var(--db-radius-pill); background: var(--db-accent); color: var(--db-on-accent);
+  font-size: 0.7rem; font-weight: 600; line-height: 1; text-shadow: none; vertical-align: 0.1em;
+}
 .app-nav {
   position: relative;
   display: flex;
@@ -121,6 +140,11 @@ onBeforeUnmount(() => {
   gap: 1.75rem;
 }
 .links.right { margin-left: auto; }
+.nav-center { flex: 1; min-width: 0; display: flex; justify-content: center; }
+/* 左右兩側寬度不同，flex 置中會偏；寬螢幕放得下時改成以整條導覽列為準置中 */
+@media (min-width: 1200px) {
+  .nav-center { position: absolute; left: 50%; transform: translateX(-50%); }
+}
 
 .links > a {
   font-family: var(--db-font-display);
@@ -173,7 +197,7 @@ onBeforeUnmount(() => {
 .dropdown .who {
   display: flex; flex-direction: column; gap: 2px;
   padding: 0.5rem 0.7rem 0.6rem;
-  border-bottom: 1px solid #efefef;
+  border-bottom: 1px solid var(--db-line);
   margin-bottom: 0.3rem;
   color: var(--db-text);
   font-size: 0.9rem;
@@ -192,8 +216,18 @@ onBeforeUnmount(() => {
 .dropdown a:hover,
 .dropdown button:hover { background: var(--db-chip-soft); }
 
+/* paper：底色是白的，不需要文字陰影，改深字 + 灰褐底線 */
+.tone-paper .links > a { color: var(--db-text-soft); text-shadow: none; }
+.tone-paper .links > a:hover,
+.tone-paper .links > a.router-link-exact-active { color: var(--db-text); border-bottom-color: var(--db-accent-ink); }
+.tone-paper .login-btn { border-color: var(--db-ink); background: none; color: var(--db-text); backdrop-filter: none; }
+.tone-paper .login-btn:hover { background: var(--db-ink); color: #fff; }
+.tone-paper .avatar { border-color: var(--db-line); }
+
 .burger { display: none; }
 .drawer-wrap { display: none; }
+.tone-paper .burger { background: none; }
+.tone-paper .burger span { background: var(--db-ink); }
 
 @media (max-width: 720px) {
   .app-nav { gap: 0.75rem; padding: 0.5rem 0.75rem; justify-content: space-between; }
@@ -232,7 +266,7 @@ onBeforeUnmount(() => {
   .mobile-menu a:hover, .mobile-menu button:hover,
   .mobile-menu a.router-link-exact-active { background: var(--db-chip-soft); }
   .m-who {
-    margin-top: 0.3rem; padding: 0.6rem 1rem 0.2rem; border-top: 1px solid #efefef;
+    margin-top: 0.3rem; padding: 0.6rem 1rem 0.2rem; border-top: 1px solid var(--db-line);
     font-size: 0.85rem; color: var(--db-text-soft); word-break: break-all;
   }
 }

@@ -1,5 +1,4 @@
 import { jsonFetch } from '@/config/api'
-import { useFurnitureSelection } from '@/composables/useFurnitureSelection'
 import {
   lastGeneratedImage, result, quotationLoading, quotationError,
   cadActiveRoomId, cadRoomSnapshots, cadQuoting,
@@ -26,14 +25,12 @@ export async function fetchQuotation() {
   if (quotationLoading.value && inflightPath === imagePath) return   // 這張圖已經在估價了
   const seq = ++quotationSeq
   inflightPath = imagePath
-  const { selectedFurniture } = useFurnitureSelection()
   quotationLoading.value = true
   quotationError.value = ''
   try {
     const res = await jsonFetch('/api/quotation', {
       image_path: imagePath,
       structured_requirement: result.value?.structured_requirement || null,
-      selected_furniture: selectedFurniture.value,
       task_id: result.value?.task_id || null,
       style_profile_id: result.value?.style_params?.style_profile_id || null,
     })
@@ -55,6 +52,28 @@ export async function fetchQuotation() {
   }
 }
 
+// 結果圖的家具描邊：報價只有方框，另外跟後端要沿著家具的輪廓（第一次要跑分割，可能數十秒）。
+// 回來時已經換了圖或重新估價（quotation_result 不是同一份）就丟掉；失敗就維持方框。
+export async function fetchOutlines() {
+  const q = result.value?.quotation_result
+  const list = q?.furniture_list || []
+  const imagePath = lastGeneratedImage.value?.path || result.value?.generated_image_path
+  if (!imagePath || !list.some(it => it.bbox?.length === 4)) return
+  try {
+    const res = await jsonFetch('/api/furniture-outlines', {
+      image_path: imagePath,
+      boxes: list.map(it => it.bbox || []),
+    })
+    if (!res.ok) return
+    const { outlines } = await res.json()
+    if (result.value?.quotation_result !== q || !outlines?.some(Boolean)) return
+    result.value = {
+      ...result.value,
+      quotation_result: { ...q, furniture_list: list.map((it, i) => (outlines[i] ? { ...it, outline: outlines[i] } : it)) },
+    }
+  } catch { /* 描邊是加分項，失敗就沿用方框 */ }
+}
+
 // 整層總覽：幫「不是目前這間」的房間估價，結果寫回它自己的快照。
 // 目前這間走原本的 fetchQuotation（寫進全域 result）。
 async function quoteRoom(roomId) {
@@ -64,11 +83,9 @@ async function quoteRoom(roomId) {
   if (!imagePath || snap?.result?.quotation_result || cadQuoting.value[roomId]) return
   cadQuoting.value = { ...cadQuoting.value, [roomId]: true }
   try {
-    const { selectedFurniture } = useFurnitureSelection()
     const res = await jsonFetch('/api/quotation', {
       image_path: imagePath,
       structured_requirement: snap.result?.structured_requirement || null,
-      selected_furniture: selectedFurniture.value,
       task_id: snap.result?.task_id || null,
       style_profile_id: snap.result?.style_params?.style_profile_id || null,
     })

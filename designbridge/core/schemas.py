@@ -1,8 +1,7 @@
 # designbridge/schemas.py
 """Complete JSON schema definitions for DesignBridge agents per specification."""
 
-from typing import Any, Literal
-from typing_extensions import NotRequired, TypedDict
+from typing import Any, Literal, NotRequired, TypedDict
 
 
 # ========== Requirement JSON ==========
@@ -154,6 +153,7 @@ class FurnitureItem(TypedDict):
     category: str                           # sofa / table / chair / lamp / rug / storage / bed / other
     candidates: list[FurnitureCandidate]    # top-3 IKEA 候選（向量搜尋結果）
     selected_index: int                     # 預設選中第 0 筆
+    bbox: NotRequired[list[float]]          # 在結果圖上的位置 [x1, y1, x2, y2]（0~1）
 
 
 class QuotationResultJSON(TypedDict):

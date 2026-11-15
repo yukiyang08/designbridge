@@ -98,6 +98,7 @@ function describeMove(before, after) {
   const dx = (after.x - before.x) * roomW.value
   const dy = (after.y - before.y) * roomD.value
   const parts = []
+  if (Math.abs(after.w - before.w) > 1e-4) parts.push('轉 90° 換到另一面牆')
   if (Math.abs(dx) >= 0.05) parts.push(`往${dx > 0 ? '右' : '左'} ${Math.abs(dx).toFixed(1)} 公尺`)
   if (Math.abs(dy) >= 0.05) parts.push(`往${dy > 0 ? '下' : '上'} ${Math.abs(dy).toFixed(1)} 公尺`)
   return { label: furnitureLabel(after.type), text: parts.join('、') || '微調位置' }

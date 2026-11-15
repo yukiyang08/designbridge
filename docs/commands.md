@@ -163,3 +163,21 @@ for k,v in sorted(Counter(r['style_id'] for r in rows).items(), key=lambda x:-x[
     print(f'  {k:12} {v}')
 "
 ```
+
+---
+
+## 平面圖辨識
+
+```powershell
+# 牆線模型權重（部署機必做；約 70 MB，存到 models/cubicasa/，缺檔時退回規則式牆線）
+python scripts/fetch_cubicasa_weights.py
+
+# 評估資料（都存到 test/data/，git 已忽略）
+python scripts/fetch_cubicasa_subset.py --n 50     # CubiCasa5K 子集，附逐間房標註
+python scripts/fetch_tw_floorplans.py --n 30       # 台灣配置圖，附坪數與格局
+
+# 三組切割比較（CubiCasa 官方程式在 ablation_tests/cubicasa5k/，用它的 venv）
+ablation_tests/cubicasa5k/.venv/Scripts/python ablation_tests/cubicasa5k/experiment3.py --taiwan test/data/floorplans_tw/*.jpg --cubicasa 50
+```
+
+結果與做法見 `test/FLOORPLAN_SEGMENTATION_EXPERIMENT.md`、`docs/FLOORPLAN_ACCURACY.md`。

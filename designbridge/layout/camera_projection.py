@@ -52,6 +52,10 @@ FURNITURE_HEIGHTS: dict[str, float] = {
     "dresser": 0.85, "shelf": 1.60, "cat_tree": 1.40, "dog_bed": 0.20,
     "litter_box": 0.30, "fridge": 1.80, "washing_machine": 0.85,
     "stove": 0.90, "toilet": 0.75, "sink": 0.85,
+    # 淋浴間是玻璃隔間，畫成 2 公尺實心方塊會被生成成櫃子；只留地面的淋浴盤
+    "bathtub": 0.55, "shower": 0.05, "washer": 0.85, "shoe_cabinet": 1.00,
+    # 曬衣架、毛巾架是細桿，畫成實心方塊會變櫃子；壓扁到地面，靠 prompt 描述
+    "drying_rack": 0.05, "towel_rack": 0.05, "mirror": 0.05,   # 鏡子掛牆，不能變成地上的矮櫃
     "default": 0.80,
 }
 

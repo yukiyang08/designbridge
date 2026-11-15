@@ -1,3 +1,4 @@
+import { toRaw } from 'vue'
 import { jsonFetch, mediaUrl } from '@/config/api'
 import { demoPlan } from '@/config/demo'
 import {
@@ -5,6 +6,7 @@ import {
   error, loading, loadingMsg, result,
   cadCounts, cadTotalPing, cadRoomW, cadRoomD, cadExtraRooms, cadPlanResult, cadRendering, cadRenderError,
   cadActiveRoomId, cadRoomStatus, cadRoomSnapshots, cadBatch, openingEdits, roomGeometry, cadOverview, cadRenderTokens,
+  cadDetectedPlacements,
   roomW, roomD, roomTypeForPlan, editPlacements,
   floorPlanPath, floorPlanUrl, sceneGraph, layoutRenderConfig, lastGeneratedImage,
   uploadedPlanUrl, panoUrl, panoError, planSource,
@@ -40,6 +42,7 @@ function resetCadProgress() {
   cadRenderError.value = {}
   for (const k of Object.keys(cadRenderTokens)) cadRenderTokens[k]++   // 舊平面圖還在跑的渲染作廢
   openingEdits.value = {}
+  cadDetectedPlacements.value = {}
   cancelCadBatch()
 }
 
@@ -51,10 +54,11 @@ export function enterUploadedWholeFloor(plan) {
   cadPlanResult.value = plan
   loading.value = false
   goToStepKey('roomProgram')
+  prefetchUploadedRooms(plan)
 }
 
 // 使用者校正上傳平面圖的總坪數：整張圖等比例重算尺寸並重畫（不重跑房間辨識）。
-// 呼叫端要先確認還沒開始設計任何房間——房間尺寸會變。
+// 呼叫端要先確認沒有完成／渲染中的房間；設計到一半的房間尺寸會變，這裡一併清掉。
 export async function rescaleUploadedPlan(totalPing) {
   const { svg_markup, svg_url, ...plan } = cadPlanResult.value
   error.value = ''
@@ -64,7 +68,9 @@ export async function rescaleUploadedPlan(totalPing) {
     const res = await jsonFetch('/api/rescale-upload-plan', { plan, total_ping: totalPing })
     const data = await res.json()
     if (!res.ok) throw new Error(data.detail || `${res.status}`)
+    resetCadProgress()
     cadPlanResult.value = data
+    prefetchUploadedRooms(data)
   } catch (e) {
     error.value = `重算坪數失敗：${e.message}`
   } finally {
@@ -226,47 +232,77 @@ export async function handleCadRoomSelected(room, requestId = ++requestState.cur
 
 // 佈局引擎支援的房型才跑家具辨識；浴室、陽台、未知空間直接套預設擺法
 const DETECTABLE = new Set(['living_room', 'bedroom', 'kitchen', 'dining_room', 'study'])
+const editorType = (room) => CAD_ROOM_TYPE_TO_EDITOR[room.room_type] || 'living_room'
 
-// 上傳平面圖的房間第一次點進來：從原圖裁出這間（房外塗白），支援的房型用 Gemini 辨識圖上的家具；
-// 辨識不到或裁切失敗時套該房型的預設擺法。房間尺寸用整層資料換算好的公尺。
+// 每張整層圖各一份：{ [roomId]: Promise }。重算坪數會換成新的 plan 物件，舊結果自然作廢
+const detectJobs = new WeakMap()
+
+// 從原圖裁出這間（房外塗白），支援的房型用 Gemini 辨識圖上的家具。同一間只跑一次；
+// 裁切或辨識失敗都不丟例外，交給呼叫端退回預設擺法，不讓使用者面對空房間
+function detectUploadedRoom(plan, room) {
+  plan = toRaw(plan)   // ref 裡拿到的是 proxy，WeakMap 的 key 和下面的比對都要用原物件
+  if (!detectJobs.has(plan)) detectJobs.set(plan, {})
+  const jobs = detectJobs.get(plan)
+  jobs[room.id] ||= (async () => {
+    let croppedPath = ''
+    try {
+      const crop = await jsonFetch('/api/crop-floor-plan', {
+        image_path: plan.image_path, ...room.bbox_norm, polygon: room.polygon,
+      })
+      if (crop.ok) croppedPath = (await crop.json()).path || ''
+    } catch { /* 退回預設擺法 */ }
+    const type = editorType(room)
+    // demo 模式的家具辨識只比對房型與尺寸，沒有裁切圖也能命中預錄結果；玄關也有預錄的家具
+    const detectable = DETECTABLE.has(type) || (demoPlan.value && type === 'room')
+    if (!detectable || !(croppedPath || demoPlan.value)) return { croppedPath, placements: [] }
+    let data = null
+    try {
+      const res = await jsonFetch('/api/parse-floor-plan', {
+        image_path: croppedPath || plan.image_path, room_type: type, room_w: room.w, room_d: room.h,
+      })
+      if (res.ok) data = await res.json()
+    } catch { /* 退回預設擺法 */ }
+    const placements = (data?.furniture_placements || []).map((p, i) => ({
+      id: p.id || `item_${i}`, type: p.type, x: p.x, y: p.y, w: p.w, h: p.h, rotation: p.rotation || 0,
+    }))
+    if (placements.length && toRaw(cadPlanResult.value) === plan) {
+      cadDetectedPlacements.value = { ...cadDetectedPlacements.value, [room.id]: placements }
+    }
+    return { croppedPath, placements, data }
+  })().catch((e) => { delete jobs[room.id]; throw e })   // 失敗的下次點進來再試
+  return jobs[room.id]
+}
+
+// 整層圖一辨識完就在背景逐間先跑（同時 3 間），整層圖上馬上看得到家具，點進去也不用再等
+function prefetchUploadedRooms(plan) {
+  const queue = (plan?.rooms || []).filter(r => DETECTABLE.has(editorType(r)))
+  const worker = async () => {
+    // 換了平面圖（重算坪數、重新開始）就停，別替已作廢的圖繼續打 Gemini
+    while (queue.length && toRaw(cadPlanResult.value) === toRaw(plan)) {
+      await detectUploadedRoom(plan, queue.shift()).catch(() => {})
+    }
+  }
+  for (let i = 0; i < 3; i++) worker()
+}
+
+// 上傳平面圖的房間點進來：用背景辨識的結果（還在跑就等它）；辨識不到時套該房型的預設擺法
+// （沒有預設的房型才空白）。房間尺寸用整層資料換算好的公尺。
 async function prepareUploadedRoom(room, requestId) {
   const plan = cadPlanResult.value
   loadingMsg.value = { title: '準備房間中', sub: '裁出這間房並辨識家具' }
-  // 裁切或辨識失敗都不擋：退回預設擺法，不讓使用者面對空房間
-  let croppedPath = ''
-  try {
-    const crop = await jsonFetch('/api/crop-floor-plan', {
-      image_path: plan.image_path, ...room.bbox_norm, polygon: room.polygon,
-    })
-    if (crop.ok) croppedPath = (await crop.json()).path || ''
-  } catch { /* 退回預設擺法 */ }
+  const { croppedPath, placements, data } = await detectUploadedRoom(plan, room)
   if (requestId !== requestState.current) return
   if (croppedPath) uploadedPlanUrl.value = mediaUrl(croppedPath)   // 「對照原始上傳平面圖」顯示這間的裁切圖
 
   const type = roomTypeForPlan.value
-  // demo 模式的家具辨識只比對房型與尺寸，沒有裁切圖也能命中預錄結果；玄關也有預錄的家具
-  const detectable = DETECTABLE.has(type) || (demoPlan.value && type === 'room')
-  if (detectable && (croppedPath || demoPlan.value)) {
-    let data = null
-    try {
-      const res = await jsonFetch('/api/parse-floor-plan', {
-        image_path: croppedPath || plan.image_path, room_type: type, room_w: roomW.value, room_d: roomD.value,
-      })
-      if (res.ok) data = await res.json()
-    } catch { /* 退回預設擺法 */ }
-    if (requestId !== requestState.current) return
-    const placements = (data?.furniture_placements || []).map((p, i) => ({
-      id: p.id || `item_${i}`, type: p.type, x: p.x, y: p.y, w: p.w, h: p.h, rotation: p.rotation || 0,
-    }))
-    if (placements.length) {
-      editPlacements.value = placements
-      sceneGraph.value = data.scene_graph || null
-      layoutRenderConfig.value = data.layout_render_config || null
-      floorPlanPath.value = data.floor_plan_path || croppedPath
-      floorPlanUrl.value = data.floor_plan_url || mediaUrl(croppedPath)
-      goToStepKey('plan')
-      return
-    }
+  if (placements.length) {
+    editPlacements.value = placements.map(p => ({ ...p }))
+    sceneGraph.value = data.scene_graph || null
+    layoutRenderConfig.value = data.layout_render_config || null
+    floorPlanPath.value = data.floor_plan_path || croppedPath
+    floorPlanUrl.value = data.floor_plan_url || mediaUrl(croppedPath)
+    goToStepKey('plan')
+    return
   }
 
   // 沒辨識到家具：套該房型的預設擺法並重畫 2D 平面圖；沒有預設的房型空白，底圖用裁切圖

@@ -9,10 +9,12 @@
 
 from __future__ import annotations
 
+import contextvars
 import hashlib
 import json
 import math
 import uuid
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Any
 
@@ -69,7 +71,8 @@ def _scale_from_rooms(image_path: str, rooms: list[dict], img_w: int, img_h: int
         )
         try:
             text = call_llm(prompt, images=[image_path, _mark_rooms_image(image_path, rooms)],
-                            json_mode=True, max_tokens=3000)
+                            json_mode=True, max_tokens=3000,
+                            thinking_budget=Config.FLOORPLAN_THINKING_BUDGET)
             answers = ((_parse_llm_layout(text) or {}).get("regions")) or []
         except Exception as e:  # noqa: BLE001
             print(f"⚠️  Gemini plan scale failed: {e}")
@@ -158,10 +161,10 @@ def _snap_rects(boxes: list[tuple[float, float, float, float]]) -> list[Rect]:
     return [Rect(xs[x0], ys[y0], xs[x1] - xs[x0], ys[y1] - ys[y0]) for x0, y0, x1, y1 in ends]
 
 
-def _pretrim_boxes(rooms: list[dict], res: int = 200) -> list[list[float]]:
+def _pretrim_boxes(rooms: list[dict], span_m: tuple[float, float], res: int = 200) -> list[list[float]]:
     """正規化外框 [x0, y0, x1, y1]，重疊的先縮開：4 種縮法（哪間房 × 哪個軸）挑「切掉的
     多邊形像素最少」的。外框大又不規則的房（開放式餐廳）外框常被鄰房的邊角撐進來，
-    只看外框面積會縮錯房間，讓原本相鄰的房間之間裂出縫。"""
+    只看外框面積會縮錯房間，讓原本相鄰的房間之間裂出縫。span_m 是整張圖的 (寬, 高) 公尺。"""
     import numpy as np
     from PIL import ImageDraw
 
@@ -178,7 +181,7 @@ def _pretrim_boxes(rooms: list[dict], res: int = 200) -> list[list[float]]:
         x0, y0, x1, y1 = (int(round(v * res)) for v in boxes[i])
         return int(masks[i][y0:y1, lo:hi].sum() if axis == 0 else masks[i][lo:hi, x0:x1].sum())
 
-    min_dim = _MIN_DIM_M / 13   # 約 13 m 寬的整戶圖換算成正規化邊長
+    min_dim = [_MIN_DIM_M / span_m[0], _MIN_DIM_M / span_m[1]]   # 房間邊長下限換成正規化
     for _ in range(len(rooms) * 4):
         best = None   # (損失, 房, 要改的邊索引, 新值)
         for i in range(len(rooms)):
@@ -195,7 +198,7 @@ def _pretrim_boxes(rooms: list[dict], res: int = 200) -> list[list[float]]:
                         else:
                             edge, new = k, o[k + 2]
                             size = m[k + 2] - new
-                        if size < min_dim:
+                        if size < min_dim[k]:
                             continue
                         cost = lost(me, k, new, m[edge])
                         if best is None or cost < best[0]:
@@ -337,7 +340,8 @@ def _detect_openings(image_path: str, rooms: list[dict]) -> list[dict]:
     )
     try:
         text = call_llm(prompt, images=[image_path, _mark_rooms_image(image_path, rooms)],
-                        json_mode=True, max_tokens=6000)
+                        json_mode=True, max_tokens=6000,
+                        thinking_budget=Config.FLOORPLAN_THINKING_BUDGET)
         raw = ((_parse_llm_layout(text) or {}).get("openings")) or []
     except Exception as e:  # noqa: BLE001
         print(f"⚠️  Gemini plan openings failed: {e}")
@@ -612,7 +616,7 @@ def build_upload_plan(image_path: str, rooms: list[dict], total_ping: float | No
     metas: list[dict] = []
     boxes: list[tuple[float, float, float, float]] = []
     unnamed = 0
-    nboxes = _pretrim_boxes(rooms)
+    nboxes = _pretrim_boxes(rooms, (img_w * mpp, img_h * mpp))
     for r, nb in zip(rooms, nboxes):
         ptype = _plan_type(r)
         label = r.get("label") or _TYPE_LABELS.get(r.get("room_type")) or _TYPE_LABELS.get(r.get("space_type"))
@@ -634,13 +638,16 @@ def build_upload_plan(image_path: str, rooms: list[dict], total_ping: float | No
 
     from designbridge.layout.floorplan_parse import _mark
     letters = {_mark(i): m["id"] for i, m in enumerate(metas, 1)}
-    spec = _detect_openings(image_path, rooms)
-    try:
-        from designbridge.layout.floorplan_openings import detect_doors
-        geo = detect_doors(image_path, rooms, mpp)
-    except Exception as e:  # noqa: BLE001
-        print(f"⚠️  door geometry detection failed, fall back to Gemini doors: {e}")
-        geo = None
+    # 問 Gemini 門窗（等網路）與量門弧線（吃 CPU）互不相依，並行省掉較短的那一邊
+    with ThreadPoolExecutor(max_workers=1) as pool:
+        spec_future = pool.submit(contextvars.copy_context().run, _detect_openings, image_path, rooms)
+        try:
+            from designbridge.layout.floorplan_openings import detect_doors
+            geo = detect_doors(image_path, rooms, mpp) or None   # 一扇都量不到（畫法不同）也退回 Gemini
+        except Exception as e:  # noqa: BLE001
+            print(f"⚠️  door geometry detection failed, fall back to Gemini doors: {e}")
+            geo = None
+        spec = spec_future.result()
     plan = _assemble(
         image_path, metas, rects, scale_source,
         make_openings=lambda rs: _openings_from_spec(

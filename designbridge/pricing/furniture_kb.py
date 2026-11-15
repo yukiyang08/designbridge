@@ -10,6 +10,8 @@ from __future__ import annotations
 
 import json
 import os
+import re
+from functools import lru_cache
 from pathlib import Path
 from typing import Any
 
@@ -224,6 +226,13 @@ _SUBCATEGORY_RULES: dict[str, list[tuple[str, set[str]]]] = {
              (r"桌燈|檯燈|台燈", {"table-lamp", "desk-lamp"}),
              (r"壁燈", {"wall-lamp"})],
     "rug": [(r"走道|長條", {"runner"})],
+    "curtain": [(r"羅馬簾|捲簾|百葉|調光簾|蜂巢簾|遮光簾", {"blind"}),
+                (r"窗簾|紗簾|布簾", {"curtain"})],
+    # Gemini 把這些歸在 other；對得上的才轉到 decor 找（電視、馬桶等不轉，維持 LLM 估價）
+    "decor": [(r"盆栽|植物|綠植|盆景", {"plant"}),
+              (r"抱枕|靠枕|靠墊", {"cushion"}),
+              (r"鏡", {"mirror"}),
+              (r"畫|藝術|海報", {"wall-art"})],
 }
 STYLE_BONUS = 0.0    # 商品風格跟渲染圖相同時排序分數加多少；風格標籤還不夠準、效果也量不出來，先關閉
 _POOL_SIZE = 40      # 先依大類別取這麼多候選，再篩選、去重
@@ -349,11 +358,14 @@ def _select_all(columns: str, apply=lambda q: q) -> list[dict]:
         raise RuntimeError(f"讀取 {TABLE} 失敗：{e}") from e
 
 
+# ponytail: 分類與篩選選項快取到行程結束；重新上傳 ikea_products 後要重啟後端才會更新
+@lru_cache(maxsize=1)
 def list_categories() -> list[str]:
     """回傳 Supabase 中所有出現過的家具分類（依名稱排序）。"""
     return sorted({r["category"] for r in _select_all("category") if r.get("category")})
 
 
+@lru_cache(maxsize=1)
 def list_filters() -> dict:
     """家具查詢頁的品牌、風格篩選選項與件數（依件數多到少）。"""
     from collections import Counter
@@ -374,25 +386,47 @@ def list_furniture(
     max_price: float | None = None,
     brand: str = "",
     style: str = "",
-) -> list[dict]:
-    """回傳符合分類 / 價位區間的家具清單（Supabase ikea_products）。
+    q: str = "",
+    sort: str = "",
+    limit: int = 60,
+    offset: int = 0,
+) -> dict:
+    """篩選家具（Supabase ikea_products），一次只回一頁：{"items": [...], "total": 符合總數}。
 
-    - category 為空字串代表不篩選分類
+    - category / brand / style / q 為空字串代表不篩選；q 比對名稱與品牌
     - min_price / max_price 為 None 代表不限制該端
-    - brand / style 為空字串代表不篩選
+    - sort：price_asc / price_desc，其他值依 id
     """
+    # PostgREST 的 or 語法用逗號、括號分隔條件，關鍵字裡出現會打壞查詢
+    kw = re.sub(r'[,()"\\%*]', " ", q).strip()
+
     def apply(q):
         q = q.not_.is_("price", "null")
+        if kw:
+            q = q.or_(f"name.ilike.%{kw}%,brand.ilike.%{kw}%")
         if category:
             q = q.eq("category", category)
+        # price 是 integer 欄位，送 5000.0 會被 Postgres 拒絕
         if min_price is not None:
-            q = q.gte("price", min_price)
+            q = q.gte("price", int(min_price))
         if max_price is not None:
-            q = q.lte("price", max_price)
+            q = q.lte("price", int(max_price))
         if brand:
             q = q.eq("brand", brand)
         if style:
             q = q.contains("style_tags", [style])
         return q
 
-    return _select_all("id,name,brand,category,subcategory,price,currency,url,image_url,style_tags", apply)
+    client = _get_supabase_client()
+    if client is None:
+        raise RuntimeError("Supabase 未設定（SUPABASE_URL／SUPABASE_SERVICE_ROLE_KEY），無法瀏覽家具")
+    limit = max(1, min(limit, _PAGE))
+    columns = "id,name,brand,category,subcategory,price,currency,url,image_url,style_tags"
+    try:
+        query = apply(client.table(TABLE).select(columns, count="exact"))
+        if sort in ("price_asc", "price_desc"):
+            query = query.order("price", desc=sort == "price_desc")
+        res = query.order("id").range(offset, offset + limit - 1).execute()
+    except Exception as e:
+        raise RuntimeError(f"讀取 {TABLE} 失敗：{e}") from e
+    return {"items": res.data or [], "total": res.count or 0}
