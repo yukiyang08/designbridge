@@ -64,11 +64,24 @@ const onVis = () => (document.hidden ? stop() : run())
 onMounted(() => { run(); document.addEventListener('visibilitychange', onVis) })
 onBeforeUnmount(() => { stop(); document.removeEventListener('visibilitychange', onVis) })
 const caretOn = computed(() => playing.value && !hovering.value)
+
+/* ── 滑鼠景深：Hero 背景視差、入口卡片跟著游標傾斜（觸控與減少動態不啟用，位移交給 CSS 變數） ── */
+const canTilt = (e) => e.pointerType === 'mouse' && !prefersReducedMotion()
+function track(e, kx, ky) {
+  if (!canTilt(e)) return
+  const el = e.currentTarget, r = el.getBoundingClientRect()
+  el.style.setProperty('--mx', (((e.clientX - r.left) / r.width - 0.5) * kx).toFixed(3))
+  el.style.setProperty('--my', (((e.clientY - r.top) / r.height - 0.5) * ky).toFixed(3))
+}
+function untrack(e) {
+  e.currentTarget.style.removeProperty('--mx')
+  e.currentTarget.style.removeProperty('--my')
+}
 </script>
 
 <template>
   <div class="home">
-    <header class="hero">
+    <header class="hero" @pointermove="track($event, 2, 2)" @pointerleave="untrack">
       <div class="hero-bg" aria-hidden="true"><img :src="heroBg" alt="" /></div>
       <AppNav />
 
@@ -101,7 +114,7 @@ const caretOn = computed(() => playing.value && !hovering.value)
         <p class="entries-intro">一張平面圖、一張現況照，或一個還沒成形的念頭，都能成為新家的起點。</p>
         <ul>
           <li v-for="e in ENTRIES" :key="e.t">
-            <button type="button" class="entry" @click="start">
+            <button type="button" class="entry" @click="start" @pointermove="track($event, 12, -10)" @pointerleave="untrack">
               <span class="entry-img"><img :src="e.img" alt="" loading="lazy" /></span>
               <span class="entry-cap">
                 <span class="entry-label">{{ e.label }}</span>
@@ -163,7 +176,13 @@ const caretOn = computed(() => playing.value && !hovering.value)
 }
 .hero-bg { position: absolute; inset: 0; }
 /* 設計稿：照片 opacity 60% 疊在 #313131 上 */
-.hero-bg img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; opacity: 0.6; }
+.hero-bg img {
+  position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; opacity: 0.6;
+  /* 放大一點留出視差的位移空間；背景與標題反向移動做出前後景深 */
+  transform: scale(1.05) translate(calc(var(--mx, 0) * -12px), calc(var(--my, 0) * -8px));
+  transition: transform 0.6s cubic-bezier(0.2, 0.7, 0.2, 1);
+}
+.hero-body { transform: translate(calc(var(--mx, 0) * 5px), calc(var(--my, 0) * 3px)); transition: transform 0.6s cubic-bezier(0.2, 0.7, 0.2, 1); }
 .hero > :not(.hero-bg) { position: relative; }
 
 .hero-body {
@@ -277,7 +296,13 @@ const caretOn = computed(() => playing.value && !hovering.value)
   font: inherit;
   text-align: left;
 }
-.entry-img { display: block; aspect-ratio: 16 / 10; border-radius: 12px; overflow: hidden; background: var(--db-accent-soft); }
+.entry { perspective: 800px; }
+.entry-img {
+  display: block; aspect-ratio: 16 / 10; border-radius: 12px; overflow: hidden; background: var(--db-accent-soft);
+  transform: rotateY(calc(var(--mx, 0) * 1deg)) rotateX(calc(var(--my, 0) * 1deg));
+  transition: transform 0.3s ease-out, box-shadow 0.3s;
+}
+.entry:hover .entry-img { box-shadow: 0 18px 40px rgba(49, 49, 49, 0.18); }
 .entry-img img { width: 100%; height: 100%; object-fit: cover; display: block; transition: transform 0.4s; }
 .entry:hover .entry-img img { transform: scale(1.04); }
 .entry:hover strong { text-decoration: underline; text-underline-offset: 0.3em; }
@@ -333,6 +358,7 @@ const caretOn = computed(() => playing.value && !hovering.value)
   .start-btn:hover { transform: none; }
   .scroll-cue svg, .pano img { animation: none; }
   .entry:hover .entry-img img { transform: none; }
+  .hero-bg img, .hero-body, .entry-img { transform: none; transition: none; }
 }
 </style>
 

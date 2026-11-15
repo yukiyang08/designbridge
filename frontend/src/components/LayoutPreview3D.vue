@@ -73,6 +73,11 @@ let roomWidthRef = 5.0
 let roomDepthRef = 4.0
 const furnitureMeshes = []   // [{ mesh, item }]，item 是原始 furniture_placements 物件
 
+// 重建場景時保留使用者轉好的視角；selfSig 是自己拖曳送出的那份座標，傳回來時不用重建
+let viewState = null
+let selfSig = null
+const placementsSig = () => JSON.stringify(props.sceneGraph?.furniture_placements || [])
+
 const raycaster = new THREE.Raycaster()
 const pointerNDC = new THREE.Vector2()
 const dragPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0)
@@ -307,6 +312,7 @@ function makeLabel(text) {
 }
 
 function disposeScene() {
+  if (camera && controls) viewState = { pos: camera.position.clone(), target: controls.target.clone() }
   if (animId) cancelAnimationFrame(animId)
   animId = null
   if (renderer) {
@@ -522,6 +528,11 @@ function buildScene() {
   // 參數——這個 3D 預覽固定用 base，只是給使用者一個大致對齊的初始視角，之後仍可自由拖曳旋轉）。
   controls = new OrbitControls(camera, renderer.domElement)
   controls.target.set(targetX, targetH, targetDepthFrac * roomDepth)
+  // 重建（改家具、健檢更新）時沿用上一次的視角，否則每動一件家具畫面就彈回預設角度
+  if (viewState) {
+    camera.position.copy(viewState.pos)
+    controls.target.copy(viewState.target)
+  }
   controls.update()
 
   if (props.editable) {
@@ -603,7 +614,9 @@ function onPointerUp() {
   draggedEntry = null
   controls.enabled = true
   renderer.domElement.style.cursor = 'grab'
-  emit('layout-changed', furnitureMeshes.map((f) => f.item))
+  const next = furnitureMeshes.map((f) => f.item)
+  selfSig = JSON.stringify(next)   // 這份座標是自己改的，等一下回傳到 props 時不要重建場景
+  emit('layout-changed', next)
 }
 
 function handleResize() {
@@ -629,7 +642,8 @@ onBeforeUnmount(() => {
 
 watch(() => props.highlightId, applyHighlight)
 
-watch(() => props.sceneGraph, () => {
+watch(placementsSig, (sig) => {
+  if (sig === selfSig) return
   disposeScene()
   buildScene()
 })
