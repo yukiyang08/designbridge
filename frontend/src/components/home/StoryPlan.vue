@@ -1,32 +1,42 @@
 <script setup>
 /**
- * 捲動敘事：說出想法 → 畫出尺寸精準的平面圖 → 風水與動線檢查 → 渲染成圖。
  * 平面圖用的是系統實際產出的 CAD 平面圖（SVG，assets/home/cad-plan.svg）：
  * 隨捲動依序顯示外牆、各房間、門窗，最後才標出尺寸與面積。
  * 進度 p 由 useScrollProgress 提供；減少動態時 p 固定為 1（直接顯示最終畫面，區塊也不再撐高）。
  */
-import { ref, computed, watch, onMounted } from 'vue'
-import { useScrollProgress, seg } from '@/composables/useScrollProgress'
+import { ref, computed, watch, onMounted, defineAsyncComponent } from 'vue'
+import { useScrollProgress, seg, prefersReducedMotion } from '@/composables/useScrollProgress'
 import renderImg from '@/assets/home/modern.jpg'
 import cadSvg from '@/assets/home/cad-plan.svg?raw'
+
+const PlanRise3D = defineAsyncComponent(() => import('./PlanRise3D.vue'))
 
 const STEPS = [
   { t: '說出你的想法', d: '用一段描述，或一張現況照片開始，例如「木質感、採光充足的客廳」。' },
   { t: '畫出尺寸精準的平面圖', d: '填房型與坪數，自動生成標好牆體、門窗、尺寸與面積的平面圖，家具也依空間大小擺好。' },
   { t: '風水與動線檢查', d: '開門見灶、鏡子照床這類常見禁忌，會在排版時自動避開。' },
+  { t: '立成 3D 空間', d: '平面圖長出牆面與家具，再走進房間。這份立體場景就是生圖的依據，所以格局不會跑掉。' },
   { t: '渲染成圖', d: '依版面生成寫實的效果圖，再挑風格、微調細節。' },
 ]
 const PROMPT = '木質感、採光充足的客廳'
 
 const root = ref(null)
 const p = useScrollProgress(root)
+const o = computed(() => p.value / 0.74)
 
-const active = computed(() => (p.value < 0.2 ? 0 : p.value < 0.52 ? 1 : p.value < 0.72 ? 2 : 3))
+const active = computed(() => (o.value < 0.2 ? 0 : o.value < 0.52 ? 1 : p.value < 0.53 ? 2 : p.value < 0.86 ? 3 : 4))
+
+// 第 4 幕：3D
+const load3d = ref(false)
+const ready3d = ref(false)
+if (!prefersReducedMotion()) watch(p, (v) => { if (v > 0.15) load3d.value = true }, { immediate: true })
+const t3d = computed(() => seg(p.value, 0.53, 0.87))
+const riseStyle = computed(() => ({ opacity: ready3d.value ? seg(p.value, 0.5, 0.53) : 0 }))
 
 // 第 1 幕：輸入描述
-const typed = computed(() => PROMPT.slice(0, Math.round(seg(p.value, 0.01, 0.15) * PROMPT.length)))
-const promptStyle = computed(() => ({ opacity: 1 - seg(p.value, 0.18, 0.24) }))
-const chipStyle = computed(() => ({ opacity: seg(p.value, 0.12, 0.17) }))
+const typed = computed(() => PROMPT.slice(0, Math.round(seg(o.value, 0.01, 0.15) * PROMPT.length)))
+const promptStyle = computed(() => ({ opacity: 1 - seg(o.value, 0.18, 0.24) }))
+const chipStyle = computed(() => ({ opacity: seg(o.value, 0.12, 0.17) }))
 
 // 第 2 幕：CAD 平面圖（逐一顯示 SVG 內的元素）
 const cad = ref(null)
@@ -34,7 +44,7 @@ let parts = null
 const setOp = (els, v) => { for (const e of els) e.style.opacity = v }
 function applyCad() {
   if (!parts) return
-  const k = (a, b) => seg(p.value, a, b)
+  const k = (a, b) => seg(o.value, a, b)
   setOp([parts.wall], k(0.2, 0.25))
   parts.wall.style.fillOpacity = k(0.3, 0.48)
   parts.rooms.forEach((r, i) => setOp([r], k(0.24 + i * 0.025, 0.285 + i * 0.025)))
@@ -49,17 +59,17 @@ onMounted(() => {
   parts = { wall: c[2], rooms: c.slice(3, 10), openings: c.slice(10, 41), dims: c.slice(41) }
   applyCad()
 })
-watch(p, applyCad)
-const cadStyle = computed(() => ({ opacity: seg(p.value, 0.18, 0.22) * (1 - seg(p.value, 0.7, 0.78)) }))
+watch(o, applyCad)
+const cadStyle = computed(() => ({ opacity: seg(o.value, 0.18, 0.22) * (1 - seg(o.value, 0.7, 0.78)) }))
 
 // 第 2、3 幕的標籤
-const sizeTags = computed(() => ({ opacity: seg(p.value, 0.46, 0.5) * (1 - seg(p.value, 0.56, 0.6)) }))
-const checkTags = computed(() => ({ opacity: seg(p.value, 0.6, 0.66) * (1 - seg(p.value, 0.7, 0.74)) }))
-const flowStyle = computed(() => ({ opacity: seg(p.value, 0.58, 0.64) * (1 - seg(p.value, 0.7, 0.76)) }))
+const sizeTags = computed(() => ({ opacity: seg(o.value, 0.46, 0.5) * (1 - seg(o.value, 0.56, 0.6)) }))
+const checkTags = computed(() => ({ opacity: seg(o.value, 0.6, 0.66) * (1 - seg(o.value, 0.7, 0.74)) }))
+const flowStyle = computed(() => ({ opacity: seg(o.value, 0.58, 0.64) * (1 - seg(o.value, 0.7, 0.76)) }))
 
-// 第 4 幕：效果圖
+// 第 5 幕：效果圖
 const renderStyle = computed(() => {
-  const k = seg(p.value, 0.72, 0.92)
+  const k = seg(p.value, 0.86, 0.96)
   return { opacity: k, transform: `scale(${1.04 - 0.04 * k})` }
 })
 </script>
@@ -99,6 +109,8 @@ const renderStyle = computed(() => {
         <div class="tags" :style="sizeTags"><b>牆體隔間</b><b>門窗位置</b><b>尺寸與面積標註</b></div>
         <div class="tags" :style="checkTags"><b>動線順暢</b><b>門不對鏡</b><b>開門不見床</b></div>
 
+        <PlanRise3D v-if="load3d" class="rise" :svg="cadSvg" :t="t3d" :style="riseStyle" @ready="ready3d = true" />
+
         <img class="render" :src="renderImg" alt="" loading="lazy" :style="renderStyle" />
       </div>
     </div>
@@ -106,7 +118,7 @@ const renderStyle = computed(() => {
 </template>
 
 <style scoped>
-.story { height: 360vh; background: var(--db-paper); }
+.story { height: 540vh; background: var(--db-paper); }
 .sticky {
   position: sticky;
   top: 0;
@@ -190,6 +202,8 @@ h2 {
 
 .tags { left: 0; right: 0; bottom: 0.9rem; display: flex; justify-content: center; flex-wrap: wrap; gap: 0.5rem; }
 .tags b { background: rgba(255, 255, 255, 0.95); box-shadow: var(--db-shadow-soft); color: var(--db-text); }
+
+.rise { inset: 0; }
 
 .render { inset: 0; width: 100%; height: 100%; object-fit: cover; will-change: opacity, transform; }
 

@@ -138,6 +138,7 @@ docs/決賽文件_待改清單.md
 docs/design/fig*.py
 docs/design/fig*.png
 docs/images/mobile/
+docs/manual/img
 # style_kb 工具產生的審圖檔與 YOLO 權重（ultralytics 會自動下載）
 /review.html
 /caption_review.json

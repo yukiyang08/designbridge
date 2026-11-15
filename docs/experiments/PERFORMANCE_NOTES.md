@@ -1,5 +1,9 @@
 # DesignBridge 效能研究筆記
 
+> ⚠️ **本文的數字已過時**（例如這裡寫 `requirement_analyzer` 14.5～18.7s、`layout_agent` 75～134s，
+> 現在的中位數是 5.6s 與 7.7s）。最新耗時與成本以 [`../COST.md`](../COST.md) 為準——那份是從
+> 420 筆真實執行紀錄統計的。本文保留的價值在於「瓶頸在外部 API 而非本地運算」這個結構性結論。
+
 > 基於實際跑起來的 dev server log 分析，非猜測。所有結論都對照過當前活的原始碼（重構後的
 > `designbridge/core/`、`designbridge/layout/`、`designbridge/render/`、`designbridge/pricing/`
 > 套件路徑，非重構前已刪除的扁平檔案）。
