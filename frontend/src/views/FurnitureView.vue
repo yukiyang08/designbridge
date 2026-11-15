@@ -1,14 +1,21 @@
 <script setup>
+import { Icon } from '@iconify/vue'
 import { ref, computed, onMounted, watch } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import { apiUrl } from '@/config/api'
 import { useFurnitureSelection } from '@/composables/useFurnitureSelection'
 import AppNav from '@/components/shell/AppNav.vue'
 import sceneBg from '@/assets/figma/room-bg.png'
 
-const { selectedCount, isSelected, toggle, clear } = useFurnitureSelection()
+const { selectedCount, isSelected, toggle } = useFurnitureSelection()
+
+// 篩選條件記在網址：從商品頁按上一頁回來、或分享連結時條件還在
+const route = useRoute()
+const router = useRouter()
+const init = route.query
 
 const categories = ref([])
-const activeCategory = ref('')
+const activeCategory = ref(init.cat || '')
 const furniture = ref([])
 const loading = ref(true)
 const error = ref('')
@@ -20,15 +27,31 @@ const priceRanges = [
   { label: '15,000–30,000', min: 15000, max: 30000 },
   { label: '30,000 以上', min: 30000, max: null },
 ]
-const priceIndex = ref(0)   // 下拉選單用 index，物件當 value 不好比對
+const priceIndex = ref(priceRanges[+init.price] ? +init.price : 0)   // 下拉選單用 index，物件當 value 不好比對
 const activePriceRange = computed(() => priceRanges[priceIndex.value])
-const searchQuery = ref('')
+const searchQuery = ref(init.q || '')
+const sortBy = ref(init.sort || '')
 
 // 品牌、風格選項（含件數）由後端依家具資料庫算出，風格名稱沿用生成流程的風格清單
 const brands = ref([])
 const styles = ref([])
-const activeBrand = ref('')
-const activeStyle = ref('')
+const activeBrand = ref(init.brand || '')
+const activeStyle = ref(init.style || '')
+// 全新查 Supabase 商品庫；二手是北二高家具的二手品（後端另一份本地資料），沒有品牌、風格可篩
+const condition = ref(init.cond === 'used' ? 'used' : '')
+// 二手店家也列在品牌選單（後端標 condition: used）：選二手店家就切到二手，選一般品牌就切回全新
+const usedBrands = computed(() => new Set(brands.value.filter(b => b.condition === 'used').map(b => b.value)))
+watch(activeBrand, (b) => {
+  if (usedBrands.value.has(b)) condition.value = 'used'
+  else if (b && condition.value) condition.value = ''
+})
+// 二手沒有風格標籤，風格選單不顯示，殘留的條件要清掉，不然看不到卻還在篩
+watch(condition, (v) => {
+  if (v) {
+    activeStyle.value = ''
+    if (activeBrand.value && !usedBrands.value.has(activeBrand.value)) activeBrand.value = ''
+  } else if (usedBrands.value.has(activeBrand.value)) activeBrand.value = ''
+})
 
 const categoryLabels = {
   sofa: '沙發',
@@ -38,6 +61,8 @@ const categoryLabels = {
   rug: '地毯',
   storage: '收納',
   bed: '床',
+  curtain: '窗簾',
+  decor: '軟裝',
 }
 
 async function fetchCategories() {
@@ -54,28 +79,41 @@ async function fetchFilters() {
   } catch {}
 }
 
-async function fetchFurniture() {
-  loading.value = true
+const PAGE_SIZE = 60
+const total = ref(0)
+const loadingMore = ref(false)
+let fetchSeq = 0   // 只採用最後一次查詢的回應，打字很快時舊回應會晚到
+
+// more = true：接在目前清單後面載下一頁；否則重新查詢
+async function fetchFurniture(more = false) {
+  const seq = ++fetchSeq
+  if (more) loadingMore.value = true
+  else loading.value = true
   error.value = ''
   try {
-    const params = new URLSearchParams()
+    const params = new URLSearchParams({ limit: PAGE_SIZE, offset: more ? furniture.value.length : 0 })
+    const kw = searchQuery.value.trim()
+    if (kw) params.set('q', kw)
     if (activeCategory.value) params.set('category', activeCategory.value)
     if (activePriceRange.value.min != null) params.set('min_price', activePriceRange.value.min)
     if (activePriceRange.value.max != null) params.set('max_price', activePriceRange.value.max)
     if (activeBrand.value) params.set('brand', activeBrand.value)
     if (activeStyle.value) params.set('style', activeStyle.value)
-    const qs = params.toString()
-    const res = await fetch(apiUrl(`/api/furniture${qs ? `?${qs}` : ''}`))
+    if (sortBy.value) params.set('sort', sortBy.value)
+    if (condition.value) {
+      params.set('condition', condition.value)
+      params.delete('style')
+    }
+    const res = await fetch(apiUrl(`/api/furniture?${params}`))
     if (!res.ok) throw new Error(String(res.status))
     const data = await res.json()
-    const kw = searchQuery.value.trim().toLowerCase()
-    furniture.value = kw
-      ? data.filter(item => (item.name || '').toLowerCase().includes(kw))
-      : data
+    if (seq !== fetchSeq) return
+    furniture.value = more ? [...furniture.value, ...data.items] : data.items
+    total.value = data.total
   } catch (e) {
-    error.value = '無法載入家具清單'
+    if (seq === fetchSeq) error.value = '無法載入家具清單'
   } finally {
-    loading.value = false
+    if (seq === fetchSeq) { loading.value = false; loadingMore.value = false }
   }
 }
 
@@ -83,24 +121,36 @@ function selectCategory(cat) {
   activeCategory.value = cat
 }
 
-const hasExtraFilters = computed(() => priceIndex.value !== 0 || activeBrand.value || activeStyle.value)
+// 手機上篩選下拉收進「篩選」鈕，避免第一屏全是篩選條件
+const filtersOpen = ref(false)
+const filterCount = computed(() => [condition.value, priceIndex.value !== 0, activeBrand.value, activeStyle.value, sortBy.value].filter(Boolean).length)
+const hasExtraFilters = computed(() => filterCount.value > 0)   // 徽章有數字就要能清掉，排序也算
 function clearExtraFilters() {
+  condition.value = ''
   priceIndex.value = 0
   activeBrand.value = ''
   activeStyle.value = ''
+  sortBy.value = ''
 }
 
-watch([activeCategory, activePriceRange, activeBrand, activeStyle], fetchFurniture)
+watch([activeCategory, activePriceRange, activeBrand, activeStyle, sortBy, condition], () => fetchFurniture())
+
+watch([activeCategory, priceIndex, activeBrand, activeStyle, searchQuery, sortBy, condition], ([cat, price, brand, style, q, sort, cond]) => {
+  const query = Object.fromEntries(Object.entries({ cat, price: price || '', brand, style, q: q.trim(), sort, cond }).filter(([, v]) => v))
+  router.replace({ query })
+})
 
 let searchTimer = null
 watch(searchQuery, () => {
   clearTimeout(searchTimer)
-  searchTimer = setTimeout(fetchFurniture, 300)
+  searchTimer = setTimeout(() => fetchFurniture(), 300)
 })
 
-onMounted(async () => {
-  await Promise.all([fetchCategories(), fetchFilters()])
-  await fetchFurniture()
+// 篩選選項跟家具清單互不相依，同時發出，不用等選項回來才查家具
+onMounted(() => {
+  fetchCategories()
+  fetchFilters()
+  fetchFurniture()
 })
 </script>
 
@@ -111,9 +161,8 @@ onMounted(async () => {
     <header class="furniture-header">
       <h1>家具查詢</h1>
       <div class="selected-summary">
-        <button v-if="selectedCount" class="clear-btn" @click="clear">清除</button>
         <RouterLink to="/cart" class="db-btn db-btn--sm cart-link">
-          ❤ 我的收藏（{{ selectedCount }}）
+          <Icon icon="mdi:heart-outline" aria-hidden="true" /> 我的收藏（{{ selectedCount }}）
         </RouterLink>
       </div>
     </header>
@@ -130,9 +179,19 @@ onMounted(async () => {
           class="search-input"
           placeholder="輸入關鍵字搜尋家具名稱…"
         />
-        <button v-if="searchQuery" class="search-clear" @click="searchQuery = ''">✕</button>
+        <button v-if="searchQuery" class="search-clear" aria-label="清除搜尋" @click="searchQuery = ''"><Icon icon="mdi:close" aria-hidden="true" /></button>
       </div>
-      <div class="filter-selects">
+      <button
+        type="button" :class="['filter-toggle', { active: filterCount }]"
+        :aria-expanded="filtersOpen" aria-controls="filter-selects" @click="filtersOpen = !filtersOpen"
+      >
+        <Icon icon="mdi:tune-variant" aria-hidden="true" /> 篩選<span v-if="filterCount" class="filter-count">{{ filterCount }}</span>
+      </button>
+      <div id="filter-selects" :class="['filter-selects', { open: filtersOpen }]">
+        <select v-model="condition" :class="['filter-select', { active: condition }]" aria-label="全新或二手">
+          <option value="">全新</option>
+          <option value="used">二手</option>
+        </select>
         <select v-model.number="priceIndex" :class="['filter-select', { active: priceIndex !== 0 }]" aria-label="價位">
           <option v-for="(range, idx) in priceRanges" :key="range.label" :value="idx">
             {{ idx === 0 ? '價位' : range.label }}
@@ -142,9 +201,14 @@ onMounted(async () => {
           <option value="">品牌</option>
           <option v-for="b in brands" :key="b.value" :value="b.value">{{ b.label }}（{{ b.count.toLocaleString() }}）</option>
         </select>
-        <select v-model="activeStyle" :class="['filter-select', { active: activeStyle }]" aria-label="風格">
+        <select v-if="!condition" v-model="activeStyle" :class="['filter-select', { active: activeStyle }]" aria-label="風格">
           <option value="">風格</option>
           <option v-for="st in styles" :key="st.value" :value="st.value">{{ st.label }}</option>
+        </select>
+        <select v-model="sortBy" :class="['filter-select', { active: sortBy }]" aria-label="排序">
+          <option value="">預設排序</option>
+          <option value="price_asc">價格低到高</option>
+          <option value="price_desc">價格高到低</option>
         </select>
         <button v-if="hasExtraFilters" type="button" class="clear-filters" @click="clearExtraFilters">清除篩選</button>
       </div>
@@ -167,17 +231,16 @@ onMounted(async () => {
       </button>
     </div>
 
-    <div v-if="loading" class="state-msg">載入中…</div>
+    <div v-if="loading && !furniture.length" class="state-msg">載入中…</div>
     <div v-else-if="error" class="state-msg error">{{ error }}</div>
-    <div v-else-if="furniture.length === 0" class="state-msg">沒有符合條件的家具</div>
-    <p v-else class="result-count">共 {{ furniture.length.toLocaleString() }} 件</p>
+    <div v-else-if="!loading && furniture.length === 0" class="state-msg">沒有符合條件的家具</div>
+    <p v-else class="result-count">共 {{ total.toLocaleString() }} 件</p>
 
-    <div v-if="!loading && !error && furniture.length" class="grid">
-      <div
+    <div v-if="!error && furniture.length" :class="['grid', { stale: loading }]" :aria-busy="loading">
+      <article
         v-for="item in furniture"
         :key="item.id || item.url"
         :class="['card', { checked: isSelected(item) }]"
-        @click="toggle(item)"
       >
         <div class="card-img-wrap">
           <img
@@ -189,12 +252,12 @@ onMounted(async () => {
             @error="$event.target.style.display='none'"
           />
           <div v-else class="card-no-img">無圖</div>
-          <span :class="['check-icon', { checked: isSelected(item) }]">
-            {{ isSelected(item) ? '✓' : '' }}
-          </span>
         </div>
         <div class="card-body">
-          <span v-if="item.brand" class="card-brand">{{ item.brand }}</span>
+          <span v-if="item.brand || item.condition" class="card-tags">
+            <span v-if="item.condition" class="card-brand card-brand--used">{{ item.condition }}</span>
+            <span v-if="item.brand" class="card-brand">{{ item.brand }}</span>
+          </span>
           <p class="card-name">{{ item.name }}</p>
           <p class="card-price">{{ item.currency || 'TWD' }} {{ Number(item.price || 0).toLocaleString() }}</p>
           <div class="card-actions">
@@ -204,18 +267,22 @@ onMounted(async () => {
               target="_blank"
               rel="noopener"
               class="detail-link"
-              @click.stop
             >查看詳情</a>
             <button
               :class="['favorite-btn', { favorited: isSelected(item) }]"
-              :title="isSelected(item) ? '取消收藏' : '加入收藏'"
-              @click.stop="toggle(item)"
+              type="button"
+              @click="toggle(item)"
             >
-              {{ isSelected(item) ? '✓ 已收藏' : '加入收藏' }}
+              <template v-if="isSelected(item)"><Icon icon="mdi:check" aria-hidden="true" /> 已收藏</template><template v-else>加入收藏</template>
             </button>
           </div>
         </div>
-      </div>
+      </article>
+    </div>
+    <div v-if="!loading && !error && furniture.length < total" class="load-more">
+      <button type="button" class="db-btn db-btn--ghost db-btn--sm" :disabled="loadingMore" @click="fetchFurniture(true)">
+        {{ loadingMore ? '載入中…' : `載入更多（還有 ${(total - furniture.length).toLocaleString()} 件）` }}
+      </button>
     </div>
     </div>
   </div>
@@ -231,8 +298,6 @@ onMounted(async () => {
 }
 .selected-summary { display: flex; align-items: center; gap: 0.6rem; }
 .cart-link { text-decoration: none; }
-.clear-btn { border: 0; background: none; padding: 0 0.4rem; font-size: 0.82rem; color: var(--db-text-soft); cursor: pointer; text-decoration: underline; }
-.clear-btn:hover { color: var(--db-danger); }
 
 .toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 0.6rem 0.75rem; margin-bottom: 1rem; }
 .search-bar { position: relative; flex: 1 1 260px; max-width: 420px; }
@@ -246,9 +311,22 @@ onMounted(async () => {
 .filter-select.active { border-color: var(--db-accent-deep); background-color: var(--db-accent-soft); }
 .clear-filters { border: 0; background: none; padding: 0 0.25rem; font-size: 0.8rem; color: var(--db-text-soft); text-decoration: underline; cursor: pointer; }
 .clear-filters:hover { color: var(--db-danger); }
-/* 窄螢幕：三個下拉平分同一行，不要各佔一層 */
+.filter-toggle { display: none; }
+/* 窄螢幕：下拉收進「篩選」鈕，展開時排成兩欄 */
 @media (max-width: 560px) {
-  .filter-selects { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); width: 100%; }
+  .search-bar { flex: 1 1 0; min-width: 0; }
+  .filter-toggle {
+    display: inline-flex; align-items: center; gap: 0.3rem; flex: none; min-height: 40px; padding: 0 0.9rem;
+    border: 1px solid #d8d4cb; border-radius: var(--db-radius-pill); background: #fff;
+    color: var(--db-text); font: inherit; font-size: 0.85rem; cursor: pointer;
+  }
+  .filter-toggle.active { border-color: var(--db-accent-deep); background: var(--db-accent-soft); }
+  .filter-count {
+    display: inline-grid; place-items: center; min-width: 1.15rem; height: 1.15rem; padding: 0 0.25rem;
+    border-radius: var(--db-radius-pill); background: var(--db-accent); color: var(--db-on-accent); font-size: 0.7rem;
+  }
+  .filter-selects { display: none; }
+  .filter-selects.open { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); width: 100%; }
   .filter-select { width: 100%; min-width: 0; padding: 0.42rem 1.5rem 0.42rem 0.7rem; background-position: right 0.55rem center; font-size: 0.8rem; text-overflow: ellipsis; }
   .clear-filters { grid-column: 1 / -1; justify-self: start; }
 }
@@ -276,6 +354,8 @@ onMounted(async () => {
 .cat-tab.active { background: var(--db-accent); border-color: var(--db-accent); color: var(--db-on-accent); }
 
 .result-count { margin: 0.25rem 0 0; font-size: 0.8rem; color: var(--db-text-soft); }
+.card-tags { display: flex; flex-wrap: wrap; gap: 0.3rem; }
+.card-brand--used { background: var(--db-accent-ink); color: #fff; }
 .card-brand { align-self: flex-start; padding: 0.05rem 0.5rem; border-radius: var(--db-radius-pill); background: var(--db-chip-soft); font-size: 0.7rem; color: var(--db-text-soft); }
 
 .state-msg { text-align: center; color: var(--db-text-soft); padding: 3rem; }
@@ -283,23 +363,20 @@ onMounted(async () => {
 
 .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(220px, 100%), 1fr)); gap: 1.25rem; margin-top: 1.25rem; }
 
+.load-more { display: flex; justify-content: center; margin-top: 1.5rem; }
+
 .card {
-  background: #fff; border: 1px solid #ececec; border-radius: var(--db-radius-chip);
-  overflow: hidden; cursor: pointer; transition: transform 0.16s, box-shadow 0.16s, border-color 0.16s;
+  background: #fff; border: 1px solid var(--db-line); border-radius: var(--db-radius-chip);
+  overflow: hidden; transition: border-color 0.16s;
 }
-.card:hover { transform: translateY(-3px); box-shadow: var(--db-shadow-soft); border-color: var(--db-accent); }
+.grid.stale { opacity: 0.55; transition: opacity 0.15s; }
+.card:hover { border-color: var(--db-accent); }
 .card.checked { border-color: var(--db-accent-ink); }
 
 .card-img-wrap { position: relative; aspect-ratio: 1 / 1; background: var(--db-chip-soft); overflow: hidden; }
 .card-img { width: 100%; height: 100%; object-fit: cover; display: block; }
 .card-no-img { display: grid; place-items: center; width: 100%; height: 100%; color: var(--db-placeholder); font-size: 0.8rem; }
 
-.check-icon {
-  position: absolute; top: 10px; right: 10px; display: grid; place-items: center; width: 24px; height: 24px;
-  border-radius: 50%; border: 2px solid #fff; background: rgba(255, 255, 255, 0.7);
-  font-size: 0.78rem; font-weight: 700; color: #fff; box-shadow: 0 1px 4px rgba(0, 0, 0, 0.2);
-}
-.check-icon.checked { background: var(--db-accent-ink); border-color: var(--db-accent-ink); }
 
 .card-body { padding: 0.8rem 1rem 1rem; display: flex; flex-direction: column; gap: 0.3rem; }
 .card-name {
@@ -318,4 +395,19 @@ onMounted(async () => {
 }
 .favorite-btn:hover { background: var(--db-chip-soft); }
 .favorite-btn.favorited { background: var(--db-accent); border-color: var(--db-accent); color: var(--db-on-accent); }
+
+/* 手機：兩欄、分類單行橫滑，一屏看得到 4 件以上 */
+@media (max-width: 560px) {
+  .furniture-page { padding: 1.25rem 1rem 2rem; }
+  .furniture-header h1 { font-size: 1.4rem; }
+  .category-tabs { flex-wrap: nowrap; overflow-x: auto; margin: 0 -1rem 0.85rem; padding: 0 1rem 0.25rem; scrollbar-width: none; }
+  .category-tabs::-webkit-scrollbar { display: none; }
+  .cat-tab { flex: none; }
+  .grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.75rem; margin-top: 0.75rem; }
+  .card-body { padding: 0.6rem 0.65rem 0.7rem; gap: 0.2rem; }
+  .card-name { font-size: 0.8rem; }
+  .card-price { font-size: 0.85rem; }
+  .card-actions { flex-wrap: wrap; }
+  .favorite-btn { min-height: 32px; }
+}
 </style>

@@ -1,4 +1,5 @@
 <script setup>
+import { Icon } from '@iconify/vue'
 /**
  * 各環節耗時面板：顯示 /api/generate 回傳的 timing_runs（每輪生成／換風格／微調一段，
  * 串成這張圖的完整流程）。子步驟以時間區間包含關係判斷層級，長條對應該輪內的起訖時間。
@@ -112,7 +113,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey))
           <h3 class="tp-title">{{ title }}</h3>
           <p class="tp-total">總計 {{ fmt(grandTotal) }}<template v-if="sections.length > 1">（{{ sections.length }} 輪）</template></p>
         </div>
-        <button type="button" class="tp-close" aria-label="關閉" @click="emit('close')">✕</button>
+        <button type="button" class="tp-close" aria-label="關閉" @click="emit('close')"><Icon icon="mdi:close" aria-hidden="true" /></button>
       </header>
 
       <section v-for="(sec, si) in sections" :key="si" class="tp-section">
@@ -189,7 +190,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey))
 .tp-row.d0 { font-weight: 600; border-top: 1px solid #f0ede6; padding-top: 0.55rem; }
 .tp-row.d0:first-child { border-top: none; }
 .tp-row.d1 .tp-name { padding-left: 1rem; color: var(--db-text-soft); }
-.tp-row.d2 .tp-name { padding-left: 2rem; color: var(--db-placeholder); }
+.tp-row.d2 .tp-name { padding-left: 2rem; color: var(--db-text-soft); }
 .tp-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .tp-cold { margin-left: 0.4rem; padding: 0.05rem 0.4rem; border-radius: 4px; font-size: 0.7rem; font-style: normal; font-weight: 500; background: #fdf0d8; color: #8a5a00; }
 .tp-track { position: relative; height: 8px; border-radius: 4px; background: #f2efe8; }
@@ -197,7 +198,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey))
 .tp-row.d0 .tp-bar { background: var(--db-text); }
 .tp-row.d2 .tp-bar { background: var(--db-placeholder); }
 .tp-sec { text-align: right; font-variant-numeric: tabular-nums; }
-.tp-note { margin: 0.9rem 0 0; font-size: 0.75rem; color: var(--db-placeholder); }
+.tp-note { margin: 0.9rem 0 0; font-size: 0.75rem; color: var(--db-text-soft); }
 @media (max-width: 520px) {
   .tp-row { grid-template-columns: minmax(0, 1fr) 4.8rem; }
   .tp-track { grid-column: 1 / -1; grid-row: 2; }

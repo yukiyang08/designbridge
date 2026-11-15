@@ -201,7 +201,7 @@ def get_history(limit: int = 0, user_id: str = Depends(get_user_id)):
         rows = rows[:limit]
     pids = list({r["project_id"] for r in rows})
     projects = {p["id"]: p for p in (
-        sb.table("projects").select("id,user_id,cad_plan,cad_svg_path").in_("id", pids).execute().data if pids else [])}
+        sb.table("projects").select("id,user_id,title,cad_plan,cad_svg_path").in_("id", pids).execute().data if pids else [])}
     paths = [p for r in rows for p in (r["image_path"], r["floor_plan_path"], r["source_photo_path"], r["style_ref_path"]) if p]
     paths += [p["cad_svg_path"] for p in projects.values() if p["cad_svg_path"]]
     signed = {}
@@ -220,7 +220,7 @@ def get_history(limit: int = 0, user_id: str = Depends(get_user_id)):
         rec["cad_svg_url"] = signed.get(proj.get("cad_svg_path"))
         rec["cad_summary"] = _cad_summary(proj.get("cad_plan"))
         rec["role"] = "owner" if proj.get("user_id") == user_id else "editor"
-        rec["title"] = r["title"]
+        rec["title"] = proj.get("title") or r["title"]   # 改名只改 projects，以它為準
         rec["project_id"], rec["space_id"], rec["space_name"] = r["project_id"], r["space_id"], r["space_name"]
         rec["quotation"] = r["quotation"]
         out.append(rec)
@@ -383,6 +383,22 @@ def put_project_state(project_id: str, body: ProjectState, user_id: str = Depend
             rows.append(row)
         sb.table("project_spaces").upsert(rows, on_conflict="project_id,space_id").execute()
     return {"ok": True}
+
+
+class TitleBody(BaseModel):
+    title: str = Field(min_length=1, max_length=60)
+
+
+@router.put("/api/projects/{project_id}/title")
+def put_project_title(project_id: str, body: TitleBody, user_id: str = Depends(get_user_id)):
+    """擁有者幫設計改名。"""
+    sb = _get_supabase()
+    _owner_only(sb, project_id, user_id)
+    title = body.title.strip()
+    if not title:
+        raise HTTPException(status_code=422, detail="名稱不能是空白")
+    sb.table("projects").update({"title": title, "updated_at": _now()}).eq("id", project_id).execute()
+    return {"title": title}
 
 
 # ── 分享與共編：唯讀連結、邀請連結、成員 ──────────────────────────────────────────

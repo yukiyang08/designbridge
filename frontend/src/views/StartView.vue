@@ -1,41 +1,38 @@
 <script setup>
-/** Figma MacBook Air - 9：你想從哪裡開始設計？三張入口卡。 */
-import { useRouter } from 'vue-router'
+/** Figma MacBook Air - 9：三個設計入口；平面圖入口再分一層（?from=plan）選上傳或自動生成。 */
+import { computed } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
 import AppNav from '@/components/shell/AppNav.vue'
 import { useDesignFlow } from '@/composables/useDesignFlow'
 import sceneBg from '@/assets/figma/room-bg.png'
-import thumbPlan from '@/assets/figma/entry-plan.png'
+import thumbPlan from '@/assets/figma/entry-plan-3d.jpg'
+import planAuto from '@/assets/figma/entry-plan.png'   // CAD 工具自動生成的平面圖，就是這條路的產出
 import thumbPhoto from '@/assets/figma/entry-photo.png'
 import thumbScratch from '@/assets/figma/entry-scratch.png'
 
+const route = useRoute()
 const router = useRouter()
 const { startFlow } = useDesignFlow()
 
-// 原本的「從繪製平面設計圖開始」「上傳CAD平面配置圖」兩張入口卡拿掉了——
-// 兩者的功能都收進 cad 流程的房型設定步驟（StepRoomProgram.vue）當次要按鈕：
-// 「上傳我自己的平面圖」「跳過，直接生成單間家具佈局」，不再各自佔一張首頁卡片。
+const ICON_UPLOAD = 'M12 16V4M7 9l5-5 5 5M4 16v3a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-3'
+const ICON_GRID = 'M4 4h16v16H4zM4 13h8M12 4v16M12 9h8'
+
 const ENTRIES = [
-  {
-    source: 'cad',
-    thumb: thumbPlan,
-    title: ['我是屋主，', '我要上傳 CAD 圖'],
-    desc: '填房型＋坪數自動切割整層格局，也能上傳自己的平面圖，或跳過直接排單間家具',
-  },
-  {
-    source: 'photo',
-    thumb: thumbPhoto,
-    title: ['我是租屋族，', '要改變現有空間'],
-    desc: '拍一張現況照，AI 讀懂格局後直接改造成你要的樣子',
-  },
-  {
-    source: 'skip',
-    thumb: thumbScratch,
-    title: ['從零開始，', '直接描述你的理想空間'],
-    desc: '不排家具，只用一段描述加風格參考直接生成效果圖',
-  },
+  { source: 'plan', thumb: thumbPlan, title: '從平面圖開始', desc: '照真實格局逐間規劃，家具尺寸對得上', cta: '開始規劃' },
+  { source: 'photo', thumb: thumbPhoto, title: '改造現有空間', desc: '上傳房間照片，保留格局看翻新後的樣子', cta: '上傳空間照片' },
+  { source: 'skip', thumb: thumbScratch, title: '從想法開始', desc: '描述你想要的空間，不排家具直接出圖', cta: '描述設計需求' },
+]
+// 上傳與自動生成的輸入完全不同（上傳會跳過房型表單），進流程前就分開，不讓想上傳的人先看到表單
+const PLAN_CHOICES = [
+  { source: 'upload', icon: ICON_UPLOAD, img: thumbPlan, crop: true, title: '上傳我的平面圖', desc: '已經有平面圖：AI 辨識房間與尺寸，照你家的格局規劃', cta: '上傳平面圖' },
+  { source: 'cad', icon: ICON_GRID, img: planAuto, title: '自動生成格局', desc: '還沒有平面圖：填房型與坪數，自動切出整層格局', cta: '開始填寫' },
 ]
 
+// 用 query 而不是元件狀態：瀏覽器上一頁能回到三張卡
+const planLevel = computed(() => route.query.from === 'plan')
+
 function pick(source) {
+  if (source === 'plan') return router.push({ query: { from: 'plan' } })
   startFlow(source)
   router.push('/studio')
 }
@@ -45,27 +42,53 @@ function pick(source) {
   <div class="db-scene start" :style="{ '--db-scene-image': `url(${sceneBg})` }">
     <AppNav />
 
-    <h1 class="prompt">你想從哪裡開始設計？</h1>
+    <template v-if="!planLevel">
+      <header class="intro">
+        <h1 class="prompt">讓理想空間，從這裡開始</h1>
+        <p class="lead">從平面圖、現有空間或一個想法出發，一步步做出你的家。</p>
+      </header>
 
-    <div class="cards">
-      <button
-        v-for="e in ENTRIES"
-        :key="e.source"
-        type="button"
-        class="entry"
-        @click="pick(e.source)"
-      >
-        <div class="thumb-wrap">
-          <img :src="e.thumb" :alt="e.title.join('')" :class="['thumb', { 'thumb--contain': e.thumb === thumbPlan }]" />
-        </div>
-        <h2 class="title">
-          <span v-for="line in e.title" :key="line">{{ line }}</span>
-        </h2>
-        <p class="desc">{{ e.desc }}</p>
+      <div class="cards">
+        <button v-for="e in ENTRIES" :key="e.source" type="button" class="entry" @click="pick(e.source)">
+          <div class="thumb-wrap">
+            <img :src="e.thumb" alt="" class="thumb" />
+          </div>
+          <div class="body">
+            <h2 class="title">{{ e.title }}</h2>
+            <p class="desc">{{ e.desc }}</p>
+            <!-- 整張卡已是 button，這裡只是視覺上的連結 -->
+            <div class="links"><span class="link" aria-hidden="true">{{ e.cta }} <span>→</span></span></div>
+          </div>
+        </button>
+      </div>
+    </template>
+
+    <template v-else>
+      <header class="intro">
+        <h1 class="prompt">你手上有平面圖嗎？</h1>
+        <p class="lead">兩種都會做出整層格局，之後逐間設計。</p>
+      </header>
+
+      <div class="cards cards--two">
+        <button v-for="c in PLAN_CHOICES" :key="c.source" type="button" class="entry" @click="pick(c.source)">
+          <div class="icon-thumb" aria-hidden="true">
+            <img v-if="c.img" :src="c.img" alt="" :class="['choice-img', { 'choice-img--blueprint': c.crop }]" />
+            <svg v-else viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><path :d="c.icon" /></svg>
+          </div>
+          <div class="body">
+            <h2 class="title">{{ c.title }}</h2>
+            <p class="desc">{{ c.desc }}</p>
+            <div class="links"><span class="link" aria-hidden="true">{{ c.cta }} <span>→</span></span></div>
+          </div>
+        </button>
+      </div>
+      <button type="button" class="back" @click="router.replace({ query: {} })">
+        <span aria-hidden="true">←</span> 重新選擇模式
       </button>
-    </div>
+    </template>
   </div>
 </template>
+
 
 <style scoped>
 .start {
@@ -73,118 +96,153 @@ function pick(source) {
   flex-direction: column;
   padding-bottom: 3rem;
 }
+/* 卡片內也是室內照：背景輕微模糊退到後面；inset 負值藏住模糊的淡邊 */
+.start::before { inset: -16px; filter: blur(4px); }
 
+.intro {
+  margin: clamp(1rem, 4vh, 2.75rem) auto clamp(1.5rem, 4vh, 2.5rem);
+  padding: 0 1.5rem;
+  text-align: center;
+  color: #fff;
+  text-shadow: 0 2px 18px rgba(0, 0, 0, 0.42);
+}
 .prompt {
-  margin: clamp(1rem, 4vh, 2.75rem) 0 clamp(1.5rem, 4vh, 2.5rem);
+  margin: 0 0 0.5rem;
   font-family: var(--db-font-display);
   font-style: italic;
   font-weight: 500;
-  font-size: clamp(1.75rem, 3.9vw, 3.125rem);
-  color: #fff;
-  text-align: center;
-  text-shadow: 0 2px 18px rgba(0, 0, 0, 0.42);
+  font-size: clamp(1.75rem, 3.6vw, 2.9rem);
+  text-wrap: balance;
 }
+.lead { margin: 0; font-size: clamp(0.95rem, 1.3vw, 1.1rem); opacity: 0.92; }
 
 .cards {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
-  gap: clamp(1rem, 2.4vw, 2rem);
-  width: min(1440px, calc(100vw - 3rem));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: clamp(1rem, 2vw, 1.75rem);
+  width: min(1240px, calc(100vw - 3rem), 150vh);   /* 4:3 圖較高，矮螢幕也要一屏看完 */
   margin: 0 auto;
 }
 
 .entry {
   display: flex;
   flex-direction: column;
-  align-items: center;
-  gap: 1rem;
-  padding: 2.5rem 1.5rem 2rem;
-  border: 2px solid transparent;
-  border-radius: var(--db-radius-card);
+  padding: 0;
+  overflow: hidden;
+  border: none;
+  border-radius: 14px;
   background: var(--db-card);
-  box-shadow: var(--db-shadow-card);
+  box-shadow: var(--db-shadow-soft);
+  color: var(--db-text);
+  font: inherit;
+  text-align: left;
   cursor: pointer;
-  text-align: center;
-  transition: transform 0.18s, box-shadow 0.18s, border-color 0.18s;
+  transition: transform 0.2s, box-shadow 0.2s;
 }
-.entry:hover {
-  transform: translateY(-6px);
-  border-color: var(--db-accent);
-  box-shadow: 0 24px 56px rgba(28, 24, 18, 0.24);
-}
-.entry:focus-visible {
+button.entry:hover { transform: translateY(-4px); box-shadow: var(--db-shadow-card); }
+.entry:focus-visible, .link:focus-visible {
   outline: 3px solid var(--db-accent);
   outline-offset: 3px;
 }
 
-.thumb-wrap {
-  display: grid;
-  place-items: center;
-  width: 100%;
-  flex: 1;
-  min-height: 190px;
-}
+.thumb-wrap { overflow: hidden; }
 .thumb {
+  display: block;
   width: 100%;
-  aspect-ratio: 3 / 2;   /* 三張縮圖同尺寸，不看原圖比例 */
-  border-radius: 12px;
+  aspect-ratio: 4 / 3;   /* 三張縮圖同尺寸，不看原圖比例 */
   object-fit: cover;
+  transition: transform 0.4s;
 }
-.thumb--contain { object-fit: contain; }   /* 平面圖的線條貼邊，裁掉會缺一塊 */
+button.entry:hover .thumb { transform: scale(1.03); }
 
-.title {
+.body {
   display: flex;
+  flex: 1;
   flex-direction: column;
+  gap: 0.35rem;
+  padding: 1.1rem 1.4rem 1.3rem;
+}
+.title {
   margin: 0;
   font-family: var(--db-font-display);
-  font-style: normal;
   font-weight: 500;
-  font-size: clamp(1.15rem, 1.7vw, 1.6rem);
+  font-size: clamp(1.2rem, 1.6vw, 1.5rem);
   line-height: 1.4;
-  color: var(--db-text);
 }
+.desc { margin: 0; font-size: 0.9rem; line-height: 1.65; color: var(--db-text-soft); }
 
-/* 設計稿只有標題。加一行說明，是因為「從零開始」和「上傳照片」光看標題
-   分不出實際差在哪（一個排家具、一個不排），使用者選錯要重跑一次生成。 */
-.desc {
-  margin: 0;
-  max-width: 30ch;
-  font-size: 0.88rem;
-  line-height: 1.65;
-  color: var(--db-text-soft);
+/* 連結貼卡底，三張卡的動作列對齊 */
+.links { display: flex; flex-wrap: wrap; gap: 0.25rem 1.5rem; margin-top: auto; padding-top: 0.9rem; }
+.link {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  min-height: 44px;
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--db-accent-ink);
+  font: inherit;
+  font-weight: 500;
+  white-space: nowrap;   /* 箭頭不能被擠到下一行 */
+  cursor: pointer;
 }
+/* 第二層：上傳／自動生成兩大格，圖區改放大圖示 */
+.cards--two { grid-template-columns: repeat(2, minmax(0, 1fr)); width: min(880px, calc(100vw - 3rem)); }
+.icon-thumb {
+  display: grid;
+  place-items: center;
+  aspect-ratio: 16 / 9;
+  background: var(--db-paper);
+  border-bottom: 1px solid var(--db-line);
+  color: var(--db-accent-ink);
+}
+.icon-thumb svg { width: 72px; height: 72px; transition: transform 0.3s; }
+button.entry:hover .icon-thumb svg { transform: scale(1.08); }
+/* 平面圖線條貼邊，裁掉會缺一塊：完整放進白底 */
+.choice-img { position: absolute; inset: 0; width: 100%; height: 100%; padding: 0.75rem; object-fit: contain; background: #fff; }
+.icon-thumb { position: relative; overflow: hidden; }
+/* 上傳：只取 3D 圖左下的 2D 藍圖那塊，代表「你手上的平面圖」 */
+.choice-img--blueprint { padding: 0; object-fit: cover; object-position: 0 75%; transform: scale(1.8); transform-origin: 0 70%; }
+.back {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  min-height: 44px;
+  margin: 1.25rem auto 0;
+  padding: 0 1rem;
+  border: none;
+  background: none;
+  color: #fff;
+  font: inherit;
+  text-shadow: 0 1px 8px rgba(0, 0, 0, 0.5);
+  cursor: pointer;
+}
+.back:hover { text-decoration: underline; text-underline-offset: 0.3em; }
+.back:focus-visible { outline: 3px solid #fff; outline-offset: 2px; }
+.link span { transition: transform 0.18s; }
+.link:hover span, button.entry:hover .link span { transform: translateX(4px); }
+.link:hover { text-decoration: underline; text-underline-offset: 0.3em; }
 
-/* 4 張卡在筆電寬度以下會太擠，先降成 2x2，太窄（手機）再收成單欄 */
-@media (max-width: 1180px) {
-  .cards { grid-template-columns: repeat(2, minmax(0, 1fr)); width: min(720px, calc(100vw - 3rem)); }
-}
 @media (max-width: 900px) {
-  .cards { grid-template-columns: 1fr; width: min(560px, calc(100vw - 2rem)); }
-  .thumb-wrap { min-height: 0; }
-  .thumb { max-height: 180px; }
+  .cards, .cards--two { grid-template-columns: 1fr; width: min(560px, calc(100vw - 2rem)); }
+  .thumb { aspect-ratio: 16 / 9; }
 }
 @media (prefers-reduced-motion: reduce) {
-  .entry:hover { transform: none; }
+  button.entry:hover, button.entry:hover .thumb, button.entry:hover .icon-thumb svg, .link span { transform: none !important; }
 }
-/* 手機：三張大卡改成橫向小列（縮圖在左、標題與說明在右），一屏看得到全部入口 */
+/* 手機：卡片改成橫向小列（縮圖在左、文字在右），一屏看得到全部入口 */
 @media (max-width: 640px) {
-  .prompt { padding: 0 1rem; font-size: 1.5rem; }
+  .prompt { font-size: 1.5rem; }
   .cards { gap: 0.75rem; }
-  .entry {
-    display: grid;
-    grid-template-columns: 96px 1fr;
-    grid-template-areas: "t h" "t d";
-    align-items: center;
-    gap: 0.2rem 1rem;
-    padding: 0.9rem 1rem;
-    text-align: left;
-  }
-  .thumb-wrap { grid-area: t; min-height: 0; }
-  .thumb { max-height: 80px; }
-  .title { grid-area: h; flex-direction: row; flex-wrap: wrap; column-gap: 0.3rem; font-size: 1.1rem; }
-  .desc {
-    grid-area: d; max-width: none; font-size: 0.8rem; line-height: 1.5;
-    display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
-  }
+  .entry { flex-direction: row; align-items: stretch; }
+  .thumb-wrap { flex: none; width: 104px; }
+  .thumb { height: 100%; aspect-ratio: auto; }
+  .body { padding: 0.8rem 1rem; gap: 0.15rem; }
+  .title { font-size: 1.1rem; }
+  .desc { font-size: 0.8rem; line-height: 1.5; }
+  .links { padding-top: 0.2rem; }
+  .icon-thumb { flex: none; width: 104px; aspect-ratio: auto; border-bottom: none; }
+  .icon-thumb svg { width: 40px; height: 40px; }
 }
 </style>

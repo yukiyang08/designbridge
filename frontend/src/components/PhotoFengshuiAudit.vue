@@ -1,4 +1,5 @@
 <script setup>
+import { Icon } from '@iconify/vue'
 /**
  * 照片風水＋動線健檢：上傳現況照 → AI 推估俯視平面 → 打分、列出違規、在照片上框出來。
  *
@@ -106,7 +107,7 @@ const adopted = computed(() => fengshuiEnabled.value
       <p v-if="photoAuditError" class="pa-error" role="alert">{{ photoAuditError }}</p>
 
       <div class="pa-actions">
-        <p v-if="adopted" class="pa-adopted">✓ 下一步生成效果圖時，會依風水重新擺放家具</p>
+        <p v-if="adopted" class="pa-adopted"><Icon icon="mdi:check" aria-hidden="true" /> 下一步生成效果圖時，會依風水重新擺放家具</p>
         <button v-else-if="failedRules.length" type="button" class="db-btn db-btn--sm" @click="adoptPhotoAudit">
           生成時依風水重新擺放
         </button>

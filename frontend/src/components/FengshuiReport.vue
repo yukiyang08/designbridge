@@ -1,4 +1,5 @@
 <script setup>
+import { Icon } from '@iconify/vue'
 /**
  * 風水＋動線健檢報告卡。
  *
@@ -24,8 +25,12 @@ const props = defineProps({
   /** 給了房間尺寸才畫小平面圖（編輯器上沒畫門窗時，靠它看出規則在對什麼） */
   roomW: { type: Number, default: 0 },
   roomD: { type: Number, default: 0 },
+  /** 問題旁邊放「定位」：在編輯器上圈出違規家具（平面圖步驟才有編輯器） */
+  locatable: { type: Boolean, default: false },
 })
-defineEmits(['fix', 'undo', 'enable', 'toggle'])
+defineEmits(['fix', 'undo', 'enable', 'toggle', 'locate'])
+// 違規對象也可能是門（「門不對窗」），門不在家具清單裡，定位不到
+const furnitureIds = ids => ids.filter(id => id !== 'door')
 
 const fs = computed(() => props.report?.fengshui || null)
 const circ = computed(() => props.report?.circulation || null)
@@ -76,7 +81,7 @@ const scoreTone = s => s == null ? '' : s >= 85 ? 'is-good' : s >= 60 ? 'is-mid'
         這個配置有 <strong>{{ failed.length }}</strong> 處不符合風水
         <span class="rp-off-list">（{{ failed.map(r => r.label).join('、') }}）</span>
       </p>
-      <p v-else-if="fs?.score != null" class="rp-ok">✓ 目前的擺法都符合風水</p>
+      <p v-else-if="fs?.score != null" class="rp-ok"><Icon icon="mdi:check" aria-hidden="true" /> 目前的擺法都符合風水</p>
       <button v-if="failed.length" type="button" class="db-btn db-btn--ghost db-btn--sm" @click="$emit('enable')">
         {{ enableLabel }}
       </button>
@@ -99,7 +104,8 @@ const scoreTone = s => s == null ? '' : s >= 85 ? 'is-good' : s >= 60 ? 'is-mid'
             已調整 {{ lastFix.moved }} 件家具
             <button type="button" class="rp-link" @click="$emit('undo')">復原</button>
           </p>
-          <p v-else-if="lastFix && failed.length" class="rp-fixed">空間不夠，無法自動避開，請參考化解建議</p>
+          <!-- 不寫「空間不夠」：多半是怎麼搬都會擋到動線或撞到別的家具，不是真的沒空間 -->
+          <p v-else-if="lastFix && failed.length" class="rp-fixed">找不到不影響其他家具和動線的擺法，下面有手動調整的建議</p>
           <button
             v-else-if="fixable && failed.length"
             type="button" class="db-btn db-btn--sm" :disabled="loading" @click="$emit('fix')"
@@ -118,7 +124,7 @@ const scoreTone = s => s == null ? '' : s >= 85 ? 'is-good' : s >= 60 ? 'is-mid'
         <ul class="rp-changes">
           <li v-for="(m, k) in lastFix.moves" :key="k"><strong>{{ m.label }}</strong>{{ m.text }}</li>
         </ul>
-        <p v-if="lastFix.resolved.length" class="rp-resolved">✓ 已解決：{{ lastFix.resolved.join('、') }}</p>
+        <p v-if="lastFix.resolved.length" class="rp-resolved"><Icon icon="mdi:check" aria-hidden="true" /> 已解決：{{ lastFix.resolved.join('、') }}</p>
       </template>
       <div v-else-if="showPlan" class="rp-plans rp-plans--single">
         <FengshuiMiniPlan title="門窗位置（推估）與違規家具" :plan="planOf(placements)" :offenders="currentOffenders" />
@@ -130,17 +136,21 @@ const scoreTone = s => s == null ? '' : s >= 85 ? 'is-good' : s >= 60 ? 'is-mid'
       <ul v-if="failed.length" class="rp-list">
         <li v-for="r in failed" :key="r.trigger" class="rp-item is-fail">
           <p class="rp-item-head">
-            <span class="rp-mark" aria-hidden="true">⚠</span>
+            <span class="rp-mark" aria-hidden="true"><Icon icon="mdi:alert-outline" aria-hidden="true" /></span>
             <strong>{{ r.label }}</strong>
             <span v-if="r.offenders.length" class="rp-who">{{ names(r.offenders) }}</span>
+            <button
+              v-if="locatable && furnitureIds(r.offenders).length"
+              type="button" class="rp-locate" @click="$emit('locate', furnitureIds(r.offenders))"
+            >定位</button>
           </p>
           <p class="rp-reason">{{ r.reason }}</p>
           <p class="rp-remedy">
-            <span>{{ lastFix ? '無法自動避開，建議' : '化解' }}：</span>{{ r.remedy }}
+            <span>{{ lastFix ? '建議手動調整' : '化解' }}：</span>{{ r.remedy }}
           </p>
         </li>
       </ul>
-      <p v-else-if="fs?.score != null" class="rp-ok">✓ 套用的風水規則全部符合</p>
+      <p v-else-if="fs?.score != null" class="rp-ok"><Icon icon="mdi:check" aria-hidden="true" /> 套用的風水規則全部符合</p>
 
       <p v-if="passed.length" class="rp-passed">
         已符合：{{ passed.map(r => r.label).join('、') }}
@@ -155,6 +165,10 @@ const scoreTone = s => s == null ? '' : s >= 85 ? 'is-good' : s >= 60 ? 'is-mid'
           <span class="rp-mark" aria-hidden="true">↯</span>
           <strong>{{ i.kind === 'door_blocked' ? '門口被擋住' : '有家具走不到' }}</strong>
           <span class="rp-who">{{ names(i.offenders) }}</span>
+          <button
+            v-if="locatable && furnitureIds(i.offenders).length"
+            type="button" class="rp-locate" @click="$emit('locate', furnitureIds(i.offenders))"
+          >定位</button>
         </p>
         <p class="rp-reason">{{ i.message }}</p>
         <p class="rp-remedy"><span>建議：</span>{{ i.remedy }}</p>
@@ -231,6 +245,20 @@ const scoreTone = s => s == null ? '' : s >= 85 ? 'is-good' : s >= 60 ? 'is-mid'
 .rp-mark { color: var(--db-danger); }
 .is-circ .rp-mark { color: var(--db-text-soft); }
 .rp-who { color: var(--db-text-soft); font-size: 0.82rem; }
+.rp-locate {
+  margin-left: auto;
+  padding: 0.15rem 0.7rem;
+  border: 1px solid currentColor;
+  border-radius: var(--db-radius-pill);
+  background: #fff;
+  color: var(--db-danger);
+  font: inherit;
+  font-size: 0.78rem;
+  cursor: pointer;
+}
+.is-circ .rp-locate { color: var(--db-text); }
+.rp-locate:hover { background: var(--db-danger); color: #fff; }
+.is-circ .rp-locate:hover { background: var(--db-ink); }
 .rp-reason { margin-top: 0.25rem !important; color: var(--db-text-soft); font-size: 0.83rem; line-height: 1.55; }
 .rp-remedy { margin-top: 0.25rem !important; font-size: 0.83rem; line-height: 1.55; }
 .rp-remedy span { font-weight: 600; }

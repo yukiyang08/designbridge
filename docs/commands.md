@@ -22,6 +22,24 @@ python -m style_kb.scrapper.scraper_100_images --style-filter 鄉村風 --target
 
 ---
 
+## 二手家具
+
+所有店家共用 `designbridge/furniture_kb/secondhand_tw.json` 與 `secondhand_embeddings.npz`；每次只換掉一家的商品，向量自動沿用、只算新圖片，不用重啟後端。
+二手品賣掉就下架，要定期重抓或重新匯入（`DESIGNBRIDGE_ENABLE_SECONDHAND=false` 可關閉估價的二手推薦）。
+
+```powershell
+# 北二高家具（爬蟲）
+python scripts/scrape_beg.py
+python scripts/scrape_beg.py --dry-run          # 只列出，不寫檔
+
+# 其他店家（CSV，範本 docs/secondhand_import_template.csv）
+python scripts/import_secondhand_csv.py --store "ESG.STYLE" --csv esg.csv --dry-run   # 先檢查
+python scripts/import_secondhand_csv.py --store "ESG.STYLE" --csv esg.csv
+python scripts/import_secondhand_csv.py --store "ESG.STYLE" --remove                  # 刪掉這家
+```
+
+---
+
 ## 整理 & 上傳
 
 ```powershell
@@ -163,3 +181,21 @@ for k,v in sorted(Counter(r['style_id'] for r in rows).items(), key=lambda x:-x[
     print(f'  {k:12} {v}')
 "
 ```
+
+---
+
+## 平面圖辨識
+
+```powershell
+# 牆線模型權重（部署機必做；約 70 MB，存到 models/cubicasa/，缺檔時退回規則式牆線）
+python scripts/fetch_cubicasa_weights.py
+
+# 評估資料（都存到 test/data/，git 已忽略）
+python scripts/fetch_cubicasa_subset.py --n 50     # CubiCasa5K 子集，附逐間房標註
+python scripts/fetch_tw_floorplans.py --n 30       # 台灣配置圖，附坪數與格局
+
+# 三組切割比較（CubiCasa 官方程式在 ablation_tests/cubicasa5k/，用它的 venv）
+ablation_tests/cubicasa5k/.venv/Scripts/python ablation_tests/cubicasa5k/experiment3.py --taiwan test/data/floorplans_tw/*.jpg --cubicasa 50
+```
+
+結果與做法見 `test/FLOORPLAN_SEGMENTATION_EXPERIMENT.md`、`docs/FLOORPLAN_ACCURACY.md`。

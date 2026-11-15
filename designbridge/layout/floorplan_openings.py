@@ -93,7 +93,8 @@ def detect_doors(image_path: str, rooms: list[dict], mpp: float) -> list[dict[st
                 # 鉸鏈沿牆位置 × 垂直牆的偏移（缺口中心線不一定在牆正中）
                 hinge, off = np.meshgrid(np.arange(a0, a1 + 1), np.arange(-6, 7))
                 hinge, cross = hinge.ravel(), (cross0 + off).ravel()
-                for r in range(r_lo, r_hi + 1):
+                # ponytail: 半徑每 2 px 試一次（弧線取樣已容許 ±1 px），逐 px 試要兩倍時間
+                for r in range(r_lo, r_hi + 1, 2):
                     for sign in (1, -1):   # 另一端在鉸鏈的哪一邊
                         for side in (-1, 1):
                             ax, ay = (sign, 0) if horizontal else (0, sign)

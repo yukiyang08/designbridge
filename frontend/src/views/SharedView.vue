@@ -66,4 +66,12 @@ watch(() => route.params.token, async token => {
 .tab.on { background: var(--db-accent); border-color: var(--db-accent); color: var(--db-on-accent); }
 .main-img { width: 100%; border-radius: var(--db-radius-chip); display: block; margin-bottom: 0.8rem; }
 .pano { margin-top: 1rem; }
+@media (max-width: 560px) {
+  .shared { margin-top: 0.75rem; padding: 1.1rem 1rem 1.75rem; }
+  .title { font-size: 1.3rem; min-width: 0; }
+  .head .db-btn { flex: none; }
+  .tabs { flex-wrap: nowrap; overflow-x: auto; margin: 0 -1rem 0.85rem; padding: 0 1rem 0.2rem; scrollbar-width: none; }
+  .tabs::-webkit-scrollbar { display: none; }
+  .tab { flex: none; }
+}
 </style>

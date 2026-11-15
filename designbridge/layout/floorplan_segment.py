@@ -18,6 +18,12 @@ _WORK_SIDE = 1240
 _WALL_GRAY = 160
 _LINE_GRAY = 200
 _WALL_KERNEL = 5
+# 判斷屋外用的屏障：淺灰的窗線、外牆細線比 _LINE_GRAY 淡，屏障有缺口屋外會從窗戶淹進室內。
+# 用較寬的灰階門檻、把線加粗 _OUT_CLOSE 格補缺口再淹，淹完往外擴回原位
+_OUT_LINE_GRAY = 230
+_OUT_CLOSE = 4
+# 補缺口後，尺寸線之間的長條也會被封起來；長邊超過短邊此倍數的區塊不自動補種子
+_STRIP_RATIO = 8
 # 兩端接牆、長度超過此比例的平行雙線（窗、落地窗）在認領階段視為隔間
 _LONG_LINE = 0.068
 # 雙線判定：兩條平行細線間距在此像素內會併成一條粗帶；單線（尺寸線）併不起來
@@ -149,13 +155,14 @@ def _flood(free: np.ndarray, prio: np.ndarray, markers: dict[int, tuple[int, int
     import heapq
 
     H, W = free.shape
-    ok = free.ravel()
-    pr = prio.ravel()
-    lab = np.zeros(H * W, np.int32)
+    # 每個像素都要查 ok/pr/lab，numpy 純量取值比 list 慢一個量級（實測這個迴圈 5.7s → 2s）
+    ok = free.ravel().tolist()
+    pr = (-prio).ravel().tolist()
+    lab = [0] * (H * W)
     heap: list[tuple[float, int, int, int]] = []
     n = 0
     for i, (y, x) in markers.items():
-        heap.append((-np.inf, n, y * W + x, i))
+        heap.append((-float("inf"), n, y * W + x, i))
         n += 1
     heapq.heapify(heap)
     while heap:
@@ -166,9 +173,9 @@ def _flood(free: np.ndarray, prio: np.ndarray, markers: dict[int, tuple[int, int
         y, x = divmod(idx, W)
         for nb, valid in ((idx - W, y > 0), (idx + W, y < H - 1), (idx - 1, x > 0), (idx + 1, x < W - 1)):
             if valid and ok[nb] and not lab[nb]:
-                heapq.heappush(heap, (-pr[nb], n, nb, i))
+                heapq.heappush(heap, (pr[nb], n, nb, i))
                 n += 1
-    return lab.reshape(H, W)
+    return np.array(lab, np.int32).reshape(H, W)
 
 
 def _paired(thin: np.ndarray, length: int, horizontal: bool) -> np.ndarray:
@@ -243,7 +250,10 @@ def _simplify(pts: list[tuple[float, float]], eps: float) -> list[tuple[float, f
 
 def _work_gray(image_path: str) -> np.ndarray:
     """灰階圖統一縮放到 _WORK_SIDE 長邊，像素參數才對得上。"""
-    im = Image.open(image_path).convert("L")
+    # 透明背景先疊白底（跟 cubicasa_walls 一致）；直接 convert("L") 會把透明處變成黑色線條
+    with Image.open(image_path) as src:
+        rgba = src.convert("RGBA")
+    im = Image.alpha_composite(Image.new("RGBA", rgba.size, "white"), rgba).convert("L")
     scale = _WORK_SIDE / max(im.size)
     if abs(scale - 1) > 0.05:
         im = im.resize((round(im.width * scale), round(im.height * scale)), Image.LANCZOS)
@@ -265,38 +275,53 @@ def _wall_mask(g: np.ndarray) -> np.ndarray:
     return wall
 
 
-def segment_rooms(image_path: str, seeds: list[dict]) -> list[dict[str, Any]] | None:
+def _fit(mask: np.ndarray, H: int, W: int) -> np.ndarray:
+    """外部遮罩縮放到工作解析度（最近鄰，不產生半透明邊）；回傳新陣列，不改到呼叫端的。"""
+    if mask.shape == (H, W):
+        return mask.copy()
+    return np.asarray(Image.fromarray(mask.astype(np.uint8) * 255).resize((W, H), Image.NEAREST)) > 127
+
+
+def segment_rooms(image_path: str, seeds: list[dict], wall_mask: np.ndarray | None = None,
+                  outside_mask: np.ndarray | None = None) -> list[dict[str, Any]] | None:
     """依種子點把平面圖切成房間。
 
     ``seeds``：``[{room_type, label, point: [y, x]}]``，point 為整張圖 0–1000 座標。
+    ``wall_mask`` / ``outside_mask``：外部模型（如 CubiCasa）預測的牆、屋外布林陣列，尺寸不同會
+    縮放到工作解析度；給了就取代規則偵測，其餘流程（淹水、凸窗合併、自動補種子）不變。
     回傳 ``[{id, room_type, label, x, y, w, h, polygon, anchor}]``，座標皆為 0–1 正規化，
     polygon 為 ``[[x, y], ...]`` 且含外圍牆厚（裁切時才不會把牆塗掉）。
     切不出任何房間時回傳 ``None``。
     """
     g = _work_gray(image_path)
     H, W = g.shape
-
-    # 屋外 = 所有線條當屏障時最大的白色連通區（尺寸線不封閉，會被併進來）
     lines = ndi.binary_dilation(g < _LINE_GRAY, iterations=1)
-    olab, n = ndi.label(~lines)
-    if n == 0:
-        return None
-    sizes = ndi.sum(~lines, olab, range(1, n + 1))
-    outside = olab == (int(np.argmax(sizes)) + 1)
+    wall = _wall_mask(g) if wall_mask is None else _fit(wall_mask, H, W)
 
-    wall = _wall_mask(g)
+    if outside_mask is not None:
+        outside = _fit(outside_mask, H, W)
+    else:
+        # 屋外 = 所有線條當屏障時最大的白色連通區（尺寸線不封閉，會被併進來）
+        barrier = ndi.binary_dilation(g < _OUT_LINE_GRAY, iterations=1 + _OUT_CLOSE)
+        olab, n = ndi.label(~barrier)
+        if n == 0:
+            return None
+        sizes = ndi.sum(~barrier, olab, range(1, n + 1))
+        outside = olab == (int(np.argmax(sizes)) + 1)
+        if _OUT_CLOSE:
+            outside = ndi.binary_dilation(outside, iterations=_OUT_CLOSE, mask=~lines)
 
-    # 貼著屋外、被細線圍起的小區域也算屋外：窗戶旁的圓形標記、門外入口的開門弧線。
-    # 它們不是最大那片白色，會被當成室內，再從窗洞被房間淹進去或被誤認成小房間
-    out_id = int(np.argmax(sizes)) + 1
-    near_out = ndi.binary_dilation(outside, iterations=_OUT_REACH)
-    small = sizes < _OUT_POCKET_FRAC * (~outside).sum()
-    pocket_ids = np.unique(olab[near_out & ~outside & ~lines])
-    pocket = np.zeros(n + 1, bool)
-    pocket[[i for i in pocket_ids if i and i != out_id and small[i - 1]]] = True
-    outside |= pocket[olab]
-    # 圍住這些區域的細線（圓圈外框、窗線）同樣歸屋外，否則房間會沿著線長出去
-    outside |= lines & ~wall & ndi.binary_dilation(outside, iterations=_OUT_REACH // 2)
+        # 貼著屋外、被細線圍起的小區域也算屋外：窗戶旁的圓形標記、門外入口的開門弧線。
+        # 它們不是最大那片白色，會被當成室內，再從窗洞被房間淹進去或被誤認成小房間
+        out_id = int(np.argmax(sizes)) + 1
+        near_out = ndi.binary_dilation(outside, iterations=_OUT_REACH)
+        small = sizes < _OUT_POCKET_FRAC * (~outside).sum()
+        pocket_ids = np.unique(olab[near_out & ~outside & ~lines])
+        pocket = np.zeros(n + 1, bool)
+        pocket[[i for i in pocket_ids if i and i != out_id and small[i - 1]]] = True
+        outside |= pocket[olab]
+        # 圍住這些區域的細線（圓圈外框、窗線）同樣歸屋外，否則房間會沿著線長出去
+        outside |= lines & ~wall & ndi.binary_dilation(outside, iterations=_OUT_REACH // 2)
     free = ~wall & ~outside
     if not free.any():
         return None
@@ -431,22 +456,38 @@ def segment_rooms(image_path: str, seeds: list[dict]) -> list[dict[str, Any]] | 
 
     wall_px = max(2, _WALL_KERNEL + 1)
     rooms: list[dict[str, Any]] = []
+    # 每間房的形態學運算只在自己的外框（外加牆厚餘裕）內做：整張圖做要 12 倍面積，
+    # 結果一樣（外框外都是背景，膨脹最多到 wall_px，餘裕留夠就不碰邊界）
+    pad = wall_px + 3
+    lab_boxes = ndi.find_objects(lab)
     for i in markers:
-        reg = lab == i
-        if reg.mean() < _MIN_ROOM_FRAC:
+        sl = lab_boxes[i - 1] if i - 1 < len(lab_boxes) else None
+        if sl is None:
+            continue
+        box = tuple(slice(max(0, a.start - pad), min(lim, a.stop + pad)) for a, lim in zip(sl, (H, W)))
+        oy, ox = box[0].start, box[1].start
+        reg = lab[box] == i
+        if reg.sum() < _MIN_ROOM_FRAC * H * W:
             continue
         reg = ndi.binary_fill_holes(ndi.binary_opening(reg, structure=_disk(1)))
         if not reg.any():
             continue
         reg = _largest(reg)
+        if seeds[i - 1].get("auto"):
+            ry, rx = np.nonzero(reg)
+            rh, rw = ry.max() + 1 - ry.min(), rx.max() + 1 - rx.min()
+            if max(rh, rw) > _STRIP_RATIO * min(rh, rw):
+                continue
         # 外擴一層牆厚，裁切時保留牆線讓後續家具解析有房間邊界可對照
-        shell = ndi.binary_fill_holes(reg | (ndi.binary_dilation(reg, iterations=wall_px) & wall))
+        shell = ndi.binary_fill_holes(reg | (ndi.binary_dilation(reg, iterations=wall_px) & wall[box]))
         # 外擴的牆可能帶進不相連的碎片；輪廓追蹤從第一個像素起跑，會只追到碎片
         shell = _largest(shell)
-        outline = _simplify([(float(x), float(y)) for y, x in _trace_outline(shell)], eps=1.5)
+        outline = _simplify([(float(x + ox), float(y + oy)) for y, x in _trace_outline(shell)], eps=1.5)
         sy, sx = np.nonzero(shell)
+        sy, sx = sy + oy, sx + ox
         # 離邊界最遠的點，保證落在房內（L 型房的幾何中心可能在房外），給前端放標籤
         ay, ax = np.unravel_index(int(np.argmax(ndi.distance_transform_edt(reg))), reg.shape)
+        ay, ax = ay + oy, ax + ox
         seed = seeds[i - 1]
         rooms.append({
             "id": f"room_{len(rooms) + 1}",

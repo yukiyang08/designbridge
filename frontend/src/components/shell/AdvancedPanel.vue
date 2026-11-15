@@ -36,7 +36,7 @@ const open = ref(false)
 
 <style scoped>
 .advanced {
-  border-top: 1px solid #ececec;
+  border-top: 1px solid var(--db-line);
   margin-top: 0.5rem;
 }
 
@@ -68,7 +68,7 @@ const open = ref(false)
   font-family: var(--db-font-body);
   font-style: normal;
   font-size: 0.82rem;
-  color: var(--db-placeholder);
+  color: var(--db-text-soft);
 }
 
 /* 收合時朝右、展開時朝下 —— 標準的 disclosure triangle */

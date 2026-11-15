@@ -30,12 +30,27 @@ const styleReferenceImageUrl = computed(() => {
   if (typeof fromStyleParams === 'string' && fromStyleParams.trim()) return fromStyleParams
 
   const fromControlNet = r.render_result?.controlnet_inputs?.style_reference_image
-  if (typeof fromControlNet !== 'string' || !fromControlNet.trim()) return ''
+  return artifactUrl(fromControlNet)
+})
 
-  const normalized = fromControlNet.replace(/\\/g, '/')
-  if (normalized.startsWith('http://') || normalized.startsWith('https://')) return normalized
-  if (normalized.startsWith('artifacts/')) return `${API_BASE}/${normalized}`
-  return ''
+// 後端可能給絕對路徑，從 artifacts/ 那段開始接到 API_BASE
+function artifactUrl(p) {
+  const s = typeof p === 'string' ? p.replace(/\\/g, '/') : ''
+  if (/^https?:\/\//.test(s)) return s
+  const i = s.indexOf('artifacts/')
+  return i >= 0 ? `${API_BASE}/${s.slice(i)}` : ''
+}
+
+// 生成時實際送進 ControlNet 的深度圖；換風格沿用的則在 vision_features
+const depthMaps = computed(() => {
+  const r = props.result
+  const ci = r?.render_result?.controlnet_inputs || {}
+  return [
+    { label: '深度圖', url: artifactUrl(ci.depth || r?.vision_features?.depth || r?.scene_graph?.projected_depth_path) },
+    { label: '佈局深度圖', url: artifactUrl(ci.layout_depth) },
+    { label: '邊緣圖', url: artifactUrl(ci.edge) },
+    { label: '分割圖', url: artifactUrl(ci.segmentation || r?.vision_features?.segmentation) },
+  ].filter((m, i, all) => m.url && all.findIndex(o => o.url === m.url) === i)
 })
 </script>
 
@@ -46,6 +61,16 @@ const styleReferenceImageUrl = computed(() => {
     <section v-if="styleReferenceImageUrl" class="card">
       <h3 class="card-title">風格參考圖</h3>
       <img :src="styleReferenceImageUrl" alt="風格參考圖" class="ref-img" />
+    </section>
+
+    <section v-if="depthMaps.length" class="card">
+      <h3 class="card-title">深度圖與條件圖</h3>
+      <div class="depth-grid">
+        <figure v-for="m in depthMaps" :key="m.url" class="depth-item">
+          <a :href="m.url" target="_blank" rel="noopener"><img :src="m.url" :alt="m.label" class="ref-img" /></a>
+          <figcaption>{{ m.label }}</figcaption>
+        </figure>
+      </div>
     </section>
 
     <!-- 結構化需求 -->
@@ -130,9 +155,9 @@ const styleReferenceImageUrl = computed(() => {
 
 .card {
   padding: 1.1rem 1.25rem;
-  border: 1px solid #ececec;
+  border: 1px solid var(--db-line);
   border-radius: 12px;
-  background: #fcfcfc;
+  background: var(--db-chip-soft);
 }
 
 .card-title {
@@ -163,6 +188,11 @@ const styleReferenceImageUrl = computed(() => {
   max-width: min(360px, 100%);
   border-radius: 8px;
 }
+
+.depth-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(200px, 100%), 1fr)); gap: 1rem; }
+.depth-item { margin: 0; min-width: 0; }
+.depth-item .ref-img { width: 100%; max-width: none; }
+.depth-item figcaption { margin-top: 0.35rem; font-size: 0.8rem; color: var(--db-text-soft); }
 
 .req-grid {
   display: grid;
@@ -203,7 +233,7 @@ const styleReferenceImageUrl = computed(() => {
   border: 1px solid rgba(0, 0, 0, 0.08);
 }
 .swatch-label { font-size: 0.72rem; color: var(--db-text-soft); }
-.swatch-hex { font-size: 0.68rem; color: var(--db-placeholder); font-variant-numeric: tabular-nums; }
+.swatch-hex { font-size: 0.68rem; color: var(--db-text-soft); font-variant-numeric: tabular-nums; }
 
 .tags { display: flex; flex-wrap: wrap; gap: 0.4rem; margin-top: 0.9rem; }
 .tag {
@@ -228,14 +258,14 @@ const styleReferenceImageUrl = computed(() => {
 }
 .raw-toggle:hover { color: var(--db-text); }
 .raw-group { display: grid; gap: 0.9rem; margin-top: 0.85rem; }
-.raw-label { font-size: 0.78rem; color: var(--db-placeholder); margin-bottom: 0.3rem; }
+.raw-label { font-size: 0.78rem; color: var(--db-text-soft); margin-bottom: 0.3rem; }
 .raw {
   max-height: 320px;
   margin: 0;
   padding: 0.75rem;
   overflow: auto;
   border-radius: 8px;
-  background: #f4f4f4;
+  background: var(--db-chip-soft);
   font-size: 0.75rem;
   line-height: 1.55;
 }

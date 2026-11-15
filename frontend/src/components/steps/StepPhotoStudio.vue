@@ -8,6 +8,7 @@ import { ref, computed, watch } from 'vue'
 import { Icon } from '@iconify/vue'
 import FurnitureMover from '@/components/FurnitureMover.vue'
 import RefineCanvas from '@/components/RefineCanvas.vue'
+import QuotationPanel from '@/components/QuotationPanel.vue'
 import { useDesignFlow } from '@/composables/useDesignFlow'
 import { adoptPhotoMove } from '@/composables/design-flow/photoLayout'
 
@@ -15,7 +16,7 @@ const {
   spacePhoto, spacePhotoPath, photoDetection, photoLayoutError, photoBusy, photoLayoutLoading,
   photoVersions, photoCurrent, photoStylePrompt, photoQuoting, currentVersion, editableFurniture, styleVersionIndex,
   styleOptions, styleDemoImages,
-  uploadPhoto, restylePhoto, refinePhoto, quotePhoto,
+  uploadPhoto, restylePhoto, refinePhoto, quotePhoto, confirmDiscard,
 } = useDesignFlow()
 
 const TOOLS = [
@@ -66,20 +67,11 @@ async function onRefine() {
 // 打開這一頁或換了版本就估目前這張（已估過的不重打）
 watch([tool, photoCurrent], () => { if (tool.value === 'quote') quotePhoto() })
 const quotation = computed(() => currentVersion.value?.quotation || null)
-const CATEGORY_ZH = {
-  sofa: '沙發', table: '桌子', chair: '椅子', lamp: '燈具', rug: '地毯',
-  curtain: '窗簾', storage: '收納', shelf: '收納', bed: '床',
+// 跟結果頁同一個家具推薦面板（含全新／二手切換）；報價記在各版本上，換款等選擇存回目前版本
+function savePhotoQuote(q) {
+  const idx = photoCurrent.value
+  photoVersions.value = photoVersions.value.map((x, i) => (i === idx ? { ...x, quotation: q } : x))
 }
-const shortName = (name = '') => name.split(/[,，]/)[0].trim()
-// 有商品圖的才當精準導購（優先選有圖的候選），都沒圖的只列預估價
-const quoteRows = computed(() => (quotation.value?.furniture_list || []).map((item, i) => {
-  const cands = item.candidates || []
-  return { key: i, label: CATEGORY_ZH[item.category] || item.detected_name,
-           c: cands.find(c => c?.product_image_url) || cands[0] || null }
-}))
-const shopRows = computed(() => quoteRows.value.filter(r => r.c?.product_image_url))
-const estimateRows = computed(() => quoteRows.value.filter(r => r.c && !r.c.product_image_url))
-const quoteTotal = computed(() => quoteRows.value.reduce((s, r) => s + (r.c?.price || 0), 0))
 </script>
 
 <template>
@@ -88,7 +80,7 @@ const quoteTotal = computed(() => quoteRows.value.reduce((s, r) => s + (r.c?.pri
     <label class="drop" :class="{ busy }">
       <input type="file" accept="image/*" hidden :disabled="busy" @change="onFile" />
       <template v-if="!busy">
-        <span class="drop-icon">📷</span>
+        <Icon icon="mdi:camera-outline" class="drop-icon" aria-hidden="true" />
         <span class="drop-label">先上傳你現在的房間照片</span>
         <small class="drop-hint">JPG、PNG、WebP，盡量拍到地板與整面牆</small>
         <span class="db-btn drop-btn">選擇照片</span>
@@ -117,7 +109,11 @@ const quoteTotal = computed(() => quoteRows.value.reduce((s, r) => s + (r.c?.pri
         </button>
       </nav>
       <label class="change-photo" :class="{ disabled: busy }" title="換一張照片會重新開始">
-        <input type="file" accept="image/*" hidden :disabled="busy" @change="onFile" />
+        <!-- 確認放在 input 上：label 的 click 會再轉發一次給 input 並冒泡回 label，放 label 會跳兩次確認 -->
+        <input
+          type="file" accept="image/*" hidden :disabled="busy" @change="onFile"
+          @click="e => confirmDiscard('換照片會清除目前所有版本，確定嗎？') || e.preventDefault()"
+        />
         <Icon icon="mdi:camera-retake-outline" width="18" />換照片
       </label>
     </div>
@@ -194,7 +190,7 @@ const quoteTotal = computed(() => quoteRows.value.reduce((s, r) => s + (r.c?.pri
               <span class="swap-thumb">
                 <img v-if="styleThumb(s.value)" :src="styleThumb(s.value)" :alt="s.name" />
                 <span v-else class="swap-thumb-empty">＋</span>
-                <span v-if="styleVersionIndex(s.value) >= 0" class="swap-done" aria-label="已生成">✓</span>
+                <span v-if="styleVersionIndex(s.value) >= 0" class="swap-done" aria-label="已生成"><Icon icon="mdi:check" aria-hidden="true" /></span>
               </span>
               <span class="swap-label">{{ s.name }}</span>
             </button>
@@ -203,8 +199,8 @@ const quoteTotal = computed(() => quoteRows.value.reduce((s, r) => s + (r.c?.pri
 
         <!-- 調整家具位置 -->
         <template v-else-if="tool === 'layout'">
-          <h3 class="side-title">✥ 移動家具</h3>
-          <p class="side-note">在左邊圖上直接拖曳家具到新位置，可以一次搬好幾件，按「套用」後 AI 會補上原位置並融合光影。</p>
+          <h3 class="side-title"><Icon icon="mdi:cursor-move" aria-hidden="true" /> 移動家具</h3>
+          <p class="side-note">在圖上直接拖曳家具到新位置，可以一次搬好幾件，按「套用」後 AI 會補上原位置並融合光影。</p>
           <p class="side-note">第一次會先辨識圖上的家具，約需 40 秒。每次套用都會多一個版本，可以從下方版本列切回去比較。</p>
         </template>
 
@@ -231,55 +227,17 @@ const quoteTotal = computed(() => quoteRows.value.reduce((s, r) => s + (r.c?.pri
           <label class="field-label" for="refine-text">要怎麼改？</label>
           <textarea
             id="refine-text" v-model="refineText" class="db-textarea" rows="2"
-            :placeholder="hasMask ? '例如：刪除、換成淺灰布沙發' : '先在左邊圖上圈出要改的家具'"
+            :placeholder="hasMask ? '例如：刪除、換成淺灰布沙發' : '先在圖上圈出要改的家具'"
           />
           <button type="button" class="db-btn" :disabled="busy || !hasMask || !refineText.trim()" @click="onRefine">執行細節調整</button>
         </template>
 
         <!-- 家具估價清單 -->
-        <template v-else>
-          <div class="quote-head">
-            <h3 class="side-title">家具估價清單</h3>
-            <button
-              v-if="quotation" type="button" class="re-link" :disabled="photoQuoting"
-              @click="quotePhoto(true)"
-            >重新估價</button>
-          </div>
-          <p class="side-note">依左邊目前這張圖辨識家具並推薦商品。</p>
-          <p v-if="photoQuoting" class="side-note" role="status">估價中，約 30 秒…</p>
-          <p v-else-if="currentVersion.quoteError" class="db-error">{{ currentVersion.quoteError }}</p>
-          <template v-if="quotation">
-            <div class="quote-total">
-              <span>預算 · {{ quoteRows.length }} 件</span>
-              <strong>NT$ {{ quoteTotal.toLocaleString() }}</strong>
-            </div>
-            <ul v-if="shopRows.length" class="quote-list">
-              <li v-for="r in shopRows" :key="r.key" class="quote-item">
-                <span class="q-thumb">
-                  <img :src="r.c.product_image_url" :alt="r.c.name" />
-                </span>
-                <span class="q-info">
-                  <small>{{ r.label }}</small>
-                  <a v-if="r.c.purchase_url" :href="r.c.purchase_url" target="_blank" rel="noopener" :title="r.c.name">{{ shortName(r.c.name) }}</a>
-                  <span v-else>{{ shortName(r.c.name) }}</span>
-                </span>
-                <span class="q-price">NT$ {{ (r.c.price || 0).toLocaleString() }}</span>
-              </li>
-            </ul>
-            <template v-if="estimateRows.length">
-              <h4 class="q-sub">預估估價項目</h4>
-              <ul class="quote-list">
-                <li v-for="r in estimateRows" :key="r.key" class="quote-item q-est">
-                  <span class="q-info">
-                    <small>{{ r.label }}</small>
-                    <span :title="r.c.name">{{ shortName(r.c.name) || '—' }}</span>
-                  </span>
-                  <span class="q-price">NT$ {{ (r.c.price || 0).toLocaleString() }}</span>
-                </li>
-              </ul>
-            </template>
-          </template>
-        </template>
+        <QuotationPanel
+          v-else :key="currentVersion.path" external class="ps-quote"
+          :quotation-data="quotation" :loading="photoQuoting" :error="currentVersion.quoteError || ''"
+          @update="savePhotoQuote" @refresh="quotePhoto(true)"
+        />
       </aside>
     </div>
   </div>
@@ -291,10 +249,10 @@ const quoteTotal = computed(() => quoteRows.value.reduce((s, r) => s + (r.c?.pri
 .drop {
   display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 0.7rem;
   min-height: max(360px, calc(100vh - 360px));
-  border: 2px dashed #cfcfcf; border-radius: 8px; background: var(--db-chip); cursor: pointer;
+  border: 2px dashed var(--db-accent); border-radius: 8px; background: var(--db-chip); cursor: pointer;
   transition: background 0.16s, border-color 0.16s;
 }
-.drop:hover:not(.busy) { background: #cfcfcf; border-color: var(--db-accent); }
+.drop:hover:not(.busy) { background: var(--db-accent-soft); border-color: var(--db-accent); }
 .drop.busy { cursor: progress; }
 .drop-icon { font-size: 2.8rem; }
 .drop-label { font-family: var(--db-font-display); font-size: 1.7rem; color: var(--db-text); }
@@ -343,7 +301,7 @@ const quoteTotal = computed(() => quoteRows.value.reduce((s, r) => s + (r.c?.pri
 /* ── 右側控制欄 ── */
 .ps-side { min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 0.7rem; padding-right: 2px; }
 .field-label { font-size: 0.95rem; font-weight: 600; color: var(--db-text); }
-.style-prompt { min-height: 96px; background: #fff; border: 2px solid #756d66; font-size: 0.95rem; }
+.style-prompt { min-height: 96px; background: #fff; border: 2px solid var(--db-accent-ink); font-size: 0.95rem; }
 .style-prompt:focus { outline: none; box-shadow: 0 0 0 3px var(--db-accent-soft); }
 .side-title { margin: 0.4rem 0 0; font-family: var(--db-font-display); font-style: italic; font-weight: 500; font-size: 1.05rem; color: var(--db-text); }
 .side-note { margin: 0; font-size: 0.82rem; color: var(--db-text-soft); line-height: 1.6; }
@@ -359,7 +317,7 @@ const quoteTotal = computed(() => quoteRows.value.reduce((s, r) => s + (r.c?.pri
 }
 .swap-thumb {
   position: relative; display: grid; place-items: center; width: 100%; aspect-ratio: 1;
-  border-radius: 12px; overflow: hidden; border: 2px solid #ececec; background: #f5f3ee;
+  border-radius: 12px; overflow: hidden; border: 2px solid var(--db-line); background: #f5f3ee;
   transition: border-color 0.16s, box-shadow 0.16s, transform 0.16s;
 }
 .swap-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
@@ -394,24 +352,6 @@ const quoteTotal = computed(() => quoteRows.value.reduce((s, r) => s + (r.c?.pri
 }
 .chip:hover { border-color: var(--db-accent); }
 
-/* 估價清單（同結果頁的家具推薦） */
-.quote-head { display: flex; align-items: baseline; justify-content: space-between; }
-.quote-total {
-  display: flex; align-items: baseline; justify-content: space-between; padding: 0.6rem 0.8rem;
-  border-radius: 8px; background: var(--db-chip-soft); font-size: 0.88rem; color: var(--db-text-soft);
-}
-.quote-total strong { font-size: 1.15rem; color: var(--db-text); }
-.quote-list { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 0.5rem; }
-.quote-item { display: grid; grid-template-columns: 48px minmax(0, 1fr) auto; align-items: center; gap: 0.6rem; }
-.q-thumb { width: 48px; height: 48px; border-radius: 6px; overflow: hidden; background: #f1eee8; }
-.q-thumb img { width: 100%; height: 100%; object-fit: cover; }
-.q-info { display: flex; flex-direction: column; min-width: 0; font-size: 0.86rem; }
-.q-info small { color: var(--db-text-soft); font-size: 0.74rem; }
-.q-info a, .q-info span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--db-text); }
-.q-price { font-size: 0.86rem; font-variant-numeric: tabular-nums; }
-.q-sub { margin: 0.6rem 0 0.1rem; font-size: 0.78rem; font-weight: 600; color: var(--db-text-soft); letter-spacing: 0.04em; }
-.q-est { grid-template-columns: minmax(0, 1fr) auto; }   /* 預估項目沒有縮圖欄 */
-
 /* ── 版本 ── */
 .versions { display: flex; gap: 0.5rem; overflow-x: auto; flex-shrink: 0; padding-bottom: 2px; }
 .ver {
@@ -437,9 +377,13 @@ const quoteTotal = computed(() => quoteRows.value.reduce((s, r) => s + (r.c?.pri
 @media (max-width: 760px) {
   .ps { height: auto; }
   .ps-top { flex-direction: column; align-items: stretch; }
-  .ps-tabs { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .ps-work { grid-template-columns: 1fr; }
-  .stage { min-height: 360px; }
+  /* 手機：分頁一列四格（圖示在上），看圖時不留灰邊，只有畫筆／移動需要畫布高度 */
+  .ps-tabs { grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 0.35rem; }
+  .ps-tab { flex-direction: column; gap: 0.15rem; padding: 0.5rem 0.25rem; border-radius: 12px; font-size: 0.75rem; }
+  .stage { min-height: 0; }
+  .stage--canvas, .stage--mover { min-height: 360px; }
+  .swap-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); }
   .ps-side { overflow: visible; }
 }
 </style>

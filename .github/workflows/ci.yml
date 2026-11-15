@@ -1,0 +1,67 @@
+# push / PR 跑測試與前端 build；push 到 main 且全部通過才部署到 GCP VM（docs/DEPLOYMENT.md）
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      PYTHONUTF8: "1"
+      DESIGNBRIDGE_STARTUP_WARMUP: "off"
+      HF_HUB_OFFLINE: "1"   # 測試不下載模型；沒有金鑰、不打外部 API
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+          cache: pip
+      - run: sudo apt-get install -y -qq libcairo2-dev pkg-config
+      - run: |
+          pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu
+          pip install -r requirements.txt pycairo pytest
+      - run: python -m pytest test/ -q
+
+  frontend:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: frontend
+    env:
+      SUPABASE_URL: https://example.supabase.co   # vite.config.js 需要；只檢查能不能 build
+      SUPABASE_ANON_KEY: ci
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: npm ci --no-audit --no-fund
+      - run: npm run build
+
+  deploy:
+    needs: [backend, frontend]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    concurrency: deploy   # 同時只跑一個部署，後到的排隊
+    steps:
+      # 這把金鑰在 VM 上被限制成只能執行 ~/deploy.sh
+      - run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.DEPLOY_SSH_KEY }}" > ~/.ssh/deploy_key && chmod 600 ~/.ssh/deploy_key
+          echo "${{ secrets.DEPLOY_KNOWN_HOSTS }}" >> ~/.ssh/known_hosts
+          ssh -i ~/.ssh/deploy_key Yuki@34.173.161.114
+      - name: 確認後端有起來（模型在背景載入，health 不等它）
+        run: |
+          for i in $(seq 1 36); do
+            curl -sf https://designbridge.34-173-161-114.sslip.io/api/health && exit 0
+            sleep 5
+          done
+          exit 1

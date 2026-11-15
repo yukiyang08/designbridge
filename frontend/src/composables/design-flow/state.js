@@ -2,6 +2,7 @@ import { ref, computed, watch } from 'vue'
 import { useImageField } from '@/composables/useImageField'
 import { buildRoomGeometry, doorKeepouts, settlePlacements } from '@/utils/roomGeometry'
 import { furnitureRealSize } from '@/config/furniture'
+import { withRoomFurniture } from '@/utils/planFurniture'
 
 /**
  * 整條設計流程共用的模組層級狀態。
@@ -25,8 +26,8 @@ export const STEP_FLOWS = {
   // 從繪製平面設計圖開始
   generate: [
     { key: 'space',  label: '空間設定' },
-    { key: 'plan',   label: '繪製平面圖' },
-    { key: 'result', label: '生成設計' },
+    { key: 'plan',   label: '平面圖' },
+    { key: 'result', label: '渲染圖' },
   ],
   // 上傳現有空間照片（租屋族）：上傳、換風格、移家具、換／刪家具都在同一頁
   photo: [
@@ -35,30 +36,30 @@ export const STEP_FLOWS = {
   // 從零開始，直接描述理想空間
   skip: [
     { key: 'space',  label: '空間設定' },
-    { key: 'result', label: '生成設計' },
+    { key: 'result', label: '渲染圖' },
   ],
   // 上傳 2D 平面配置圖。整戶圖會先用 Gemini 視覺分割房間，偵測到多間才會經過
   // 「選擇房間」這一步；只有一間就直接跳過，行為等同單純上傳一張房間圖。
   upload: [
     { key: 'planUpload', label: '上傳平面圖' },
     { key: 'roomPick',   label: '選擇房間' },
-    { key: 'plan',       label: '繪製平面圖' },
-    { key: 'result',     label: '生成設計' },
+    { key: 'plan',       label: '平面圖' },
+    { key: 'result',     label: '渲染圖' },
   ],
   // CAD 房型生成（designbridge/roomplan）：輸入幾房幾廳＋總坪數，直接切割出整層樓
   // 的房間配置（牆／門／窗）。一定是多房間，但「填房型」跟「選房間」合併成同一頁
   // （見 StepRoomProgram）：生成配置後房間選擇器直接在表單下方展開，不用再跳頁。
   cad: [
     { key: 'roomProgram', label: '房型設定' },
-    { key: 'plan',        label: '繪製平面圖' },
-    { key: 'result',      label: '生成設計' },
+    { key: 'plan',        label: '平面圖' },
+    { key: 'result',      label: '渲染圖' },
   ],
 }
 
 export const STYLE_PAGE_SIZE = 10
 export const ROOM_TYPE_LABEL = {
   living_room: '客廳', bedroom: '臥室', kitchen: '廚房', study: '書房', dining_room: '餐廳',
-  living_dining: '客餐廳', bathroom: '衛浴', balcony: '陽台',
+  living_dining: '客餐廳', bathroom: '衛浴', balcony: '陽台', circulation: '玄關',
 }
 
 // roomplan 的房型字彙（見 designbridge/roomplan/constants.py ROOM_TYPE_SPECS）→
@@ -305,6 +306,7 @@ export const uploadedPlanPath  = ref('')   // 原始（未裁切）上傳圖的�
 export const detectedRooms     = ref([])   // /api/detect-rooms 偵測到的房間清單，多間時才會用到
 // 平面圖解析沒結果時停下來讓使用者決定，不默默退回後備路徑：
 // { kind: 'rooms' | 'furniture', reason: 'failed' | 'empty', path, roomType }
+// kind: 'quality' 時 reason 是要顯示給使用者的不合格原因（換圖才能繼續）
 export const planParseIssue    = ref(null)
 export const uploadTotalPing   = ref(null)   // 上傳平面圖前先填的總坪數，決定比例尺（不靠 AI 猜圖上標註）
 
@@ -368,6 +370,17 @@ export const cadBatchRunning = ref(false)
 export const cadOverview = ref(false)          // 整層總覽（結果頁的「總覽」分頁）；不存草稿，切到任一房間就關掉
 export const cadQuoting = ref({})              // 總覽裡正在估價的房間：{ [roomId]: true }
 export const cadRoomSnapshots = ref({})            // { [roomId]: { roomW, roomD, roomTypeForPlan, editPlacements, floorPlanPath, floorPlanUrl, sceneGraph, layoutRenderConfig, result, lastGeneratedImage } }
+export const cadDetectedPlacements = ref({})       // 上傳整層圖：背景先辨識好的家具 { [roomId]: placements }
+// 整層平面圖畫上已知的家具（背景辨識結果、切走房間的快照）。正在編輯的那間由縮圖自己即時畫，
+// 不放進來，免得拖一下家具就重組整份 SVG
+export const cadPlanSvg = computed(() => {
+  const markup = cadPlanResult.value?.svg_markup || ''
+  const byRoom = { ...cadDetectedPlacements.value }
+  for (const [id, snap] of Object.entries(cadRoomSnapshots.value)) {
+    if (snap?.editPlacements?.length) byRoom[id] = snap.editPlacements
+  }
+  return withRoomFurniture(markup, byRoom)
+})
 
 // ── 佈局編輯 ──
 export const editPlacements     = ref([])
@@ -375,6 +388,7 @@ export const roomW              = ref(5.0)
 export const roomD              = ref(4.0)
 export const roomTypeForPlan    = ref('living_room')
 export const layoutViewMode     = ref('2d')        // '2d' | '3d'
+export const planSheetOpen      = ref(false)       // 窄螢幕平面圖步驟：風水健檢＋整層平面圖的底部面板
 export const layoutRenderConfig = ref(null)
 
 // ── 空間設定表單 ──
@@ -386,7 +400,7 @@ export const furnitureItems = ref([])
 export const furnitureQty   = ref({})
 export const extraPrompt    = ref('')
 // 風水只問「要不要套用」：開啟後依房型自動挑規則，細調時取消勾選的記在 excluded
-export const fengshuiEnabled  = ref(false)
+export const fengshuiEnabled  = ref(true)
 export const fengshuiExcluded = ref([])
 // 目前空間實際套用的規則清單（由上面兩個推出來）。可寫入：結果頁的勾選、專案還原會直接
 // 設定清單，這裡換算回開關＋排除項，兩種 UI 才不會各存一份互相打架
@@ -418,6 +432,7 @@ export const spacePhotoPath = ref('')
 export const fengshuiReport        = ref(null)    // /api/fengshui/audit 的回應（平面圖步驟即時更新）
 export const fengshuiReportLoading = ref(false)
 export const fengshuiLastFix       = ref(null)    // { moved, previous }：一鍵調整後可以復原
+export const fengshuiHighlight     = ref([])      // 健檢卡片按「定位」時，編輯器要圈出來的家具 id
 export const photoAudit            = ref(null)    // /api/fengshui/photo-audit 的回應 { plan, report }
 export const photoAuditLoading     = ref(false)
 export const photoAuditError       = ref('')
@@ -486,6 +501,8 @@ export const panoError   = ref('')
 // ── 家具估價（原本在 ResultPanel）──
 export const quotationLoading = ref(false)
 export const quotationError   = ref('')
+// 結果圖上滑到的家具（quotation_result.furniture_list 的 index）：圖上的框和右邊清單互相標示
+export const furnitureHover   = ref(null)
 
 /* ══ 衍生值 ══════════════════════════════════════════════ */
 

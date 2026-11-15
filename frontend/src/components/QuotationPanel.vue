@@ -1,37 +1,73 @@
 <script setup>
+import { Icon } from '@iconify/vue'
 /** 結果圖的家具推薦清單：每件家具選中的商品、換款、收藏與總價。 */
-import { reactive, computed, ref, watch } from 'vue'
+import { reactive, computed, ref, watch, nextTick, onBeforeUnmount } from 'vue'
 import { useDesignFlow } from '@/composables/useDesignFlow'
 import { useFurnitureSelection } from '@/composables/useFurnitureSelection'
 
-const { result, quotationLoading, quotationError, fetchQuotation } = useDesignFlow()
-const { toggle: toggleFavorite, isSelected: isFavorited } = useFurnitureSelection()
+const props = defineProps({
+  /** 放在手機底部抽屜裡：抽屜本身就是收合，清單不用再收一次 */
+  inDrawer: { type: Boolean, default: false },
+  /** 外部傳入的報價（照片入口：報價記在各版本上，不在全域 result）；沒傳就用結果頁的 result.quotation_result */
+  external: { type: Boolean, default: false },
+  quotationData: { type: Object, default: null },
+  loading: { type: Boolean, default: false },
+  error: { type: String, default: '' },
+})
+// external 模式：換款、切全新／二手、從收藏加入都 emit update 讓外層存回去，重新估價 emit refresh
+const emit = defineEmits(['update', 'refresh'])
+const {
+  result, quotationLoading: globalLoading, quotationError: globalError, fetchQuotation: globalFetch, furnitureHover,
+} = useDesignFlow()
+const quotationLoading = computed(() => (props.external ? props.loading : globalLoading.value))
+const quotationError = computed(() => (props.external ? props.error : globalError.value))
+const fetchQuotation = () => (props.external ? emit('refresh') : globalFetch())
+function writeQuotation(q) {
+  if (props.external) emit('update', q)
+  else result.value = { ...result.value, quotation_result: q }
+}
+const { selectedFurniture, toggle: toggleFavorite, isSelected: isFavorited } = useFurnitureSelection()
 
-const quotation = computed(() => result.value?.quotation_result || null)
+const quotation = computed(() => (props.external ? props.quotationData : result.value?.quotation_result) || null)
 
 // 有商品圖才算精準導購；預設選第一個有圖的候選，都沒圖才落到預估估價
 const hasImg = (c) => !!c?.product_image_url
-const firstWithImage = (item) => Math.max(0, (item.candidates || []).findIndex(hasImg))
+// 後端把二手品接在新品候選後面（source: 'secondhand'）；清單分「全新」「二手」兩份，各自記選擇
+const isUsed = (c) => c?.source === 'secondhand'
+const firstNew = (item) => Math.max(0, (item.candidates || []).findIndex(c => hasImg(c) && !isUsed(c)))
+const firstUsed = (item) => (item.candidates || []).findIndex(isUsed)
 
-// 每件家具目前選中的候選 index
-const selectedCandidates = reactive({})
+const listMode = ref('new')
+const newPicks = reactive({})
+const usedPicks = reactive({})   // 沒有二手品的家具是 -1，二手清單裡以全新估價
 watch(
   () => quotation.value?.furniture_list,
   (list) => {
-    if (list) list.forEach((item, idx) => { selectedCandidates[idx] = quotation.value?.selected_indices?.[idx] ?? firstWithImage(item) })
+    const q = quotation.value
+    if (!list) return
+    listMode.value = q?.list_mode === 'used' ? 'used' : 'new'
+    list.forEach((item, idx) => {
+      // 舊報價只有 selected_indices：指到新品就沿用
+      const legacy = q?.selected_indices?.[idx]
+      newPicks[idx] = q?.selected_new?.[idx] ?? (legacy != null && !isUsed(item.candidates?.[legacy]) ? legacy : firstNew(item))
+      usedPicks[idx] = q?.selected_used?.[idx] ?? firstUsed(item)
+    })
   },
   { immediate: true },
 )
-// 換款的選擇寫回這份報價（selected_indices）：整層總覽加總各房間預算時要用同一份選擇，
-// 不然這裡換過款、總覽還是用預設推薦算
-watch(selectedCandidates, () => {
+const effectivePick = (idx) => (listMode.value === 'used' && usedPicks[idx] >= 0 ? usedPicks[idx] : newPicks[idx]) ?? 0
+// 選擇寫回這份報價：selected_indices 是目前清單實際算進總價的那件，整層總覽加總各房間預算時用同一份
+watch([listMode, newPicks, usedPicks], () => {
   const q = quotation.value
   const list = q?.furniture_list
   if (!list) return
+  const now = list.map((_, i) => effectivePick(i))
   const saved = list.map((_, i) => q.selected_indices?.[i] ?? 0)
-  const now = list.map((_, i) => selectedCandidates[i] ?? 0)
-  if (saved.every((v, i) => v === now[i])) return
-  result.value = { ...result.value, quotation_result: { ...q, selected_indices: { ...now } } }
+  if (q.list_mode === listMode.value && saved.every((v, i) => v === now[i])) return
+  writeQuotation({
+    ...q, list_mode: listMode.value, selected_indices: { ...now },
+    selected_new: { ...newPicks }, selected_used: { ...usedPicks },
+  })
 }, { deep: true })
 
 // IKEA 商品名常只有代號（MALM、KALLAX），多一個中文類別才看得出是什麼；
@@ -40,7 +76,12 @@ const CATEGORY_ZH = {
   sofa: '沙發', table: '桌子', chair: '椅子', lamp: '燈具', rug: '地毯',
   curtain: '窗簾', storage: '收納', shelf: '收納', bed: '床',
 }
-const categoryLabel = (item) => CATEGORY_ZH[item.category] || item.detected_name
+// 顯示圖上偵測到的名稱（書桌、邊桌），只寫大類「桌子」分不出推薦的是哪一件；
+// 收藏或家具查詢勾選加入的 detected_name 就是商品全名，這時用大類
+const categoryLabel = (item) => {
+  const picked = item.from_favorite || item.detected_name === item.candidates?.[0]?.name
+  return (picked ? CATEGORY_ZH[item.category] : item.detected_name) || CATEGORY_ZH[item.category] || item.detected_name
+}
 // IKEA 商品全名後面一長串顏色、尺寸（"KALLAX 層架組, 白色, 77x147 公分"）：清單只留第一段，
 // 全名放在 title（滑過去看得到）與商品頁；"VIHALS/VIHALS" 這種重複的也去掉
 const shortName = (name = '') => name.split(/[,，]/)[0].trim().replace(/^(\S+)\/\1(?=\s|$)/, '$1')
@@ -56,17 +97,60 @@ const furnitureGroups = computed(() => {
   })
   return [...groups.values()]
 })
-const groupPick = (g) => selectedCandidates[g.idxs[0]] ?? 0
-function setGroupPick(g, ci) { g.idxs.forEach(i => { selectedCandidates[i] = ci }) }
+const groupPick = (g) => effectivePick(g.idxs[0])
+function setGroupPick(g, ci) {
+  const picks = isUsed(g.item.candidates?.[ci]) ? usedPicks : newPicks
+  g.idxs.forEach(i => { picks[i] = ci })
+}
 const pickedOf = (g) => g.item.candidates?.[groupPick(g)]
-const shopGroups = computed(() => furnitureGroups.value.filter(g => hasImg(pickedOf(g))))
-const estimateGroups = computed(() => furnitureGroups.value.filter(g => pickedOf(g) && !hasImg(pickedOf(g))))
-// 換款只列有圖的商品，保留原本的 index 才能寫回 selectedCandidates
-const imageAlts = (g) => (g.item.candidates || []).map((a, ai) => ({ a, ai })).filter(x => hasImg(x.a))
+const hasUsed = (g) => firstUsed(g.item) >= 0
+const usedItemCount = computed(() => furnitureGroups.value.filter(hasUsed).reduce((n, g) => n + g.idxs.length, 0))
+// 圖中家具都比不到二手時，後端依房型挑的搭配推薦（圖裡沒有，不算進預算）
+const usedExtras = computed(() => quotation.value?.secondhand_extras || [])
+const usedCountLabel = computed(() => usedItemCount.value || usedExtras.value.length)
+// 加入二手推薦之前存下的報價（重新開啟的舊設計）沒有比對過二手，要重新估價才會有
+const staleForUsed = computed(() => !!quotation.value && !quotation.value.secondhand_checked && !usedCountLabel.value)
+// 全新：有圖的新品一份、AI 估價一份；二手：有二手品的一份、沒有的以全新估價另列
+const shopGroups = computed(() => furnitureGroups.value.filter(g => listMode.value === 'used' ? hasUsed(g) : hasImg(pickedOf(g))))
+const estimateGroups = computed(() => furnitureGroups.value.filter(g => listMode.value === 'used' ? !hasUsed(g) : pickedOf(g) && !hasImg(pickedOf(g))))
+// 換款只列目前清單那一種（全新或二手）有圖的商品，保留原本的 index 才能寫回選擇
+const altsOf = (g) => (g.item.candidates || []).map((a, ai) => ({ a, ai }))
+  .filter(x => hasImg(x.a) && isUsed(x.a) === (listMode.value === 'used'))
+
+// 跟結果圖上的家具熱區互相標示：滑到圖上的家具 → 這裡標出那一行並捲過去；
+// 滑過這裡的一行 → 圖上框出那件家具（這時不捲，免得清單跟著滑鼠跳）
+const isHovered = (g) => furnitureHover.value != null && g.idxs.includes(furnitureHover.value)
+const rowEls = {}
+let hoverFromList = false
+function hoverRow(g) { hoverFromList = true; furnitureHover.value = g ? g.idxs[0] : null }
+watch(furnitureHover, async (idx) => {
+  if (hoverFromList) { hoverFromList = false; return }
+  if (idx != null && !listOpen.value) { listOpen.value = true; await nextTick() }
+  const g = furnitureGroups.value.find(x => x.idxs.includes(idx))
+  rowEls[g?.key]?.scrollIntoView({ block: 'nearest', behavior: 'smooth' })
+})
+
+// 手機上清單接在大圖下面很長：預設只露總價，點開才看明細；點圖上的家具也會自動展開
+const narrowMql = window.matchMedia('(max-width: 560px)')
+const narrow = ref(!props.inDrawer && narrowMql.matches)
+const listOpen = ref(!narrow.value)
+// 旋轉或拉寬視窗跨過斷點：切到桌面版就展開，切回手機版回到只露總價
+const onNarrowChange = e => {
+  if (props.inDrawer) return
+  narrow.value = e.matches
+  listOpen.value = !e.matches
+}
+narrowMql.addEventListener('change', onNarrowChange)
+onBeforeUnmount(() => narrowMql.removeEventListener('change', onNarrowChange))
 
 // 目前展開「換款」的那一組
 const openRow = ref(null)
-watch(quotation, () => { openRow.value = null })
+watch([quotation, listMode], () => { openRow.value = null })
+async function toggleAlts(g) {
+  openRow.value = openRow.value === g.key ? null : g.key
+  // 清單最後幾行展開時，候選會落在可視範圍外
+  if (openRow.value) { await nextTick(); rowEls[g.key]?.scrollIntoView({ block: 'nearest', behavior: 'smooth' }) }
+}
 // 向量與關鍵字都沒比到時後端只給一筆 LLM 估價：沒連結、沒圖、similarity 0
 const isEstimate = (c) => !c.purchase_url && !c.product_image_url && !(c.similarity > 0)
 
@@ -74,10 +158,36 @@ const computedTotal = computed(() => {
   const list = quotation.value?.furniture_list
   if (!list) return 0
   return list.reduce((sum, item, idx) => {
-    const c = item.candidates?.[selectedCandidates[idx] ?? 0]
+    const c = item.candidates?.[effectivePick(idx)]
     return sum + (c?.price ?? 0)
   }, 0)
 })
+defineExpose({ computedTotal })   // 手機抽屜的摘要列要顯示總價
+
+// 從收藏加入：使用者自己挑要放進這份報價的收藏，接在辨識結果後面（沒有 bbox，不會畫在圖上）。
+// 跟換款一樣只改前端這份報價，重新估價就會回到辨識結果
+const favOpen = ref(false)
+const favKey = (f) => String(f.id || f.url || f.name)
+const addedKeys = computed(() => new Set((quotation.value?.furniture_list || [])
+  .filter(it => it.from_favorite).map(it => it.fav_key)))
+const addableFavorites = computed(() => selectedFurniture.value.filter(f => !addedKeys.value.has(favKey(f))))
+function setList(list) {
+  writeQuotation({ ...quotation.value, furniture_list: list })
+}
+function addFavorite(f) {
+  setList([...quotation.value.furniture_list, {
+    detected_name: f.name, category: f.category, from_favorite: true, fav_key: favKey(f),
+    candidates: [{
+      id: String(f.id || ''), name: f.name || '', price: Math.round(Number(f.price) || 0),
+      purchase_url: f.url || '', product_image_url: f.image_url || '', similarity: 1,
+    }],
+  }])
+}
+// 收藏項目都接在清單最後，刪掉不會讓前面辨識項目的 selected_indices 錯位
+function removeAdded(g) {
+  const drop = new Set(g.idxs)
+  setList(quotation.value.furniture_list.filter((_, i) => !drop.has(i)))
+}
 
 function toFavoriteItem(item, c) {
   return {
@@ -113,20 +223,44 @@ function toFavoriteItem(item, c) {
     <p v-if="quotationError" class="db-error">{{ quotationError }}</p>
 
     <template v-if="quotation">
-      <div class="total">
-        <span class="total-label">預算 · {{ quotation.furniture_list.length }} 件</span>
-        <span class="total-val">NT$ {{ computedTotal.toLocaleString() }}</span>
+      <!-- 全新、二手分兩份清單，總價跟著切換 -->
+      <div class="mode-switch" role="group" aria-label="清單種類">
+        <button type="button" :class="{ on: listMode === 'new' }" :aria-pressed="listMode === 'new'" @click="listMode = 'new'">全新</button>
+        <button
+          type="button" :class="{ on: listMode === 'used' }" :aria-pressed="listMode === 'used'"
+          :disabled="!usedCountLabel" :title="usedCountLabel ? undefined : staleForUsed ? '這份報價還沒比對二手家具' : '這張圖沒有找到相似的二手家具'"
+          @click="listMode = 'used'"
+        >二手<small v-if="usedCountLabel"> {{ usedCountLabel }} 件</small></button>
       </div>
+      <p v-if="staleForUsed" class="stale-note">
+        這份報價是加入二手推薦前做的，<button type="button" class="stale-link" :disabled="quotationLoading" @click="fetchQuotation">重新估價</button>就會比對二手家具。
+      </p>
+
+      <component
+        :is="narrow ? 'button' : 'div'" class="total" :type="narrow ? 'button' : undefined"
+        :aria-expanded="narrow ? listOpen : undefined" @click="narrow && (listOpen = !listOpen)"
+      >
+        <span class="total-label">
+          {{ listMode === 'used' ? '二手預算' : '預算' }} · {{ quotation.furniture_list.length }} 件
+          <span v-if="narrow" class="total-more">{{ listOpen ? '收合明細' : '看明細' }}<Icon :icon="listOpen ? 'mdi:chevron-up' : 'mdi:chevron-down'" aria-hidden="true" /></span>
+        </span>
+        <span class="total-val">NT$ {{ computedTotal.toLocaleString() }}</span>
+      </component>
+
+      <template v-if="listOpen">
 
       <ul v-if="shopGroups.length" class="furn-list">
-        <li v-for="g in shopGroups" :key="g.key" class="furn">
+        <li
+          v-for="g in shopGroups" :key="g.key" class="furn" :class="{ 'is-hovered': isHovered(g) }"
+          :ref="el => { rowEls[g.key] = el }" @mouseenter="hoverRow(g)" @mouseleave="hoverRow(null)"
+        >
           <template v-for="c in [pickedOf(g)]" :key="c?.id || g.key">
             <div v-if="c" class="furn-main">
               <span class="furn-thumb">
                 <img :src="c.product_image_url" :alt="c.name" />
               </span>
               <div class="furn-info" :title="g.item.detected_name">
-                <span class="furn-cat">{{ categoryLabel(g.item) }}</span>
+                <span class="furn-cat">{{ categoryLabel(g.item) }}<span v-if="g.item.from_favorite" class="from-fav-tag">從收藏加入</span><span v-if="isUsed(c) && c.store" class="store">{{ c.store }}</span><span v-if="c.relaxed" class="relaxed-tag" title="這張圖沒有很像的二手品，這是外型最接近的替代">相近替代</span></span>
                 <a v-if="c.purchase_url" :href="c.purchase_url" target="_blank" rel="noopener" class="name name--link" :title="c.name">{{ shortName(c.name) }}</a>
                 <span v-else class="name" :title="c.name">{{ shortName(c.name) }}</span>
                 <div class="furn-foot">
@@ -137,20 +271,24 @@ function toFavoriteItem(item, c) {
                   </span>
                   <span class="furn-side">
                     <button
-                      v-if="!isEstimate(c)"
+                      v-if="g.item.from_favorite"
+                      type="button" class="fav" title="從報價移除" aria-label="從報價移除" @click="removeAdded(g)"
+                    ><Icon icon="mdi:close" aria-hidden="true" /></button>
+                    <button
+                      v-else-if="!isEstimate(c)"
                       type="button"
                       class="fav"
                       :class="{ active: isFavorited(toFavoriteItem(g.item, c)) }"
                       :title="isFavorited(toFavoriteItem(g.item, c)) ? '取消收藏' : '加入收藏'"
                       :aria-label="isFavorited(toFavoriteItem(g.item, c)) ? '取消收藏' : '加入收藏'"
                       @click="toggleFavorite(toFavoriteItem(g.item, c))"
-                    >{{ isFavorited(toFavoriteItem(g.item, c)) ? '★' : '☆' }}</button>
+                    ><Icon :icon="isFavorited(toFavoriteItem(g.item, c)) ? 'mdi:star' : 'mdi:star-outline'" aria-hidden="true" /></button>
                     <button
-                      v-if="imageAlts(g).length > 1"
+                      v-if="altsOf(g).length > 1"
                       type="button" class="swap-btn" :class="{ open: openRow === g.key }"
                       title="換一款" aria-label="換一款"
                       :aria-expanded="openRow === g.key"
-                      @click="openRow = openRow === g.key ? null : g.key"
+                      @click="toggleAlts(g)"
                     >
                       <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
                         <path d="m17 2 4 4-4 4" /><path d="M3 11v-1a4 4 0 0 1 4-4h14" />
@@ -163,10 +301,10 @@ function toFavoriteItem(item, c) {
             </div>
           </template>
 
-          <!-- 其他候選：點了就換，並自動收合 -->
+          <!-- 同一份清單的其他候選：點了就換，並自動收合 -->
           <div v-if="openRow === g.key" class="alts">
             <button
-              v-for="{ a, ai } in imageAlts(g)"
+              v-for="{ a, ai } in altsOf(g)"
               :key="ai"
               type="button"
               :class="['alt', { selected: groupPick(g) === ai }]"
@@ -181,20 +319,77 @@ function toFavoriteItem(item, c) {
           </div>
         </li>
       </ul>
+      <p v-else-if="listMode === 'used'" class="note">這張圖的家具都沒有找到相似的二手品{{ usedExtras.length ? '，下方是這種房間用得到的二手搭配' : '' }}。</p>
 
-      <!-- 找不到有圖的商品：只列預估價，不放圖 -->
+      <!-- 全新：找不到有圖的商品，只列預估價；二手：沒有相似二手品的，以全新的價格補進預算 -->
       <template v-if="estimateGroups.length">
-        <h3 class="sub-title">預估估價項目</h3>
+        <h3 class="sub-title">{{ listMode === 'used' ? '沒有相似二手品，以全新估價' : '預估估價項目' }}</h3>
         <ul class="est-list">
-          <li v-for="g in estimateGroups" :key="g.key" class="est-row" :title="g.item.detected_name">
+          <li
+            v-for="g in estimateGroups" :key="g.key" class="est-row" :class="{ 'is-hovered': isHovered(g) }"
+            :title="g.item.detected_name"
+            :ref="el => { rowEls[g.key] = el }" @mouseenter="hoverRow(g)" @mouseleave="hoverRow(null)"
+          >
             <span class="est-cat">{{ categoryLabel(g.item) }}</span>
             <span class="est-name" :title="pickedOf(g).name">{{ shortName(pickedOf(g).name) }}</span>
             <span class="est-price">
               NT$ {{ pickedOf(g).price.toLocaleString() }}
               <small v-if="g.idxs.length > 1" class="qty">×{{ g.idxs.length }}</small>
+              <button
+                v-if="g.item.from_favorite" type="button" class="est-remove" title="從報價移除" aria-label="從報價移除"
+                @click="removeAdded(g)"
+              ><Icon icon="mdi:close" aria-hidden="true" /></button>
             </span>
           </li>
         </ul>
+      </template>
+
+      <!-- 二手搭配推薦：圖中沒有，依房型與整張圖的風格挑，只列出參考，不算進預算 -->
+      <template v-if="listMode === 'used' && usedExtras.length">
+        <h3 class="sub-title">二手搭配推薦（不計入預算）</h3>
+        <ul class="furn-list">
+          <li v-for="c in usedExtras" :key="c.id || c.purchase_url" class="furn">
+            <div class="furn-main">
+              <span class="furn-thumb"><img :src="c.product_image_url" :alt="c.name" /></span>
+              <div class="furn-info">
+                <span class="furn-cat">二手<span v-if="c.store" class="store">{{ c.store }}</span></span>
+                <a v-if="c.purchase_url" :href="c.purchase_url" target="_blank" rel="noopener" class="name name--link" :title="c.name">{{ shortName(c.name) }}</a>
+                <span v-else class="name" :title="c.name">{{ shortName(c.name) }}</span>
+                <div class="furn-foot">
+                  <span class="price">NT$ {{ c.price.toLocaleString() }}</span>
+                  <span class="furn-side">
+                    <button
+                      type="button" class="fav" :class="{ active: isFavorited(toFavoriteItem({ category: '' }, c)) }"
+                      :title="isFavorited(toFavoriteItem({ category: '' }, c)) ? '取消收藏' : '加入收藏'"
+                      :aria-label="isFavorited(toFavoriteItem({ category: '' }, c)) ? '取消收藏' : '加入收藏'"
+                      @click="toggleFavorite(toFavoriteItem({ category: '' }, c))"
+                    ><Icon :icon="isFavorited(toFavoriteItem({ category: '' }, c)) ? 'mdi:star' : 'mdi:star-outline'" aria-hidden="true" /></button>
+                  </span>
+                </div>
+              </div>
+            </div>
+          </li>
+        </ul>
+      </template>
+
+      <div v-if="selectedFurniture.length" class="from-fav">
+        <button type="button" class="from-fav-toggle" :aria-expanded="favOpen" @click="favOpen = !favOpen">
+          <Icon :icon="favOpen ? 'mdi:chevron-up' : 'mdi:plus'" aria-hidden="true" /> 從收藏加入（{{ addableFavorites.length }}）
+        </button>
+        <template v-if="favOpen">
+          <p v-if="!addableFavorites.length" class="from-fav-empty">收藏的家具都已加入這份報價</p>
+          <ul v-else class="from-fav-list">
+            <li v-for="f in addableFavorites" :key="favKey(f)">
+              <button type="button" class="from-fav-row" @click="addFavorite(f)">
+                <span class="from-fav-thumb"><img v-if="f.image_url" :src="f.image_url" alt="" /></span>
+                <span class="from-fav-name" :title="f.name">{{ shortName(f.name) }}</span>
+                <span class="from-fav-price">NT$ {{ Math.round(Number(f.price) || 0).toLocaleString() }}</span>
+                <Icon icon="mdi:plus" class="from-fav-add" aria-hidden="true" />
+              </button>
+            </li>
+          </ul>
+        </template>
+      </div>
       </template>
     </template>
 
@@ -244,8 +439,14 @@ function toFavoriteItem(item, c) {
 
 /* 家具清單：每件一行（選中的商品），其他候選按「換」才展開 */
 .furn-list { margin: 0; padding: 0; list-style: none; }
-.furn { padding: 0.4rem 0; border-bottom: 1px solid #f0f0f0; }
+.furn { padding: 0.4rem 0; border-bottom: 1px solid var(--db-line); }
 .furn:last-child { border-bottom: none; }
+/* 跟結果圖上滑到的家具對應的那一行：淡底，往內縮一點不會貼邊 */
+.furn, .est-row { transition: background 0.14s; }
+.furn.is-hovered, .est-row.is-hovered {
+  margin: 0 -0.5rem; padding-left: 0.5rem; padding-right: 0.5rem;
+  border-radius: 8px; background: var(--db-accent-soft);
+}
 .furn-main { display: flex; align-items: center; gap: 0.75rem; }
 .furn-thumb {
   display: grid;
@@ -263,12 +464,14 @@ function toFavoriteItem(item, c) {
 .est-list { margin: 0; padding: 0; list-style: none; }
 .est-row {
   display: grid; grid-template-columns: auto 1fr auto; align-items: baseline; gap: 0.6rem;
-  padding: 0.45rem 0; border-bottom: 1px solid #f0f0f0; font-size: 0.88rem;
+  padding: 0.45rem 0; border-bottom: 1px solid var(--db-line); font-size: 0.88rem;
 }
 .est-row:last-child { border-bottom: none; }
 .est-cat { font-size: 0.74rem; color: var(--db-text-soft); }
 .est-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--db-text-soft); }
-.est-price { white-space: nowrap; }
+.est-price { display: inline-flex; align-items: center; white-space: nowrap; }
+.est-remove { display: grid; place-items: center; width: 32px; height: 32px; margin-left: 0.25rem; border: none; border-radius: 50%; background: none; color: var(--db-text-soft); cursor: pointer; }
+.est-remove:hover { background: var(--db-chip-soft); color: var(--db-text); }
 .est-row .qty { font-size: 0.8rem; padding: 0.05rem 0.45rem; }
 .furn-info { display: flex; flex-direction: column; gap: 0.15rem; flex: 1; min-width: 0; }
 .furn-info .name { font-size: 0.92rem; }
@@ -328,7 +531,7 @@ function toFavoriteItem(item, c) {
   flex-shrink: 0;
   width: 112px;
   padding: 0.5rem;
-  border: 2px solid #ececec;
+  border: 2px solid var(--db-line);
   border-radius: var(--db-radius-chip);
   background: #fff;
   text-align: left;
@@ -357,6 +560,32 @@ function toFavoriteItem(item, c) {
   overflow: hidden;
 }
 .alt-price { font-size: 0.8rem; font-weight: 600; color: var(--db-text); }
+/* 全新／二手切換：兩段式按鈕，選中的反白 */
+.mode-switch {
+  display: inline-flex; gap: 2px; padding: 3px; margin: 0.1rem 0 0.2rem;
+  border-radius: var(--db-radius-pill); background: var(--db-chip-soft);
+}
+.mode-switch button {
+  min-height: 34px; padding: 0 1rem; border: none; border-radius: var(--db-radius-pill);
+  background: none; color: var(--db-text-soft); font-size: 0.86rem; cursor: pointer;
+  transition: background 0.16s, color 0.16s;
+}
+.mode-switch button small { font-size: 0.72rem; }
+.mode-switch button:hover:not(:disabled):not(.on) { color: var(--db-text); }
+.mode-switch button.on { background: #fff; color: var(--db-text); font-weight: 600; box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08); }
+.mode-switch button:disabled { opacity: 0.45; cursor: not-allowed; }
+.mode-switch button:focus-visible { outline: 2px solid var(--db-text); outline-offset: 2px; }
+.store { margin-left: 0.4rem; color: var(--db-accent-ink); letter-spacing: 0; }
+.stale-note { margin: 0.2rem 0 0; font-size: 0.78rem; color: var(--db-text-soft); }
+.stale-link {
+  padding: 0; border: none; background: none; color: var(--db-accent-ink); font: inherit; font-weight: 600;
+  text-decoration: underline; text-underline-offset: 2px; cursor: pointer;
+}
+.stale-link:disabled { opacity: 0.5; cursor: not-allowed; }
+.relaxed-tag {
+  margin-left: 0.4rem; padding: 0.02rem 0.4rem; border-radius: var(--db-radius-pill);
+  background: var(--db-chip-soft); color: var(--db-text-soft); font-size: 0.68rem; letter-spacing: 0;
+}
 
 .name {
   font-size: 0.82rem;
@@ -369,7 +598,7 @@ function toFavoriteItem(item, c) {
   overflow: hidden;
 }
 .price { font-size: 0.9rem; font-weight: 600; color: var(--db-text); }
-.sim { font-size: 0.7rem; color: var(--db-placeholder); }
+.sim { font-size: 0.7rem; color: var(--db-text-soft); }
 
 .fav {
   display: grid;
@@ -390,15 +619,41 @@ function toFavoriteItem(item, c) {
 .fav.active { color: var(--db-accent); }
 .fav:focus-visible { outline: 2px solid var(--db-text); outline-offset: 2px; }
 
+.from-fav-tag {
+  margin-left: 0.4rem; padding: 0.02rem 0.4rem; border-radius: var(--db-radius-pill);
+  background: var(--db-accent-soft); color: var(--db-accent-ink); font-size: 0.68rem; letter-spacing: 0;
+}
+.from-fav { margin-top: 0.75rem; padding-top: 0.6rem; border-top: 1px solid var(--db-line); }
+.from-fav-toggle {
+  display: inline-flex; align-items: center; gap: 0.35rem; min-height: 40px; padding: 0 0.5rem; margin-left: -0.5rem;
+  border: none; border-radius: var(--db-radius-pill); background: none; color: var(--db-text); font-size: 0.88rem; cursor: pointer;
+}
+.from-fav-toggle:hover { background: var(--db-chip-soft); }
+.from-fav-toggle:focus-visible, .from-fav-row:focus-visible { outline: 2px solid var(--db-text); outline-offset: 2px; }
+.from-fav-empty { margin: 0.4rem 0 0; font-size: 0.8rem; color: var(--db-text-soft); }
+.from-fav-list { margin: 0.3rem 0 0; padding: 0; list-style: none; }
+.from-fav-row {
+  display: grid; grid-template-columns: 44px 1fr auto auto; align-items: center; gap: 0.6rem; width: 100%;
+  padding: 0.35rem 0.4rem; border: none; border-radius: 8px; background: none; text-align: left; cursor: pointer;
+}
+.from-fav-row:hover { background: var(--db-accent-soft); }
+.from-fav-thumb { display: grid; place-items: center; width: 44px; height: 44px; border-radius: 8px; background: var(--db-chip-soft); overflow: hidden; }
+.from-fav-thumb img { max-width: 100%; max-height: 100%; object-fit: contain; }
+.from-fav-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 0.85rem; color: var(--db-text); }
+.from-fav-price { font-size: 0.82rem; color: var(--db-text-soft); font-variant-numeric: tabular-nums; }
+.from-fav-add { color: var(--db-accent-ink); font-size: 1.1rem; }
+
 .total {
   display: flex;
   align-items: baseline;
   justify-content: space-between;
   gap: 0.85rem;
   padding: 0.75rem 0 0.6rem;
-  border-bottom: 1px solid #f0f0f0;
+  border-bottom: 1px solid var(--db-line);
 }
 .total-label { color: var(--db-text-soft); font-size: 0.9rem; }
+button.total { width: 100%; border-width: 0 0 1px; background: none; font: inherit; text-align: left; cursor: pointer; }
+.total-more { display: inline-flex; align-items: center; gap: 0.1rem; margin-left: 0.4rem; color: var(--db-accent-ink); font-size: 0.8rem; }
 .total-val {
   font-family: var(--db-font-display);
   font-style: normal;
@@ -409,7 +664,7 @@ function toFavoriteItem(item, c) {
 
 .note, .hint {
   margin: 0.5rem 0 0;
-  color: var(--db-placeholder);
+  color: var(--db-text-soft);
   font-size: 0.8rem;
   line-height: 1.7;
 }

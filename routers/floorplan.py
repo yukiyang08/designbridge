@@ -7,6 +7,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 
 from routers.common import (
+    charge_credit,
     DesignRequest, _artifact_url, _build_user_input, _layout_render_config, _require_artifact_file,
     check_request_paths, get_user_id,
 )
@@ -41,14 +42,14 @@ class PhotoMoveRequest(BaseModel):
 
 class RoomProgramRequest(BaseModel):
     """輸入：整層樓的房間需求（幾房幾廳…）+ 總坪數，獨立於既有單房家具佈局流程。"""
-    bedroom_count: int = 2
-    living_count: int = 1
-    bathroom_count: int = 1
-    dining_count: int = 0
-    kitchen_count: int = 1
-    balcony_count: int = 1
-    total_ping: float = 25.0
-    extra_rooms: List[str] = []      # 自訂空間名稱（書房、儲藏室…），每個 1 間
+    bedroom_count: int = Field(default=2, ge=0, le=10)
+    living_count: int = Field(default=1, ge=0, le=10)
+    bathroom_count: int = Field(default=1, ge=0, le=10)
+    dining_count: int = Field(default=0, ge=0, le=10)
+    kitchen_count: int = Field(default=1, ge=0, le=10)
+    balcony_count: int = Field(default=1, ge=0, le=10)
+    total_ping: float = Field(default=25.0, gt=0, le=500)
+    extra_rooms: List[str] = Field(default=[], max_length=10)      # 自訂空間名稱（書房、儲藏室…），每個 1 間
     room_w: Optional[float] = None   # 自訂整層外框寬/深（公尺），兩者都給才生效，此時 total_ping 以 w*d 換算
     room_d: Optional[float] = None
 
@@ -264,9 +265,12 @@ def detect_rooms(request: DetectRoomsRequest, user_id: str = Depends(get_user_id
     """整戶平面圖上傳後，先抓出每個房間的邊界框，讓使用者選要看哪一間。"""
     _require_artifact_file(request.image_path)
 
+    from designbridge.layout.floorplan_quality import FloorPlanRejected, check_floor_plan_image
+
     try:
         from designbridge.layout.floorplan_parse import detect_rooms_in_floor_plan
 
+        check_floor_plan_image(request.image_path)
         rooms = detect_rooms_in_floor_plan(request.image_path) or []
         plan = None
         # 整戶圖（多間房）：另外給一份整層流程格式的資料，前端接進整層進度（沒有輪廓就用方框）
@@ -278,6 +282,8 @@ def detect_rooms(request: DetectRoomsRequest, user_id: str = Depends(get_user_id
         # 整層或單間：切出多間房就是整層圖；只有一間就是單間；一間都沒有則未知（前端另有出口）
         plan_kind = "whole_floor" if len(rooms) > 1 else ("single_room" if rooms else "unknown")
         return {"rooms": rooms, "plan": plan, "plan_kind": plan_kind}
+    except FloorPlanRejected as e:
+        raise HTTPException(status_code=422, detail=str(e))
     except Exception as e:
         import traceback
         traceback.print_exc()
@@ -290,7 +296,7 @@ class RescalePlanRequest(BaseModel):
 
 
 @router.post("/api/rescale-upload-plan")
-def rescale_upload_plan_endpoint(request: RescalePlanRequest):
+def rescale_upload_plan_endpoint(request: RescalePlanRequest, user_id: str = Depends(get_user_id)):
     """使用者校正總坪數：整張上傳平面圖等比例重算尺寸並重畫，不重跑房間辨識。"""
     from designbridge.layout.floorplan_upload_plan import rescale_upload_plan
 
@@ -311,11 +317,11 @@ class CropFloorPlanRequest(BaseModel):
     y: float
     w: float
     h: float
-    polygon: Optional[List[List[float]]] = None  # 正規化 [[x, y], ...]；有給就把房間外塗白
+    polygon: Optional[List[List[float]]] = Field(default=None, max_length=200)  # 正規化 [[x, y], ...]；有給就把房間外塗白
 
 
 @router.post("/api/crop-floor-plan")
-def crop_floor_plan(request: CropFloorPlanRequest):
+def crop_floor_plan(request: CropFloorPlanRequest, user_id: str = Depends(get_user_id)):
     """依使用者選定的房間邊界框，從整戶平面圖裁出單一房間的子圖。"""
     _require_artifact_file(request.image_path)
 
@@ -354,14 +360,14 @@ def crop_floor_plan(request: CropFloorPlanRequest):
 
 
 class FloorPlanRenderRequest(BaseModel):
-    furniture_placements: List[dict]
-    room_w: float = 5.0
-    room_d: float = 4.0
+    furniture_placements: List[dict] = Field(max_length=300)
+    room_w: float = Field(default=5.0, gt=0, le=100)
+    room_d: float = Field(default=4.0, gt=0, le=100)
     room_type: str = "living_room"
 
 
 @router.post("/api/render-floor-plan")
-def render_floor_plan(request: FloorPlanRenderRequest):
+def render_floor_plan(request: FloorPlanRenderRequest, user_id: str = Depends(get_user_id)):
     """Re-render the 2D floor plan PNG from (edited) furniture placements."""
     import uuid as _uuid
     try:
@@ -436,6 +442,7 @@ def plan_layout(request: DesignRequest, user_id: str = Depends(get_user_id)):
 @router.post("/api/photo-layout")
 def photo_layout(request: PhotoLayoutRequest, user_id: str = Depends(get_user_id)):
     """照片入口：偵測照片裡的家具與門窗成可編輯的俯視佈局，同時跑深度/分割供之後疊回照片投影。"""
+    import contextvars
     from concurrent.futures import ThreadPoolExecutor
 
     from designbridge.core.nodes import visual_preprocessing_local
@@ -446,7 +453,7 @@ def photo_layout(request: PhotoLayoutRequest, user_id: str = Depends(get_user_id
     vision_state = {"user_input": {"initial_image": request.image_path}, "task_id": task_id}
     # Gemini 偵測與本機深度/分割互不相依，並行省一半等待
     with ThreadPoolExecutor(max_workers=2) as pool:
-        plan_future = pool.submit(parse_room_photo, request.image_path, request.room_type)
+        plan_future = pool.submit(contextvars.copy_context().run, parse_room_photo, request.image_path, request.room_type)
         vision_future = pool.submit(visual_preprocessing_local, vision_state)
         plan = plan_future.result()
         vision = vision_future.result() or {}
@@ -472,7 +479,7 @@ def photo_layout(request: PhotoLayoutRequest, user_id: str = Depends(get_user_id
 
 
 @router.post("/api/photo-move")
-def photo_move(request: PhotoMoveRequest, user_id: str = Depends(get_user_id)):
+def photo_move(request: PhotoMoveRequest, user_id: str = Depends(charge_credit)):
     """在原圖上搬家具：挖掉舊位置、補背景、把同一件家具貼到新位置，房間其他部分不重新生成。"""
     from designbridge.core.config import Config
     from designbridge.core.nodes import visual_preprocessing_local

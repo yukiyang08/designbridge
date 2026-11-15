@@ -1,8 +1,7 @@
 # designbridge/schemas.py
 """Complete JSON schema definitions for DesignBridge agents per specification."""
 
-from typing import Any, Literal
-from typing_extensions import NotRequired, TypedDict
+from typing import Any, Literal, NotRequired, TypedDict
 
 
 # ========== Requirement JSON ==========
@@ -145,6 +144,9 @@ class FurnitureCandidate(TypedDict):
     purchase_url: str           # IKEA 商品頁連結
     product_image_url: str      # IKEA 商品圖片 URL
     similarity: float           # cosine similarity 0~1（向量比對得分）
+    source: NotRequired[str]    # "secondhand" = 二手品（pricing/secondhand.py），沒有就是新品
+    store: NotRequired[str]     # 二手品的店家名稱
+    relaxed: NotRequired[bool]  # 二手品是放寬規則比到的（整張圖原本一件都沒有），前端標「相近替代」
 
 
 class FurnitureItem(TypedDict):
@@ -154,6 +156,7 @@ class FurnitureItem(TypedDict):
     category: str                           # sofa / table / chair / lamp / rug / storage / bed / other
     candidates: list[FurnitureCandidate]    # top-3 IKEA 候選（向量搜尋結果）
     selected_index: int                     # 預設選中第 0 筆
+    bbox: NotRequired[list[float]]          # 在結果圖上的位置 [x1, y1, x2, y2]（0~1）
 
 
 class QuotationResultJSON(TypedDict):
@@ -165,4 +168,6 @@ class QuotationResultJSON(TypedDict):
     total_high: int         # 以每件第 0 候選 × 1.3 計算
     currency: str           # "TWD"
     kb_match_count: int     # 有幾件成功從 IKEA KB 向量比對到
+    secondhand_extras: NotRequired[list[FurnitureCandidate]]  # 圖中家具都沒有二手時，依房型搭配的二手品（不計入預算）
+    secondhand_checked: NotRequired[bool]  # 這份報價有比對過二手（沒有這欄 = 加入二手推薦前的舊報價）
     notes: NotRequired[str]

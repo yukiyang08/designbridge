@@ -87,7 +87,12 @@ def fal_subscribe(label: str, application: str, arguments: dict, **kwargs):
 
     result = None
     try:
+        from designbridge.core.config import Config
+
+        kwargs.setdefault("client_timeout", Config.FAL_TIMEOUT_S)
         result = fal_client.subscribe(application, arguments=arguments, on_queue_update=_on_update, **kwargs)
+        from designbridge.core import usage
+        usage.record_fal(application, result, time.perf_counter() - start, started_at[0] - start if started_at else None)
         return result
     finally:
         total = time.perf_counter() - start

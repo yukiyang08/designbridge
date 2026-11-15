@@ -24,6 +24,16 @@ class Config:
     GEMINI_TEMPERATURE: float = 0.3
     # thinking token 上限：0 關閉（抽取/翻譯/辨識不需要）、-1 由模型決定
     GEMINI_THINKING_BUDGET: int = int(os.getenv("DESIGNBRIDGE_GEMINI_THINKING_BUDGET", "0"))
+    # 平面圖辨識單獨的思考預算；台灣 30 張比較 0／2048／-1，2048 分數最好、-1 最慢（見 FLOORPLAN_SEGMENTATION_EXPERIMENT.md）
+    FLOORPLAN_THINKING_BUDGET: int = int(os.getenv("DESIGNBRIDGE_FLOORPLAN_THINKING_BUDGET", "2048"))
+
+    # 平面圖切房間的牆改用 CubiCasa5K 模型預測（比規則式牆線準，見 test/FLOORPLAN_SEGMENTATION_EXPERIMENT.md）；
+    # 權重不在 repo（scripts/fetch_cubicasa_weights.py），缺檔時退回規則式。只限非商業用途
+    ENABLE_CUBICASA_WALLS: bool = _flag("DESIGNBRIDGE_ENABLE_CUBICASA_WALLS", "true")
+    CUBICASA_WEIGHTS: str = os.getenv("DESIGNBRIDGE_CUBICASA_WEIGHTS", "models/cubicasa/cubicasa_state.pt")
+
+    # 估價時另外比對北二高家具的二手品，接在新品候選後面（pricing/secondhand.py）
+    ENABLE_SECONDHAND: bool = _flag("DESIGNBRIDGE_ENABLE_SECONDHAND", "true")
 
     # Vertex 模式：不用 API key，改用 service-account JSON 驗證
     GOOGLE_GENAI_USE_VERTEXAI: bool = _flag("GOOGLE_GENAI_USE_VERTEXAI", "")
@@ -41,6 +51,8 @@ class Config:
 
     # ── 出圖後端：fal.ai / Hugging Face ──────────────────────────────────
     FAL_KEY: str | None = os.getenv("FAL_KEY")
+    # fal 排隊卡住時不要無限等（含排隊；FLUX 一般 20~60 秒）
+    FAL_TIMEOUT_S: float = float(os.getenv("DESIGNBRIDGE_FAL_TIMEOUT_S", "180"))
     # 預設 Fill dev（公開權重，可自架）；要用閉源的 Fill Pro 設成 fal-ai/flux-pro/v1/fill
     FAL_INPAINT_MODEL: str = os.getenv("DESIGNBRIDGE_FAL_INPAINT_MODEL", "fal-ai/flux-lora-fill")
     # 局部修改改用可下載的 Fill dev（fal-ai/flux-lora-fill）時的 guidance
@@ -61,24 +73,16 @@ class Config:
     OUTPAINT_GUIDANCE: float = float(os.getenv("DESIGNBRIDGE_OUTPAINT_GUIDANCE", "2.2"))
     OUTPAINT_STEPS: int = int(os.getenv("DESIGNBRIDGE_OUTPAINT_STEPS", "28"))
     OUTPAINT_NAG_SCALE: float = float(os.getenv("DESIGNBRIDGE_OUTPAINT_NAG_SCALE", "5.0"))  # 越高越遠離 negative
-    # negative 兩組：文字浮水印、會被重複生成的家具
-    OUTPAINT_NEGATIVE_TEXT: str = os.getenv(
-        "DESIGNBRIDGE_OUTPAINT_NEGATIVE_TEXT",
+    # negative：文字浮水印 + 會被重複生成的家具
+    OUTPAINT_NEGATIVE: str = (
         "text, letters, words, lettering, typography, font, caption, subtitle, "
         "watermark, logo, brand mark, signature, copyright notice, stamp, "
         "sign, signage, banner, poster, label, nameplate, writing, "
-        "collage, photo grid, contact sheet, catalogue page",
-    )
-    OUTPAINT_NEGATIVE_DUPES: str = os.getenv(
-        "DESIGNBRIDGE_OUTPAINT_NEGATIVE_DUPES",
+        "collage, photo grid, contact sheet, catalogue page, "
         "television, tv screen, monitor, fireplace, media cabinet, sideboard, "
         "sofa, potted plant, duplicated furniture, repeated furniture, "
-        "mirrored room, cluttered",
+        "mirrored room, cluttered"
     )
-
-    @classmethod
-    def outpaint_negative_prompt(cls) -> str:
-        return f"{cls.OUTPAINT_NEGATIVE_TEXT}, {cls.OUTPAINT_NEGATIVE_DUPES}"
 
     # ── ControlNet（文字生成流程）：家具輪廓 canny + 房間外殼 depth ───────────
     ENABLE_LAYOUT_CONTROLNET: bool = _flag("DESIGNBRIDGE_ENABLE_LAYOUT_CONTROLNET", "true")
@@ -132,9 +136,6 @@ class Config:
     # 局部修改／擴圖走自架 Fill dev（另一個部署 designbridge-edit，見 scripts/modal_flux/edit_app.py）；失敗退回 fal
     USE_MODAL_EDIT: bool = USE_MODAL_GPU and _flag("DESIGNBRIDGE_MODAL_EDIT", "false")
     MODAL_EDIT_APP_NAME: str = os.getenv("DESIGNBRIDGE_MODAL_EDIT_APP_NAME", "designbridge-edit")
-    # 暖機：先叫起容器，使用者按生圖時就不用等冷啟動；只暖 Union 路徑（CAD／平面圖流程）
-    MODAL_WARMUP: str = "studio" if MODAL_MODE == "demo" else "off"
-    MODAL_WARMUP_MODES: str = "union"
     # 投影深度是軸對齊方塊，條件過強會讓家具漂浮成方塊，故設上限
     PROJECTED_DEPTH_MAX_CONDITIONING_SCALE: float = float(
         os.getenv("DESIGNBRIDGE_PROJECTED_DEPTH_MAX_CONDITIONING_SCALE", "0.3")

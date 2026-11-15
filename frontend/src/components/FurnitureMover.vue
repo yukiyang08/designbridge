@@ -1,4 +1,5 @@
 <script setup>
+import { Icon } from '@iconify/vue'
 /**
  * 在渲染圖上直接拖曳家具：一進來就把後端自動切出的每件家具框出來，
  * 點選（Shift 多選）後拖曳，即時預覽透視縮放、擋重疊；按「套用」才請 AI 修接縫與光影。
@@ -264,7 +265,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey))
       />
 
       <div class="fm-corner">
-        <button type="button" title="結束移動家具（Esc）" @pointerdown.stop @click="emit('close')">✕</button>
+        <button type="button" title="結束移動家具（Esc）" aria-label="結束移動家具" @pointerdown.stop @click="emit('close')"><Icon icon="mdi:close" aria-hidden="true" /></button>
       </div>
 
       <div v-if="loading" class="fm-busy" role="status">
@@ -286,7 +287,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey))
         <template v-else>已移動 {{ movedList.length }} 件，放好了就按「套用」，AI 會重新補光影與接縫</template>
       </p>
       <div class="fm-actions">
-        <button v-if="canUndoMove && !plan" type="button" class="fm-link" :disabled="applyingMove" @click="undoMove">↶ 復原上一次移動</button>
+        <button v-if="canUndoMove && !plan" type="button" class="fm-link" :disabled="applyingMove" @click="undoMove"><Icon icon="mdi:undo" aria-hidden="true" /> 復原上一次移動</button>
         <button v-if="movedList.length" type="button" class="db-btn db-btn--ghost db-btn--sm" :disabled="applyingMove" @click="resetAll">全部還原</button>
         <button type="button" class="db-btn db-btn--sm" :disabled="!movedList.length || blockedSet.size > 0 || applyingMove" @click="onApply">套用</button>
       </div>
@@ -317,7 +318,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey))
 .fm-layer { filter: drop-shadow(0 0 0.6px rgba(255, 255, 255, 0.95)) drop-shadow(0 0 0.6px rgba(255, 255, 255, 0.95)); transition: filter 0.12s; }
 .fm-layer.hover { filter: drop-shadow(0 0 1.2px #fff) drop-shadow(0 0 1.5px var(--db-accent)) drop-shadow(0 0 1.5px var(--db-accent)); }
 .fm-layer.selected { filter: drop-shadow(0 0 1.5px #fff) drop-shadow(0 0 2px var(--db-accent)) drop-shadow(0 0 2px var(--db-accent)) drop-shadow(0 6px 10px rgba(0, 0, 0, 0.3)); }
-.fm-layer.blocked { opacity: 0.75; filter: drop-shadow(0 0 1.5px #fff) drop-shadow(0 0 2px #d93025) drop-shadow(0 0 6px rgba(217, 48, 37, 0.6)); }
+.fm-layer.blocked { opacity: 0.75; filter: drop-shadow(0 0 1.5px #fff) drop-shadow(0 0 2px var(--db-danger)) drop-shadow(0 0 6px rgba(217, 48, 37, 0.6)); }
 
 .fm-corner { position: absolute; top: 0.75rem; right: 0.75rem; z-index: 2000; }
 .fm-corner button {
@@ -358,7 +359,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey))
 
 .fm-bar { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 0.6rem; }
 .fm-hint { margin: 0; font-size: 0.88rem; color: var(--db-text-soft); }
-.fm-warn { color: #b3261e; }
+.fm-warn { color: var(--db-danger); }
 .fm-actions { display: flex; align-items: center; gap: 0.6rem; }
 .fm-link {
   border: none;
@@ -371,5 +372,5 @@ onBeforeUnmount(() => window.removeEventListener('keydown', onKey))
   cursor: pointer;
 }
 .fm-link:disabled { opacity: 0.4; cursor: not-allowed; }
-.fm-error { flex-basis: 100%; margin: 0; font-size: 0.82rem; color: #b3261e; }
+.fm-error { flex-basis: 100%; margin: 0; font-size: 0.82rem; color: var(--db-danger); }
 </style>

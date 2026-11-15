@@ -2,8 +2,8 @@ import { cancelCadBatch } from './cadBatch'
 import {
   steps, stepIndex, error, planSource,
   floorPlanUrl, floorPlanPath, sceneGraph, editPlacements, layoutViewMode, layoutRenderConfig,
-  floorPlanUpload, uploadedPlanUrl, uploadedPlanPath, detectedRooms, planParseIssue,
-  cadPlanResult, cadActiveRoomId, cadRoomStatus, cadRoomSnapshots, openingEdits, cadOverview,
+  floorPlanUpload, uploadedPlanUrl, uploadedPlanPath, uploadTotalPing, detectedRooms, planParseIssue,
+  cadPlanResult, cadActiveRoomId, cadRoomStatus, cadRoomSnapshots, openingEdits, cadOverview, cadDetectedPlacements,
   spacePhoto, spacePhotoPath, spaceImage, styleRefImage, photoDetection, photoLayoutError,
   photoVersions, photoCurrent, photoBusy, photoStyleId, photoStylePrompt,
   result, loading, extraPrompt,
@@ -24,6 +24,11 @@ export function prevStep() { goStep(stepIndex.value - 1) }
 // 對應到的 index 不一樣，呼叫端不用自己 import steps 再 findIndex。
 export function goToStepKey(key) {
   goStep(steps.value.findIndex(s => s.key === key))
+}
+
+export function confirmDiscard(msg = '目前生成的設計會被清除，確定重新開始嗎？') {
+  const hasWork = !!result.value || photoVersions.value.length > 1 || Object.keys(cadRoomStatus.value || {}).length > 0
+  return !hasWork || window.confirm(msg)
 }
 
 export function startFlow(source) {
@@ -48,12 +53,14 @@ export function resetFlow() {
   floorPlanUpload.remove()
   uploadedPlanUrl.value = ''
   uploadedPlanPath.value = ''
+  uploadTotalPing.value = null   // 坪數決定比例尺，沿用上一張圖（例如單間浴室）的值會把整層縮成幾坪
   detectedRooms.value = []
   planParseIssue.value = null
   cadPlanResult.value = null
   cadActiveRoomId.value = null
   cadRoomStatus.value = {}
   cadRoomSnapshots.value = {}
+  cadDetectedPlacements.value = {}
   cadOverview.value = false
   openingEdits.value = {}
   cancelCadBatch()

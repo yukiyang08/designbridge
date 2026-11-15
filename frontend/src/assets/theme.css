@@ -19,18 +19,20 @@
   --db-fog:           #bebbbb;   /* 流程頁底 */
   --db-card:          #ffffff;
   --db-paper:         #f1efeb;   /* 非 scene 頁面（歷史／收藏…）的底，accent-soft 再淡一階 */
+  --db-line:          #e2ded6;   /* 滿版工作區（/studio）各區之間的分隔細線，取代卡片陰影 */
+  --db-line-strong:   #cfcbc4;   /* 按鈕、輸入框的框線 */
 
   /* 互動元件 */
-  --db-chip:          #d9d9d9;   /* 空間類型 chip */
-  --db-chip-soft:     #efefef;   /* 家具 chip */
-  --db-secondary:     #757575;   /* 次要按鈕（更新平面圖） */
+  --db-chip:          #e6e3dd;   /* 空間類型 chip；暖灰，避免冷灰在紙色底上發悶 */
+  --db-chip-soft:     #f7f5f1;   /* 家具 chip */
+  --db-secondary:     #756d66;   /* 次要按鈕（更新平面圖） */
   --db-secondary-2:   #878181;   /* 面板標題列 */
 
   /* 文字 */
   --db-text:          #1a1a1a;
   --db-text-soft:     #5a5a5a;
   --db-muted:         #c2c1c1;   /* 停用文字 */
-  --db-placeholder:   #b2b2b2;
+  --db-placeholder:   #878079;   /* 白底 3.9:1；說明文字請用 --db-text-soft */
 
   /* 狀態（設計稿沒畫，補齊才有辦法顯示 loading / error） */
   --db-danger:        #b4443a;
@@ -46,13 +48,17 @@
 
   /* 中文在 Iosevka Charon 底下本來就是靠 fallback + 合成斜體，
      所以這裡直接用襯線 stack + font-style: italic，視覺結果等價。 */
-  --db-font-display: 'Noto Serif TC', 'Songti TC', 'PingFang TC', 'Microsoft JhengHei', serif;
-  --db-font-body:    'Noto Sans TC', 'PingFang TC', 'Microsoft JhengHei', -apple-system,
+  /* 'DM Sans' 只載入數字子集（index.html），排第一只影響數字 */
+  --db-font-display: 'DM Sans', 'Noto Serif TC', 'Songti TC', 'PingFang TC', 'Microsoft JhengHei', serif;
+  --db-font-body:    'DM Sans', 'Noto Sans TC', 'PingFang TC', 'Microsoft JhengHei', -apple-system,
                      BlinkMacSystemFont, 'Segoe UI', sans-serif;
-  --db-font-num:     'Jeju Gothic', 'Helvetica Neue', Arial, sans-serif;
+  --db-font-num:     'DM Sans', 'Noto Sans TC', 'PingFang TC', 'Microsoft JhengHei', sans-serif;
 }
 
 /* ── 共用基礎元件 ───────────────────────────────────────────── */
+
+/* Iconify 圖示跟文字並排時對齊基線 */
+svg.iconify { vertical-align: -0.125em; flex: none; }
 
 /* 流程頁的滿版背景：室內照 opacity 40% 疊在 --db-fog 上（Figma frame 9/10/11） */
 .db-scene {
@@ -71,6 +77,11 @@
   pointer-events: none;
 }
 .db-scene > * { position: relative; }
+
+/* 跟 /studio 工作區同款的滿版白底頁（我的設計、我的收藏）：白色導覽列＋細線，不鋪室內照、不包卡片 */
+.db-page { min-height: 100vh; background: var(--db-card); font-family: var(--db-font-body); color: var(--db-text); }
+.db-page-nav { border-bottom: 1px solid var(--db-line); }
+.db-page-body { box-sizing: border-box; width: min(1760px, 100%); margin: 0 auto; padding: clamp(1.5rem, 3vw, 2.5rem); }
 
 /* 置中白卡 —— Figma 是固定 1192×620，這裡改成上限 + 自適應高度 */
 .db-card {
@@ -112,7 +123,13 @@
 }
 .db-btn:active:not(:disabled) { transform: translateY(1px); box-shadow: none; }
 .db-btn:focus-visible { outline: 3px solid var(--db-accent-deep); outline-offset: 2px; }
-.db-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+/* 停用用淡灰褐底，不用 opacity：半透明看起來像壞掉 */
+.db-btn:disabled {
+  background: var(--db-accent-soft);
+  border-color: var(--db-accent-soft);
+  color: var(--db-accent-ink);
+  cursor: not-allowed;
+}
 
 .db-btn--ghost {
   background: #fff;
@@ -135,7 +152,7 @@
   font-size: 1rem;
 }
 
-/* chip：空間類型（大、#d9d9d9）與家具（小、#efefef） */
+/* chip：空間類型（大、--db-chip）與家具（小、--db-chip-soft） */
 .db-chip {
   display: inline-flex;
   align-items: center;
@@ -207,6 +224,57 @@
   background: var(--db-danger-soft);
   color: var(--db-danger);
   font-size: 0.9rem;
+}
+
+/* 窄螢幕底部抽屜的摘要列（平面圖步驟的健檢、結果頁的家具推薦）：固定在操作列上方，
+   平常只露這一列，點了往上展開。抽屜本身的定位在各頁（StudioView、StepResult） */
+.db-drawer-head { display: none; }
+@media (max-width: 1099px) {
+  .db-drawer-head {
+    position: sticky;
+    top: 0;
+    z-index: 2;
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    width: calc(100% + 2 * var(--pad, 1.5rem));
+    min-height: var(--peek, 58px);
+    margin: 0 calc(-1 * var(--pad, 1.5rem)) 0.75rem;
+    padding: 0.5rem var(--pad, 1.5rem) 0;
+    border: none;
+    background: var(--db-paper);
+    color: var(--db-text);
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+  }
+  .is-open > .db-drawer-head { border-bottom: 1px solid var(--db-line); }
+  .db-drawer-head:focus-visible { outline: 2px solid var(--db-accent-deep); outline-offset: -2px; }
+  .db-drawer-grip {
+    position: absolute;
+    top: 6px;
+    left: 50%;
+    width: 36px;
+    height: 4px;
+    border-radius: 2px;
+    background: var(--db-line-strong);
+    transform: translateX(-50%);
+  }
+  .db-drawer-title { flex: none; font-family: var(--db-font-display); font-style: italic; font-weight: 500; font-size: 1rem; }
+  .db-drawer-summary {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    color: var(--db-text-soft);
+    font-size: 0.82rem;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+  }
+  .db-drawer-chevron { flex: none; color: var(--db-text-soft); transition: transform 0.25s; }
+  .is-open > .db-drawer-head .db-drawer-chevron { transform: rotate(180deg); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .db-drawer-chevron { transition: none; }
 }
 
 /* CAD 平面圖 SVG 的尺寸細節（plan-detail）：手機寬度縮小後看不清，只會雜亂。

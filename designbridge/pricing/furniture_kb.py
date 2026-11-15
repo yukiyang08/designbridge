@@ -10,6 +10,8 @@ from __future__ import annotations
 
 import json
 import os
+import re
+from functools import lru_cache
 from pathlib import Path
 from typing import Any
 
@@ -196,11 +198,15 @@ _SUBCATEGORY_RULES: dict[str, list[tuple[str, set[str]]]] = {
               (r"書桌|工作桌|電腦桌|辦公桌", {"desk"}),
               (r"餐桌|吧台|吧檯", {"dining-table"})],
     "chair": [(r"吧台椅|吧檯椅|高腳", {"bar-stool"}),
-              (r"書桌椅|辦公椅|電腦椅|工作椅", {"desk-chair"}),
+              (r"辦公椅|電腦椅", {"desk-chair"}),
+              # 渲染圖書桌前常擺木頭餐椅，只找辦公椅會推薦到外型完全不同的旋轉椅
+              (r"書桌椅|書椅|工作椅", {"desk-chair", "dining-chair"}),
               (r"腳凳|腳椅", {"footstool", "stool"}),
               (r"長凳|長椅", {"bench"}),
               (r"凳", {"stool", "footstool"}),
-              (r"單椅|扶手椅|休閒椅|沙發椅|搖椅|躺椅|單人沙發|主人椅", {"armchair"}),
+              (r"扶手椅|休閒椅|沙發椅|搖椅|躺椅|單人沙發|主人椅", {"armchair"}),
+              # Gemini 常把一般木椅也叫單椅，只找扶手椅會推薦到沙發型的椅子
+              (r"單椅", {"armchair", "dining-chair"}),
               (r"餐椅", {"dining-chair"})],
     "sofa": [(r"沙發床", {"sofa-bed", "sofa"})],
     "storage": [(r"電視櫃|視聽櫃", {"tv-bench"}),
@@ -224,12 +230,72 @@ _SUBCATEGORY_RULES: dict[str, list[tuple[str, set[str]]]] = {
              (r"桌燈|檯燈|台燈", {"table-lamp", "desk-lamp"}),
              (r"壁燈", {"wall-lamp"})],
     "rug": [(r"走道|長條", {"runner"})],
+    "curtain": [(r"羅馬簾|捲簾|百葉|調光簾|蜂巢簾|遮光簾", {"blind"}),
+                (r"窗簾|紗簾|布簾", {"curtain"})],
+    # Gemini 把這些歸在 other；對得上的才轉到 decor 找（電視、馬桶等不轉，維持 LLM 估價）
+    "decor": [(r"盆栽|植物|綠植|盆景", {"plant"}),
+              (r"抱枕|靠枕|靠墊", {"cushion"}),
+              (r"鏡", {"mirror"}),
+              (r"畫|藝術|海報", {"wall-art"})],
 }
 STYLE_BONUS = 0.0    # 商品風格跟渲染圖相同時排序分數加多少；風格標籤還不夠準、效果也量不出來，先關閉
+# 外觀描述（文字）跟商品圖的 CLIP 相似度比候選池平均高多少，就把差距乘上這個權重加進排序分數。
+# 文字對圖的相似度只有 0.15~0.35、差距約 0.05，乘 1 跟圖片相似度的差距同一個量級；尚未用標註資料調過
+TEXT_WEIGHT = 1.0
 _POOL_SIZE = 40      # 先依大類別取這麼多候選，再篩選、去重
 _SMALL_FIXTURE_SUBS = {"recessed-light", "box-downlight", "track-light"}
 _SMALL_FIXTURE_MIN_SIM = 0.5   # 同子分類商品只有十幾件，分數再低也比推薦別種燈好
 _WIDE_POOL_SIZE = 500  # 前 _POOL_SIZE 名沒有目標細分類時的備援，涵蓋整個大類
+
+
+def _text_similarities(pool: list[dict], text_embedding: list[float]) -> dict[str, float]:
+    """候選商品圖跟外觀描述的 CLIP 相似度 {url: sim}；商品圖向量取自本地 npz，沒有向量的商品不列。"""
+    import numpy as np
+
+    kb = _load_local_kb()
+    matrix = _load_embeddings()
+    if matrix is None or len(matrix) != len(kb):
+        return {}
+    row = {item.get("url"): i for i, item in enumerate(kb)}
+    query = np.asarray(text_embedding, dtype="float32")
+    sims = {}
+    for h in pool:
+        i = row.get(h.get("url"))
+        if i is not None and matrix[i].any():   # 零向量 = 圖片下載失敗，不能當成「完全不像」
+            sims[h["url"]] = float(matrix[i] @ query)
+    return sims
+
+
+# 沙發大類混了模組零件（單獨的轉角座、椅凳、躺椅段）跟轉角、附躺椅款，藍色長沙發會被推薦成轉角座
+_SOFA_PART_RE = re.compile(r"椅凳|靠枕|薄墊|單人座椅|扶手椅|搖椅|休閒椅|^[^人]*(轉角沙發|躺椅)(?!.*人座)")
+_SOFA_CORNER_RE = re.compile(r"轉角|U型|L型")
+_SOFA_CHAISE_RE = re.compile(r"躺椅")
+_DETECT_CORNER_RE = re.compile(r"轉角|L型|L形|U型|U形")
+_LONG_SOFA_RE = re.compile(r"長沙發|雙人|兩人|二人|三人|多人|大沙發")
+
+
+def filter_sofa_shape(pool: list[dict], detected_name: str) -> list[dict]:
+    """依偵測名稱篩沙發外型：零件一律排除；轉角／附躺椅款只在名稱提到 L 型、轉角、躺椅時才推薦。
+    篩完沒東西就退回只排除零件的結果。"""
+    def short(h):
+        return re.sub(r"^[A-ZÅÄÖÜ0-9 /.\-]+", "", (h.get("name") or "").split("，")[0]).strip()
+
+    name = detected_name or ""
+    whole = [h for h in pool if not _SOFA_PART_RE.search(short(h))]
+    # 單人沙發偵測時會歸到 chair；沙發大類裡沒講明的就是多人座，也不推薦沙發床
+    if "沙發床" not in name:
+        whole = [h for h in whole if h.get("subcategory") != "sofa-bed" and "沙發床" not in short(h)] or whole
+    if not re.search(r"單人|一人", name):
+        whole = [h for h in whole if not re.search(r"單人|一人", short(h))] or whole
+    if _DETECT_CORNER_RE.search(name):    # 附躺椅款也是 L 型
+        shaped = [h for h in whole if _SOFA_CORNER_RE.search(short(h)) or _SOFA_CHAISE_RE.search(short(h))]
+    elif "躺椅" in name:
+        shaped = [h for h in whole if _SOFA_CHAISE_RE.search(short(h))]
+    else:
+        shaped = [h for h in whole if not _SOFA_CORNER_RE.search(short(h)) and not _SOFA_CHAISE_RE.search(short(h))]
+        if _LONG_SOFA_RE.search(name):
+            shaped = [h for h in shaped if not re.search(r"二人座椅", short(h))]
+    return shaped or whole or pool
 
 
 def subcategories_for(category: str, detected_name: str) -> set[str]:
@@ -249,9 +315,11 @@ def recommend_products(
     min_similarity: float = MIN_SIMILARITY,
     style_bonus: float = STYLE_BONUS,
     search=None,
+    text_embedding: list[float] | None = None,
+    text_weight: float = TEXT_WEIGHT,
 ) -> list[dict]:
-    """估價推薦：向量搜尋取候選後，排除桌椅組、依細分類篩選、風格相符加分、同系列只留一件，
-    最後才套用相似度門檻。
+    """估價推薦：向量搜尋取候選後，排除桌椅組、依細分類篩選、風格相符加分、外觀描述相符加分、
+    同系列只留一件，最後才套用相似度門檻（門檻仍看圖片相似度）。
 
     細分類有商品就只在細分類裡推薦，達不到門檻寧可不推薦（茶几不推薦餐桌）；
     商品庫完全沒有該細分類時才退回整個大類。門檻放在最後，推薦結果才不會隨門檻改變。
@@ -273,9 +341,15 @@ def recommend_products(
         preferred = [h for h in pool if h.get("subcategory") in subs]
         if preferred:
             pool = preferred
+    if category == "sofa":
+        pool = filter_sofa_shape(pool, detected_name)
 
+    text_sims = _text_similarities(pool, text_embedding) if text_embedding is not None else {}
+    text_mean = sum(text_sims.values()) / len(text_sims) if text_sims else 0.0
     for h in pool:
         bonus = style_bonus if style_id and style_id in (h.get("style_tags") or []) else 0.0
+        # 本地沒有向量的商品（Supabase 上的燈具品牌）不加不減
+        bonus += text_weight * (text_sims.get(h.get("url"), text_mean) - text_mean)
         h["score"] = round(float(h.get("similarity") or 0) + bonus, 4)
     pool.sort(key=lambda h: h["score"], reverse=True)
 
@@ -349,13 +423,24 @@ def _select_all(columns: str, apply=lambda q: q) -> list[dict]:
         raise RuntimeError(f"讀取 {TABLE} 失敗：{e}") from e
 
 
+# ponytail: 分類與篩選選項快取到行程結束；重新上傳 ikea_products 後要重啟後端才會更新
+@lru_cache(maxsize=1)
 def list_categories() -> list[str]:
     """回傳 Supabase 中所有出現過的家具分類（依名稱排序）。"""
     return sorted({r["category"] for r in _select_all("category") if r.get("category")})
 
 
 def list_filters() -> dict:
-    """家具查詢頁的品牌、風格篩選選項與件數（依件數多到少）。"""
+    """家具查詢頁的品牌、風格篩選選項與件數；二手店家接在品牌最後（condition: used，前端據此切到二手清單）。"""
+    from designbridge.pricing.secondhand import store_counts
+    base = _list_filters_supabase()
+    used = [{"value": b, "label": f"{b} · 二手", "count": n, "condition": "used"} for b, n in store_counts().items()]
+    return {**base, "brands": base["brands"] + used}
+
+
+@lru_cache(maxsize=1)
+def _list_filters_supabase() -> dict:
+    """Supabase 商品庫的品牌、風格篩選選項與件數（依件數多到少）。"""
     from collections import Counter
     from style_kb.styles import STYLES
     rows = _select_all("brand,style_tags")
@@ -374,25 +459,53 @@ def list_furniture(
     max_price: float | None = None,
     brand: str = "",
     style: str = "",
-) -> list[dict]:
-    """回傳符合分類 / 價位區間的家具清單（Supabase ikea_products）。
+    q: str = "",
+    sort: str = "",
+    limit: int = 60,
+    offset: int = 0,
+    condition: str = "",
+) -> dict:
+    """篩選家具（Supabase ikea_products），一次只回一頁：{"items": [...], "total": 符合總數}。
+    condition="used" 改列北二高二手品（本地資料，不在 Supabase）。
 
-    - category 為空字串代表不篩選分類
+    - category / brand / style / q 為空字串代表不篩選；q 比對名稱與品牌
     - min_price / max_price 為 None 代表不限制該端
-    - brand / style 為空字串代表不篩選
+    - sort：price_asc / price_desc，其他值依 id
     """
+    if condition == "used":
+        from designbridge.pricing.secondhand import browse
+        return browse(category=category, min_price=min_price, max_price=max_price, brand=brand, style=style,
+                      q=q, sort=sort, limit=max(1, min(limit, _PAGE)), offset=offset)
+    # PostgREST 的 or 語法用逗號、括號分隔條件，關鍵字裡出現會打壞查詢
+    kw = re.sub(r'[,()"\\%*]', " ", q).strip()
+
     def apply(q):
         q = q.not_.is_("price", "null")
+        if kw:
+            q = q.or_(f"name.ilike.%{kw}%,brand.ilike.%{kw}%")
         if category:
             q = q.eq("category", category)
+        # price 是 integer 欄位，送 5000.0 會被 Postgres 拒絕
         if min_price is not None:
-            q = q.gte("price", min_price)
+            q = q.gte("price", int(min_price))
         if max_price is not None:
-            q = q.lte("price", max_price)
+            q = q.lte("price", int(max_price))
         if brand:
             q = q.eq("brand", brand)
         if style:
             q = q.contains("style_tags", [style])
         return q
 
-    return _select_all("id,name,brand,category,subcategory,price,currency,url,image_url,style_tags", apply)
+    client = _get_supabase_client()
+    if client is None:
+        raise RuntimeError("Supabase 未設定（SUPABASE_URL／SUPABASE_SERVICE_ROLE_KEY），無法瀏覽家具")
+    limit = max(1, min(limit, _PAGE))
+    columns = "id,name,brand,category,subcategory,price,currency,url,image_url,style_tags"
+    try:
+        query = apply(client.table(TABLE).select(columns, count="exact"))
+        if sort in ("price_asc", "price_desc"):
+            query = query.order("price", desc=sort == "price_desc")
+        res = query.order("id").range(offset, offset + limit - 1).execute()
+    except Exception as e:
+        raise RuntimeError(f"讀取 {TABLE} 失敗：{e}") from e
+    return {"items": res.data or [], "total": res.count or 0}

@@ -13,13 +13,12 @@ const FURNITURE_LABEL_ZH = {
   // 風水規則的標的：沒有這幾件家具，開門不見灶／水火不相容／鏡不照床就永遠不會觸發，
   // 所以它們同時進了後端的 FURNITURE_SIZES 與這裡的選單。
   stove: '爐灶', fridge: '冰箱', mirror: '鏡子',
-  // 浴室／兒童房（Figma 有這兩個房型）。後端 FURNITURE_SIZES 沒收錄這些 type，
-  // 會落到 default 尺寸，但名稱仍會進 prompt，渲染時看得出來。
   bathtub: '浴缸', shower: '淋浴間', toilet: '馬桶', sink: '洗手台',
   vanity: '浴櫃', towel_rack: '毛巾架',
   toy_storage: '玩具收納', study_chair: '兒童椅', bean_bag: '懶骨頭',
   // 陽台（CAD 房型生成會產生這個房型，見 designbridge/roomplan）。
   washer: '洗衣機', drying_rack: '曬衣架', balcony_cabinet: '陽台收納櫃', mop_sink: '洗衣槽',
+  shoe_cabinet: '鞋櫃', bench: '穿鞋椅',
   default: '家具',
 }
 
@@ -55,6 +54,7 @@ const FURNITURE_ICON_MAP = {
   bean_bag: 'mdi:sofa-single-outline',
   washer: 'mdi:washing-machine', drying_rack: 'mdi:hanger', balcony_cabinet: 'mdi:cupboard-outline',
   mop_sink: 'mdi:sink',
+  shoe_cabinet: 'mdi:shoe-formal', bench: 'mdi:seat-outline',
   default: 'mdi:cube-outline',
 }
 
@@ -177,6 +177,14 @@ export const FURNITURE_BY_ROOM = {
     { value: 'mop_sink',        label: '洗衣槽' },
     { value: 'plant',           label: '植物' },
   ],
+  // 玄關——上傳平面圖切出的動線空間（space_type=circulation）。沒有這份清單的話房型會被當成
+  // 中性的 room，「玄關」兩個字進不了 prompt，AI 會自己猜成客廳。
+  circulation: [
+    { value: 'shoe_cabinet',    label: '鞋櫃' },
+    { value: 'bench',           label: '穿鞋椅' },
+    { value: 'mirror',          label: '穿衣鏡' },
+    { value: 'plant',           label: '植物' },
+  ],
 }
 
 // FURNITURE_BY_ROOM 條目沒有預設尺寸，LayoutEditor 的「新增家具」要落地一個正規化 w/h——
@@ -193,6 +201,7 @@ const FURNITURE_DEFAULT_SIZE = {
   stove: [0.13, 0.08], fridge: [0.09, 0.09], mirror: [0.12, 0.03],
   toy_storage: [0.14, 0.08], study_chair: [0.07, 0.07], bean_bag: [0.11, 0.11],
   washer: [0.16, 0.16], drying_rack: [0.20, 0.06], balcony_cabinet: [0.14, 0.08], mop_sink: [0.12, 0.10],
+  shoe_cabinet: [0.16, 0.06], bench: [0.14, 0.06],
   default: [0.12, 0.10],
 }
 
@@ -210,6 +219,7 @@ const FURNITURE_REAL_SIZE_M = {
   stove: [0.75, 0.5], fridge: [0.7, 0.7], mirror: [0.6, 0.1],
   toy_storage: [0.9, 0.4], study_chair: [0.45, 0.45], bean_bag: [0.7, 0.7],
   washer: [0.6, 0.6], drying_rack: [1.2, 0.4], balcony_cabinet: [0.8, 0.4], mop_sink: [0.5, 0.45],
+  shoe_cabinet: [1.0, 0.4], bench: [0.9, 0.35],
   default: [0.6, 0.6],
 }
 export function furnitureRealSize(type) {
