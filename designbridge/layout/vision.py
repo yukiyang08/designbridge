@@ -186,7 +186,7 @@ def run_segmentation(
     ensure_dir(out_dir)
     seg_out = out_dir / "segmentation.png"
     # Save as 16-bit PNG label map (class ids)
-    Image.fromarray(seg, mode="I;16").save(seg_out)
+    Image.fromarray(seg).save(seg_out)   # uint16 自動成 I;16；Pillow 13 不再接受 mode 參數轉型
 
     # Build simple metadata: id2label + present class ids
     id2label = getattr(model.config, "id2label", {}) or {}
