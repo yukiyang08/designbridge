@@ -765,6 +765,7 @@ def renderer(state: DesignBridgeState) -> dict[str, Any]:
     # 最後的結構手段：沒深度圖但有平面圖，直接餵 Kontext，仍比無條件生成貼近房間比例與家具位置
     if (
         backend == "placeholder"
+        and Config.ENABLE_KONTEXT_FLOOR_PLAN_FALLBACK
         and Config.HF_TOKEN
         and floor_plan_path
         and Path(str(floor_plan_path)).is_file()
