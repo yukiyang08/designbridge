@@ -65,6 +65,8 @@ class Config:
 
     KONTEXT_LORA_MODEL: str = "thedeoxen/FLUX.1-Kontext-dev-reference-depth-fusion-LORA"
     KONTEXT_PROVIDER: str = os.getenv("DESIGNBRIDGE_KONTEXT_PROVIDER", "fal-ai")
+    # 深度出圖失敗時拿 2D 平面圖餵 Kontext：實測幾乎原樣吐回平面圖（不是房間），預設關，改走純文字出圖
+    ENABLE_KONTEXT_FLOOR_PLAN_FALLBACK: bool = _flag("DESIGNBRIDGE_ENABLE_KONTEXT_FLOOR_PLAN_FALLBACK", "false")
 
 
     # ── Outpaint（環景擴圖）─────────────────────────────────────────────
