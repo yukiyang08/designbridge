@@ -23,6 +23,22 @@ _NEEDS_SUBTYPE = {"storage", "table"}
 # 系統櫃、廚具是裝潢的一部分，不是買得到的二手家具
 _EXPLICIT_ONLY = {"desk-chair", "bar-stool", "table-chair-set"}
 _BUILT_IN_RE = re.compile(r"廚|櫥櫃|流理|烤箱|系統|吊櫃|壁掛|懸掛|嵌入|壁櫃")
+# 整張圖一件都沒比到時的放寬門檻：寧可推薦「相近替代」，也不要整張圖沒有二手可選
+RELAXED_MIN_SIMILARITY = 0.5
+# 連放寬都比不到（只有燈、地毯、系統櫃的廚房）時，依房型推薦圖中沒有、但這種房間用得到的二手品
+_ROOM_SUBS = {
+    "living_room": {"sofa", "armchair", "coffee-side-table", "tv-bench", "sideboard", "open-storage", "bookcase"},
+    "bedroom": {"bed-frame", "wardrobe", "chest-of-drawers", "bedside-table", "dressing-table"},
+    "dining_room": {"dining-table", "dining-chair", "sideboard", "display-cabinet"},
+    "kitchen": {"dining-table", "dining-chair", "bar-stool", "sideboard"},
+    "study": {"desk", "desk-chair", "bookcase", "open-storage"},
+    "children_room": {"bed-frame", "desk", "wardrobe", "open-storage", "bookcase"},
+}
+_ROOM_CATS = {
+    "living_room": {"sofa", "chair", "table", "storage"}, "bedroom": {"bed", "storage"},
+    "dining_room": {"table", "chair"}, "kitchen": {"table", "chair"}, "study": {"table", "chair", "storage"},
+    "children_room": {"bed", "table", "storage"},
+}
 
 _cache: tuple | None = None   # (stamp, items, matrix)
 
@@ -56,17 +72,23 @@ def match_secondhand(
     detected_name: str = "",
     top_k: int = 2,
     min_similarity: float = MIN_SIMILARITY,
+    relaxed: bool = False,
 ) -> list[dict]:
     """同大類的二手品依相似度排序；偵測名稱對得到細分類時只在細分類裡找（辦公椅不推薦餐椅），
-    細分類沒有二手品就不推薦。"""
+    細分類沒有二手品就不推薦。
+    relaxed：門檻降到 RELAXED_MIN_SIMILARITY，系統櫃、對不到細分類的櫃子桌子也比（結果標 relaxed）。"""
     from designbridge.pricing.furniture_kb import subcategories_for
     import numpy as np
 
     items, matrix = _load()
-    if not items or not category or _BUILT_IN_RE.search(detected_name or ""):
+    if not items or not category:
+        return []
+    if relaxed:
+        min_similarity = min(min_similarity, RELAXED_MIN_SIMILARITY)
+    elif _BUILT_IN_RE.search(detected_name or ""):
         return []
     subs = subcategories_for(category, detected_name)
-    if category in _NEEDS_SUBTYPE and not subs:
+    if category in _NEEDS_SUBTYPE and not subs and not relaxed:
         return []
     scores = matrix @ np.asarray(query_embedding, dtype="float32")
     results = []
@@ -83,10 +105,46 @@ def match_secondhand(
         # 辦公椅、吧台椅、桌椅組外型特殊，偵測名稱明講才推薦（「單人椅」不該推薦辦公椅）
         if sub in _EXPLICIT_ONLY and sub not in subs:
             continue
-        results.append({**item, "similarity": round(sim, 4)})
+        results.append({**item, "similarity": round(sim, 4), **({"relaxed": True} if relaxed else {})})
         if len(results) >= top_k:
             break
     return results
+
+
+def recommend_for_image(entries: list[tuple]) -> list[list[dict]]:
+    """一張圖所有偵測到的家具 [(裁切圖向量, category, 名稱)] → 每件的二手推薦。
+    先照一般規則比；整張圖一件都沒比到時，每件改用放寬規則各推一件，讓每張圖盡量都有二手可選。"""
+    results = [match_secondhand(e, c, n) if e is not None else [] for e, c, n in entries]
+    if any(results):
+        return results
+    return [match_secondhand(e, c, n, top_k=1, relaxed=True) if e is not None else [] for e, c, n in entries]
+
+
+def recommend_extras(image_embedding: list[float], room_type: str = "", top_k: int = 3) -> list[dict]:
+    """圖中家具都比不到二手時的搭配推薦：這種房間用得到的二手品，依整張圖的風格相似度排序，
+    每個細分類先各取一件。"""
+    import numpy as np
+
+    items, matrix = _load()
+    if not items:
+        return []
+    room = room_type if room_type in _ROOM_SUBS else "living_room"
+    subs, cats = _ROOM_SUBS[room], _ROOM_CATS[room]
+    scores = matrix @ np.asarray(image_embedding, dtype="float32")
+    ok = [i for i in np.argsort(scores)[::-1]
+          if (items[i].get("subcategory") in subs) or (not items[i].get("subcategory") and items[i].get("category") in cats)]
+    picked, seen = [], set()
+    for i in ok:   # 每個細分類先各取一件（不要推薦三張餐椅）
+        sub = items[i].get("subcategory") or items[i].get("category")
+        if sub not in seen and len(picked) < top_k:
+            seen.add(sub)
+            picked.append(i)
+    for i in ok:   # 細分類不夠就照分數補
+        if len(picked) >= top_k:
+            break
+        if i not in picked:
+            picked.append(i)
+    return [{**items[i], "similarity": round(float(scores[i]), 4)} for i in picked]
 
 
 def item_id(item: dict) -> str:
@@ -105,6 +163,7 @@ def to_candidate(hit: dict) -> dict:
         "similarity": hit.get("similarity", 0.0),
         "source": SOURCE,
         "store": hit.get("brand") or "",
+        **({"relaxed": True} if hit.get("relaxed") else {}),
     }
 
 

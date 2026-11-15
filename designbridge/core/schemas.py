@@ -146,6 +146,7 @@ class FurnitureCandidate(TypedDict):
     similarity: float           # cosine similarity 0~1（向量比對得分）
     source: NotRequired[str]    # "secondhand" = 二手品（pricing/secondhand.py），沒有就是新品
     store: NotRequired[str]     # 二手品的店家名稱
+    relaxed: NotRequired[bool]  # 二手品是放寬規則比到的（整張圖原本一件都沒有），前端標「相近替代」
 
 
 class FurnitureItem(TypedDict):
@@ -167,4 +168,6 @@ class QuotationResultJSON(TypedDict):
     total_high: int         # 以每件第 0 候選 × 1.3 計算
     currency: str           # "TWD"
     kb_match_count: int     # 有幾件成功從 IKEA KB 向量比對到
+    secondhand_extras: NotRequired[list[FurnitureCandidate]]  # 圖中家具都沒有二手時，依房型搭配的二手品（不計入預算）
+    secondhand_checked: NotRequired[bool]  # 這份報價有比對過二手（沒有這欄 = 加入二手推薦前的舊報價）
     notes: NotRequired[str]

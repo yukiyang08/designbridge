@@ -93,3 +93,21 @@ def test_store_counts(monkeypatch, tmp_path):
     path.write_text(json.dumps([{"brand": "北二高家具"}, {"brand": "北二高家具"}], ensure_ascii=False), encoding="utf-8")
     monkeypatch.setattr(secondhand, "_JSON", path)
     assert secondhand.store_counts() == {"北二高家具": 2}
+
+
+def test_relaxed_only_when_whole_image_has_none(fake_kb):
+    # 收納櫃查詢夾在餐椅中間：一般規則下餐椅比得到，收納「壁掛架」不放寬
+    near_storage = (_vec(3) * 0.7 + _vec(4) * 0.714).tolist()
+    res = secondhand.recommend_for_image([(_vec(0).tolist(), "chair", "餐椅"), (near_storage, "storage", "壁掛架")])
+    assert res[0] and res[1] == []
+    # 整張圖只有壁掛架：放寬後推薦一件，標 relaxed
+    res = secondhand.recommend_for_image([(near_storage, "storage", "壁掛架")])
+    assert [h["name"] for h in res[0]] == ["收納櫃"] and res[0][0]["relaxed"]
+    assert secondhand.to_candidate(res[0][0])["relaxed"] is True
+
+
+def test_extras_by_room_type(fake_kb):
+    extras = secondhand.recommend_extras(_vec(2).tolist(), "living_room")
+    assert extras and extras[0]["name"] == "柚木沙發"
+    # 每個細分類先各取一件
+    assert len({h["subcategory"] for h in extras}) == len(extras)

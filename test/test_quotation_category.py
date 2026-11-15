@@ -36,7 +36,7 @@ def test_other_skips_text_search(monkeypatch):
     # 電視不能靠文字搜尋配到電視櫃，要走 LLM 估價
     monkeypatch.setattr(kb, "search_kb", lambda *a, **k: [{"name": "電視櫃", "price": 9999}])
     monkeypatch.setattr(quotation, "_estimate_price_llm", lambda name: 12345)
-    item, matched = quotation._process_furniture_item({"name_zh": "電視", "category": "other"}, img=None)
+    item, matched, _ = quotation._process_furniture_item({"name_zh": "電視", "category": "other"}, img=None)
     assert not matched and item["candidates"][0]["price"] == 12345
 
 

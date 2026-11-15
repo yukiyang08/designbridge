@@ -218,7 +218,7 @@ def preload_quotation_resources() -> None:
     _load_embeddings()
 
 
-def _process_furniture_item(raw: dict, img: Any, style_id: str = "") -> tuple[FurnitureItem, bool]:
+def _process_furniture_item(raw: dict, img: Any, style_id: str = "") -> tuple[FurnitureItem, bool, Any]:
     """Resolve one detected furniture item to KB candidates. Returns (item, matched_kb).
 
     Independent per item (own crop/embedding/DB lookup), so build_quotation runs
@@ -316,17 +316,6 @@ def _process_furniture_item(raw: dict, img: Any, style_id: str = "") -> tuple[Fu
             "similarity": 0.0,
         })
 
-    # ── 二手品：接在新品後面，預設選中的仍是新品，總價不變 ──
-    if emb is not None and Config.ENABLE_SECONDHAND:
-        try:
-            from designbridge.pricing.secondhand import match_secondhand, to_candidate
-            used = match_secondhand(emb, category, detected_name=name_zh)
-            if used:
-                print(f"[quotation] '{name_zh}' 二手推薦 {len(used)} 件：{[h['similarity'] for h in used]}")
-            candidates.extend(to_candidate(h) for h in used)
-        except Exception as e:
-            print(f"[quotation] secondhand match error for '{name_zh}': {e}")
-
     item: FurnitureItem = {
         "detected_name": name_zh,
         "category": category,
@@ -336,7 +325,26 @@ def _process_furniture_item(raw: dict, img: Any, style_id: str = "") -> tuple[Fu
     # 結果圖上滑到這件家具就標出對應商品（前端 StepResult 的熱區）
     if len(bbox_ratio) == 4:
         item["bbox"] = [round(float(v), 4) for v in bbox_ratio]
-    return item, matched_kb
+    return item, matched_kb, emb   # 裁切圖向量留給二手比對（要看整張圖的結果才決定要不要放寬）
+
+
+def _attach_secondhand(results: list[tuple], img: Any, req: dict) -> list[dict]:
+    """二手品接在各件新品候選後面（預設選中的仍是新品，總價不變），回傳圖中沒有的搭配推薦。
+    整張圖一件都比不到時先放寬規則；連放寬都沒有（只有燈、地毯、系統櫃）才依房型推薦搭配。"""
+    from designbridge.pricing.secondhand import recommend_extras, recommend_for_image, to_candidate
+
+    per_item = recommend_for_image([(emb, item["category"], item["detected_name"]) for item, _, emb in results])
+    for (item, _, _), used in zip(results, per_item):
+        if used:
+            tag = "（放寬）" if used[0].get("relaxed") else ""
+            print(f"[quotation] '{item['detected_name']}' 二手推薦{tag} {len(used)} 件：{[h['similarity'] for h in used]}")
+        item["candidates"].extend(to_candidate(h) for h in used)
+    if any(per_item) or img is None:
+        return []
+    room_type = (req.get("meta") or {}).get("room_type") or ""
+    extras = [to_candidate(h) for h in recommend_extras(get_clip_embedding(img), room_type)]
+    print(f"[quotation] 圖中家具都沒有二手，依房型（{room_type or '未指定'}）搭配推薦 {len(extras)} 件")
+    return extras
 
 
 def build_quotation(
@@ -387,17 +395,24 @@ def build_quotation(
         with log_stage("quotation.match_furniture"):
             results = list(executor.map(lambda raw: _process_furniture_item(raw, img, style_id), detected))
 
+    extras: list[dict] = []
+    if Config.ENABLE_SECONDHAND:
+        try:
+            extras = _attach_secondhand(results, img, req)
+        except Exception as e:
+            print(f"[quotation] secondhand match error: {e}")
+
     # 同款多件展開成多筆：前端會把候選相同的合併成 ×N，總價逐件相加。
     # 每一件換上自己的框，結果圖上每張餐椅都能滑到；框不夠的沿用比對商品那件的框
     furniture_list: list[FurnitureItem] = []
-    for raw, (item, _) in zip(detected, results):
+    for raw, (item, _, _) in zip(detected, results):
         boxes = _boxes_of(raw)
         for k in range(_quantity_of(raw)):
             copy = {**item}
             if k < len(boxes):
                 copy["bbox"] = boxes[k]
             furniture_list.append(copy)
-    kb_match_count = sum(1 for _, matched in results if matched)
+    kb_match_count = sum(1 for _, matched, _ in results if matched)
 
     # ── 使用者手動勾選的家具（家具查詢頁）優先併入，視為已確定候選 ──
     for sel in (preselected or []):
@@ -431,4 +446,7 @@ def build_quotation(
         "total_high": total_high,
         "currency": "TWD",
         "kb_match_count": kb_match_count,
+        **({"secondhand_extras": extras} if extras else {}),
+        # 前端據此分辨「比對過二手、真的沒有」跟「加入二手推薦之前的舊報價」
+        **({"secondhand_checked": True} if Config.ENABLE_SECONDHAND else {}),
     }
