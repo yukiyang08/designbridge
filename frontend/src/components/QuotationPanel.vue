@@ -16,29 +16,42 @@ const quotation = computed(() => result.value?.quotation_result || null)
 
 // 有商品圖才算精準導購；預設選第一個有圖的候選，都沒圖才落到預估估價
 const hasImg = (c) => !!c?.product_image_url
-// 二手品接在新品候選後面，只在換款時讓使用者自己選，預設不選
+// 後端把二手品接在新品候選後面（source: 'secondhand'）；清單分「全新」「二手」兩份，各自記選擇
 const isUsed = (c) => c?.source === 'secondhand'
-const firstWithImage = (item) => Math.max(0, (item.candidates || []).findIndex(c => hasImg(c) && !isUsed(c)))
+const firstNew = (item) => Math.max(0, (item.candidates || []).findIndex(c => hasImg(c) && !isUsed(c)))
+const firstUsed = (item) => (item.candidates || []).findIndex(isUsed)
 
-// 每件家具目前選中的候選 index
-const selectedCandidates = reactive({})
+const listMode = ref('new')
+const newPicks = reactive({})
+const usedPicks = reactive({})   // 沒有二手品的家具是 -1，二手清單裡以全新估價
 watch(
   () => quotation.value?.furniture_list,
   (list) => {
-    if (list) list.forEach((item, idx) => { selectedCandidates[idx] = quotation.value?.selected_indices?.[idx] ?? firstWithImage(item) })
+    const q = quotation.value
+    if (!list) return
+    listMode.value = q?.list_mode === 'used' ? 'used' : 'new'
+    list.forEach((item, idx) => {
+      // 舊報價只有 selected_indices：指到新品就沿用
+      const legacy = q?.selected_indices?.[idx]
+      newPicks[idx] = q?.selected_new?.[idx] ?? (legacy != null && !isUsed(item.candidates?.[legacy]) ? legacy : firstNew(item))
+      usedPicks[idx] = q?.selected_used?.[idx] ?? firstUsed(item)
+    })
   },
   { immediate: true },
 )
-// 換款的選擇寫回這份報價（selected_indices）：整層總覽加總各房間預算時要用同一份選擇，
-// 不然這裡換過款、總覽還是用預設推薦算
-watch(selectedCandidates, () => {
+const effectivePick = (idx) => (listMode.value === 'used' && usedPicks[idx] >= 0 ? usedPicks[idx] : newPicks[idx]) ?? 0
+// 選擇寫回這份報價：selected_indices 是目前清單實際算進總價的那件，整層總覽加總各房間預算時用同一份
+watch([listMode, newPicks, usedPicks], () => {
   const q = quotation.value
   const list = q?.furniture_list
   if (!list) return
+  const now = list.map((_, i) => effectivePick(i))
   const saved = list.map((_, i) => q.selected_indices?.[i] ?? 0)
-  const now = list.map((_, i) => selectedCandidates[i] ?? 0)
-  if (saved.every((v, i) => v === now[i])) return
-  result.value = { ...result.value, quotation_result: { ...q, selected_indices: { ...now } } }
+  if (q.list_mode === listMode.value && saved.every((v, i) => v === now[i])) return
+  result.value = { ...result.value, quotation_result: {
+    ...q, list_mode: listMode.value, selected_indices: { ...now },
+    selected_new: { ...newPicks }, selected_used: { ...usedPicks },
+  } }
 }, { deep: true })
 
 // IKEA 商品名常只有代號（MALM、KALLAX），多一個中文類別才看得出是什麼；
@@ -68,16 +81,20 @@ const furnitureGroups = computed(() => {
   })
   return [...groups.values()]
 })
-const groupPick = (g) => selectedCandidates[g.idxs[0]] ?? 0
-function setGroupPick(g, ci) { g.idxs.forEach(i => { selectedCandidates[i] = ci }) }
+const groupPick = (g) => effectivePick(g.idxs[0])
+function setGroupPick(g, ci) {
+  const picks = isUsed(g.item.candidates?.[ci]) ? usedPicks : newPicks
+  g.idxs.forEach(i => { picks[i] = ci })
+}
 const pickedOf = (g) => g.item.candidates?.[groupPick(g)]
-const shopGroups = computed(() => furnitureGroups.value.filter(g => hasImg(pickedOf(g))))
-const estimateGroups = computed(() => furnitureGroups.value.filter(g => pickedOf(g) && !hasImg(pickedOf(g))))
-// 換款只列有圖的商品，保留原本的 index 才能寫回 selectedCandidates
-const imageAlts = (g) => (g.item.candidates || []).map((a, ai) => ({ a, ai })).filter(x => hasImg(x.a))
-const usedCount = (g) => (g.item.candidates || []).filter(isUsed).length
-// 沒比到新品的家具只有 AI 估價；選了二手後要能換回估價
-const estimateIdx = (g) => (g.item.candidates || []).findIndex(c => !hasImg(c))
+const hasUsed = (g) => firstUsed(g.item) >= 0
+const usedItemCount = computed(() => furnitureGroups.value.filter(hasUsed).reduce((n, g) => n + g.idxs.length, 0))
+// 全新：有圖的新品一份、AI 估價一份；二手：有二手品的一份、沒有的以全新估價另列
+const shopGroups = computed(() => furnitureGroups.value.filter(g => listMode.value === 'used' ? hasUsed(g) : hasImg(pickedOf(g))))
+const estimateGroups = computed(() => furnitureGroups.value.filter(g => listMode.value === 'used' ? !hasUsed(g) : pickedOf(g) && !hasImg(pickedOf(g))))
+// 換款只列目前清單那一種（全新或二手）有圖的商品，保留原本的 index 才能寫回選擇
+const altsOf = (g) => (g.item.candidates || []).map((a, ai) => ({ a, ai }))
+  .filter(x => hasImg(x.a) && isUsed(x.a) === (listMode.value === 'used'))
 
 // 跟結果圖上的家具熱區互相標示：滑到圖上的家具 → 這裡標出那一行並捲過去；
 // 滑過這裡的一行 → 圖上框出那件家具（這時不捲，免得清單跟著滑鼠跳）
@@ -107,18 +124,12 @@ onBeforeUnmount(() => narrowMql.removeEventListener('change', onNarrowChange))
 
 // 目前展開「換款」的那一組
 const openRow = ref(null)
-// 「二手」入口只列二手品（換款的那排新品在前、二手常被擠到看不到的右邊）；換款按鈕列全部
-const openMode = ref('all')
-watch(quotation, () => { openRow.value = null })
-async function toggleAlts(g, mode) {
-  const same = openRow.value === g.key && openMode.value === mode
-  openRow.value = same ? null : g.key
-  openMode.value = mode
+watch([quotation, listMode], () => { openRow.value = null })
+async function toggleAlts(g) {
+  openRow.value = openRow.value === g.key ? null : g.key
   // 清單最後幾行展開時，候選會落在可視範圍外
-  if (!same) { await nextTick(); rowEls[g.key]?.scrollIntoView({ block: 'nearest', behavior: 'smooth' }) }
+  if (openRow.value) { await nextTick(); rowEls[g.key]?.scrollIntoView({ block: 'nearest', behavior: 'smooth' }) }
 }
-const isOpen = (g, mode) => openRow.value === g.key && openMode.value === mode
-const shownAlts = (g) => openMode.value === 'used' ? imageAlts(g).filter(x => isUsed(x.a)) : imageAlts(g)
 // 向量與關鍵字都沒比到時後端只給一筆 LLM 估價：沒連結、沒圖、similarity 0
 const isEstimate = (c) => !c.purchase_url && !c.product_image_url && !(c.similarity > 0)
 
@@ -126,7 +137,7 @@ const computedTotal = computed(() => {
   const list = quotation.value?.furniture_list
   if (!list) return 0
   return list.reduce((sum, item, idx) => {
-    const c = item.candidates?.[selectedCandidates[idx] ?? 0]
+    const c = item.candidates?.[effectivePick(idx)]
     return sum + (c?.price ?? 0)
   }, 0)
 })
@@ -191,12 +202,22 @@ function toFavoriteItem(item, c) {
     <p v-if="quotationError" class="db-error">{{ quotationError }}</p>
 
     <template v-if="quotation">
+      <!-- 全新、二手分兩份清單，總價跟著切換 -->
+      <div class="mode-switch" role="group" aria-label="清單種類">
+        <button type="button" :class="{ on: listMode === 'new' }" :aria-pressed="listMode === 'new'" @click="listMode = 'new'">全新</button>
+        <button
+          type="button" :class="{ on: listMode === 'used' }" :aria-pressed="listMode === 'used'"
+          :disabled="!usedItemCount" :title="usedItemCount ? undefined : '這張圖沒有找到相似的二手家具'"
+          @click="listMode = 'used'"
+        >二手<small v-if="usedItemCount"> {{ usedItemCount }} 件</small></button>
+      </div>
+
       <component
         :is="narrow ? 'button' : 'div'" class="total" :type="narrow ? 'button' : undefined"
         :aria-expanded="narrow ? listOpen : undefined" @click="narrow && (listOpen = !listOpen)"
       >
         <span class="total-label">
-          預算 · {{ quotation.furniture_list.length }} 件
+          {{ listMode === 'used' ? '二手預算' : '預算' }} · {{ quotation.furniture_list.length }} 件
           <span v-if="narrow" class="total-more">{{ listOpen ? '收合明細' : '看明細' }}<Icon :icon="listOpen ? 'mdi:chevron-up' : 'mdi:chevron-down'" aria-hidden="true" /></span>
         </span>
         <span class="total-val">NT$ {{ computedTotal.toLocaleString() }}</span>
@@ -215,7 +236,7 @@ function toFavoriteItem(item, c) {
                 <img :src="c.product_image_url" :alt="c.name" />
               </span>
               <div class="furn-info" :title="g.item.detected_name">
-                <span class="furn-cat">{{ categoryLabel(g.item) }}<span v-if="g.item.from_favorite" class="from-fav-tag">從收藏加入</span><span v-if="isUsed(c)" class="used-tag">二手 · {{ c.store || '二手店' }}</span></span>
+                <span class="furn-cat">{{ categoryLabel(g.item) }}<span v-if="g.item.from_favorite" class="from-fav-tag">從收藏加入</span><span v-if="isUsed(c) && c.store" class="store">{{ c.store }}</span></span>
                 <a v-if="c.purchase_url" :href="c.purchase_url" target="_blank" rel="noopener" class="name name--link" :title="c.name">{{ shortName(c.name) }}</a>
                 <span v-else class="name" :title="c.name">{{ shortName(c.name) }}</span>
                 <div class="furn-foot">
@@ -239,17 +260,11 @@ function toFavoriteItem(item, c) {
                       @click="toggleFavorite(toFavoriteItem(g.item, c))"
                     ><Icon :icon="isFavorited(toFavoriteItem(g.item, c)) ? 'mdi:star' : 'mdi:star-outline'" aria-hidden="true" /></button>
                     <button
-                      v-if="usedCount(g) && !isUsed(c)"
-                      type="button" class="used-chip" :class="{ open: isOpen(g, 'used') }"
-                      :title="`有 ${usedCount(g)} 件相似的二手家具`" :aria-expanded="isOpen(g, 'used')"
-                      @click="toggleAlts(g, 'used')"
-                    >二手 {{ usedCount(g) }}</button>
-                    <button
-                      v-if="imageAlts(g).length > 1 || (isUsed(c) && estimateIdx(g) >= 0)"
-                      type="button" class="swap-btn" :class="{ open: isOpen(g, 'all') }"
+                      v-if="altsOf(g).length > 1"
+                      type="button" class="swap-btn" :class="{ open: openRow === g.key }"
                       title="換一款" aria-label="換一款"
-                      :aria-expanded="isOpen(g, 'all')"
-                      @click="toggleAlts(g, 'all')"
+                      :aria-expanded="openRow === g.key"
+                      @click="toggleAlts(g)"
                     >
                       <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
                         <path d="m17 2 4 4-4 4" /><path d="M3 11v-1a4 4 0 0 1 4-4h14" />
@@ -262,10 +277,10 @@ function toFavoriteItem(item, c) {
             </div>
           </template>
 
-          <!-- 其他候選：點了就換，並自動收合 -->
+          <!-- 同一份清單的其他候選：點了就換，並自動收合 -->
           <div v-if="openRow === g.key" class="alts">
             <button
-              v-for="{ a, ai } in shownAlts(g)"
+              v-for="{ a, ai } in altsOf(g)"
               :key="ai"
               type="button"
               :class="['alt', { selected: groupPick(g) === ai }]"
@@ -273,28 +288,18 @@ function toFavoriteItem(item, c) {
             >
               <span class="alt-img">
                 <img :src="a.product_image_url" :alt="a.name" />
-                <span v-if="isUsed(a)" class="alt-used">二手</span>
               </span>
               <span class="alt-name" :title="a.name">{{ shortName(a.name) }}</span>
               <span class="alt-price">NT$ {{ a.price.toLocaleString() }}</span>
             </button>
-            <!-- 沒比到新品、選了二手的：留一個換回 AI 估價的選項 -->
-            <button
-              v-if="estimateIdx(g) >= 0"
-              type="button" :class="['alt', 'alt--est', { selected: groupPick(g) === estimateIdx(g) }]"
-              @click="setGroupPick(g, estimateIdx(g)); openRow = null"
-            >
-              <span class="alt-img alt-img--est">AI 估價</span>
-              <span class="alt-name">不買二手</span>
-              <span class="alt-price">NT$ {{ g.item.candidates[estimateIdx(g)].price.toLocaleString() }}</span>
-            </button>
           </div>
         </li>
       </ul>
+      <p v-else-if="listMode === 'used'" class="note">這張圖的家具都沒有找到相似的二手品。</p>
 
-      <!-- 找不到有圖的商品：只列預估價，不放圖 -->
+      <!-- 全新：找不到有圖的商品，只列預估價；二手：沒有相似二手品的，以全新的價格補進預算 -->
       <template v-if="estimateGroups.length">
-        <h3 class="sub-title">預估估價項目</h3>
+        <h3 class="sub-title">{{ listMode === 'used' ? '沒有相似二手品，以全新估價' : '預估估價項目' }}</h3>
         <ul class="est-list">
           <li
             v-for="g in estimateGroups" :key="g.key" class="est-row" :class="{ 'is-hovered': isHovered(g) }"
@@ -307,30 +312,10 @@ function toFavoriteItem(item, c) {
               NT$ {{ pickedOf(g).price.toLocaleString() }}
               <small v-if="g.idxs.length > 1" class="qty">×{{ g.idxs.length }}</small>
               <button
-                v-if="usedCount(g)"
-                type="button" class="used-chip" :class="{ open: isOpen(g, 'used') }"
-                :title="`有 ${usedCount(g)} 件相似的二手家具`" :aria-expanded="isOpen(g, 'used')"
-                @click="toggleAlts(g, 'used')"
-              >二手 {{ usedCount(g) }}</button>
-              <button
                 v-if="g.item.from_favorite" type="button" class="est-remove" title="從報價移除" aria-label="從報價移除"
                 @click="removeAdded(g)"
               ><Icon icon="mdi:close" aria-hidden="true" /></button>
             </span>
-            <div v-if="openRow === g.key" class="alts alts--est">
-              <button
-                v-for="{ a, ai } in imageAlts(g)" :key="ai" type="button"
-                :class="['alt', { selected: groupPick(g) === ai }]"
-                @click="setGroupPick(g, ai); openRow = null"
-              >
-                <span class="alt-img">
-                  <img :src="a.product_image_url" :alt="a.name" />
-                  <span class="alt-used">二手</span>
-                </span>
-                <span class="alt-name" :title="a.name">{{ shortName(a.name) }}</span>
-                <span class="alt-price">NT$ {{ a.price.toLocaleString() }}</span>
-              </button>
-            </div>
           </li>
         </ul>
       </template>
@@ -523,28 +508,22 @@ function toFavoriteItem(item, c) {
   overflow: hidden;
 }
 .alt-price { font-size: 0.8rem; font-weight: 600; color: var(--db-text); }
-.alt-img { position: relative; }
-.alt-used {
-  position: absolute; top: 4px; left: 4px; padding: 0.05rem 0.4rem; border-radius: var(--db-radius-pill);
-  background: var(--db-accent-ink); color: #fff; font-size: 0.66rem; font-weight: 600;
+/* 全新／二手切換：兩段式按鈕，選中的反白 */
+.mode-switch {
+  display: inline-flex; gap: 2px; padding: 3px; margin: 0.1rem 0 0.2rem;
+  border-radius: var(--db-radius-pill); background: var(--db-chip-soft);
 }
-.alt-img--est { font-size: 0.8rem; color: var(--db-text-soft); }
-.alts--est { grid-column: 1 / -1; margin-top: 0.3rem; }
-
-/* 二手：選中時在類別旁標店家；有相似二手品時在價格旁給一個入口 */
-.used-tag {
-  margin-left: 0.4rem; padding: 0.02rem 0.4rem; border-radius: var(--db-radius-pill);
-  background: var(--db-accent-ink); color: #fff; font-size: 0.68rem; letter-spacing: 0;
+.mode-switch button {
+  min-height: 34px; padding: 0 1rem; border: none; border-radius: var(--db-radius-pill);
+  background: none; color: var(--db-text-soft); font-size: 0.86rem; cursor: pointer;
+  transition: background 0.16s, color 0.16s;
 }
-.used-chip {
-  min-height: 32px; padding: 0 0.7rem; border: 1px solid var(--db-line); border-radius: var(--db-radius-pill);
-  background: none; color: var(--db-accent-ink); font-size: 0.78rem; font-weight: 600; white-space: nowrap; cursor: pointer;
-  transition: background 0.16s, color 0.16s, border-color 0.16s;
-}
-.used-chip:hover { background: var(--db-accent-soft); border-color: var(--db-accent-soft); }
-.used-chip.open { background: var(--db-accent-ink); border-color: var(--db-accent-ink); color: #fff; }
-.used-chip:focus-visible { outline: 2px solid var(--db-text); outline-offset: 2px; }
-.est-price .used-chip { margin-left: 0.4rem; min-height: 28px; }
+.mode-switch button small { font-size: 0.72rem; }
+.mode-switch button:hover:not(:disabled):not(.on) { color: var(--db-text); }
+.mode-switch button.on { background: #fff; color: var(--db-text); font-weight: 600; box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08); }
+.mode-switch button:disabled { opacity: 0.45; cursor: not-allowed; }
+.mode-switch button:focus-visible { outline: 2px solid var(--db-text); outline-offset: 2px; }
+.store { margin-left: 0.4rem; color: var(--db-accent-ink); letter-spacing: 0; }
 
 .name {
   font-size: 0.82rem;

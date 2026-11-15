@@ -266,6 +266,38 @@ def _text_similarities(pool: list[dict], text_embedding: list[float]) -> dict[st
     return sims
 
 
+# 沙發大類混了模組零件（單獨的轉角座、椅凳、躺椅段）跟轉角、附躺椅款，藍色長沙發會被推薦成轉角座
+_SOFA_PART_RE = re.compile(r"椅凳|靠枕|薄墊|單人座椅|扶手椅|搖椅|休閒椅|^[^人]*(轉角沙發|躺椅)(?!.*人座)")
+_SOFA_CORNER_RE = re.compile(r"轉角|U型|L型")
+_SOFA_CHAISE_RE = re.compile(r"躺椅")
+_DETECT_CORNER_RE = re.compile(r"轉角|L型|L形|U型|U形")
+_LONG_SOFA_RE = re.compile(r"長沙發|雙人|兩人|二人|三人|多人|大沙發")
+
+
+def filter_sofa_shape(pool: list[dict], detected_name: str) -> list[dict]:
+    """依偵測名稱篩沙發外型：零件一律排除；轉角／附躺椅款只在名稱提到 L 型、轉角、躺椅時才推薦。
+    篩完沒東西就退回只排除零件的結果。"""
+    def short(h):
+        return re.sub(r"^[A-ZÅÄÖÜ0-9 /.\-]+", "", (h.get("name") or "").split("，")[0]).strip()
+
+    name = detected_name or ""
+    whole = [h for h in pool if not _SOFA_PART_RE.search(short(h))]
+    # 單人沙發偵測時會歸到 chair；沙發大類裡沒講明的就是多人座，也不推薦沙發床
+    if "沙發床" not in name:
+        whole = [h for h in whole if h.get("subcategory") != "sofa-bed" and "沙發床" not in short(h)] or whole
+    if not re.search(r"單人|一人", name):
+        whole = [h for h in whole if not re.search(r"單人|一人", short(h))] or whole
+    if _DETECT_CORNER_RE.search(name):    # 附躺椅款也是 L 型
+        shaped = [h for h in whole if _SOFA_CORNER_RE.search(short(h)) or _SOFA_CHAISE_RE.search(short(h))]
+    elif "躺椅" in name:
+        shaped = [h for h in whole if _SOFA_CHAISE_RE.search(short(h))]
+    else:
+        shaped = [h for h in whole if not _SOFA_CORNER_RE.search(short(h)) and not _SOFA_CHAISE_RE.search(short(h))]
+        if _LONG_SOFA_RE.search(name):
+            shaped = [h for h in shaped if not re.search(r"二人座椅", short(h))]
+    return shaped or whole or pool
+
+
 def subcategories_for(category: str, detected_name: str) -> set[str]:
     import re
     for pattern, subs in _SUBCATEGORY_RULES.get(category, []):
@@ -309,6 +341,8 @@ def recommend_products(
         preferred = [h for h in pool if h.get("subcategory") in subs]
         if preferred:
             pool = preferred
+    if category == "sofa":
+        pool = filter_sofa_shape(pool, detected_name)
 
     text_sims = _text_similarities(pool, text_embedding) if text_embedding is not None else {}
     text_mean = sum(text_sims.values()) / len(text_sims) if text_sims else 0.0
