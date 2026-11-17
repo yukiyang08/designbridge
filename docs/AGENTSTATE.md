@@ -42,7 +42,7 @@ requirement_analyzer → visual_preprocessing ─┬─ design → layout_and_st
 - state 已有 `generated_image`（風格切換重播）→ composer 不使用 `design_description`；風格代理人也不啟用。
 - state 已有 `scene_graph`（Step 1 排版結果）→ layout_and_style 只重新投影，不重排；`vision_features` 有照片深度（非 `post_estimate`）時疊回照片投影。
 - `scene_graph.source == "photo"`（入口二 `/api/photo-layout` 偵測的佈局）→ requirement_analyzer 一律走 `design`（refine_mode 仍優先）；renderer 跟 `hint_layout` 一樣改用投影深度。
-- `user_input.restyle`（入口二「修改風格」）→ requirement_analyzer 走 `design` 並把 `hint_layout` 設為 false，家具留在照片原位。
+- `user_input.restyle`（入口二「修改風格」）→ requirement_analyzer 走 `design` 並把 `hint_layout` 設為 false，家具留在照片原位。 renderer 對它優先走 `photo_restyle_fal`：原照片當底圖做兩段 inpaint——先固定分割圖認出的門窗、重繪其餘（`PHOTO_RESTYLE_STRENGTH`），再只對門窗低強度重繪換外觀（`PHOTO_RESTYLE_OPENING_STRENGTH`，0 = 門窗維持原樣）；`ENABLE_PHOTO_RESTYLE_INPAINT` 關閉或第一段失敗才退回純深度出圖。
 
 ## 3. 節點內部的迴圈
 

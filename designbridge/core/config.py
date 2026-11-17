@@ -160,6 +160,14 @@ class Config:
     # 換風格是否沿用上一張圖補算的深度（舊行為）：該深度在窗戶/遠牆是雜訊，預設關
     STYLE_SWAP_DEPTH_LOCK: bool = _flag("DESIGNBRIDGE_STYLE_SWAP_DEPTH_LOCK", "false")
     ADJUSTER_INPAINT_STRENGTH: float = float(os.getenv("DESIGNBRIDGE_ADJUSTER_INPAINT_STRENGTH", "0.85"))
+    # 入口二換風格：以原照片為底重繪，第一段門窗不動（固定位置），第二段只對門窗低強度重繪（換外觀）。
+    # 純深度出圖看不出牆上哪裡是窗（深度是平的），窗會被畫成壁飾或層架；調高深度／邊緣強度也救不回來
+    # （2026-11-17 實測）
+    ENABLE_PHOTO_RESTYLE_INPAINT: bool = _flag("DESIGNBRIDGE_ENABLE_PHOTO_RESTYLE_INPAINT", "true")
+    # 1.0 風格換得最乾淨但小家具會被改掉，0.9 家具最像原本但床單顏色等會殘留
+    PHOTO_RESTYLE_STRENGTH: float = float(os.getenv("DESIGNBRIDGE_PHOTO_RESTYLE_STRENGTH", "0.95"))
+    # 第二段門窗的重繪強度：0.7 舊窗框換成新風格、仍是原位的窗；0.82 實測會變成一幅畫。0 = 門窗維持原照片
+    PHOTO_RESTYLE_OPENING_STRENGTH: float = float(os.getenv("DESIGNBRIDGE_PHOTO_RESTYLE_OPENING_STRENGTH", "0.7"))
 
     # ── 視覺預處理：深度 + 分割（首次執行會下載模型）─────────────────────────
     ENABLE_DEPTH: bool = True

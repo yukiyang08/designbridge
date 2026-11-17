@@ -25,6 +25,7 @@ from designbridge.render.render_backends import (
     _render_flux_depth_controlnet_fal,
     _render_flux_depth_controlnet_modal,
     _render_flux_fal,
+    _render_photo_restyle_fal,
     _render_product_mesh_fal,
 )
 from designbridge.style.style_apply import resolve_style_loras
@@ -107,6 +108,49 @@ def _denoise_labels(labels: "np.ndarray", min_region_px: int = 40) -> "np.ndarra
     # 被移除的像素取最近倖存像素的標籤
     _, (iy, ix) = ndimage.distance_transform_edt(~keep, return_indices=True)
     return np.where(keep, labels, labels[iy, ix])
+
+
+_KEEP_LABELS = ("window", "door")
+_KEEP_MIN_AREA = 0.01   # 佔畫面不到 1% 的多半是誤判（鏡子、櫃門被認成門），不值得為它留一塊舊像素
+
+
+def _restyle_masks(seg_path: str, meta_path: str, output_size: tuple[int, int], out_dir: Path, tag: str):
+    """換風格的兩張遮罩（白＝重繪）與門窗提示詞：(門窗以外, 只有門窗 | None, 提示詞)。沒有分割資料回 None。"""
+    try:
+        import numpy as np
+        from PIL import Image, ImageFilter
+        from scipy import ndimage
+
+        labels = json.loads(Path(meta_path).read_text(encoding="utf-8")).get("present_labels") or {}
+        keep_ids = [int(i) for i, name in labels.items() if any(w in str(name).lower() for w in _KEEP_LABELS)]
+        fitted = _fit_condition_image(seg_path, output_size, out_dir, f"{tag}_seg", nearest=True)
+        seg = np.asarray(Image.open(fitted)).astype(np.int64)
+        if seg.ndim != 2:
+            return None
+        keep = np.zeros(seg.shape, dtype=bool)
+        kinds: set[str] = set()
+        comp, n = ndimage.label(np.isin(seg, keep_ids))
+        for i in range(1, n + 1):
+            region = comp == i
+            if region.sum() >= _KEEP_MIN_AREA * seg.size:
+                keep |= region
+                name = str(labels.get(str(int(seg[region][0])), "")).lower()
+                kinds.add("door" if "door" in name else "window")
+        # 保留區內縮 2px 再羽化，窗框邊緣跟新牆面才接得起來
+        kept = Image.fromarray((keep * 255).astype("uint8")).filter(ImageFilter.MinFilter(5))
+        mask = Image.eval(kept, lambda p: 255 - p).filter(ImageFilter.GaussianBlur(3))
+        print(f"[renderer] 換風格固定門窗位置：{keep.mean():.1%} 的畫面")
+        if not keep.any():
+            return mask, None, ""
+        # 第二段：門窗外擴 4px 一起重繪，窗框才換得掉
+        openings = Image.fromarray((keep * 255).astype("uint8")).filter(ImageFilter.MaxFilter(9)).filter(ImageFilter.GaussianBlur(4))
+        what = " and ".join(
+            {"window": "a window with a slim elegant frame and clear glass", "door": "a door"}[k] for k in sorted(kinds)
+        )
+        return mask, openings, f"{what[0].upper()}{what[1:]}, in the same position and size, matching the room's style. "
+    except Exception as e:
+        print(f"⚠️  換風格遮罩建立失敗（{e}），改走深度出圖")
+        return None
 
 
 def _seg_to_edge_condition(
@@ -606,6 +650,60 @@ def renderer(state: DesignBridgeState) -> dict[str, Any]:
         )
         print(f"[renderer] 未使用 IKEA 商品網格：{_why}")
         generation_params["product_mesh_skipped"] = _why
+
+    # 入口二換風格：原照片當底圖、門窗不重繪。失敗或沒有分割資料就往下走純深度出圖
+    _photo = str(user_input.get("initial_image") or "")
+    if (
+        backend == "placeholder"
+        and Config.ENABLE_PHOTO_RESTYLE_INPAINT
+        and user_input.get("restyle")
+        and Config.FAL_KEY
+        and not using_projected_depth
+        and _photo and Path(_photo).is_file()
+        and effective_depth_path and Path(str(effective_depth_path)).is_file()
+        and seg_path and vision.get("segmentation_meta")
+    ):
+        _repaint, _openings, _opening_prompt = _restyle_masks(
+            str(seg_path), str(vision["segmentation_meta"]), output_size, render_dir / "conditions", f"{task_id}_restyle",
+        ) or (None, None, "")
+        _edge = [{
+            "path": Config.EDGE_CONTROLNET_MODEL, "image_path": edge_path,
+            "scale": Config.EDGE_CONDITIONING_SCALE, "mode": Config.EDGE_CONTROLNET_MODE or None,
+        }] if edge_path else []
+        _restyle_kwargs = dict(
+            conditioning_scale=depth_conditioning_scale,
+            control_end=Config.REAL_PHOTO_DEPTH_CONTROL_END,
+            num_steps=Config.FAL_CONTROLNET_STEPS,
+            guidance_scale=Config.FAL_CONTROLNET_GUIDANCE,
+            output_size=output_size,
+            extra_controls=_edge,
+            loras=style_loras,
+            seed=seed,
+        )
+        if _repaint is not None and timed_call(
+            "renderer.photo_restyle_fal", task_id,
+            _render_photo_restyle_fal,
+            prompt, _photo, _repaint, str(effective_depth_path), out_path,
+            strength=Config.PHOTO_RESTYLE_STRENGTH, **_restyle_kwargs,
+        ):
+            backend = "photo_restyle_fal"
+            # 第二段失敗就留第一段的結果（門窗是原照片的樣子），不算整體失敗
+            if _openings is not None and Config.PHOTO_RESTYLE_OPENING_STRENGTH > 0:
+                _first = out_path.with_name(out_path.stem + "_pass1.png")
+                _first.write_bytes(out_path.read_bytes())
+                generation_params["restyle_openings_restyled"] = bool(timed_call(
+                    "renderer.photo_restyle_openings_fal", task_id,
+                    _render_photo_restyle_fal,
+                    _opening_prompt + prompt, str(_first), _openings, str(effective_depth_path), out_path,
+                    strength=Config.PHOTO_RESTYLE_OPENING_STRENGTH, **_restyle_kwargs,
+                ))
+                generation_params["restyle_opening_strength"] = Config.PHOTO_RESTYLE_OPENING_STRENGTH
+            generation_params["model"] = f"fal-ai/flux-general/inpainting + {Config.DEPTH_CONTROLNET_MODEL}"
+            generation_params["restyle_strength"] = Config.PHOTO_RESTYLE_STRENGTH
+            generation_params["depth_conditioning_scale"] = depth_conditioning_scale
+            generation_params["controlnet_control_end"] = Config.REAL_PHOTO_DEPTH_CONTROL_END
+            if style_loras:
+                generation_params["loras"] = style_loras
 
     # FLUX depth ControlNet（需 FAL_KEY）：約束力遠強於 Kontext LoRA，讓投影深度控制家具擺位
     if (

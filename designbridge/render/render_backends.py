@@ -883,6 +883,105 @@ def _render_product_mesh_fal(
         return False
 
 
+def _render_photo_restyle_fal(
+    prompt: str,
+    image_path: str,
+    repaint_mask: "Image.Image",
+    depth_path: str,
+    out_path: Path,
+    *,
+    strength: float = 0.95,
+    conditioning_scale: float = 0.65,
+    control_end: float = 0.7,
+    num_steps: int = 28,
+    guidance_scale: float = 3.5,
+    output_size: tuple[int, int] = (1024, 1024),
+    extra_controls: list[dict] | None = None,
+    loras: list[dict] | None = None,
+    seed: int | None = None,
+) -> bool:
+    """照片換風格：`image_path` 當底圖，只重繪遮罩（白）範圍，深度／邊緣 ControlNet 照掛。
+
+    renderer 呼叫兩次：先把門窗留黑、其餘高 strength 重繪；再只對門窗低 strength 重繪。
+    """
+    if not Config.FAL_KEY:
+        return False
+    try:
+        import io
+        import os
+
+        import fal_client
+        import requests
+        from PIL import Image
+
+        from designbridge.core.timing import fal_subscribe
+
+        os.environ["FAL_KEY"] = Config.FAL_KEY
+
+        def _upload(img: "Image.Image") -> str:
+            buf = io.BytesIO()
+            img.save(buf, format="PNG")
+            return fal_client.upload(buf.getvalue(), content_type="image/png")
+
+        def _fit(path: str) -> "Image.Image":
+            return Image.open(path).convert("RGB").resize(output_size, Image.LANCZOS)
+
+        controlnets: list[dict] = [{
+            "path": Config.DEPTH_CONTROLNET_MODEL,
+            "control_image_url": _upload(_fit(depth_path)),
+            "conditioning_scale": conditioning_scale,
+            "start_percentage": 0.0,
+            "end_percentage": control_end,
+        }]
+        for control in extra_controls or []:
+            if not control.get("path") or not Path(str(control.get("image_path") or "")).is_file():
+                continue
+            entry: dict = {
+                "path": control["path"],
+                "control_image_url": _upload(_fit(control["image_path"])),
+                "conditioning_scale": float(control.get("scale", 0.5)),
+                "start_percentage": 0.0,
+                "end_percentage": control_end,
+            }
+            if control.get("mode") not in (None, ""):
+                entry["control_mode"] = int(control["mode"])
+            controlnets.append(entry)
+
+        width, height = output_size
+        arguments: dict = {
+            "prompt": prompt.strip(),
+            "num_inference_steps": num_steps,
+            "guidance_scale": guidance_scale,
+            "image_size": _FAL_SIZE_MAP.get((width, height), {"width": width, "height": height}),
+            "image_url": _upload(_fit(image_path)),
+            "mask_url": _upload(repaint_mask.convert("RGB").resize(output_size, Image.LANCZOS)),
+            "strength": strength,
+            "controlnets": controlnets,
+        }
+        if seed is not None:
+            arguments["seed"] = int(seed)
+        if loras:
+            arguments["loras"] = loras
+
+        print(f"☁️  fal.ai 照片換風格 inpaint（strength={strength}）")
+        out_path.parent.mkdir(parents=True, exist_ok=True)
+        result = fal_subscribe("photo_restyle", "fal-ai/flux-general/inpainting", arguments=arguments, with_logs=False)
+        resp = requests.get(result["images"][0]["url"], timeout=60)
+        resp.raise_for_status()
+        out_path.write_bytes(resp.content)
+        print(f"✅ fal.ai 照片換風格完成：{out_path.name}")
+        return True
+    except ImportError:
+        print("⚠️  fal_client 未安裝，請執行：pip install fal-client")
+        return False
+    except Exception as e:
+        import traceback
+
+        print(f"⚠️  fal.ai 照片換風格失敗：{e}")
+        traceback.print_exc()
+        return False
+
+
 def _render_inpaint_depth_fal(
     prompt: str,
     image_path: str,
