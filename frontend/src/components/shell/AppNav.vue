@@ -5,7 +5,7 @@ import { RouterLink, useRoute } from 'vue-router'
 import { useAuth } from '@/composables/useAuth'
 import { useFurnitureSelection } from '@/composables/useFurnitureSelection'
 import { useMe } from '@/composables/useMe'
-import logo from '../../../asset/designbridge_logo.png'
+import logo from '@/assets/brand/logo.svg'
 
 const { user, signInWithGoogle, signOut } = useAuth()
 const { selectedCount } = useFurnitureSelection()

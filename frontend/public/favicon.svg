@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" role="img" aria-label="DesignBridge">
+<rect width="1024" height="1024" rx="204.8" fill="#f9f2ea"/>
+<g fill="#8c7163">
+  <path d="M52.59 683.13L512 340.87L971.41 683.13L850.89 683.13L512 430.66L173.11 683.13Z"/>
+  <rect x="71.68" y="635.13" width="73.39" height="48"/>
+  <rect x="878.93" y="635.13" width="73.39" height="48"/>
+  <rect x="437.06" y="498.34" width="62.68" height="68.13" rx="6.81"/>
+  <rect x="524.26" y="498.34" width="62.68" height="68.13" rx="6.81"/>
+  <rect x="437.06" y="591" width="62.68" height="68.13" rx="6.81"/>
+  <rect x="524.26" y="591" width="62.68" height="68.13" rx="6.81"/>
+</g>
+</svg>

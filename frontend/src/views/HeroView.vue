@@ -13,6 +13,7 @@ import CompareSlider from '@/components/home/CompareSlider.vue'
 import StyleDial from '@/components/home/StyleDial.vue'
 import StyleDeck from '@/components/home/StyleDeck.vue'
 import QuoteReceipt from '@/components/home/QuoteReceipt.vue'
+import HomeSplash from '@/components/home/HomeSplash.vue'
 import { prefersReducedMotion } from '@/composables/useScrollProgress'
 import heroBg from '@/assets/figma/room-bg.png'
 import panoCrop from '@/assets/home/pano-crop.jpg'
@@ -81,6 +82,7 @@ function untrack(e) {
 
 <template>
   <div class="home">
+    <HomeSplash />
     <header class="hero" @pointermove="track($event, 2, 2)" @pointerleave="untrack">
       <div class="hero-bg" aria-hidden="true"><img :src="heroBg" alt="" /></div>
       <AppNav />
