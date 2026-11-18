@@ -164,10 +164,15 @@ class Config:
     # 純深度出圖看不出牆上哪裡是窗（深度是平的），窗會被畫成壁飾或層架；調高深度／邊緣強度也救不回來
     # （2026-11-17 實測）
     ENABLE_PHOTO_RESTYLE_INPAINT: bool = _flag("DESIGNBRIDGE_ENABLE_PHOTO_RESTYLE_INPAINT", "true")
-    # 1.0 風格換得最乾淨但小家具會被改掉，0.9 家具最像原本但床單顏色等會殘留
-    PHOTO_RESTYLE_STRENGTH: float = float(os.getenv("DESIGNBRIDGE_PHOTO_RESTYLE_STRENGTH", "0.95"))
-    # 第二段門窗的重繪強度：0.7 舊窗框換成新風格、仍是原位的窗；0.82 實測會變成一幅畫。0 = 門窗維持原照片
-    PHOTO_RESTYLE_OPENING_STRENGTH: float = float(os.getenv("DESIGNBRIDGE_PHOTO_RESTYLE_OPENING_STRENGTH", "0.7"))
+    # 0.95 實測會在白牆上憑空畫出窗、把窗簾畫成書架；調低保住牆面配置，代價是原本的顏色多留一點
+    PHOTO_RESTYLE_STRENGTH: float = float(os.getenv("DESIGNBRIDGE_PHOTO_RESTYLE_STRENGTH", "0.88"))
+    # 第二段門窗的重繪強度：0.7 會把玻璃落地窗畫成實心門、0.82 會變成一幅畫。0 = 門窗維持原照片
+    PHOTO_RESTYLE_OPENING_STRENGTH: float = float(os.getenv("DESIGNBRIDGE_PHOTO_RESTYLE_OPENING_STRENGTH", "0.6"))
+    # 家電與固定設備（冰箱、電視、洗衣機…）跟門窗一樣原樣保留，不然會被換成櫃子或直接消失
+    PHOTO_RESTYLE_PROTECT_FIXTURES: bool = _flag("DESIGNBRIDGE_PHOTO_RESTYLE_PROTECT_FIXTURES", "false")
+    # 邊緣 ControlNet 的線稿來源：seg（分割邊界，白牆上沒有線）｜photo（原照片的真實輪廓，含門框、踢腳板）
+    PHOTO_RESTYLE_EDGE_SOURCE: str = os.getenv("DESIGNBRIDGE_PHOTO_RESTYLE_EDGE_SOURCE", "seg").strip().lower()
+    PHOTO_RESTYLE_EDGE_SCALE: float = float(os.getenv("DESIGNBRIDGE_PHOTO_RESTYLE_EDGE_SCALE", "0.3"))
 
     # ── 視覺預處理：深度 + 分割（首次執行會下載模型）─────────────────────────
     ENABLE_DEPTH: bool = True

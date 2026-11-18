@@ -110,12 +110,53 @@ def _denoise_labels(labels: "np.ndarray", min_region_px: int = 40) -> "np.ndarra
     return np.where(keep, labels, labels[iy, ix])
 
 
-_KEEP_LABELS = ("window", "door")
+# 窗簾跟著窗：不保護的話第一段會把窗簾位置畫成櫃子、書架（2026-11-18 實測）
+_KEEP_LABELS = ("window", "door", "curtain", "blind")
 _KEEP_MIN_AREA = 0.01   # 佔畫面不到 1% 的多半是誤判（鏡子、櫃門被認成門），不值得為它留一塊舊像素
+# 家電與固定設備：換風格時原樣保留（PHOTO_RESTYLE_PROTECT_FIXTURES）
+_FIXTURE_LABELS = (
+    "refrigerator", "television", "washer", "stove", "oven", "microwave", "dishwasher", "sink",
+    "toilet", "bathtub", "shower", "radiator", "fan", "air conditioning", "computer", "monitor",
+)
+_FIXTURE_MIN_AREA = 0.004
+_KEEP_MIN_HEIGHT = 0.15  # 門窗都是直立的大塊；矮的多半是家具被認成門（衣櫃頂、電視）
+# 落地窗常被分割成「門」，所以提示詞不分門窗，只要求開口、玻璃和通透度不變
+_OPENINGS_PROMPT = (
+    "Windows and doors stay exactly where they are, with the same size and the same glass or solid panels; "
+    "glass stays clear and still shows the view outside. Only restyle their frames, handles and curtains to match the room. "
+)
+# 分割標籤 → 寫進提示詞的名詞；牆地天花板不列，太小的碎塊不列
+_INVENTORY_NOUNS = {
+    "bed": "a bed", "sofa": "a sofa", "armchair": "an armchair", "chair": "a chair", "table": "a table",
+    "desk": "a desk", "cabinet": "a cabinet", "wardrobe": "a wardrobe", "chest of drawers": "a chest of drawers",
+    "shelf": "shelves", "bookcase": "a bookcase", "refrigerator": "a small refrigerator",
+    "television receiver": "a TV", "door": "a door", "windowpane": "a window", "curtain": "curtains",
+    "blind": "window blinds", "lamp": "a lamp", "rug": "a rug", "plant": "a plant", "mirror": "a mirror",
+}
+_INVENTORY_MIN_AREA = 0.008
+
+
+def _restyle_inventory(seg: "np.ndarray", labels: dict) -> str:
+    """把照片裡實際有的東西與左右位置寫成一句話。只給風格描述時模型會照描述自己加東西
+    （提到窗簾就在白牆上畫出窗）；也不能寫「不要加窗」，這類模型看到 windows 反而會畫出來。"""
+    import numpy as np
+
+    sides: dict[str, list[str]] = {"left": [], "center": [], "right": []}
+    for i, name in labels.items():
+        noun = _INVENTORY_NOUNS.get(str(name).strip().lower())
+        mask = seg == int(i)
+        if not noun or mask.mean() < _INVENTORY_MIN_AREA:
+            continue
+        cx = np.nonzero(mask)[1].mean() / seg.shape[1]
+        sides["left" if cx < 0.36 else "right" if cx > 0.64 else "center"].append(noun)
+    parts = [f"{', '.join(v)} on the {k}" if k != "center" else f"{', '.join(v)} in the middle" for k, v in sides.items() if v]
+    if not parts:
+        return ""
+    return "The same room with the same layout and camera angle: " + "; ".join(parts) + ". Restyle everything in place. "
 
 
 def _restyle_masks(seg_path: str, meta_path: str, output_size: tuple[int, int], out_dir: Path, tag: str):
-    """換風格的兩張遮罩（白＝重繪）與門窗提示詞：(門窗以外, 只有門窗 | None, 提示詞)。沒有分割資料回 None。"""
+    """換風格的兩張遮罩（白＝重繪）與房間內容描述：(門窗以外, 只有門窗 | None, 描述)。沒有分割資料回 None。"""
     try:
         import numpy as np
         from PIL import Image, ImageFilter
@@ -128,28 +169,57 @@ def _restyle_masks(seg_path: str, meta_path: str, output_size: tuple[int, int], 
         if seg.ndim != 2:
             return None
         keep = np.zeros(seg.shape, dtype=bool)
-        kinds: set[str] = set()
         comp, n = ndimage.label(np.isin(seg, keep_ids))
         for i in range(1, n + 1):
             region = comp == i
-            if region.sum() >= _KEEP_MIN_AREA * seg.size:
+            rows = np.nonzero(region.any(axis=1))[0]
+            if region.sum() >= _KEEP_MIN_AREA * seg.size and rows[-1] - rows[0] >= _KEEP_MIN_HEIGHT * seg.shape[0]:
                 keep |= region
-                name = str(labels.get(str(int(seg[region][0])), "")).lower()
-                kinds.add("door" if "door" in name else "window")
-        # 保留區內縮 2px 再羽化，窗框邊緣跟新牆面才接得起來
-        kept = Image.fromarray((keep * 255).astype("uint8")).filter(ImageFilter.MinFilter(5))
+        fixtures = np.zeros(seg.shape, dtype=bool)
+        if Config.PHOTO_RESTYLE_PROTECT_FIXTURES:
+            fix_ids = [int(i) for i, name in labels.items() if any(w in str(name).lower() for w in _FIXTURE_LABELS)]
+            comp, n = ndimage.label(np.isin(seg, fix_ids))
+            for i in range(1, n + 1):
+                region = comp == i
+                if region.sum() >= _FIXTURE_MIN_AREA * seg.size:
+                    fixtures |= ndimage.binary_fill_holes(region)
+            print(f"[renderer] 換風格保留家電：{fixtures.mean():.1%} 的畫面")
+        # 保留區內縮 2px 再羽化，窗框邊緣跟新牆面才接得起來；家電只在第一段保留，第二段不碰
+        kept = Image.fromarray(((keep | fixtures) * 255).astype("uint8")).filter(ImageFilter.MinFilter(5))
         mask = Image.eval(kept, lambda p: 255 - p).filter(ImageFilter.GaussianBlur(3))
         print(f"[renderer] 換風格固定門窗位置：{keep.mean():.1%} 的畫面")
+        inventory = _restyle_inventory(seg, labels)
         if not keep.any():
-            return mask, None, ""
+            return mask, None, inventory
         # 第二段：門窗外擴 4px 一起重繪，窗框才換得掉
-        openings = Image.fromarray((keep * 255).astype("uint8")).filter(ImageFilter.MaxFilter(9)).filter(ImageFilter.GaussianBlur(4))
-        what = " and ".join(
-            {"window": "a window with a slim elegant frame and clear glass", "door": "a door"}[k] for k in sorted(kinds)
-        )
-        return mask, openings, f"{what[0].upper()}{what[1:]}, in the same position and size, matching the room's style. "
+        openings = Image.fromarray(((keep & ~fixtures) * 255).astype("uint8")).filter(ImageFilter.MaxFilter(9)).filter(ImageFilter.GaussianBlur(4))
+        return mask, openings, inventory
     except Exception as e:
         print(f"⚠️  換風格遮罩建立失敗（{e}），改走深度出圖")
+        return None
+
+
+def _photo_edge_condition(photo_path: str, output_size: tuple[int, int], out_dir: Path, tag: str) -> str | None:
+    """原照片的真實輪廓線稿（黑底白線）：分割邊界在白牆上沒有線，門框、踢腳板、窗框也抓不到。"""
+    try:
+        import numpy as np
+        from PIL import Image, ImageFilter
+
+        fitted = _fit_condition_image(photo_path, output_size, out_dir, f"{tag}_photo")
+        gray = Image.open(fitted).convert("L").filter(ImageFilter.GaussianBlur(1.6))
+        g = np.asarray(gray, dtype=np.float32)
+        gx = np.zeros_like(g); gy = np.zeros_like(g)
+        gx[:, 1:-1] = g[:, 2:] - g[:, :-2]
+        gy[1:-1, :] = g[2:, :] - g[:-2, :]
+        mag = np.hypot(gx, gy)
+        # 只留最強的約 8% 當線，雜訊紋理（磁磚縫、布料花紋）多半在門檻以下
+        edges = mag > max(18.0, float(np.percentile(mag, 92)))
+        out = Image.fromarray((edges * 255).astype("uint8")).filter(ImageFilter.MinFilter(3)).filter(ImageFilter.MaxFilter(3))
+        path = out_dir / f"{tag}_photo_edge_{output_size[0]}x{output_size[1]}.png"
+        out.convert("RGB").save(path)
+        return str(path)
+    except Exception as e:
+        print(f"⚠️  原照片輪廓圖建立失敗（{e}），沿用分割邊界")
         return None
 
 
@@ -663,13 +733,18 @@ def renderer(state: DesignBridgeState) -> dict[str, Any]:
         and effective_depth_path and Path(str(effective_depth_path)).is_file()
         and seg_path and vision.get("segmentation_meta")
     ):
-        _repaint, _openings, _opening_prompt = _restyle_masks(
+        _repaint, _openings, _inventory = _restyle_masks(
             str(seg_path), str(vision["segmentation_meta"]), output_size, render_dir / "conditions", f"{task_id}_restyle",
         ) or (None, None, "")
+        if _inventory:
+            generation_params["restyle_inventory"] = _inventory
+        _edge_src = edge_path
+        if Config.PHOTO_RESTYLE_EDGE_SOURCE == "photo":
+            _edge_src = _photo_edge_condition(_photo, output_size, render_dir / "conditions", f"{task_id}_restyle") or edge_path
         _edge = [{
-            "path": Config.EDGE_CONTROLNET_MODEL, "image_path": edge_path,
-            "scale": Config.EDGE_CONDITIONING_SCALE, "mode": Config.EDGE_CONTROLNET_MODE or None,
-        }] if edge_path else []
+            "path": Config.EDGE_CONTROLNET_MODEL, "image_path": _edge_src,
+            "scale": Config.PHOTO_RESTYLE_EDGE_SCALE, "mode": Config.EDGE_CONTROLNET_MODE or None,
+        }] if _edge_src else []
         _restyle_kwargs = dict(
             conditioning_scale=depth_conditioning_scale,
             control_end=Config.REAL_PHOTO_DEPTH_CONTROL_END,
@@ -683,7 +758,7 @@ def renderer(state: DesignBridgeState) -> dict[str, Any]:
         if _repaint is not None and timed_call(
             "renderer.photo_restyle_fal", task_id,
             _render_photo_restyle_fal,
-            prompt, _photo, _repaint, str(effective_depth_path), out_path,
+            _inventory + prompt, _photo, _repaint, str(effective_depth_path), out_path,
             strength=Config.PHOTO_RESTYLE_STRENGTH, **_restyle_kwargs,
         ):
             backend = "photo_restyle_fal"
@@ -694,7 +769,7 @@ def renderer(state: DesignBridgeState) -> dict[str, Any]:
                 generation_params["restyle_openings_restyled"] = bool(timed_call(
                     "renderer.photo_restyle_openings_fal", task_id,
                     _render_photo_restyle_fal,
-                    _opening_prompt + prompt, str(_first), _openings, str(effective_depth_path), out_path,
+                    _OPENINGS_PROMPT + _inventory + prompt, str(_first), _openings, str(effective_depth_path), out_path,
                     strength=Config.PHOTO_RESTYLE_OPENING_STRENGTH, **_restyle_kwargs,
                 ))
                 generation_params["restyle_opening_strength"] = Config.PHOTO_RESTYLE_OPENING_STRENGTH
